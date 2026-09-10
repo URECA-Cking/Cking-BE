@@ -1,3 +1,25 @@
 spring:
   application:
     name: cking-backend
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/cking?characterEncoding=UTF-8&serverTimezone=Asia/Seoul
+    username: cking
+    password: cking
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
