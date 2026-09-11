@@ -12,6 +12,8 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
+      # 업무 시각은 UTC로 저장한다. 이미지·RDS 기본값이 UTC이지만 바뀌어도 흔들리지 않게 못 박는다.
+      - --default-time-zone=+00:00
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -24,6 +26,10 @@ services:
     container_name: cking-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
 
 volumes:
   mysql-data:
