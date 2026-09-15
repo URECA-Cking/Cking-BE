@@ -6,6 +6,9 @@
 --
 -- 시각은 DATETIME(6)으로 둔다. 명세 2.5의 startAt <= now < endAt 경계 판정과
 -- endAt / closedAt 구분에 초 단위보다 높은 정밀도가 필요하다.
+--
+-- charset/collation은 테이블마다 명시한다. 서버 기본값에 의존하면 CI나 RDS 파라미터
+-- 그룹의 기본값이 다를 때 오류 없이 다른 charset으로 생성된다.
 
 -- =====================================================================
 -- 1. member
@@ -18,7 +21,7 @@ CREATE TABLE member (
     role        VARCHAR(20)  NOT NULL COMMENT 'USER, ADMIN',
     created_at  DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (member_id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 2. creator
@@ -31,7 +34,7 @@ CREATE TABLE creator (
     PRIMARY KEY (creator_id),
     CONSTRAINT uk_creator_member UNIQUE (member_id),
     CONSTRAINT fk_creator_member FOREIGN KEY (member_id) REFERENCES member (member_id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 3. creator_application
@@ -48,7 +51,7 @@ CREATE TABLE creator_application (
     CONSTRAINT fk_creator_app_member   FOREIGN KEY (member_id)   REFERENCES member (member_id),
     CONSTRAINT fk_creator_app_reviewer FOREIGN KEY (reviewed_by) REFERENCES member (member_id),
     INDEX idx_creator_app_member_status (member_id, status)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 4. mission
@@ -65,7 +68,7 @@ CREATE TABLE mission (
     CONSTRAINT uk_mission_creator_type UNIQUE (creator_id, type),
     CONSTRAINT fk_mission_creator FOREIGN KEY (creator_id) REFERENCES creator (creator_id),
     CONSTRAINT ck_mission_reward CHECK (reward_amount > 0)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 5. mission_completion
@@ -85,7 +88,7 @@ CREATE TABLE mission_completion (
     CONSTRAINT fk_completion_member  FOREIGN KEY (member_id)  REFERENCES member (member_id),
     CONSTRAINT fk_completion_creator FOREIGN KEY (creator_id) REFERENCES creator (creator_id),
     CONSTRAINT fk_completion_mission FOREIGN KEY (mission_id) REFERENCES mission (mission_id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 6. user_ticket_balance
@@ -100,7 +103,7 @@ CREATE TABLE user_ticket_balance (
     CONSTRAINT fk_balance_creator FOREIGN KEY (creator_id) REFERENCES creator (creator_id),
     -- 명세 15.1 불변식: Balance >= 0
     CONSTRAINT ck_balance_non_negative CHECK (balance >= 0)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 8. event   (ticket_ledger가 event_entry를 참조하므로 event/event_entry를 먼저 만든다)
@@ -132,7 +135,7 @@ CREATE TABLE event (
     INDEX idx_event_status_end (status, end_at),
     -- 명세 3.9 목록 조회: deleted_at IS NULL 인 것만
     INDEX idx_event_creator_deleted (creator_id, deleted_at)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 9. event_approval_request
@@ -154,7 +157,7 @@ CREATE TABLE event_approval_request (
     CONSTRAINT fk_approval_requester FOREIGN KEY (requested_by) REFERENCES member (member_id),
     CONSTRAINT fk_approval_reviewer  FOREIGN KEY (reviewed_by)  REFERENCES member (member_id),
     CONSTRAINT ck_approval_round CHECK (approval_round > 0)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 10. event_entry
@@ -174,7 +177,7 @@ CREATE TABLE event_entry (
     CONSTRAINT ck_entry_ticket_count CHECK (used_ticket_count >= 1),
     -- 명세 7.2 Snapshot 후보 집계: event_id로 모아 member_id별 SUM
     INDEX idx_entry_event_member (event_id, member_id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 7. ticket_ledger
@@ -206,7 +209,7 @@ CREATE TABLE ticket_ledger (
     ),
     -- 명세 13.2 정합성 검증 배치(5분 주기)의 Ledger 합계 조회
     INDEX idx_ledger_member_creator (member_id, creator_id, created_at)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 11. draw_snapshot
@@ -230,7 +233,7 @@ CREATE TABLE draw_snapshot (
     CONSTRAINT ck_snapshot_candidate_count CHECK (candidate_count >= 0),
     CONSTRAINT ck_snapshot_total_ticket    CHECK (total_ticket_count >= 0),
     CONSTRAINT ck_snapshot_winner_count    CHECK (winner_count > 0)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 12. draw_snapshot_candidate
@@ -247,7 +250,7 @@ CREATE TABLE draw_snapshot_candidate (
     CONSTRAINT fk_candidate_member   FOREIGN KEY (member_id)   REFERENCES member (member_id),
     -- 명세 7.2: ticket_count <= 0 후보는 Snapshot에 포함하지 않는다.
     CONSTRAINT ck_candidate_ticket_count CHECK (ticket_count > 0)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 13. draw_seed
@@ -257,7 +260,7 @@ CREATE TABLE draw_seed (
     seed_value VARBINARY(255) NOT NULL,
     created_at DATETIME(6)    NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 14. drawing
@@ -308,7 +311,7 @@ CREATE TABLE drawing (
         (draw_type = 'INITIAL' AND draw_no = 0 AND original_drawing_id IS NULL     AND redraw_request_id IS NULL)
      OR (draw_type = 'REDRAW'  AND draw_no > 0 AND original_drawing_id IS NOT NULL AND redraw_request_id IS NOT NULL)
     )
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 19. redraw_request
@@ -336,7 +339,7 @@ CREATE TABLE redraw_request (
     CONSTRAINT fk_redraw_reviewer  FOREIGN KEY (reviewed_by)         REFERENCES member (member_id),
     CONSTRAINT ck_redraw_vacancy CHECK (vacancy_count > 0),
     INDEX idx_redraw_event_status (event_id, status, execution_status)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- 순환 참조 해소: drawing -> redraw_request
 ALTER TABLE drawing
@@ -362,7 +365,7 @@ CREATE TABLE draw_attempt_history (
     CONSTRAINT fk_attempt_drawing   FOREIGN KEY (drawing_id)   REFERENCES drawing (id),
     CONSTRAINT fk_attempt_requester FOREIGN KEY (requested_by) REFERENCES member (member_id),
     CONSTRAINT ck_attempt_no CHECK (attempt_no > 0)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 16. winner
@@ -384,7 +387,7 @@ CREATE TABLE winner (
     CONSTRAINT fk_winner_member  FOREIGN KEY (member_id)  REFERENCES member (member_id),
     CONSTRAINT ck_winner_rank   CHECK (rank_in_drawing > 0),
     CONSTRAINT ck_winner_ticket CHECK (applied_ticket_count > 0)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 17. winner_management
@@ -398,7 +401,7 @@ CREATE TABLE winner_management (
     PRIMARY KEY (id),
     CONSTRAINT uk_winner_mgmt_winner UNIQUE (winner_id),
     CONSTRAINT fk_winner_mgmt_winner FOREIGN KEY (winner_id) REFERENCES winner (id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 18. winner_status_history
@@ -414,7 +417,7 @@ CREATE TABLE winner_status_history (
     CONSTRAINT fk_winner_hist_mgmt    FOREIGN KEY (winner_management_id) REFERENCES winner_management (id),
     CONSTRAINT fk_winner_hist_changer FOREIGN KEY (changed_by)           REFERENCES member (member_id),
     INDEX idx_winner_hist_mgmt (winner_management_id, created_at)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 20. redraw_request_vacancy
@@ -430,7 +433,7 @@ CREATE TABLE redraw_request_vacancy (
     CONSTRAINT fk_vacancy_request FOREIGN KEY (redraw_request_id) REFERENCES redraw_request (id),
     CONSTRAINT fk_vacancy_winner  FOREIGN KEY (winner_id)         REFERENCES winner (id),
     INDEX idx_vacancy_winner (winner_id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 21. redraw_exclusion
@@ -445,7 +448,7 @@ CREATE TABLE redraw_exclusion (
     CONSTRAINT uk_exclusion_drawing_member UNIQUE (drawing_id, member_id),
     CONSTRAINT fk_exclusion_drawing FOREIGN KEY (drawing_id) REFERENCES drawing (id),
     CONSTRAINT fk_exclusion_member  FOREIGN KEY (member_id)  REFERENCES member (member_id)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 22. redraw_execution_history
@@ -460,7 +463,7 @@ CREATE TABLE redraw_execution_history (
     PRIMARY KEY (id),
     CONSTRAINT fk_redraw_hist_request FOREIGN KEY (redraw_request_id) REFERENCES redraw_request (id),
     INDEX idx_redraw_hist_request (redraw_request_id, created_at)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 23. draw_verification_history
@@ -481,7 +484,7 @@ CREATE TABLE draw_verification_history (
     CONSTRAINT fk_verification_drawing  FOREIGN KEY (drawing_id)  REFERENCES drawing (id),
     CONSTRAINT fk_verification_verifier FOREIGN KEY (verified_by) REFERENCES member (member_id),
     INDEX idx_verification_drawing (drawing_id, verified_at)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 24. notification
@@ -506,7 +509,7 @@ CREATE TABLE notification (
     CONSTRAINT fk_notification_winner  FOREIGN KEY (winner_id)  REFERENCES winner (id),
     -- 사용자별 알림 목록 조회 (읽음 여부 포함)
     INDEX idx_notification_member_read (member_id, read_at, created_at)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
 -- 25. dead_stream_message
@@ -515,6 +518,7 @@ CREATE TABLE dead_stream_message (
     id                BIGINT      NOT NULL AUTO_INCREMENT,
     source_stream_id  VARCHAR(64) NOT NULL COMMENT '원본 Redis Stream 메시지 ID',
     stream_type       VARCHAR(30) NOT NULL COMMENT 'EARN, SPEND',
+    payload           JSON        NOT NULL COMMENT '원본 Stream 메시지 전체. 수동 replay에 사용한다',
     request_id        VARCHAR(36) NULL,
     event_id          BIGINT      NULL,
     member_id         BIGINT      NULL,
@@ -534,4 +538,4 @@ CREATE TABLE dead_stream_message (
     CONSTRAINT ck_dead_stream_retry CHECK (retry_count >= 0),
     -- 명세 6.7: cutoff 범위에 UNRESOLVED가 있으면 CLOSED로 전이할 수 없다.
     INDEX idx_dead_stream_event_status (event_id, resolution_status)
-) ENGINE = InnoDB;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
