@@ -1,4 +1,4 @@
-package kr.co.cking.common.response;
+package kr.co.cking.common.exception;
 
 import org.springframework.http.HttpStatus;
 

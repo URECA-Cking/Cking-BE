@@ -54,7 +54,11 @@ kr.co.cking
 주기 실행이 있는 도메인은 `scheduler`를 추가합니다. 그 아래 세분화는 파일이 늘어났을 때
 담당자가 나눕니다.
 
-- 다른 도메인의 Repository·Entity를 직접 쓰지 않습니다. 서비스를 통해 호출합니다.
+- 다른 도메인의 Entity·Repository로 상태를 직접 변경하지 않습니다. 도메인 간 변경은
+  해당 도메인의 서비스를 통해 수행합니다.
+- 조회는 필요하면 조회 전용 QueryRepository·Projection을 사용할 수 있습니다.
+  서비스를 연쇄 호출해 N+1이 생기는 것보다 JOIN 한 번이 나은 경우가 있습니다.
+  다만 다른 도메인의 Entity를 그대로 받지 않고 필요한 필드만 담은 Projection으로 받습니다.
 - 도메인 간 참조는 ID로 합니다. (`@ManyToOne Member` 대신 `Long memberId`)
 - Event 상태 변경은 `EventCommandService`로만 합니다.
 

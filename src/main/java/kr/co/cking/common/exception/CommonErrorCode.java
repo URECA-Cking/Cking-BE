@@ -1,6 +1,5 @@
 package kr.co.cking.common.exception;
 
-import kr.co.cking.common.response.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 

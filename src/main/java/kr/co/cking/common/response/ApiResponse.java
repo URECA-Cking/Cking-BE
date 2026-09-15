@@ -1,6 +1,7 @@
 package kr.co.cking.common.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import kr.co.cking.common.exception.ErrorCode;
 
 /**
  * 공통 응답 봉투.
