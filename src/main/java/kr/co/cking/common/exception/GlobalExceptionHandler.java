@@ -66,8 +66,8 @@ public class GlobalExceptionHandler {
         // 원인을 알 수 없는 예외만 스택트레이스를 남긴다.
         log.error("unhandled exception", e);
         return ResponseEntity
-                .status(CommonErrorCode.INTERNAL_SERVER_ERROR.status())
-                .body(ApiResponse.error(CommonErrorCode.INTERNAL_SERVER_ERROR));
+                .status(CommonErrorCode.SYSTEM_ERROR.status())
+                .body(ApiResponse.error(CommonErrorCode.SYSTEM_ERROR));
     }
 
     private String describe(FieldError error) {
