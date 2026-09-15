@@ -30,11 +30,11 @@ public class GlobalExceptionHandler {
         String detail = e.getBindingResult().getFieldErrors().stream()
                 .findFirst()
                 .map(this::describe)
-                .orElse(CommonErrorCode.INVALID_INPUT.message());
+                .orElse(CommonErrorCode.VALIDATION_FAILED.message());
 
         return ResponseEntity
-                .status(CommonErrorCode.INVALID_INPUT.status())
-                .body(ApiResponse.error(CommonErrorCode.INVALID_INPUT, detail));
+                .status(CommonErrorCode.VALIDATION_FAILED.status())
+                .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED, detail));
     }
 
     /**
@@ -49,8 +49,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception e) {
         log.warn("bad request: {} - {}", e.getClass().getSimpleName(), e.getMessage());
         return ResponseEntity
-                .status(CommonErrorCode.INVALID_INPUT.status())
-                .body(ApiResponse.error(CommonErrorCode.INVALID_INPUT));
+                .status(CommonErrorCode.VALIDATION_FAILED.status())
+                .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
@@ -66,8 +66,8 @@ public class GlobalExceptionHandler {
         // 원인을 알 수 없는 예외만 스택트레이스를 남긴다.
         log.error("unhandled exception", e);
         return ResponseEntity
-                .status(CommonErrorCode.INTERNAL_ERROR.status())
-                .body(ApiResponse.error(CommonErrorCode.INTERNAL_ERROR));
+                .status(CommonErrorCode.INTERNAL_SERVER_ERROR.status())
+                .body(ApiResponse.error(CommonErrorCode.INTERNAL_SERVER_ERROR));
     }
 
     private String describe(FieldError error) {
