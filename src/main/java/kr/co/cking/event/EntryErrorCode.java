@@ -1,4 +1,4 @@
-package kr.co.cking.entry;
+package kr.co.cking.event;
 
 import kr.co.cking.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;

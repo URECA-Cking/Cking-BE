@@ -1,8 +1,6 @@
-package kr.co.cking.entry;
+package kr.co.cking.event;
 
 import kr.co.cking.common.exception.BusinessException;
-import kr.co.cking.event.CachedEvent;
-import kr.co.cking.event.EventQueryService;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.service.EntrySpendService;
 import lombok.RequiredArgsConstructor;
