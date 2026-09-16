@@ -1,0 +1,27 @@
+﻿작업단위 ID,요구사항 ID,우선순위,작업 내용,담당 팀,담당자,선행 작업,결과물,상태,비고,완료,스프린트 트래커 (1)
+T1-01,FR-P1-001~004,P0,가상 사용자 선택·조회와 세션 처리,1조,태연,DB 스키마,사용자 조회 API·세션 처리·테스트,시작 전,,No,
+T1-02,FR-P1-005~014,P0,출석·좋아요 미션 조회와 수행,1조,문구,T1-01,미션 API·미션 수행 검증·테스트,시작 전,,No,
+T1-03,FR-P1-015~020,P0,미션 멱등성·중복 보상 방지,1조,문구,T1-02,미션 가드·멱등 처리·테스트,시작 전,,No,
+T1-04,FR-P1-021~034,P0,EARN 적립·응모권 조회·Ledger 연동,1조,태연,T1-03,EARN Lua·TicketEarnService·Ledger/Balance 처리·테스트,시작 전,2조 Consumer와 Stream 계약 필요,No,
+T4-01,FR-P4-090~105,P0,Creator 권한·이벤트 생성·승인·상태 전이,4조,혁준,DB 스키마,Creator/Event 승인 API·EventCommandService·테스트,진행 중,이벤트 OPEN 전제,No,
+T2-01,FR-P2-001~008,P0,이벤트 조회·잔액 조회·EARN 연동,2조,성집,"T1-01, T1-04, T4-01",이벤트 조회 API·Redis Key 초기 적재·EARN 연동·테스트,시작 전,,No,성집 Sprint 1 - 이벤트 조회·잔액조회·EARN 연동 구현 (https://app.notion.com/p/Sprint-1-EARN-3dc18857e9a480dd832ae6a4023f38be?pvs=21)
+T2-02,FR-P2-009~011,P0,응모 요청 API와 입력 검증,2조,성집,T2-01,응모 Controller·요청 검증·응답 매핑,시작 전,,No,성집 Sprint 2 - 응모 요청 API와 입력 검증 구현 (https://app.notion.com/p/Sprint-2-API-3dc18857e9a4806cbc78e60ea0439ba8?pvs=21)
+T2-03,FR-P2-027~036,P0,응모 Lua 원자 처리,2조,자비,T2-02,Gate/잔액/멱등 Lua·동시성 테스트,시작 전,,No,
+T2-04,FR-P2-012~016,P0,EARN·Entry Stream Consumer와 Drain 확인,2조,성집,"T1-04, T2-03",Consumer·DB 반영·XACK·awaitDrain 테스트,시작 전,DB Commit 후 XACK,No,성집 Sprint 3 - EARN·Entry Stream Consumer와 Drain 확인 구현 (https://app.notion.com/p/Sprint-3-EARN-Entry-Stream-Consumer-Drain-3dc18857e9a48004bebbd1c681bde83d?pvs=21)
+T2-05,FR-P2-017~020,P1,PEL 회수·Dead Stream·수동 replay,2조,성집,T2-04,XCLAIM·Dead Stream 저장·replay 테스트,시작 전,,No,성집 Sprint 4- PEL 회수·Dead Stream·수동 replay 구현 (https://app.notion.com/p/Sprint-4-PEL-Dead-Stream-replay-3dc18857e9a4803a8e4dd63563517861?pvs=21)
+T2-06,FR-P2-021~022,P1,Redis·DB 정합성 검증과 보정,2조,성집,T2-04,정합성 배치·COMPENSATE·재동기화 테스트,시작 전,,No,성집 Sprint 5 - Redis·DB 정합성 검증과 보정 구현 (https://app.notion.com/p/Sprint-5-Redis-DB-3dc18857e9a480f0a918ed2596c3ee0f?pvs=21)
+T2-07,FR-P2-023~026,P0,EventLifecycleScheduler와 마감 처리,2조,성집,"T2-03, T2-04",Gate·Barrier·cutoff·Drain·CLOSED 전이 테스트,시작 전,시스템3 Snapshot 호출,No,성집 Sprint 6 - EventLifecycleScheduler와 마감 처리 구현 (https://app.notion.com/p/Sprint-6-EventLifecycleScheduler-3dc18857e9a48027bc4cf27ae7cef7cf?pvs=21)
+T2-08,FR-P2-037~044,P1,수동 마감·운영 조회·시딩·비기능 검증,2조,성집,"T2-05, T2-06, T2-07",closing-status·시딩·운영/부하 테스트,시작 전,확인 필요 항목 포함,No,성집 Sprint 7 - 수동 마감·운영 조회·시딩·비기능 검증 구현 (https://app.notion.com/p/Sprint-7-3dc18857e9a480a8aa44fa19de724e05?pvs=21)
+T3-01,FR-P3-001~019; FR-P3-086,P0,자동·수동 마감과 Gate·Barrier·Drain 상태 전이,3조,윤희,T2-07,마감 도메인 로직·복구·마감 상태 조회 테스트,시작 전,2조 마감 구현과 책임 중복 여부 확인,No,
+T3-02,FR-P3-020~034; FR-P3-083; FR-P3-087,P0,공식 Snapshot 생성·Hash·누락 복구,3조,윤희,T3-01,Snapshot 서비스·Candidate 집계·Hash·복구 스케줄러·테스트,시작 전,,No,
+T3-03,FR-P3-035~046; FR-P3-082,P1,추첨 엔진·Seed·결정성 보장,3조,성원,T3-02,DrawInput/Output·WEIGHTED_V1·Seed 처리·테스트,시작 전,UNIFORM_V1·Seed Commitment는 1.5.4와 추가 합의 필요,No,
+T3-04,FR-P3-047~062; FR-P3-084~085,P0,INITIAL Drawing 실행·Winner 저장·Retry·복구,3조,윤희,"T3-02, T3-03",Drawing 서비스·Winner 저장·원자 Transaction·Retry 테스트,시작 전,,No,
+T3-05,FR-P3-063~068,P1,추첨 결과 재현 검증 이력,3조,성원,T3-04,검증 서비스·draw_verification_history·테스트,시작 전,,No,
+T3-06,FR-P3-069~077; FR-P3-089,P1,REDRAW Drawing 실행과 후보 제외,3조,윤희,T3-04,재추첨 Drawing·후보 제외·부족 후보 처리·테스트,시작 전,,No,
+T3-07,FR-P3-078~081,P2,Kafka Outbox와 결과 Read Model,3조,성원,T3-04,Outbox·Kafka 발행·Read Model,시작 전,현재 1.5.4에는 Kafka/Outbox 계약 없음,No,
+T4-02,FR-P4-106~109,P1,Creator/Admin 수동 마감 요청,4조,혁준,"T4-01, T2-07",close API·권한 검증·ClosingStatus 응답·테스트,시작 전,파트2 마감 서비스 호출,No,
+T4-03,FR-P4-110~115,P1,추첨 결과 공개·개인정보 마스킹·알림 트리거,4조,혁준,T3-04,공개 API·마스킹·알림 연동 테스트,시작 전,,No,
+T4-04,FR-P4-116~121,P1,Winner 운영 상태와 이력 관리,4조,혁준,T3-04,수령/포기/자격박탈 API·이력 테스트,시작 전,,No,
+T4-05,FR-P4-122~131,P1,RedrawRequest 생성·승인·실행 관리,4조,혁준,"T3-06, T4-04",재추첨 요청/승인 API·vacancy 처리·테스트,시작 전,,No,
+T4-06,FR-P4-132~135,P2,인앱 알림 조회·읽음 처리,4조,혁준,T4-03,알림 조회/읽음 API·테스트,시작 전,,No,
+T4-07,FR-P4-136~138,P2,파트4 API 상세 계약 확정,4조,혁준,"T4-02, T4-03, T4-05",Request/Response·HTTP Status 명세,시작 전,,No,
