@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -41,6 +43,23 @@ public class EventManagementController {
         Page<Event> events = creatorEventService.findMine(userId, PageRequest.of(page, size));
         List<EventManagementResponse.Item> items = events.stream().map(EventManagementResponse.Item::from).toList();
         return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
+    }
+
+    /** Creator 소유 Event의 내용을 수정한다. */
+    @PatchMapping("/api/creator/events/{eventId}")
+    public ApiResponse<EventManagementResponse.Result> update(@PathVariable Long eventId,
+            @Valid @RequestBody EventManagementRequest.Update request) {
+        Event event = creatorEventService.update(new kr.co.cking.event.application.dto.UpdateEventCommand(
+                request.userId(), eventId, request.title(), request.description(), request.startAt(), request.endAt(),
+                request.winnerCount(), request.drawMethod()));
+        return ApiResponse.success(EventManagementResponse.Result.from(event));
+    }
+
+    /** Creator 소유 초안 Event를 논리 삭제한다. */
+    @DeleteMapping("/api/creator/events/{eventId}")
+    public ResponseEntity<Void> delete(@PathVariable Long eventId, @RequestParam Long userId) {
+        creatorEventService.delete(userId, eventId);
+        return ResponseEntity.noContent().build();
     }
 
     /** Creator의 Event 생성 요청을 멱등 명령으로 전달한다. */

@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -60,5 +61,12 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items").isArray())
                 .andExpect(jsonPath("$.data.totalElements").value(0));
+    }
+
+    /** Creator Event 삭제 API가 No Content를 반환하는지 검증한다. */
+    @Test
+    void deleteEventReturnsNoContent() throws Exception {
+        mockMvc.perform(delete("/api/creator/events/{eventId}", 1L).param("userId", "1"))
+                .andExpect(status().isNoContent());
     }
 }
