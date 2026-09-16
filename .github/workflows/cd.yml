@@ -2,7 +2,7 @@ name: CD
 
 on:
   push:
-    branches: [develop, chore/40-containerization]  # TODO: 검증 후 develop만 남긴다
+    branches: [develop]
   workflow_dispatch:
 
 permissions:
