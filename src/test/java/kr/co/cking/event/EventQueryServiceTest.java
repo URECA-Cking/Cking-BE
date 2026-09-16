@@ -34,7 +34,7 @@ class EventQueryServiceTest {
                 .startAt(Instant.parse("2026-09-01T00:00:00Z"))
                 .endAt(Instant.parse("2026-09-30T00:00:00Z"))
                 .winnerCount(3)
-                .drawMethod("WEIGHTED_V1")
+                .drawMethod("WEIGHTED")
                 .status(EventStatus.OPEN)
                 .build();
         EventRepository eventRepository = mock(EventRepository.class);
@@ -51,12 +51,12 @@ class EventQueryServiceTest {
         EventSummary summary = result.getContent().get(0);
         assertThat(summary.title()).isEqualTo("여름 이벤트");
         assertThat(summary.status()).isEqualTo(EventStatus.OPEN);
-        assertThat(summary.drawMethod()).isEqualTo("WEIGHTED_V1");
+        assertThat(summary.drawMethod()).isEqualTo("WEIGHTED");
         assertThat(summary.displayStatus()).isEqualTo(DisplayStatus.IN_PROGRESS);
     }
 
     @Test
-    void size는_100을_넘지_않게_고정한다() {
+    void page_size는_요청받은_그대로_전달한다() {
         Instant now = Instant.parse("2026-09-15T00:00:00Z");
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
         EventRepository eventRepository = mock(EventRepository.class);
@@ -65,9 +65,9 @@ class EventQueryServiceTest {
                 new EventQueryService(eventRepository, clock, mock(TicketBalanceQueryService.class),
                         mock(EventCache.class));
 
-        service.getEvents(null, null, 0, 500);
+        service.getEvents(null, null, 2, 50);
 
         verify(eventRepository).search(eq((Long) null), eq((DisplayStatus) null), eq(now),
-                eq(PageRequest.of(0, 100, EVENT_LIST_SORT)));
+                eq(PageRequest.of(2, 50, EVENT_LIST_SORT)));
     }
 }

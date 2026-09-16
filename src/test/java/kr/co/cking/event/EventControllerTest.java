@@ -31,7 +31,7 @@ class EventControllerTest {
     void 이벤트_목록조회는_요약_배열을_반환한다() throws Exception {
         EventSummary summary = new EventSummary(1L, 2L, "여름 이벤트",
                 Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-30T00:00:00Z"),
-                EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED_V1");
+                EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED");
         when(eventQueryService.getEvents(any(), any(), anyInt(), anyInt()))
                 .thenReturn(new PageImpl<>(List.of(summary), PageRequest.of(0, 10), 1));
 
@@ -40,7 +40,7 @@ class EventControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].title").value("여름 이벤트"))
                 .andExpect(jsonPath("$.data.items[0].status").value("OPEN"))
-                .andExpect(jsonPath("$.data.items[0].drawMethod").value("WEIGHTED_V1"))
+                .andExpect(jsonPath("$.data.items[0].drawMethod").value("WEIGHTED"))
                 .andExpect(jsonPath("$.data.items[0].displayStatus").value("IN_PROGRESS"))
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
@@ -48,16 +48,37 @@ class EventControllerTest {
     }
 
     @Test
+    void page가_음수면_400을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/events").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void size가_0이면_400을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/events").param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void size가_100을_넘으면_400을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/events").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     void 이벤트_상세조회는_내_잔액을_포함한다() throws Exception {
         EventDetail detail = new EventDetail(1L, 2L, "여름 이벤트", "설명",
                 Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-30T00:00:00Z"),
-                EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED_V1", 42L);
+                EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED", 42L);
         when(eventQueryService.getEvent(1L, 100L)).thenReturn(detail);
 
         mockMvc.perform(get("/api/events/1").param("userId", "100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("OPEN"))
-                .andExpect(jsonPath("$.data.drawMethod").value("WEIGHTED_V1"))
+                .andExpect(jsonPath("$.data.drawMethod").value("WEIGHTED"))
                 .andExpect(jsonPath("$.data.myTicketBalance").value(42));
     }
 }

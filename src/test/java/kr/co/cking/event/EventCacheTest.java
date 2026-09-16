@@ -55,7 +55,7 @@ class EventCacheTest {
     @Test
     void 저장한_이벤트를_다시_조회할_수_있다() {
         CachedEvent event = new CachedEvent(1L, 2L, "여름 이벤트", "설명",
-                now, now.plus(Duration.ofDays(5)), 3, "WEIGHTED_V1", EventStatus.OPEN);
+                now, now.plus(Duration.ofDays(5)), 3, "WEIGHTED", EventStatus.OPEN);
 
         eventCache.save(event);
 
@@ -72,7 +72,7 @@ class EventCacheTest {
     @Test
     void 이미_종료된_이벤트는_캐싱하지_않는다() {
         CachedEvent ended = new CachedEvent(3L, 2L, "종료 이벤트", "설명",
-                now.minus(Duration.ofDays(10)), now.minus(Duration.ofDays(1)), 3, "WEIGHTED_V1", EventStatus.CLOSED);
+                now.minus(Duration.ofDays(10)), now.minus(Duration.ofDays(1)), 3, "WEIGHTED", EventStatus.CLOSED);
 
         eventCache.save(ended);
 
@@ -82,7 +82,7 @@ class EventCacheTest {
     @Test
     void TTL은_5초를_넘지_않는다() {
         CachedEvent event = new CachedEvent(2L, 2L, "여름 이벤트", "설명",
-                now, now.plus(Duration.ofHours(3)), 3, "WEIGHTED_V1", EventStatus.OPEN);
+                now, now.plus(Duration.ofHours(3)), 3, "WEIGHTED", EventStatus.OPEN);
 
         eventCache.save(event);
 
@@ -95,7 +95,7 @@ class EventCacheTest {
     @Test
     void endAt이_5초보다_가까우면_그때까지만_캐싱한다() {
         CachedEvent event = new CachedEvent(4L, 2L, "곧 끝나는 이벤트", "설명",
-                now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofSeconds(2)), 3, "WEIGHTED_V1", EventStatus.OPEN);
+                now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofSeconds(2)), 3, "WEIGHTED", EventStatus.OPEN);
 
         eventCache.save(event);
 
@@ -108,7 +108,7 @@ class EventCacheTest {
     @Test
     void evict하면_더이상_조회되지_않는다() {
         CachedEvent event = new CachedEvent(5L, 2L, "여름 이벤트", "설명",
-                now, now.plus(Duration.ofDays(5)), 3, "WEIGHTED_V1", EventStatus.OPEN);
+                now, now.plus(Duration.ofDays(5)), 3, "WEIGHTED", EventStatus.OPEN);
         eventCache.save(event);
 
         eventCache.evict(5L);

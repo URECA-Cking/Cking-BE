@@ -18,7 +18,6 @@ import java.time.Instant;
 @Transactional(readOnly = true)
 public class EventQueryService {
 
-    private static final int MAX_PAGE_SIZE = 100;
     private static final Sort EVENT_LIST_SORT = Sort.by(Sort.Direction.DESC, "createdAt", "eventId");
 
     private final EventRepository eventRepository;
@@ -27,12 +26,13 @@ public class EventQueryService {
     private final EventCache eventCache;
 
     /**
-     * API 명세 §1.7: page=0부터, size 기본 20·최대 100, 정렬은 createdAt DESC에
-     * eventId DESC를 tie-breaker로 고정한다 — 클라이언트가 정렬을 고를 수 없다.
+     * API 명세 §1.7: page=0부터, size 기본 20·최대 100(범위 검증은 컨트롤러에서),
+     * 정렬은 createdAt DESC에 eventId DESC를 tie-breaker로 고정한다 — 클라이언트가
+     * 정렬을 고를 수 없다.
      */
     public Page<EventSummary> getEvents(Long creatorId, DisplayStatus displayStatus, int page, int size) {
         Instant now = clock.instant();
-        Pageable pageable = PageRequest.of(page, Math.min(size, MAX_PAGE_SIZE), EVENT_LIST_SORT);
+        Pageable pageable = PageRequest.of(page, size, EVENT_LIST_SORT);
         return eventRepository.search(creatorId, displayStatus, now, pageable)
                 .map(event -> EventSummary.from(event, now));
     }
