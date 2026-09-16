@@ -62,6 +62,10 @@ public class Event {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    /** Creator가 작성한 새 Event를 초안 상태로 생성한다. */
     public Event(
             Long creatorId,
             String title,
@@ -86,26 +90,55 @@ public class Event {
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
+    /** 초안 Event를 승인 대기 상태로 전이한다. */
     public void requestApproval() {
         requireStatus(EventStatus.DRAFT);
         status = EventStatus.PENDING_APPROVAL;
     }
 
+    /** 승인 대기 Event를 예약 상태로 전이한다. */
     public void approve() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.SCHEDULED;
     }
 
+    /** 승인 대기 Event를 거절 상태로 전이한다. */
     public void reject() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.REJECTED;
     }
 
+    /** 거절된 Event를 다시 초안 상태로 전이한다. */
     public void changeToDraft() {
         requireStatus(EventStatus.REJECTED);
         status = EventStatus.DRAFT;
     }
 
+    /** 초안 Event의 운영 정보를 변경한다. */
+    public void update(
+            String title,
+            String description,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            int winnerCount,
+            DrawMethod drawMethod
+    ) {
+        requireStatus(EventStatus.DRAFT);
+        this.title = title;
+        this.description = description;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.winnerCount = winnerCount;
+        this.drawMethod = drawMethod;
+    }
+
+    /** 초안 Event에 논리 삭제 시각을 기록한다. */
+    public void delete() {
+        requireStatus(EventStatus.DRAFT);
+        deletedAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
+
+    /** 허용된 현재 상태인지 검증한다. */
     private void requireStatus(EventStatus expected) {
         // 상태 전이 전제조건을 aggregate 내부에서 일관되게 검증한다.
         if (status != expected) {
