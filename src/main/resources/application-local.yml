@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/cking?characterEncoding=UTF-8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: cking
+    password: cking
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
