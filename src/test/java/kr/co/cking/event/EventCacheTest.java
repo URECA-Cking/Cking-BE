@@ -12,12 +12,20 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 같은 Redis DB를 다른 팀·다른 용도(stream:ticket-deducted 등)와 공유할 수 있으므로
+ * flushDb()는 쓰지 않는다 — 이 테스트가 만든 cache:event:* 키만 지운다.
+ */
 class EventCacheTest {
 
+    private static final String KEY_PATTERN = "cache:event:*";
+
     private LettuceConnectionFactory connectionFactory;
+    private RedisTemplate<String, CachedEvent> redisTemplate;
     private EventCache eventCache;
     private Instant now;
 
@@ -25,7 +33,7 @@ class EventCacheTest {
     void setUp() {
         connectionFactory = new LettuceConnectionFactory("localhost", 6379);
         connectionFactory.afterPropertiesSet();
-        RedisTemplate<String, CachedEvent> redisTemplate = new RedisTemplate<>();
+        redisTemplate = new RedisTemplate<>();
         redisTemplate.setConnectionFactory(connectionFactory);
         redisTemplate.setKeySerializer(new StringRedisSerializer());
         redisTemplate.afterPropertiesSet();
@@ -35,7 +43,10 @@ class EventCacheTest {
 
     @AfterEach
     void tearDown() {
-        connectionFactory.getConnection().serverCommands().flushDb();
+        Set<String> keys = redisTemplate.keys(KEY_PATTERN);
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
         connectionFactory.destroy();
     }
 
