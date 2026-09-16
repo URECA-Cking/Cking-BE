@@ -5,7 +5,6 @@ import kr.co.cking.event.application.EventEntryService;
 import kr.co.cking.event.application.dto.EntryOutcome;
 import kr.co.cking.event.domain.EntryResultCode;
 import kr.co.cking.event.presentation.dto.EntryRequest;
-import kr.co.cking.event.presentation.dto.EntryResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -38,7 +37,7 @@ class EntryControllerTest {
     void 정상_응모는_SUCCESS_코드와_accepted_true를_반환한다() throws Exception {
         UUID requestId = UUID.randomUUID();
         EntryRequest request = new EntryRequest(1L, requestId, 2);
-        EntryOutcome outcome = new EntryOutcome(EntryResultCode.SUCCESS, EntryResponse.accepted(requestId, 1L));
+        EntryOutcome outcome = new EntryOutcome(EntryResultCode.SUCCESS, requestId, 1L);
         when(eventEntryService.apply(eq(1L), any())).thenReturn(outcome);
 
         mockMvc.perform(post("/api/events/1/entries")
