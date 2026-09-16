@@ -1,5 +1,9 @@
 package kr.co.cking.event.application.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -35,9 +39,9 @@ public class EntrySpendServiceImpl implements EntrySpendService {
             Long userId,
             Long creatorId,
             String requestId,
-            int ticketCount,
-            String fingerprint
+            int ticketCount
     ) {
+        String fingerprint = computeFingerprint(eventId, userId, ticketCount);
         List<?> luaResult;
 
         try {
@@ -69,6 +73,22 @@ public class EntrySpendServiceImpl implements EntrySpendService {
         }
 
         return parse(luaResult, eventId, userId, requestId);
+    }
+
+    // FR-P2-029: 동일 requestId라도 요청 내용(eventId+userId+ticketCount)이 다르면
+    // IDEMPOTENCY_CONFLICT로 구분해야 하므로, 그 내용을 요약한 값을 여기서 직접 계산한다.
+    // 클라이언트는 이 값을 알거나 전달할 필요가 없다.
+    private String computeFingerprint(Long eventId, Long userId, int ticketCount) {
+        String payload = eventId + ":" + userId + ":" + ticketCount;
+
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
+        }
     }
 
     private EntrySpendResult parse(List<?> luaResult, Long eventId, Long userId, String requestId) {
