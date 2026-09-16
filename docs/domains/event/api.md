@@ -56,7 +56,7 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
 - 생성 상태는 DRAFT다. 성공은 201이며 응답은 `{ "eventId": 1, "status": "DRAFT" }`다.
 - `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다.
 - `userId`, `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가, description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이며 drawMethod는 MVP에서 WEIGHTED만 허용한다.
-- 시간은 ISO-8601로 받고 서버에서 UTC 기준으로 처리한다.
+- 시간은 `Z` offset을 포함한 ISO-8601 UTC instant로 받고 서버에서 UTC 기준으로 처리한다.
 
 ## PATCH /api/creator/events/{eventId}
 

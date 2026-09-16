@@ -147,8 +147,8 @@ public class CreatorEventService {
         return event.getCreatedBy().equals(command.userId())
                 && event.getTitle().equals(command.title().trim())
                 && java.util.Objects.equals(event.getDescription(), command.description())
-                && normalizeToMicros(event.getStartAt()).equals(normalizeToMicros(command.startAt().toInstant(java.time.ZoneOffset.UTC)))
-                && normalizeToMicros(event.getEndAt()).equals(normalizeToMicros(command.endAt().toInstant(java.time.ZoneOffset.UTC)))
+                && normalizeToMicros(event.getStartAt()).equals(normalizeToMicros(command.startAt()))
+                && normalizeToMicros(event.getEndAt()).equals(normalizeToMicros(command.endAt()))
                 && event.getWinnerCount() == command.winnerCount()
                 && event.getDrawMethod().equals(command.drawMethod().name());
     }

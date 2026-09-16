@@ -17,8 +17,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
+
 import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -45,7 +45,7 @@ class CreatorEventConcurrencyIntegrationTest {
         Member member = memberRepository.saveAndFlush(new Member("동시생성", null, null, MemberRole.USER));
         creatorRepository.saveAndFlush(new Creator(member.getMemberId(), member.getName()));
         CreateEventCommand command = new CreateEventCommand(member.getMemberId(), "550e8400-e29b-41d4-a716-446655440008",
-                "동시 이벤트", null, LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED);
+                "동시 이벤트", null, Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.WEIGHTED);
         ExecutorService executor = Executors.newFixedThreadPool(2); CountDownLatch start = new CountDownLatch(1);
         try {
             Future<String> first = executor.submit(() -> runCreate(start, command));
@@ -67,7 +67,7 @@ class CreatorEventConcurrencyIntegrationTest {
         Member admin = memberRepository.saveAndFlush(new Member("동시 심사 관리자", null, null, MemberRole.ADMIN));
         Event event = service.create(new CreateEventCommand(creator.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440014", "심사 경합", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
         service.requestApproval(creator.getMemberId(), event.getEventId());
         ExecutorService executor = Executors.newFixedThreadPool(2);

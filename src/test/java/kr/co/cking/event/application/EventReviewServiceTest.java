@@ -17,8 +17,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -68,7 +68,7 @@ class EventReviewServiceTest {
 
     private Event event(Long eventId, Long creatorId, String title) {
         Event event = new Event(creatorId, title, null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
         ReflectionTestUtils.setField(event, "eventId", eventId);
         return event;

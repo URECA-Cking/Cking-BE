@@ -5,8 +5,8 @@ import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.repository.EventRepository;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
+
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -21,8 +21,8 @@ class EventLifecycleTest {
     void approvedEventIsPubliclyVisibleAsUpcoming() {
         Event event = new Event(
                 1L, "팬미팅", "설명",
-                LocalDateTime.of(2026, 9, 20, 9, 0),
-                LocalDateTime.of(2026, 9, 21, 9, 0),
+                Instant.parse("2026-09-20T09:00:00Z"),
+                Instant.parse("2026-09-21T09:00:00Z"),
                 3, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000"
         );
 
@@ -38,14 +38,14 @@ class EventLifecycleTest {
     @Test
     void rejectedEventUpdateReturnsItToDraft() {
         Event event = new Event(1L, "기존", "기존 설명",
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
         event.requestApproval();
         event.reject();
         event.changeToDraft();
 
-        event.update("변경", "변경 설명", LocalDateTime.now(ZoneOffset.UTC).plusDays(3),
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(4), 2, DrawMethod.WEIGHTED);
+        event.update("변경", "변경 설명", Instant.now().plus(java.time.Duration.ofDays(3)),
+                Instant.now().plus(java.time.Duration.ofDays(4)), 2, DrawMethod.WEIGHTED);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
         assertThat(event.getTitle()).isEqualTo("변경");
@@ -56,7 +56,7 @@ class EventLifecycleTest {
     @Test
     void draftEventIsSoftDeleted() {
         Event event = new Event(1L, "이벤트", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
 
         event.delete();
@@ -68,7 +68,7 @@ class EventLifecycleTest {
     @Test
     void rejectedEventIsSoftDeleted() {
         Event event = new Event(1L, "이벤트", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
         event.requestApproval();
         event.reject();
@@ -82,7 +82,7 @@ class EventLifecycleTest {
     @Test
     void pendingApprovalEventCannotBeDeleted() {
         Event event = new Event(1L, "이벤트", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
         event.requestApproval();
 
@@ -97,8 +97,8 @@ class EventLifecycleTest {
     void commandServiceRequestsApprovalForDraftEvent() {
         Event event = new Event(
                 1L, "팬미팅", "설명",
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1),
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)),
                 3, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000"
         );
         EventRepository eventRepository = mock(EventRepository.class);
@@ -117,8 +117,8 @@ class EventLifecycleTest {
                 1L,
                 "팬미팅",
                 "설명",
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1),
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)),
                 3,
                 DrawMethod.WEIGHTED,
                 1L,
@@ -140,8 +140,8 @@ class EventLifecycleTest {
                 1L,
                 "팬미팅",
                 "설명",
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1),
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)),
                 3,
                 DrawMethod.WEIGHTED,
                 1L,
@@ -163,8 +163,8 @@ class EventLifecycleTest {
                 1L,
                 "팬미팅",
                 "설명",
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1),
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)),
                 3,
                 DrawMethod.WEIGHTED,
                 1L,

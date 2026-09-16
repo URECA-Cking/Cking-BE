@@ -21,8 +21,8 @@ import org.springframework.data.domain.PageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
+
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,8 +52,8 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         CreateEventCommand command = new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440000", "팬미팅", "설명",
-                LocalDateTime.of(2030, 1, 2, 3, 4, 5, 123_456_789),
-                LocalDateTime.of(2030, 1, 3, 3, 4, 5, 123_456_789),
+                Instant.parse("2030-01-02T03:04:05.123456789Z"),
+                Instant.parse("2030-01-03T03:04:05.123456789Z"),
                 3, DrawMethod.WEIGHTED
         );
 
@@ -71,7 +71,7 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440001", "팬미팅", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
 
         EventApprovalRequest approvalRequest = creatorEventService.requestApproval(member.getMemberId(), event.getEventId());
@@ -89,7 +89,7 @@ class CreatorEventServiceIntegrationTest {
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(
                 creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440002", "팬미팅", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
         EventApprovalRequest request = creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
 
@@ -108,7 +108,7 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440003", "팬미팅", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
 
         creatorEventService.delete(member.getMemberId(), event.getEventId());
@@ -124,7 +124,7 @@ class CreatorEventServiceIntegrationTest {
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(
                 creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440014", "팬미팅", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
         eventReviewService.reject(admin.getMemberId(), event.getEventId(), "수정 필요");
@@ -142,14 +142,14 @@ class CreatorEventServiceIntegrationTest {
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(
                 creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440004", "기존", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
         eventReviewService.reject(admin.getMemberId(), event.getEventId(), "수정 필요");
 
         creatorEventService.update(new UpdateEventCommand(
                 creatorMember.getMemberId(), event.getEventId(), "변경", "변경 설명",
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 2, DrawMethod.WEIGHTED));
 
         Event updated = eventRepository.findById(event.getEventId()).orElseThrow();
@@ -165,7 +165,7 @@ class CreatorEventServiceIntegrationTest {
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(creatorMember.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440005", "종료 이벤트", null,
-                LocalDateTime.now(ZoneOffset.UTC).minusDays(2), LocalDateTime.now(ZoneOffset.UTC).minusDays(1),
+                Instant.now().minus(java.time.Duration.ofDays(2)), Instant.now().minus(java.time.Duration.ofDays(1)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
 
@@ -182,7 +182,7 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(member.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440006", "목록 이벤트", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED));
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.WEIGHTED));
         creatorEventService.delete(member.getMemberId(), event.getEventId());
 
         assertThat(creatorEventService.findMine(member.getMemberId(), PageRequest.of(0, 20)).getTotalElements()).isZero();
@@ -195,11 +195,11 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         creatorEventService.create(new CreateEventCommand(member.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440007", "원본", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED));
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.WEIGHTED));
 
         assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(member.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440007", "다른 제목", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED)))
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.WEIGHTED)))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
                 .isEqualTo(kr.co.cking.event.domain.EventErrorCode.IDEMPOTENCY_CONFLICT);
@@ -212,7 +212,7 @@ class CreatorEventServiceIntegrationTest {
 
         assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440009", "팬미팅", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED)))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
@@ -228,12 +228,12 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(other.getMemberId(), other.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(
                 owner.getMemberId(), "550e8400-e29b-41d4-a716-446655440010", "원본", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
 
         assertThatThrownBy(() -> creatorEventService.update(new UpdateEventCommand(
                 other.getMemberId(), event.getEventId(), "변경", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED)))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
@@ -245,11 +245,11 @@ class CreatorEventServiceIntegrationTest {
     void invalidCreateInputIsRejected() {
         Member member = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
-        LocalDateTime startAt = LocalDateTime.now(ZoneOffset.UTC).plusDays(2);
+        Instant startAt = Instant.now().plus(java.time.Duration.ofDays(2));
 
         assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440011", " ", null,
-                startAt, startAt.minusDays(1), 1, DrawMethod.WEIGHTED)))
+                startAt, startAt.minus(java.time.Duration.ofDays(1)), 1, DrawMethod.WEIGHTED)))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
                 .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
@@ -262,12 +262,12 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440012", "원본", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
 
         assertThatThrownBy(() -> creatorEventService.update(new UpdateEventCommand(
                 member.getMemberId(), event.getEventId(), "변경", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 0, DrawMethod.WEIGHTED)))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
@@ -282,13 +282,13 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440013", "원본", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(member.getMemberId(), event.getEventId());
 
         assertThatThrownBy(() -> creatorEventService.update(new UpdateEventCommand(
                 member.getMemberId(), event.getEventId(), "변경", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED)))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
@@ -304,7 +304,7 @@ class CreatorEventServiceIntegrationTest {
 
         assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "not-a-uuid", "팬미팅", null,
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED)))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())

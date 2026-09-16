@@ -13,9 +13,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
+import java.time.Instant;
 
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,8 +37,8 @@ class EventManagementControllerTest {
     /** Event 생성 API가 Created 상태와 공통 응답 봉투를 반환하는지 검증한다. */
     @Test
     void createEventReturnsCreatedEnvelope() throws Exception {
-        Event event = new Event(1L, "팬미팅", "설명", LocalDateTime.now(ZoneOffset.UTC).plusDays(1),
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED, 1L,
+        Event event = new Event(1L, "팬미팅", "설명", Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.WEIGHTED, 1L,
                 "550e8400-e29b-41d4-a716-446655440000");
         ReflectionTestUtils.setField(event, "eventId", 1L);
         given(creatorEventService.create(any())).willReturn(event);
@@ -44,12 +46,31 @@ class EventManagementControllerTest {
         mockMvc.perform(post("/api/creator/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","description":"설명","startAt":"2026-09-20T09:00:00","endAt":"2026-09-21T09:00:00","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","description":"설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(1))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
+    }
+
+    /** UTC offset이 포함된 생성 시각을 Instant로 해석해 명령에 전달하는지 검증한다. */
+    @Test
+    void createEventAcceptsUtcInstants() throws Exception {
+        Event event = event(1L, "팬미팅");
+        given(creatorEventService.create(any())).willAnswer(invocation -> {
+            var command = invocation.getArgument(0, kr.co.cking.event.application.dto.CreateEventCommand.class);
+            assertThat(command.startAt()).isEqualTo(Instant.parse("2026-09-20T09:00:00Z"));
+            assertThat(command.endAt()).isEqualTo(Instant.parse("2026-09-21T09:00:00Z"));
+            return event;
+        });
+
+        mockMvc.perform(post("/api/creator/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                """))
+                .andExpect(status().isCreated());
     }
 
     /** Creator Event 목록 API가 공통 페이지 봉투를 반환하는지 검증한다. */
@@ -63,6 +84,14 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items").isArray())
                 .andExpect(jsonPath("$.data.totalElements").value(0));
+    }
+
+    /** 페이지 번호가 음수면 서버 오류가 아닌 입력 검증 오류를 반환하는지 검증한다. */
+    @Test
+    void creatorEventListRejectsNegativePageAsValidationFailure() throws Exception {
+        mockMvc.perform(get("/api/creator/events").param("userId", "1").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     /** Creator Event 목록 API가 문서에 정의된 운영 정보를 함께 반환하는지 검증한다. */
@@ -88,7 +117,7 @@ class EventManagementControllerTest {
         mockMvc.perform(post("/api/creator/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requestId":"not-a-uuid","title":"팬미팅","startAt":"2026-09-20T09:00:00","endAt":"2026-09-21T09:00:00","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                {"userId":1,"requestId":"not-a-uuid","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
@@ -110,12 +139,31 @@ class EventManagementControllerTest {
         mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T09:00:00","endAt":"2026-09-21T09:00:00","winnerCount":2,"drawMethod":"WEIGHTED"}
+                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":2,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(7))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
+    }
+
+    /** UTC offset이 포함된 수정 시각을 Instant로 해석해 명령에 전달하는지 검증한다. */
+    @Test
+    void updateEventAcceptsUtcInstants() throws Exception {
+        Event event = event(7L, "변경된 팬미팅");
+        given(creatorEventService.update(any())).willAnswer(invocation -> {
+            var command = invocation.getArgument(0, kr.co.cking.event.application.dto.UpdateEventCommand.class);
+            assertThat(command.startAt()).isEqualTo(Instant.parse("2026-09-20T09:00:00Z"));
+            assertThat(command.endAt()).isEqualTo(Instant.parse("2026-09-21T09:00:00Z"));
+            return event;
+        });
+
+        mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":2,"drawMethod":"WEIGHTED"}
+                                """))
+                .andExpect(status().isOk());
     }
 
     /** 승인 요청 API가 승인 대기 상태를 공통 응답 봉투로 반환하는지 검증한다. */
@@ -175,8 +223,8 @@ class EventManagementControllerTest {
     }
 
     private Event event(Long eventId, String title) {
-        Event event = new Event(1L, title, "설명", LocalDateTime.now(ZoneOffset.UTC).plusDays(1),
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED, 1L,
+        Event event = new Event(1L, title, "설명", Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.WEIGHTED, 1L,
                 "550e8400-e29b-41d4-a716-446655440000");
         ReflectionTestUtils.setField(event, "eventId", eventId);
         return event;

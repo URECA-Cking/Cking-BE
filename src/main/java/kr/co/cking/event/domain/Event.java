@@ -16,8 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "event")
@@ -82,8 +80,8 @@ public class Event {
             Long creatorId,
             String title,
             String description,
-            LocalDateTime startAt,
-            LocalDateTime endAt,
+            Instant startAt,
+            Instant endAt,
             int winnerCount,
             DrawMethod drawMethod,
             Long createdBy,
@@ -93,8 +91,8 @@ public class Event {
         this.requestId = requestId;
         this.title = title;
         this.description = description;
-        this.startAt = startAt.toInstant(ZoneOffset.UTC);
-        this.endAt = endAt.toInstant(ZoneOffset.UTC);
+        this.startAt = startAt;
+        this.endAt = endAt;
         this.winnerCount = winnerCount;
         this.drawMethod = drawMethod.name();
         this.status = EventStatus.DRAFT;
@@ -125,16 +123,16 @@ public class Event {
     public void update(
             String title,
             String description,
-            LocalDateTime startAt,
-            LocalDateTime endAt,
+            Instant startAt,
+            Instant endAt,
             int winnerCount,
             DrawMethod drawMethod
     ) {
         requireStatus(EventStatus.DRAFT);
         this.title = title;
         this.description = description;
-        this.startAt = startAt.toInstant(ZoneOffset.UTC);
-        this.endAt = endAt.toInstant(ZoneOffset.UTC);
+        this.startAt = startAt;
+        this.endAt = endAt;
         this.winnerCount = winnerCount;
         this.drawMethod = drawMethod.name();
     }

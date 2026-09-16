@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import kr.co.cking.event.domain.DrawMethod;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /** Creator Event 관리 API의 요청 본문을 정의한다. */
 public final class EventManagementRequest {
@@ -21,8 +21,8 @@ public final class EventManagementRequest {
             @NotBlank @Size(max = 36) @Pattern(regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$") String requestId,
             @NotBlank @Size(max = 200) String title,
             String description,
-            @NotNull LocalDateTime startAt,
-            @NotNull LocalDateTime endAt,
+            @NotNull Instant startAt,
+            @NotNull Instant endAt,
             @Min(1) int winnerCount,
             @NotNull DrawMethod drawMethod
     ) {
@@ -38,7 +38,7 @@ public final class EventManagementRequest {
 
     /** Event 수정 요청의 변경 값을 전달한다. */
     public record Update(@NotNull Long userId, @NotBlank @Size(max = 200) String title, String description,
-                         @NotNull LocalDateTime startAt, @NotNull LocalDateTime endAt, @Min(1) int winnerCount,
+                         @NotNull Instant startAt, @NotNull Instant endAt, @Min(1) int winnerCount,
                          @NotNull DrawMethod drawMethod) {
     }
 }
