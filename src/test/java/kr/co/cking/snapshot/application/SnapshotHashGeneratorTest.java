@@ -46,6 +46,50 @@ class SnapshotHashGeneratorTest {
     }
 
     @Test
+    void winnerCount가_변경되면_해시도_변경된다() {
+        List<CandidateValue> candidates = List.of(new CandidateValue(1L, 3L));
+        SnapshotHash original = generator.generate(
+                new SnapshotHashInput(10L, 1, "WEIGHTED", "WEIGHTED_V1", candidates)
+        );
+        SnapshotHash changed = generator.generate(
+                new SnapshotHashInput(10L, 2, "WEIGHTED", "WEIGHTED_V1", candidates)
+        );
+
+        assertThat(original.value()).isNotEqualTo(changed.value());
+    }
+
+    @Test
+    void algorithmVersion이_변경되면_해시도_변경된다() {
+        List<CandidateValue> candidates = List.of(new CandidateValue(1L, 3L));
+        SnapshotHash original = generator.generate(
+                new SnapshotHashInput(10L, 2, "WEIGHTED", "WEIGHTED_V1", candidates)
+        );
+        SnapshotHash changed = generator.generate(
+                new SnapshotHashInput(10L, 2, "WEIGHTED", "WEIGHTED_V2", candidates)
+        );
+
+        assertThat(original.value()).isNotEqualTo(changed.value());
+    }
+
+    @Test
+    void eventId와_drawMethod가_변경되면_해시도_변경된다() {
+        List<CandidateValue> candidates = List.of(new CandidateValue(1L, 3L));
+        SnapshotHash original = generator.generate(
+                new SnapshotHashInput(10L, 2, "WEIGHTED", "WEIGHTED_V1", candidates)
+        );
+        SnapshotHash changedEvent = generator.generate(
+                new SnapshotHashInput(11L, 2, "WEIGHTED", "WEIGHTED_V1", candidates)
+        );
+        SnapshotHash changedMethod = generator.generate(
+                new SnapshotHashInput(10L, 2, "UNIFORM", "WEIGHTED_V1", candidates)
+        );
+
+        assertThat(original.value())
+                .isNotEqualTo(changedEvent.value())
+                .isNotEqualTo(changedMethod.value());
+    }
+
+    @Test
     void 동일한_memberId가_두_번_포함되면_거부한다() {
         SnapshotHashInput input = input(List.of(
                 new CandidateValue(1L, 3L),
