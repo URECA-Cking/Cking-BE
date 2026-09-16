@@ -1,0 +1,57 @@
+package kr.co.cking.winner.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+@Getter
+@Entity
+@Table(
+        name = "winner_management",
+        uniqueConstraints = @UniqueConstraint(name = "uk_winner_mgmt_winner", columnNames = "winner_id")
+)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class WinnerManagement {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "winner_id", nullable = false, updatable = false)
+    private Long winnerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private WinnerManagementStatus status;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    public static WinnerManagement selected(Long winnerId) {
+        if (winnerId == null || winnerId <= 0) {
+            throw new IllegalArgumentException("winnerId는 양수여야 합니다.");
+        }
+
+        WinnerManagement management = new WinnerManagement();
+        management.winnerId = winnerId;
+        management.status = WinnerManagementStatus.SELECTED;
+        return management;
+    }
+}
