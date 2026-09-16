@@ -17,12 +17,14 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 같은 Redis DB를 다른 팀·다른 용도(stream:ticket-deducted 등)와 공유할 수 있으므로
- * flushDb()는 쓰지 않는다 — 이 테스트가 만든 cache:event:* 키만 지운다.
+ * 같은 Redis DB를 다른 팀·다른 용도(stream:ticket-deducted 등)는 물론 애플리케이션이
+ * 이미 만들어둔 실제 cache:event:* 캐시와도 공유할 수 있으므로, 운영과 다른 전용
+ * prefix({@value #TEST_KEY_PREFIX})를 써서 이 테스트가 만든 키만 확실히 지운다.
  */
 class EventCacheTest {
 
-    private static final String KEY_PATTERN = "cache:event:*";
+    private static final String TEST_KEY_PREFIX = "cache:event:test:";
+    private static final String KEY_PATTERN = TEST_KEY_PREFIX + "*";
 
     private LettuceConnectionFactory connectionFactory;
     private RedisTemplate<String, CachedEvent> redisTemplate;
@@ -38,7 +40,7 @@ class EventCacheTest {
         redisTemplate.setKeySerializer(new StringRedisSerializer());
         redisTemplate.afterPropertiesSet();
         now = Instant.parse("2026-09-15T00:00:00Z");
-        eventCache = new EventCache(redisTemplate, Clock.fixed(now, ZoneOffset.UTC));
+        eventCache = new EventCache(redisTemplate, Clock.fixed(now, ZoneOffset.UTC), TEST_KEY_PREFIX);
     }
 
     @AfterEach
@@ -85,7 +87,7 @@ class EventCacheTest {
         eventCache.save(event);
 
         Long ttlSeconds = connectionFactory.getConnection().keyCommands()
-                .ttl("cache:event:2".getBytes());
+                .ttl((TEST_KEY_PREFIX + "2").getBytes());
         assertThat(ttlSeconds).isLessThanOrEqualTo(5L);
         assertThat(ttlSeconds).isGreaterThan(0L);
     }
@@ -98,7 +100,7 @@ class EventCacheTest {
         eventCache.save(event);
 
         Long ttlSeconds = connectionFactory.getConnection().keyCommands()
-                .ttl("cache:event:4".getBytes());
+                .ttl((TEST_KEY_PREFIX + "4").getBytes());
         assertThat(ttlSeconds).isLessThanOrEqualTo(2L);
         assertThat(ttlSeconds).isGreaterThan(0L);
     }
