@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,5 +36,32 @@ public class EventManagementController {
                 request.endAt(), request.winnerCount(), request.drawMethod()));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(EventManagementResponse.Result.from(event)));
+    }
+
+    /** Creator Event의 새 승인 요청을 생성한다. */
+    @PostMapping("/api/creator/events/{eventId}/approval-request")
+    public ApiResponse<EventManagementResponse.Result> requestApproval(@PathVariable Long eventId,
+            @Valid @RequestBody EventManagementRequest.Actor request) {
+        creatorEventService.requestApproval(request.userId(), eventId);
+        return ApiResponse.success(new EventManagementResponse.Result(eventId,
+                kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL));
+    }
+
+    /** 관리자가 승인 대기 Event를 SCHEDULED 상태로 승인한다. */
+    @PostMapping("/api/admin/events/{eventId}/approve")
+    public ApiResponse<EventManagementResponse.Result> approve(@PathVariable Long eventId,
+            @Valid @RequestBody EventManagementRequest.Actor request) {
+        eventReviewService.approve(request.userId(), eventId);
+        return ApiResponse.success(new EventManagementResponse.Result(eventId,
+                kr.co.cking.event.domain.EventStatus.SCHEDULED));
+    }
+
+    /** 관리자가 승인 대기 Event를 거절하고 사유를 이력에 기록한다. */
+    @PostMapping("/api/admin/events/{eventId}/reject")
+    public ApiResponse<EventManagementResponse.Result> reject(@PathVariable Long eventId,
+            @Valid @RequestBody EventManagementRequest.Reject request) {
+        eventReviewService.reject(request.userId(), eventId, request.rejectReason());
+        return ApiResponse.success(new EventManagementResponse.Result(eventId,
+                kr.co.cking.event.domain.EventStatus.REJECTED));
     }
 }

@@ -26,4 +26,12 @@ public final class EventManagementRequest {
             @NotNull DrawMethod drawMethod
     ) {
     }
+
+    /** Event 승인 요청의 요청자 식별자를 전달한다. */
+    public record Actor(@NotNull Long userId) {
+    }
+
+    /** Event 거절 심사의 관리자 식별자와 사유를 전달한다. */
+    public record Reject(@NotNull Long userId, @NotBlank @Size(max = 500) String rejectReason) {
+    }
 }

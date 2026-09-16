@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @Transactional
@@ -120,5 +121,23 @@ class CreatorEventServiceIntegrationTest {
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
         assertThat(event.getTitle()).isEqualTo("변경");
+    }
+
+    /** 종료된 Event는 관리자 승인을 허용하지 않는지 검증한다. */
+    @Test
+    void expiredEventCannotBeApproved() {
+        Member creatorMember = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(creatorMember.getMemberId(), creatorMember.getName()));
+        Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
+        Event event = creatorEventService.create(new CreateEventCommand(creatorMember.getMemberId(),
+                "550e8400-e29b-41d4-a716-446655440005", "종료 이벤트", null,
+                LocalDateTime.now(ZoneOffset.UTC).minusDays(2), LocalDateTime.now(ZoneOffset.UTC).minusDays(1),
+                1, DrawMethod.WEIGHTED));
+        creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
+
+        assertThatThrownBy(() -> eventReviewService.approve(admin.getMemberId(), event.getEventId()))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.event.domain.EventErrorCode.INVALID_STATE);
     }
 }
