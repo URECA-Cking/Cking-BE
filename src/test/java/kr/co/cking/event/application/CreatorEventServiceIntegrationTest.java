@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -139,5 +140,18 @@ class CreatorEventServiceIntegrationTest {
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
                 .isEqualTo(kr.co.cking.event.domain.EventErrorCode.INVALID_STATE);
+    }
+
+    /** Creator 목록이 논리 삭제된 Event를 제외하는지 검증한다. */
+    @Test
+    void creatorEventListExcludesSoftDeletedEvents() {
+        Member member = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
+        Event event = creatorEventService.create(new CreateEventCommand(member.getMemberId(),
+                "550e8400-e29b-41d4-a716-446655440006", "목록 이벤트", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED));
+        creatorEventService.delete(member.getMemberId(), event.getEventId());
+
+        assertThat(creatorEventService.findMine(member.getMemberId(), PageRequest.of(0, 20)).getTotalElements()).isZero();
     }
 }

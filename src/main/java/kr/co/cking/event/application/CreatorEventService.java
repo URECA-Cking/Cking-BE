@@ -16,6 +16,8 @@ import kr.co.cking.event.repository.EventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 /** Creator가 소유한 Event의 생성과 운영 명령을 처리한다. */
 @Service
@@ -34,6 +36,14 @@ public class CreatorEventService {
         return eventRepository.findByRequestId(command.requestId())
                 .map(existing -> returnExistingOrThrow(existing, command))
                 .orElseGet(() -> saveNewEvent(command));
+    }
+
+    /** 요청 Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 조회한다. */
+    @Transactional(readOnly = true)
+    public Page<Event> findMine(Long userId, Pageable pageable) {
+        Creator creator = creatorRepository.findByMemberId(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        return eventRepository.findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(creator.getCreatorId(), pageable);
     }
 
     /** Creator 소유 Event의 새 승인 요청 차수를 만들고 승인 대기 상태로 전이한다. */
