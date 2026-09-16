@@ -3,7 +3,7 @@ T1-01,FR-P1-001~004,P0,가상 사용자 선택·조회와 세션 처리,1조,태
 T1-02,FR-P1-005~014,P0,출석·좋아요 미션 조회와 수행,1조,문구,T1-01,미션 API·미션 수행 검증·테스트,시작 전,,No,
 T1-03,FR-P1-015~020,P0,미션 멱등성·중복 보상 방지,1조,문구,T1-02,미션 가드·멱등 처리·테스트,시작 전,,No,
 T1-04,FR-P1-021~034,P0,EARN 적립·응모권 조회·Ledger 연동,1조,태연,T1-03,EARN Lua·TicketEarnService·Ledger/Balance 처리·테스트,시작 전,2조 Consumer와 Stream 계약 필요,No,
-T4-01,FR-P4-090~105,P0,Creator 권한·이벤트 생성·승인·상태 전이,4조,혁준,DB 스키마,Creator/Event 승인 API·EventCommandService·테스트,시작 전,이벤트 OPEN 전제,No,
+T4-01,FR-P4-090~105,P0,Creator 권한·이벤트 생성·승인·상태 전이,4조,혁준,DB 스키마,Creator/Event 승인 API·EventCommandService·테스트,진행 중,이벤트 OPEN 전제,No,
 T2-01,FR-P2-001~008,P0,이벤트 조회·잔액 조회·EARN 연동,2조,성집,"T1-01, T1-04, T4-01",이벤트 조회 API·Redis Key 초기 적재·EARN 연동·테스트,시작 전,,No,성집 Sprint 1 - 이벤트 조회·잔액조회·EARN 연동 구현 (https://app.notion.com/p/Sprint-1-EARN-3dc18857e9a480dd832ae6a4023f38be?pvs=21)
 T2-02,FR-P2-009~011,P0,응모 요청 API와 입력 검증,2조,성집,T2-01,응모 Controller·요청 검증·응답 매핑,시작 전,,No,성집 Sprint 2 - 응모 요청 API와 입력 검증 구현 (https://app.notion.com/p/Sprint-2-API-3dc18857e9a4806cbc78e60ea0439ba8?pvs=21)
 T2-03,FR-P2-027~036,P0,응모 Lua 원자 처리,2조,자비,T2-02,Gate/잔액/멱등 Lua·동시성 테스트,시작 전,,No,
