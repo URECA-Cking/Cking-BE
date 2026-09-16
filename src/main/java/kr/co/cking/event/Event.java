@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -79,5 +80,17 @@ public class Event {
      */
     public DisplayStatus displayStatus(Instant now) {
         return DisplayStatus.of(status, endAt, now);
+    }
+
+    /**
+     * createdAt을 채우지 않고 저장하면 Hibernate가 INSERT에 NULL을 명시해서
+     * DB의 DEFAULT CURRENT_TIMESTAMP(6)가 적용되지 않고 NOT NULL 위반으로 실패한다.
+     * Builder로 특정 시각을 지정한 경우(테스트 등)는 그대로 두고, 생략된 경우만 채운다.
+     */
+    @PrePersist
+    void prePersist() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 }

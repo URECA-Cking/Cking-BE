@@ -60,6 +60,30 @@ class EventTest {
         }
     }
 
+    @Test
+    void createdAt을_지정하지_않으면_prePersist에서_채워진다() {
+        Event event = eventOf(EventStatus.OPEN);
+
+        event.prePersist();
+
+        assertThat(event.getCreatedAt()).isNotNull();
+    }
+
+    @Test
+    void createdAt을_지정했으면_prePersist가_덮어쓰지_않는다() {
+        Instant fixed = Instant.parse("2026-09-01T00:00:00Z");
+        Event event = Event.builder()
+                .status(EventStatus.OPEN)
+                .startAt(START)
+                .endAt(END)
+                .createdAt(fixed)
+                .build();
+
+        event.prePersist();
+
+        assertThat(event.getCreatedAt()).isEqualTo(fixed);
+    }
+
     private static Event eventOf(EventStatus status) {
         return Event.builder()
                 .status(status)
