@@ -277,4 +277,19 @@ class CreatorEventServiceIntegrationTest {
                 .isEqualTo(kr.co.cking.event.domain.EventErrorCode.INVALID_STATE);
         assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getTitle()).isEqualTo("원본");
     }
+
+    /** HTTP 계층을 거치지 않은 생성 명령도 UUID 형식이 아닌 requestId를 거부하는지 검증한다. */
+    @Test
+    void createRejectsNonUuidRequestId() {
+        Member member = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
+
+        assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "not-a-uuid", "팬미팅", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
+    }
 }

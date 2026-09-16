@@ -116,10 +116,20 @@ public class CreatorEventService {
     /** Event 생성 요청의 필수값과 업무 제약을 검증한다. */
     private void validateCreate(CreateEventCommand command) {
         if (command.userId() == null || command.requestId() == null || command.requestId().isBlank()
+                || !isCanonicalUuid(command.requestId())
                 || command.title() == null || command.title().isBlank() || command.startAt() == null
                 || command.endAt() == null || command.winnerCount() < 1 || command.drawMethod() != DrawMethod.WEIGHTED
                 || !command.startAt().isBefore(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+    }
+
+    /** requestId가 UUID의 표준 문자열 형식인지 검증한다. */
+    private boolean isCanonicalUuid(String requestId) {
+        try {
+            return java.util.UUID.fromString(requestId).toString().equalsIgnoreCase(requestId);
+        } catch (IllegalArgumentException exception) {
+            return false;
         }
     }
 

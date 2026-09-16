@@ -3,6 +3,7 @@ package kr.co.cking.event.presentation.dto;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import kr.co.cking.event.domain.DrawMethod;
 
@@ -17,7 +18,7 @@ public final class EventManagementRequest {
     /** Event 생성 요청의 입력값을 전달한다. */
     public record Create(
             @NotNull Long userId,
-            @NotBlank @Size(max = 36) String requestId,
+            @NotBlank @Size(max = 36) @Pattern(regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$") String requestId,
             @NotBlank @Size(max = 200) String title,
             String description,
             @NotNull LocalDateTime startAt,

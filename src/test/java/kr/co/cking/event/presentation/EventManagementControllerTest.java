@@ -65,6 +65,35 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.totalElements").value(0));
     }
 
+    /** Creator Event 목록 API가 문서에 정의된 운영 정보를 함께 반환하는지 검증한다. */
+    @Test
+    void creatorEventListReturnsDocumentedItemFields() throws Exception {
+        Event event = event(7L, "팬미팅");
+        given(creatorEventService.findMine(org.mockito.ArgumentMatchers.eq(1L), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(event)));
+
+        mockMvc.perform(get("/api/creator/events").param("userId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].eventId").value(7))
+                .andExpect(jsonPath("$.data.items[0].startAt").exists())
+                .andExpect(jsonPath("$.data.items[0].endAt").exists())
+                .andExpect(jsonPath("$.data.items[0].winnerCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].drawMethod").value("WEIGHTED"))
+                .andExpect(jsonPath("$.data.items[0].createdAt").exists());
+    }
+
+    /** UUID 형식이 아닌 생성 requestId는 Controller 입력 검증에서 거부하는지 검증한다. */
+    @Test
+    void createEventRejectsNonUuidRequestId() throws Exception {
+        mockMvc.perform(post("/api/creator/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"requestId":"not-a-uuid","title":"팬미팅","startAt":"2026-09-20T09:00:00","endAt":"2026-09-21T09:00:00","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
     /** Creator Event 삭제 API가 No Content를 반환하는지 검증한다. */
     @Test
     void deleteEventReturnsNoContent() throws Exception {

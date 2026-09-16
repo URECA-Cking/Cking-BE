@@ -22,9 +22,14 @@ public final class EventManagementResponse {
     }
 
     /** Creator Event 목록의 한 항목을 반환한다. */
-    public record Item(Long eventId, String title, EventStatus status) {
+    public record Item(Long eventId, String title, java.time.Instant startAt, java.time.Instant endAt, int winnerCount,
+                       kr.co.cking.event.domain.DrawMethod drawMethod, EventStatus status, java.time.Instant createdAt) {
         /** Event 엔티티를 목록 항목으로 변환한다. */
-        public static Item from(Event event) { return new Item(event.getEventId(), event.getTitle(), event.getStatus()); }
+        public static Item from(Event event) {
+            return new Item(event.getEventId(), event.getTitle(), event.getStartAt().toInstant(java.time.ZoneOffset.UTC),
+                    event.getEndAt().toInstant(java.time.ZoneOffset.UTC), event.getWinnerCount(), event.getDrawMethod(),
+                    event.getStatus(), event.getCreatedAt().toInstant(java.time.ZoneOffset.UTC));
+        }
     }
 
     /** 관리자 승인 대기 목록의 승인 요청 항목을 반환한다. */

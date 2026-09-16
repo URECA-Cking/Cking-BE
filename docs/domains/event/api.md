@@ -123,6 +123,7 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 
 - 없는 Member 또는 Event는 `RESOURCE_NOT_FOUND`, 권한·소유권 위반은 `FORBIDDEN`이다.
 - 허용되지 않은 상태의 수정·삭제·심사·승인 요청은 `INVALID_STATE`다.
-- 동일 Event의 상충하는 명령은 `CONCURRENT_COMMAND`다.
+- 승인·거절처럼 Event 행 잠금으로 직렬화되는 상충 명령은 선행 명령이 상태를 바꾼 뒤 후행 명령이 `INVALID_STATE`가 된다.
+- Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.
 - Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
 - `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
