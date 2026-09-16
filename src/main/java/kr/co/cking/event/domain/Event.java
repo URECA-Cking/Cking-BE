@@ -132,9 +132,11 @@ public class Event {
         this.drawMethod = drawMethod;
     }
 
-    /** 초안 Event에 논리 삭제 시각을 기록한다. */
+    /** 초안 또는 거절된 Event에 논리 삭제 시각을 기록한다. */
     public void delete() {
-        requireStatus(EventStatus.DRAFT);
+        if (status != EventStatus.DRAFT && status != EventStatus.REJECTED) {
+            throw new BusinessException(EventErrorCode.INVALID_STATE);
+        }
         deletedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 

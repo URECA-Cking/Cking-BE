@@ -16,7 +16,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -58,9 +61,16 @@ public class CreatorApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<CreatorApplication> findAllForAdmin(Long adminId, Pageable pageable) {
+    public Page<AdminApplication> findAllForAdmin(Long adminId, Pageable pageable) {
         requireAdmin(adminId);
-        return applicationRepository.findAllByOrderByRequestedAtAscIdAsc(pageable);
+        Page<CreatorApplication> applications = applicationRepository.findAllByOrderByRequestedAtAscIdAsc(pageable);
+        Map<Long, String> applicantNames = memberRepository.findByMemberIdIn(applications.stream()
+                        .map(CreatorApplication::getMemberId).toList())
+                .stream().collect(Collectors.toMap(Member::getMemberId, Member::getName));
+        List<AdminApplication> items = applications.stream()
+                .map(application -> new AdminApplication(application, applicantNames.get(application.getMemberId())))
+                .toList();
+        return new org.springframework.data.domain.PageImpl<>(items, pageable, applications.getTotalElements());
     }
 
     public CreatorApplication approve(Long adminId, Long applicationId) {
@@ -114,5 +124,8 @@ public class CreatorApplicationService {
     }
 
     public record ApplyResult(CreatorApplication application, boolean created) {
+    }
+
+    public record AdminApplication(CreatorApplication application, String applicantName) {
     }
 }

@@ -20,6 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -38,29 +42,45 @@ public class EventReviewService {
     /** 만료되지 않은 승인 대기 Event와 현재 요청을 승인 처리한다. */
     public EventApprovalRequest approve(Long adminId, Long eventId) {
         requireAdmin(adminId);
-        Event event = findLockedEvent(eventId);
-        if (!event.getEndAt().isAfter(LocalDateTime.now(ZoneOffset.UTC))) {
-            throw new BusinessException(EventErrorCode.INVALID_STATE);
-        }
-        EventApprovalRequest request = findPendingRequest(eventId);
-        request.approve(adminId);
-        eventCommandService.approve(eventId);
-        return request;
+        return eventCommandService.approve(eventId, event -> {
+            if (!event.getEndAt().isAfter(LocalDateTime.now(ZoneOffset.UTC))) {
+                throw new BusinessException(EventErrorCode.INVALID_STATE);
+            }
+            EventApprovalRequest request = findPendingRequest(eventId);
+            request.approve(adminId);
+            return request;
+        });
     }
 
     /** 관리자가 심사할 수 있는 대기 중 승인 요청 목록을 페이지로 조회한다. */
     @Transactional(readOnly = true)
     public Page<PendingEvent> findPending(Long adminId, Pageable pageable) {
         requireAdmin(adminId);
-        return approvalRequestRepository.findByStatusOrderByRequestedAtAscIdAsc(EventApprovalRequestStatus.PENDING, pageable)
-                .map(this::toPendingEvent);
+        Page<EventApprovalRequest> requests = approvalRequestRepository.findByStatusOrderByRequestedAtAscIdAsc(
+                EventApprovalRequestStatus.PENDING, pageable);
+        if (requests.isEmpty()) {
+            return new org.springframework.data.domain.PageImpl<>(List.of(), pageable, requests.getTotalElements());
+        }
+        Map<Long, Event> eventsById = eventRepository.findByEventIdIn(requests.stream()
+                        .map(EventApprovalRequest::getEventId).distinct().toList())
+                .stream().collect(Collectors.toMap(Event::getEventId, Function.identity()));
+        Map<Long, Creator> creatorsById = creatorRepository.findByCreatorIdIn(eventsById.values().stream()
+                        .map(Event::getCreatorId).distinct().toList())
+                .stream().collect(Collectors.toMap(Creator::getCreatorId, Function.identity()));
+        List<PendingEvent> items = requests.stream()
+                .map(request -> toPendingEvent(request, eventsById, creatorsById)).toList();
+        return new org.springframework.data.domain.PageImpl<>(items, pageable, requests.getTotalElements());
     }
 
     /** 승인 요청과 연결된 Event·Creator 정보를 관리자 목록 항목으로 결합한다. */
-    private PendingEvent toPendingEvent(EventApprovalRequest request) {
-        Event event = eventRepository.findById(request.getEventId())
+    private PendingEvent toPendingEvent(
+            EventApprovalRequest request,
+            Map<Long, Event> eventsById,
+            Map<Long, Creator> creatorsById
+    ) {
+        Event event = java.util.Optional.ofNullable(eventsById.get(request.getEventId()))
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        Creator creator = creatorRepository.findById(event.getCreatorId())
+        Creator creator = java.util.Optional.ofNullable(creatorsById.get(event.getCreatorId()))
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return new PendingEvent(request, event, creator.getName());
     }
@@ -75,11 +95,11 @@ public class EventReviewService {
         if (rejectReason == null || rejectReason.isBlank()) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        findLockedEvent(eventId);
-        EventApprovalRequest request = findPendingRequest(eventId);
-        request.reject(adminId, rejectReason.trim());
-        eventCommandService.reject(eventId, rejectReason.trim());
-        return request;
+        return eventCommandService.reject(eventId, event -> {
+            EventApprovalRequest request = findPendingRequest(eventId);
+            request.reject(adminId, rejectReason.trim());
+            return request;
+        });
     }
 
     /** 관리자 Member인지 검증한다. */
@@ -89,12 +109,6 @@ public class EventReviewService {
         if (admin.getRole() != MemberRole.ADMIN) {
             throw new BusinessException(CommonErrorCode.FORBIDDEN);
         }
-    }
-
-    /** 상충 심사 명령을 막기 위해 Event 행을 잠금 상태로 조회한다. */
-    private Event findLockedEvent(Long eventId) {
-        return eventRepository.findByEventId(eventId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 
     /** 현재 Event에 연결된 대기 중 승인 요청을 조회한다. */

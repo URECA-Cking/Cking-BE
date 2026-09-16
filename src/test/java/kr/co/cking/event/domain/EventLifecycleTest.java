@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class EventLifecycleTest {
 
@@ -45,6 +46,34 @@ class EventLifecycleTest {
         assertThat(event.getDeletedAt()).isNotNull();
     }
 
+    /** 거절된 Event도 물리 삭제 대신 삭제 시각을 기록할 수 있는지 검증한다. */
+    @Test
+    void rejectedEventIsSoftDeleted() {
+        Event event = new Event(1L, "이벤트", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
+        event.requestApproval();
+        event.reject();
+
+        event.delete();
+
+        assertThat(event.getDeletedAt()).isNotNull();
+    }
+
+    /** 승인 대기처럼 삭제 대상이 아닌 상태에서는 삭제를 거부하는지 검증한다. */
+    @Test
+    void pendingApprovalEventCannotBeDeleted() {
+        Event event = new Event(1L, "이벤트", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
+        event.requestApproval();
+
+        assertThatThrownBy(event::delete)
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(EventErrorCode.INVALID_STATE);
+    }
+
     /** 승인 요청 서비스가 DRAFT 이벤트를 승인 대기 상태로 전이시키는지 검증한다. */
     @Test
     void commandServiceRequestsApprovalForDraftEvent() {
@@ -55,12 +84,13 @@ class EventLifecycleTest {
                 3, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000"
         );
         EventRepository eventRepository = mock(EventRepository.class);
-        given(eventRepository.findById(1L)).willReturn(java.util.Optional.of(event));
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
         EventCommandService eventCommandService = new EventCommandService(eventRepository);
 
         eventCommandService.requestApproval(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.PENDING_APPROVAL);
+        verify(eventRepository).findByEventId(1L);
     }
 
     @Test
@@ -101,7 +131,7 @@ class EventLifecycleTest {
         );
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
-        given(eventRepository.findById(1L)).willReturn(java.util.Optional.of(event));
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
         EventCommandService eventCommandService = new EventCommandService(eventRepository);
 
         eventCommandService.approve(1L);
@@ -124,7 +154,7 @@ class EventLifecycleTest {
         );
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
-        given(eventRepository.findById(1L)).willReturn(java.util.Optional.of(event));
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
         EventCommandService eventCommandService = new EventCommandService(eventRepository);
 
         eventCommandService.reject(1L, "일정 확인 필요");

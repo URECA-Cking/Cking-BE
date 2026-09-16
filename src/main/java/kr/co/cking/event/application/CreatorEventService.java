@@ -65,31 +65,32 @@ public class CreatorEventService {
 
     /** Creator 소유 Event의 새 승인 요청 차수를 만들고 승인 대기 상태로 전이한다. */
     public EventApprovalRequest requestApproval(Long userId, Long eventId) {
-        Event event = findOwnedEvent(userId, eventId);
-        int nextRound = approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(eventId)
-                .map(request -> request.getApprovalRound() + 1)
-                .orElse(1);
-        EventApprovalRequest approvalRequest = approvalRequestRepository.save(
-                new EventApprovalRequest(event.getEventId(), nextRound, userId));
-        eventCommandService.requestApproval(eventId);
-        return approvalRequest;
+        Creator creator = requireCreator(userId);
+        return eventCommandService.requestApproval(eventId, event -> {
+            requireOwnership(creator, event);
+            int nextRound = approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(eventId)
+                    .map(request -> request.getApprovalRound() + 1)
+                    .orElse(1);
+            return approvalRequestRepository.save(new EventApprovalRequest(event.getEventId(), nextRound, userId));
+        });
     }
 
     /** Creator 소유의 초안 Event를 논리 삭제한다. */
     public void delete(Long userId, Long eventId) {
-        findOwnedEvent(userId, eventId).delete();
+        Creator creator = requireCreator(userId);
+        eventCommandService.delete(eventId, event -> requireOwnership(creator, event));
     }
 
     /** Creator 소유 Event를 수정하고 거절 상태면 공통 상태 명령으로 초안에 복귀시킨다. */
     public Event update(UpdateEventCommand command) {
         validateUpdate(command);
-        Event event = findOwnedEvent(command.userId(), command.eventId());
-        if (event.getStatus() == kr.co.cking.event.domain.EventStatus.REJECTED) {
-            eventCommandService.changeToDraft(command.eventId());
-        }
-        event.update(command.title().trim(), command.description(), command.startAt(), command.endAt(),
-                command.winnerCount(), command.drawMethod());
-        return event;
+        Creator creator = requireCreator(command.userId());
+        return eventCommandService.update(
+                command.eventId(),
+                event -> requireOwnership(creator, event),
+                event -> event.update(command.title().trim(), command.description(), command.startAt(), command.endAt(),
+                        command.winnerCount(), command.drawMethod())
+        );
     }
 
     /** 기존 Event가 동일 본문이면 재사용하고 다르면 멱등성 충돌을 발생시킨다. */
@@ -100,17 +101,16 @@ public class CreatorEventService {
         return existing;
     }
 
-    /** Creator 소유자를 확인한 뒤 DRAFT Event를 저장한다. */
-    /** 요청한 사용자의 Creator가 소유한 Event를 잠금 상태로 조회한다. */
-    private Event findOwnedEvent(Long userId, Long eventId) {
-        Creator creator = creatorRepository.findByMemberId(userId)
+    private Creator requireCreator(Long userId) {
+        return creatorRepository.findByMemberId(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
-        Event event = eventRepository.findByEventId(eventId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    /** 잠금 상태의 Event가 요청 Creator 소유이며 삭제되지 않았는지 검증한다. */
+    private void requireOwnership(Creator creator, Event event) {
         if (!creator.getCreatorId().equals(event.getCreatorId()) || event.getDeletedAt() != null) {
             throw new BusinessException(CommonErrorCode.FORBIDDEN);
         }
-        return event;
     }
 
     /** Event 생성 요청의 필수값과 업무 제약을 검증한다. */

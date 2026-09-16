@@ -116,6 +116,24 @@ class CreatorEventServiceIntegrationTest {
         assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getDeletedAt()).isNotNull();
     }
 
+    /** Creator가 거절된 Event도 논리 삭제할 수 있는지 검증한다. */
+    @Test
+    void creatorSoftDeletesOwnRejectedEvent() {
+        Member creatorMember = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(creatorMember.getMemberId(), creatorMember.getName()));
+        Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
+        Event event = creatorEventService.create(new CreateEventCommand(
+                creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440014", "팬미팅", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED));
+        creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
+        eventReviewService.reject(admin.getMemberId(), event.getEventId(), "수정 필요");
+
+        creatorEventService.delete(creatorMember.getMemberId(), event.getEventId());
+
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getDeletedAt()).isNotNull();
+    }
+
     /** 거절된 Event를 Creator가 수정하면 상태가 EventCommandService를 통해 DRAFT로 복귀하는지 검증한다. */
     @Test
     void updatingRejectedEventReturnsItToDraft() {

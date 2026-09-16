@@ -8,8 +8,6 @@ import kr.co.cking.creator.application.CreatorApplicationService;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.presentation.dto.CreatorApplicationRequest;
 import kr.co.cking.creator.presentation.dto.CreatorApplicationResponse;
-import kr.co.cking.member.domain.Member;
-import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -25,9 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Validated
 @RestController
@@ -36,7 +31,6 @@ import java.util.stream.Collectors;
 public class CreatorApplicationController {
 
     private final CreatorApplicationService creatorApplicationService;
-    private final MemberRepository memberRepository;
 
     @PostMapping("/api/creator/applications")
     public ResponseEntity<ApiResponse<CreatorApplicationResponse.Result>> apply(
@@ -69,13 +63,11 @@ public class CreatorApplicationController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        Page<CreatorApplication> applications = creatorApplicationService.findAllForAdmin(
+        Page<CreatorApplicationService.AdminApplication> applications = creatorApplicationService.findAllForAdmin(
                 userId, PageRequest.of(page, size));
-        Map<Long, String> applicantNames = memberRepository.findByMemberIdIn(applications.stream()
-                        .map(CreatorApplication::getMemberId).toList())
-                .stream().collect(Collectors.toMap(Member::getMemberId, Member::getName));
         List<CreatorApplicationResponse.Admin> items = applications.stream()
-                .map(application -> CreatorApplicationResponse.Admin.from(application, applicantNames.get(application.getMemberId())))
+                .map(application -> CreatorApplicationResponse.Admin.from(
+                        application.application(), application.applicantName()))
                 .toList();
         return ApiResponse.success(CreatorApplicationResponse.PageResult.from(applications, items));
     }

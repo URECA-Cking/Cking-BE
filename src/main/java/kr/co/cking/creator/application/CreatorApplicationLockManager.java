@@ -3,6 +3,7 @@ package kr.co.cking.creator.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -11,6 +12,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.function.Supplier;
 
 @Component
+@Slf4j
 @RequiredArgsConstructor
 class CreatorApplicationLockManager {
 
@@ -39,6 +41,9 @@ class CreatorApplicationLockManager {
     }
 
     private void release(String key) {
-        jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Long.class, key);
+        Long released = jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Long.class, key);
+        if (released == null || released != 1L) {
+            log.warn("Failed to release creator application advisory lock: key={}, result={}", key, released);
+        }
     }
 }
