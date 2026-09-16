@@ -103,7 +103,7 @@ class EventLifecycleTest {
         );
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.requestApproval(1L);
 
@@ -150,7 +150,7 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.approve(1L);
 
@@ -173,7 +173,7 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.reject(1L, "일정 확인 필요");
         eventCommandService.changeToDraft(1L);
