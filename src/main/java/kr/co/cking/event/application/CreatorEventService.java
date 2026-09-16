@@ -13,6 +13,7 @@ import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.repository.EventApprovalRequestRepository;
 import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import org.springframework.data.domain.Pageable;
 public class CreatorEventService {
 
     private final CreatorRepository creatorRepository;
+    private final MemberRepository memberRepository;
     private final EventRepository eventRepository;
     private final EventApprovalRequestRepository approvalRequestRepository;
     private final EventCommandService eventCommandService;
@@ -37,15 +39,14 @@ public class CreatorEventService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Event create(CreateEventCommand command) {
         validateCreate(command);
+        Creator creator = requireCreator(command.userId());
         return eventRepository.findByRequestId(command.requestId())
                 .map(existing -> returnExistingOrThrow(existing, command))
-                .orElseGet(() -> createOrRecover(command));
+                .orElseGet(() -> createOrRecover(command, creator));
     }
 
     /** 멱등 키 잠금 보유 중 생성 요청을 검증하고 기존 Event를 재사용한다. */
-    private Event createOrRecover(CreateEventCommand command) {
-        Creator creator = creatorRepository.findByMemberId(command.userId())
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+    private Event createOrRecover(CreateEventCommand command, Creator creator) {
         try {
             return eventCreationPersistenceService.create(command, creator.getCreatorId());
         } catch (DataIntegrityViolationException exception) {
@@ -58,8 +59,7 @@ public class CreatorEventService {
     /** 요청 Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 조회한다. */
     @Transactional(readOnly = true)
     public Page<Event> findMine(Long userId, Pageable pageable) {
-        Creator creator = creatorRepository.findByMemberId(userId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        Creator creator = requireCreator(userId);
         return eventRepository.findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(creator.getCreatorId(), pageable);
     }
 
@@ -102,6 +102,8 @@ public class CreatorEventService {
     }
 
     private Creator requireCreator(Long userId) {
+        memberRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return creatorRepository.findByMemberId(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
     }

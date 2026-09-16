@@ -188,6 +188,38 @@ class CreatorEventServiceIntegrationTest {
         assertThat(creatorEventService.findMine(member.getMemberId(), PageRequest.of(0, 20)).getTotalElements()).isZero();
     }
 
+    /** 존재하지 않는 Member의 Event 생성 요청은 리소스 없음으로 거부한다. */
+    @Test
+    void missingMemberCannotCreateEvent() {
+        assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
+                9_999_999L, "550e8400-e29b-41d4-a716-446655440015", "팬미팅", null,
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    /** 존재하지 않는 Member의 Event 목록 요청은 리소스 없음으로 거부한다. */
+    @Test
+    void missingMemberCannotFindCreatorEvents() {
+        assertThatThrownBy(() -> creatorEventService.findMine(9_999_999L, PageRequest.of(0, 20)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    /** 존재하지만 Creator가 아닌 Member의 Event 목록 요청은 권한 없음으로 거부한다. */
+    @Test
+    void nonCreatorCannotFindCreatorEvents() {
+        Member member = memberRepository.save(new Member("일반 사용자", null, null, MemberRole.USER));
+
+        assertThatThrownBy(() -> creatorEventService.findMine(member.getMemberId(), PageRequest.of(0, 20)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.FORBIDDEN);
+    }
+
     /** 동일 요청 식별자에 다른 생성 본문을 재시도하면 멱등성 충돌을 반환하는지 검증한다. */
     @Test
     void sameRequestIdWithDifferentBodyThrowsIdempotencyConflict() {
