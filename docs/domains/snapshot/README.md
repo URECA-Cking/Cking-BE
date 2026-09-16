@@ -29,6 +29,19 @@ DB의 `UNIQUE(draw_snapshot.event_id)`는 애플리케이션 잠금 외의 최�
 | --- | --- |
 | `EVENT_NOT_FOUND` | Event가 존재하지 않음 |
 | `EVENT_NOT_CLOSED` | 공식 Snapshot이 없고 Event가 `CLOSED`가 아님 |
+| `SNAPSHOT_NOT_FOUND` | 추첨에 사용할 공식 Snapshot이 없음 |
+| `SNAPSHOT_HASH_MISMATCH` | 저장된 Hash와 재계산한 Hash 또는 집계값이 일치하지 않음 |
+
+### `SnapshotIntegrityService.verifyForDrawing(Long eventId)`
+
+1. Event의 공식 Snapshot을 조회한다.
+2. Candidate를 `memberId ASC`로 조회해 Entity가 아닌 불변 값으로 변환한다.
+3. 공식 Snapshot 생성 시 사용한 정규화 규칙으로 Hash를 재계산한다.
+4. Candidate 수와 전체 응모권 수도 저장된 집계값과 비교한다.
+5. 모두 일치하면 불변 `VerifiedSnapshot`을 반환한다.
+6. 불일치하면 `SNAPSHOT_HASH_MISMATCH`로 중단하고 추첨 입력을 반환하지 않는다.
+
+Drawing 모듈은 Snapshot Entity나 Repository를 직접 사용하지 않고 이 서비스만 호출한다. 이 검증은 read-only이며 `verification_status`와 `verified_at` 기록은 추첨 검증 담당 범위에서 처리한다.
 
 ## Snapshot Hash 계약
 
@@ -66,4 +79,4 @@ candidates
 
 위 문자열의 SHA-256은 `a3a997ca2bed6ff1ad71484b6d13cc7a07dec9b0260c5bb040c55ddcb87ec281`이다.
 
-추첨 직전 무결성 검증도 `SnapshotHashGenerator`와 동일한 계약을 사용해야 한다.
+추첨 직전 무결성 검증도 `SnapshotHashGenerator`와 동일한 계약을 사용한다.
