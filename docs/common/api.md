@@ -25,6 +25,29 @@
 - GET·DELETE 요청은 query parameter `userId`를 사용한다.
 - POST·PATCH 요청은 body의 `userId`를 사용한다.
 - `/api/me/**` 경로도 `userId`를 요청에 포함한다.
+- `userId`를 포함한 DB `BIGINT` PK/FK 대응 식별자는 Java `Long`, JSON number 타입을 사용한다.
+- 문서 예시의 `user-001` 같은 문자열은 식별자 종류를 설명하기 위한 표기일 뿐이며, 실제 요청에는 number를 사용한다.
+
+## 페이지네이션
+
+일반 목록과 관리자 목록은 Page 방식을 사용한다.
+
+- `page`는 0부터 시작한다.
+- `size`의 기본값은 20, 최댓값은 100이다.
+- 목록 API는 문서에 명시한 기본 정렬과 PK 기반 tie-breaker를 사용한다.
+
+응답 `data`는 다음 형식을 사용한다.
+
+```json
+{
+  "items": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 0,
+  "totalPages": 0,
+  "hasNext": false
+}
+```
 
 ## 멱등성
 
@@ -49,7 +72,7 @@
 {
   "code": "SUCCESS",
   "data": {
-    "items": [{ "userId": "user-001", "name": "홍길동" }]
+    "items": [{ "userId": 1, "name": "홍길동" }]
   },
   "message": null
 }
@@ -60,13 +83,13 @@
 - 역할: 가상 사용자를 선택한다. 선택 결과는 클라이언트가 관리한다.
 
 ```json
-{ "userId": "user-001" }
+{ "userId": 1 }
 ```
 
 ```json
 {
   "code": "SUCCESS",
-  "data": { "userId": "user-001", "name": "홍길동", "selected": true },
+  "data": { "userId": 1, "name": "홍길동", "selected": true },
   "message": null
 }
 ```
