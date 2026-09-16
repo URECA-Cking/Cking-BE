@@ -7,6 +7,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -23,8 +24,6 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class EntrySpendServiceImpl implements EntrySpendService {
 
-    // FR-P2-034 / 취합v1.5.4 §5.3 확정값
-    private static final String STREAM_KEY = "stream:ticket-deducted";
     // FR-P2-033 확정값 (1시간)
     private static final long IDEM_TTL_SECONDS = 3600L;
 
@@ -32,6 +31,12 @@ public class EntrySpendServiceImpl implements EntrySpendService {
 
     @Qualifier("entrySpendLuaScript")
     private final DefaultRedisScript<List> entrySpendLuaScript;
+
+    // FR-P2-034 / 취합v1.5.4 §5.3 확정값. 실제 운영 키는 기본값 그대로 쓰고,
+    // 테스트는 별도 키로 격리해서 이 키를 지우거나 타입을 바꾸는 조작이
+    // 실제 stream:ticket-deducted에 영향을 주지 않도록 한다.
+    @Value("${cking.entry.stream-key:stream:ticket-deducted}")
+    private String streamKey;
 
     @Override
     public EntrySpendResult spend(
@@ -55,7 +60,7 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                     ),
                     String.valueOf(ticketCount),
                     fingerprint,
-                    STREAM_KEY,
+                    streamKey,
                     String.valueOf(IDEM_TTL_SECONDS),
                     String.valueOf(eventId),
                     String.valueOf(userId),
