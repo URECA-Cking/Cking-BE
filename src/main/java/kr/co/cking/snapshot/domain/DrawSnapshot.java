@@ -91,14 +91,13 @@ public class DrawSnapshot {
             throw new IllegalArgumentException("snapshotHash는 SHA-256 lowercase hex여야 합니다.");
         }
 
-        List<CandidateValue> sortedCandidates = candidateValues.stream()
-                .sorted(CandidateValue.BY_MEMBER_ID)
-                .toList();
+        List<CandidateValue> normalizedCandidates = List.copyOf(candidateValues);
+        validateCandidateOrder(normalizedCandidates);
 
         DrawSnapshot snapshot = new DrawSnapshot();
         snapshot.eventId = eventId;
-        snapshot.candidateCount = sortedCandidates.size();
-        snapshot.totalTicketCount = sortedCandidates.stream()
+        snapshot.candidateCount = normalizedCandidates.size();
+        snapshot.totalTicketCount = normalizedCandidates.stream()
                 .mapToLong(CandidateValue::ticketCount)
                 .sum();
         snapshot.winnerCount = winnerCount;
@@ -106,7 +105,7 @@ public class DrawSnapshot {
         snapshot.algorithmVersion = algorithmVersion;
         snapshot.snapshotHash = snapshotHash;
         snapshot.verificationStatus = SnapshotVerificationStatus.UNVERIFIED;
-        snapshot.candidates = sortedCandidates.stream()
+        snapshot.candidates = normalizedCandidates.stream()
                 .map(candidate -> new DrawSnapshotCandidate(
                         snapshot,
                         candidate.memberId(),
@@ -114,6 +113,16 @@ public class DrawSnapshot {
                 ))
                 .collect(Collectors.toCollection(ArrayList::new));
         return snapshot;
+    }
+
+    private static void validateCandidateOrder(List<CandidateValue> candidates) {
+        for (int index = 1; index < candidates.size(); index++) {
+            long previousMemberId = candidates.get(index - 1).memberId();
+            long currentMemberId = candidates.get(index).memberId();
+            if (previousMemberId >= currentMemberId) {
+                throw new IllegalArgumentException("Snapshot 후보는 memberId ASC로 정렬되고 중복이 없어야 합니다.");
+            }
+        }
     }
 
     public List<DrawSnapshotCandidate> getCandidates() {

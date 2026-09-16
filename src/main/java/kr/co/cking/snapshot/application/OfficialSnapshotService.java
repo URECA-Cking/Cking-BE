@@ -2,6 +2,7 @@ package kr.co.cking.snapshot.application;
 
 import java.util.List;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.event.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
@@ -40,18 +41,19 @@ public class OfficialSnapshotService {
             return existing;
         }
 
-        if (!"CLOSED".equals(event.status())) {
+        if (event.status() != EventStatus.CLOSED) {
             throw new BusinessException(SnapshotErrorCode.EVENT_NOT_CLOSED);
         }
 
         List<CandidateValue> candidates = sourceQueryRepository.findCandidates(eventId);
-        SnapshotHash hash = hashGenerator.generate(new SnapshotHashInput(
+        SnapshotHashInput hashInput = new SnapshotHashInput(
                 event.eventId(),
                 event.winnerCount(),
                 event.drawMethod(),
                 ALGORITHM_VERSION,
                 candidates
-        ));
+        );
+        SnapshotHash hash = hashGenerator.generate(hashInput);
 
         DrawSnapshot snapshot = DrawSnapshot.create(
                 event.eventId(),
@@ -59,7 +61,7 @@ public class OfficialSnapshotService {
                 event.drawMethod(),
                 ALGORITHM_VERSION,
                 hash.value(),
-                candidates
+                hashInput.candidates()
         );
         return OfficialSnapshotResult.from(snapshotRepository.saveAndFlush(snapshot));
     }

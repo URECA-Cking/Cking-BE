@@ -2,6 +2,7 @@ package kr.co.cking.snapshot.repository;
 
 import java.util.List;
 import java.util.Optional;
+import kr.co.cking.event.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -24,7 +25,7 @@ public class JdbcSnapshotSourceQueryRepository implements SnapshotSourceQueryRep
                 .param("eventId", eventId)
                 .query((resultSet, rowNumber) -> new SnapshotEventSource(
                         resultSet.getLong("event_id"),
-                        resultSet.getString("status"),
+                        EventStatus.valueOf(resultSet.getString("status")),
                         resultSet.getInt("winner_count"),
                         resultSet.getString("draw_method")
                 ))

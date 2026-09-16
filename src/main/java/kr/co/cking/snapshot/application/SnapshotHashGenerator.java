@@ -35,13 +35,11 @@ public class SnapshotHashGenerator {
                 .append("algorithmVersion=").append(input.algorithmVersion()).append('\n')
                 .append("candidates").append('\n');
 
-        input.candidates().stream()
-                .sorted(CandidateValue.BY_MEMBER_ID)
-                .forEach(candidate -> payload
-                        .append(candidate.memberId())
-                        .append(',')
-                        .append(candidate.ticketCount())
-                        .append('\n'));
+        input.candidates().forEach(candidate -> payload
+                .append(candidate.memberId())
+                .append(',')
+                .append(candidate.ticketCount())
+                .append('\n'));
         return payload.toString();
     }
 
@@ -61,10 +59,6 @@ public class SnapshotHashGenerator {
         if (input.algorithmVersion() == null || input.algorithmVersion().isBlank()) {
             throw new IllegalArgumentException("algorithmVersion은 필수입니다.");
         }
-        if (input.candidates() == null) {
-            throw new IllegalArgumentException("candidates는 필수입니다.");
-        }
-
         HashSet<Long> memberIds = new HashSet<>();
         for (CandidateValue candidate : input.candidates()) {
             if (!memberIds.add(candidate.memberId())) {

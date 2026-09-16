@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Optional;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.event.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
@@ -50,7 +51,7 @@ class OfficialSnapshotServiceTest {
                 new CandidateValue(2L, 7L)
         );
         when(sourceQueryRepository.findEventForUpdate(10L))
-                .thenReturn(Optional.of(new SnapshotEventSource(10L, "CLOSED", 2, "WEIGHTED")));
+                .thenReturn(Optional.of(new SnapshotEventSource(10L, EventStatus.CLOSED, 2, "WEIGHTED")));
         when(snapshotRepository.findByEventId(10L)).thenReturn(Optional.empty());
         when(sourceQueryRepository.findCandidates(10L)).thenReturn(candidates);
         when(hashGenerator.generate(any())).thenReturn(new SnapshotHash("payload", HASH));
@@ -77,7 +78,12 @@ class OfficialSnapshotServiceTest {
                 List.of(new CandidateValue(1L, 3L))
         );
         when(sourceQueryRepository.findEventForUpdate(10L))
-                .thenReturn(Optional.of(new SnapshotEventSource(10L, "DRAW_COMPLETED", 1, "WEIGHTED")));
+                .thenReturn(Optional.of(new SnapshotEventSource(
+                        10L,
+                        EventStatus.DRAW_COMPLETED,
+                        1,
+                        "WEIGHTED"
+                )));
         when(snapshotRepository.findByEventId(10L)).thenReturn(Optional.of(existing));
 
         OfficialSnapshotResult result = service.createIfAbsent(10L);
@@ -89,7 +95,7 @@ class OfficialSnapshotServiceTest {
     @Test
     void CLOSED가_아닌_이벤트는_Snapshot을_생성하지_않는다() {
         when(sourceQueryRepository.findEventForUpdate(10L))
-                .thenReturn(Optional.of(new SnapshotEventSource(10L, "CLOSING", 1, "WEIGHTED")));
+                .thenReturn(Optional.of(new SnapshotEventSource(10L, EventStatus.CLOSING, 1, "WEIGHTED")));
         when(snapshotRepository.findByEventId(10L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.createIfAbsent(10L))

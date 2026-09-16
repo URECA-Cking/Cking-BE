@@ -14,6 +14,8 @@ public record SnapshotHashInput(
         if (candidates == null) {
             throw new IllegalArgumentException("candidates는 필수입니다.");
         }
-        candidates = List.copyOf(candidates);
+        candidates = candidates.stream()
+                .sorted(CandidateValue.BY_MEMBER_ID)
+                .toList();
     }
 }
