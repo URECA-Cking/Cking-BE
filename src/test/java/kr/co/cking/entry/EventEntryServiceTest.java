@@ -4,6 +4,9 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.event.CachedEvent;
 import kr.co.cking.event.EventQueryService;
 import kr.co.cking.event.EventStatus;
+import kr.co.cking.event.application.dto.EntrySpendResult;
+import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
+import kr.co.cking.event.application.service.EntrySpendService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -16,6 +19,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -26,7 +30,7 @@ class EventEntryServiceTest {
     private EventQueryService eventQueryService;
 
     @Mock
-    private EntryGateway entryGateway;
+    private EntrySpendService entrySpendService;
 
     @InjectMocks
     private EventEntryService eventEntryService;
@@ -40,7 +44,8 @@ class EventEntryServiceTest {
         UUID requestId = UUID.randomUUID();
         EntryRequest request = new EntryRequest(10L, requestId, 2);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
-        when(entryGateway.apply(eq(1L), eq(2L), eq(request))).thenReturn(EntryResultCode.SUCCESS);
+        when(entrySpendService.spend(eq(1L), eq(10L), eq(2L), eq(requestId.toString()), eq(2)))
+                .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.SUCCESS, "1-0", 1L));
 
         EntryOutcome outcome = eventEntryService.apply(1L, request);
 
@@ -53,7 +58,8 @@ class EventEntryServiceTest {
     void DUPLICATE_REPLAY도_accepted_응답을_반환한다() {
         EntryRequest request = new EntryRequest(10L, UUID.randomUUID(), 2);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
-        when(entryGateway.apply(any(), any(), any())).thenReturn(EntryResultCode.DUPLICATE_REPLAY);
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt()))
+                .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.DUPLICATE_REPLAY, "1-0", 1L));
 
         EntryOutcome outcome = eventEntryService.apply(1L, request);
 
@@ -65,7 +71,8 @@ class EventEntryServiceTest {
     void 실패_코드는_BusinessException으로_변환된다() {
         EntryRequest request = new EntryRequest(10L, UUID.randomUUID(), 2);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
-        when(entryGateway.apply(any(), any(), any())).thenReturn(EntryResultCode.INSUFFICIENT_BALANCE);
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt()))
+                .thenReturn(EntrySpendResult.ofBalance(EntrySpendResultCode.INSUFFICIENT_BALANCE, 0L));
 
         assertThatThrownBy(() -> eventEntryService.apply(1L, request))
                 .isInstanceOf(BusinessException.class)

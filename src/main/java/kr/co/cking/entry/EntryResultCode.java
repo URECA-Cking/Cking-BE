@@ -2,7 +2,7 @@ package kr.co.cking.entry;
 
 /**
  * Redis Lua 응모 처리 결과코드 10종(통합 API 명세 v2.5 §5.3, 최종·CREATOR_MISMATCH 없음).
- * 실제 값은 T2-03(Redis Lua 원자 처리)이 채운다.
+ * {@link kr.co.cking.event.application.dto.enums.EntrySpendResultCode}와 이름이 동일하게 유지되어야 한다.
  */
 public enum EntryResultCode {
     SUCCESS,
