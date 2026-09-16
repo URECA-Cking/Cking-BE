@@ -7,11 +7,13 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.PrePersist;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(
@@ -36,9 +38,16 @@ public class Creator {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    public Creator(Long memberId, String name, LocalDateTime createdAt) {
+    public Creator(Long memberId, String name) {
         this.memberId = memberId;
         this.name = name;
-        this.createdAt = createdAt;
+        this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
+
+    @PrePersist
+    private void assignCreatedAtIfMissing() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        }
     }
 }

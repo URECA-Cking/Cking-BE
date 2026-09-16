@@ -10,8 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 
-import java.time.LocalDateTime;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -28,18 +26,19 @@ class MemberCreatorRepositoryJpaTest {
     @Test
     void memberRepositoryFindsMemberAndChecksExistence() {
         Member saved = memberRepository.saveAndFlush(
-                new Member("태연", null, "taeyeon@example.com", MemberRole.USER, LocalDateTime.now()));
+                new Member("태연", null, "taeyeon@example.com", MemberRole.USER));
 
         assertThat(memberRepository.findById(saved.getMemberId())).contains(saved);
         assertThat(memberRepository.existsById(saved.getMemberId())).isTrue();
+        assertThat(saved.getCreatedAt()).isNotNull();
     }
 
     @Test
     void creatorRepositoryFindsCreatorByMemberIdAndChecksExistence() {
         Member member = memberRepository.saveAndFlush(
-                new Member("태연", null, "taeyeon@example.com", MemberRole.USER, LocalDateTime.now()));
+                new Member("태연", null, "taeyeon@example.com", MemberRole.USER));
         Creator saved = creatorRepository.saveAndFlush(
-                new Creator(member.getMemberId(), "태연 Creator", LocalDateTime.now()));
+                new Creator(member.getMemberId(), "태연 Creator"));
 
         assertThat(creatorRepository.findById(saved.getCreatorId())).contains(saved);
         assertThat(creatorRepository.findByMemberId(member.getMemberId())).contains(saved);
@@ -49,11 +48,11 @@ class MemberCreatorRepositoryJpaTest {
     @Test
     void creatorMemberIdCannotBeRegisteredTwice() {
         Member member = memberRepository.saveAndFlush(
-                new Member("태연", null, "taeyeon@example.com", MemberRole.USER, LocalDateTime.now()));
-        creatorRepository.saveAndFlush(new Creator(member.getMemberId(), "태연 Creator", LocalDateTime.now()));
+                new Member("태연", null, "taeyeon@example.com", MemberRole.USER));
+        creatorRepository.saveAndFlush(new Creator(member.getMemberId(), "태연 Creator"));
 
         assertThatThrownBy(() -> creatorRepository.saveAndFlush(
-                new Creator(member.getMemberId(), "Duplicate Creator", LocalDateTime.now())))
+                new Creator(member.getMemberId(), "Duplicate Creator")))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 }

@@ -8,11 +8,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.PrePersist;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "member")
@@ -41,11 +43,18 @@ public class Member {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    public Member(String name, String phone, String email, MemberRole role, LocalDateTime createdAt) {
+    public Member(String name, String phone, String email, MemberRole role) {
         this.name = name;
         this.phone = phone;
         this.email = email;
         this.role = role;
-        this.createdAt = createdAt;
+        this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
+
+    @PrePersist
+    private void assignCreatedAtIfMissing() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        }
     }
 }
