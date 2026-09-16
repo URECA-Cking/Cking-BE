@@ -4,6 +4,7 @@ import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventApprovalRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,6 +21,7 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -68,5 +70,86 @@ class EventManagementControllerTest {
     void deleteEventReturnsNoContent() throws Exception {
         mockMvc.perform(delete("/api/creator/events/{eventId}", 1L).param("userId", "1"))
                 .andExpect(status().isNoContent());
+    }
+
+    /** Event 수정 API가 변경된 초안 상태를 공통 응답 봉투로 반환하는지 검증한다. */
+    @Test
+    void updateEventReturnsDraftResultEnvelope() throws Exception {
+        Event event = event(7L, "변경된 팬미팅");
+        given(creatorEventService.update(any())).willReturn(event);
+
+        mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T09:00:00","endAt":"2026-09-21T09:00:00","winnerCount":2,"drawMethod":"WEIGHTED"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.eventId").value(7))
+                .andExpect(jsonPath("$.data.status").value("DRAFT"));
+    }
+
+    /** 승인 요청 API가 승인 대기 상태를 공통 응답 봉투로 반환하는지 검증한다. */
+    @Test
+    void approvalRequestReturnsPendingApprovalResultEnvelope() throws Exception {
+        mockMvc.perform(post("/api/creator/events/{eventId}/approval-request", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.eventId").value(7))
+                .andExpect(jsonPath("$.data.status").value("PENDING_APPROVAL"));
+    }
+
+    /** 관리자 승인 대기 목록 API가 Event와 승인 요청 정보를 페이지 봉투로 반환하는지 검증한다. */
+    @Test
+    void pendingEventListReturnsApprovalItemPageEnvelope() throws Exception {
+        Event event = event(7L, "심사 대기 팬미팅");
+        event.requestApproval();
+        EventApprovalRequest request = new EventApprovalRequest(7L, 1, 1L);
+        given(eventReviewService.findPending(org.mockito.ArgumentMatchers.eq(99L), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(
+                        new EventReviewService.PendingEvent(request, event, "크리에이터"))));
+
+        mockMvc.perform(get("/api/admin/events/pending").param("userId", "99"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[0].eventId").value(7))
+                .andExpect(jsonPath("$.data.items[0].creatorId").value(1))
+                .andExpect(jsonPath("$.data.items[0].creatorName").value("크리에이터"))
+                .andExpect(jsonPath("$.data.items[0].status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.data.items[0].approvalRound").value(1));
+    }
+
+    /** 관리자 승인 API가 예약 상태를 공통 응답 봉투로 반환하는지 검증한다. */
+    @Test
+    void approveEventReturnsScheduledResultEnvelope() throws Exception {
+        mockMvc.perform(post("/api/admin/events/{eventId}/approve", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":99}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.eventId").value(7))
+                .andExpect(jsonPath("$.data.status").value("SCHEDULED"));
+    }
+
+    /** 관리자 거절 API가 거절 상태를 공통 응답 봉투로 반환하는지 검증한다. */
+    @Test
+    void rejectEventReturnsRejectedResultEnvelope() throws Exception {
+        mockMvc.perform(post("/api/admin/events/{eventId}/reject", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":99,\"rejectReason\":\"일정 조정이 필요합니다.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.eventId").value(7))
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+    }
+
+    private Event event(Long eventId, String title) {
+        Event event = new Event(1L, title, "설명", LocalDateTime.now(ZoneOffset.UTC).plusDays(1),
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED, 1L,
+                "550e8400-e29b-41d4-a716-446655440000");
+        ReflectionTestUtils.setField(event, "eventId", eventId);
+        return event;
     }
 }
