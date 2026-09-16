@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
+import kr.co.cking.common.exception.BusinessException;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -82,6 +84,53 @@ class EventTest {
         event.prePersist();
 
         assertThat(event.getCreatedAt()).isEqualTo(fixed);
+    }
+
+    @Test
+    void open_이벤트는_startClosing으로_CLOSING이_되고_cutoff가_저장된다() {
+        Event event = eventOf(EventStatus.OPEN);
+
+        event.startClosing("123-0");
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
+        assertThat(event.getCutoffStreamId()).isEqualTo("123-0");
+    }
+
+    @Test
+    void open이_아닌_이벤트는_startClosing에서_예외가_난다() {
+        for (EventStatus status : new EventStatus[]{
+                EventStatus.DRAFT, EventStatus.SCHEDULED, EventStatus.CLOSING,
+                EventStatus.CLOSED, EventStatus.DRAW_COMPLETED, EventStatus.PUBLISHED}) {
+            Event event = eventOf(status);
+
+            assertThatThrownBy(() -> event.startClosing("123-0"))
+                    .as("status=%s", status)
+                    .isInstanceOf(BusinessException.class);
+        }
+    }
+
+    @Test
+    void closing_이벤트는_completeClosing으로_CLOSED가_되고_closedAt이_저장된다() {
+        Event event = eventOf(EventStatus.CLOSING);
+        Instant closedAt = Instant.parse("2026-09-20T00:05:00Z");
+
+        event.completeClosing(closedAt);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSED);
+        assertThat(event.getClosedAt()).isEqualTo(closedAt);
+    }
+
+    @Test
+    void closing이_아닌_이벤트는_completeClosing에서_예외가_난다() {
+        for (EventStatus status : new EventStatus[]{
+                EventStatus.DRAFT, EventStatus.SCHEDULED, EventStatus.OPEN,
+                EventStatus.CLOSED, EventStatus.DRAW_COMPLETED, EventStatus.PUBLISHED}) {
+            Event event = eventOf(status);
+
+            assertThatThrownBy(() -> event.completeClosing(Instant.now()))
+                    .as("status=%s", status)
+                    .isInstanceOf(BusinessException.class);
+        }
     }
 
     private static Event eventOf(EventStatus status) {
