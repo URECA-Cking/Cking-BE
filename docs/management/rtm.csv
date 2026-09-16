@@ -48,7 +48,7 @@ FR-P2-012,2조,Stream 컨슈머로 응모 이력 append-only 저장,성집,Strea
 FR-P2-013,2조,재전달(at-least-once) 시 DB 중복 반영 방지,성집,Stream 컨슈머,event_entry.request_id UNIQUE. UNIQUE 위반 시 기존 데이터가 동일 요청인지 확인한 경우에만 정상 중복으로 처리한다.,1차 확정,시작 전,No
 FR-P2-014,2조,소비 결과로 user_ticket_balance 반영,성집,Stream 컨슈머,Redis 잔액과 별개의 DB 사본,1차 확정,시작 전,No
 FR-P2-015,2조,마감 오케스트레이션 내부에서 cutoff 범위의 Stream 처리 완료 상태를 확인한다,성집,처리완료 신호,"시스템2 마감 서비스가 cutoffStreamId 범위의 정상 승인 응모 DB 반영, 미처리·미ACK·미해결 Dead 응모 부재를 확인한다. 이 확인은 이벤트별 Stream 미처리 개수(pendingCount)를 반환하는 내부 API로 구현하며, 이 API는 시스템2(B트랙) 내부 구현으로 유지된다. 단 시스템3은 이 API를 직접 호출하지 않고 awaitDrain() 내부 구현에 흡수되어 쓰인다 — 외부(시스템3)에 노출되는 API가 없다는 뜻이지, API 자체가 없는 게 아니다. (v1.5.4 §6.6 근거)",1차 확정,시작 전,No
-FR-P2-016,2조,시스템2는 Drain 완료 후 CLOSED를 확정하고 Snapshot 생성 서비스를 호출한다,성집,처리완료 신호,시스템3은 Event.status == CLOSED만 신뢰하며 Redis Stream 상태를 다시 확인하지 않는다. CLOSED Commit 후 SnapshotService.createOfficialSnapshot(eventId)를 호출한다.,1차 확정,시작 전,No
+FR-P2-016,2조,시스템2는 Drain 완료 후 CLOSED를 확정하고 Snapshot 생성 서비스를 호출한다,성집,처리완료 신호,시스템3은 Event.status == CLOSED만 신뢰하며 Redis Stream 상태를 다시 확인하지 않는다. CLOSED Commit 후 OfficialSnapshotService.createIfAbsent(eventId)를 호출한다.,1차 확정,시작 전,No
 FR-P2-017,2조,실패 메시지는 PEL(Pending Entries List)에 남음,성집,실패재처리·DLQ,Redis Streams 기본 동작,1차 확정,시작 전,No
 FR-P2-018,2조,서버 재기동 후에도 PEL 미처리 메시지 이어받아 처리,성집,실패재처리·DLQ,XCLAIM으로 소유권 회수,1차 확정,시작 전,No
 FR-P2-019,2조,장기 미처리 메시지는 dead 스트림으로 재발행(DLQ 대체),성집,실패재처리·DLQ,Redis Streams는 DLQ 미지원 — XPENDING 기반 직접 구현,1차 확정,시작 전,No
@@ -56,7 +56,7 @@ FR-P2-020,2조,Dead Stream으로 이동한 메시지는 운영자가 백오피�
 FR-P2-021,2조,Redis 잔액과 DB 잔액(및 이력 합계)을 주기적으로 비교,성집,정합성검증,배치 주기 5분,1차 확정,시작 전,No
 FR-P2-022,2조,불일치 발견 시 알림/로그 기록,성집,정합성검증,"일시적 Stream 비동기 지연은 즉시 오류·보정하지 않는다. 일정 시간 지속되거나 반복 검출된 불일치만 이상으로 판단한다. DB Ledger를 최종 기준으로 하며, 보정 시 COMPENSATE를 append-only 기록한 뒤 Redis를 DB 기준값으로 재동기화한다.",1차 확정,시작 전,No
 FR-P2-023,2조,자동 마감 대상(status=OPEN AND endAt≤now)을 조회하고 수동 마감 요청과 동일한 마감 서비스를 호출한다,성집,이벤트마감 배치,"자동·수동 마감 모두 시스템2의 동일한 마감 오케스트레이션을 사용한다. 시스템4는 권한과 요청 조건을 검증한 뒤 서비스 메서드로 전달한다. 마감 완료 여부 폴링은 관리자용 경량 상태조회 API GET /admin/events/{id}/closing-status로 확정(CLOSING/CLOSED 이분값만 반환, 진행률·미처리건수 등 세부 수치는 반환 안 함). 내부 구현은 시스템4 모듈이 시스템2 모듈의 서비스 메서드를 인프로세스로 직접 호출하는 방식이며 별도 HTTP 내부호출은 아니다. (v1.5.4 §6.2 근거)",1차 확정,시작 전,No
-FR-P2-024,2조,EventCommandService를 통해 OPEN → CLOSING → CLOSED를 순차 전이한다,성집,이벤트마감 배치,"Gate 차단과 cutoffStreamId 확정 후 EventCommandService.startClosing(eventId, cutoffStreamId)를 호출한다. 시스템2가 Drain 완료 조건을 확인한 뒤 completeClosing(eventId)로 CLOSED와 closedAt을 기록한다. CLOSED Commit 후 SnapshotService.createOfficialSnapshot(eventId)를 호출하며, Snapshot 생성 실패 시에도 CLOSED를 되돌리지 않는다.",1차 확정,시작 전,No
+FR-P2-024,2조,EventCommandService를 통해 OPEN → CLOSING → CLOSED를 순차 전이한다,성집,이벤트마감 배치,"Gate 차단과 cutoffStreamId 확정 후 EventCommandService.startClosing(eventId, cutoffStreamId)를 호출한다. 시스템2가 Drain 완료 조건을 확인한 뒤 completeClosing(eventId)로 CLOSED와 closedAt을 기록한다. CLOSED Commit 후 OfficialSnapshotService.createIfAbsent(eventId)를 호출하며, Snapshot 생성 실패 시에도 CLOSED를 되돌리지 않는다.",1차 확정,시작 전,No
 FR-P2-025,2조,상태 전환과 함께 cache:event 무효화,성집,이벤트마감 배치,NFR-B-02 캐시 리스크의 실질적 해소 수단,1차 확정,시작 전,No
 FR-P2-026,2조,이벤트 생명주기 배치 실행 주기 결정,성집,이벤트마감 배치,EventLifecycleScheduler가 tick마다 먼저 status=SCHEDULED AND startAt≤now<endAt 이벤트를 조회해 open(eventId)를 호출하고 그다음 status=OPEN AND endAt≤now 이벤트를 탐색해 동일 마감 서비스를 호출한다. 자동 마감 주기는 10초로 확정한다. Stream Drain 완료 판단과는 별도이며 stream-lag API를 사용하지 않는다.,1차 확정,시작 전,No
 FR-P2-027,2조,이벤트 마감 여부를 Lua 내부에서 검증한다,자비,응모요청 API,"""자정 등 날짜 경계 케이스도 정확히 판정. 판단 근거는 FR-25에서 확정”",1차 확정,시작 전,No
