@@ -155,6 +155,20 @@ public class Event {
         }
     }
 
+    /** Gate 차단·cutoff 확정 이후 호출. OPEN인 이벤트만 CLOSING으로 전이한다. */
+    public void startClosing(String cutoffStreamId) {
+        requireStatus(EventStatus.OPEN);
+        this.cutoffStreamId = cutoffStreamId;
+        this.status = EventStatus.CLOSING;
+    }
+
+    /** Drain(미처리 응모 반영) 완료 확인 후 호출. CLOSING인 이벤트만 CLOSED로 전이한다. */
+    public void completeClosing(Instant closedAt) {
+        requireStatus(EventStatus.CLOSING);
+        this.status = EventStatus.CLOSED;
+        this.closedAt = closedAt;
+    }
+
     private void requireStatus(EventStatus expected) {
         if (status != expected) {
             throw new BusinessException(EventErrorCode.INVALID_STATE);

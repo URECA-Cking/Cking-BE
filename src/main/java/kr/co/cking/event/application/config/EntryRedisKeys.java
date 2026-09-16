@@ -22,4 +22,8 @@ public final class EntryRedisKeys {
     public static String idem(String requestId) {
         return "idem:" + requestId;
     }
+
+    public static String cutoff(Long eventId) {
+        return "event:cutoff:" + eventId;
+    }
 }
