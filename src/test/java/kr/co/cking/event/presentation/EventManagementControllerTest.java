@@ -6,6 +6,9 @@ import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -14,7 +17,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
-import java.time.Instant;
+import java.util.stream.Stream;
 
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,9 +57,9 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
     }
 
-    /** UTC offset이 포함된 생성 시각을 Instant로 해석해 명령에 전달하는지 검증한다. */
+    /** offset이 포함된 생성 시각을 UTC Instant로 정규화해 명령에 전달하는지 검증한다. */
     @Test
-    void createEventAcceptsUtcInstants() throws Exception {
+    void createEventNormalizesOffsetInstant() throws Exception {
         Event event = event(1L, "팬미팅");
         given(creatorEventService.create(any())).willAnswer(invocation -> {
             var command = invocation.getArgument(0, kr.co.cking.event.application.dto.CreateEventCommand.class);
@@ -68,7 +71,7 @@ class EventManagementControllerTest {
         mockMvc.perform(post("/api/creator/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T18:00:00+09:00","endAt":"2026-09-21T18:00:00+09:00","winnerCount":1,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isCreated());
     }
@@ -86,10 +89,11 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.totalElements").value(0));
     }
 
-    /** 페이지 번호가 음수면 서버 오류가 아닌 입력 검증 오류를 반환하는지 검증한다. */
-    @Test
-    void creatorEventListRejectsNegativePageAsValidationFailure() throws Exception {
-        mockMvc.perform(get("/api/creator/events").param("userId", "1").param("page", "-1"))
+    /** 두 Event 목록 API가 잘못된 페이지 값을 입력 검증 오류로 반환하는지 검증한다. */
+    @ParameterizedTest
+    @MethodSource("invalidPageRequests")
+    void eventListsRejectInvalidPageRequests(String path, String parameter, String value) throws Exception {
+        mockMvc.perform(get(path).param("userId", "1").param(parameter, value))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
@@ -147,9 +151,9 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
     }
 
-    /** UTC offset이 포함된 수정 시각을 Instant로 해석해 명령에 전달하는지 검증한다. */
+    /** offset이 포함된 수정 시각을 UTC Instant로 정규화해 명령에 전달하는지 검증한다. */
     @Test
-    void updateEventAcceptsUtcInstants() throws Exception {
+    void updateEventNormalizesOffsetInstant() throws Exception {
         Event event = event(7L, "변경된 팬미팅");
         given(creatorEventService.update(any())).willAnswer(invocation -> {
             var command = invocation.getArgument(0, kr.co.cking.event.application.dto.UpdateEventCommand.class);
@@ -161,7 +165,7 @@ class EventManagementControllerTest {
         mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":2,"drawMethod":"WEIGHTED"}
+                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T18:00:00+09:00","endAt":"2026-09-21T18:00:00+09:00","winnerCount":2,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isOk());
     }
@@ -228,5 +232,16 @@ class EventManagementControllerTest {
                 "550e8400-e29b-41d4-a716-446655440000");
         ReflectionTestUtils.setField(event, "eventId", eventId);
         return event;
+    }
+
+    private static Stream<Arguments> invalidPageRequests() {
+        return Stream.of(
+                Arguments.of("/api/creator/events", "page", "-1"),
+                Arguments.of("/api/creator/events", "size", "0"),
+                Arguments.of("/api/creator/events", "size", "101"),
+                Arguments.of("/api/admin/events/pending", "page", "-1"),
+                Arguments.of("/api/admin/events/pending", "size", "0"),
+                Arguments.of("/api/admin/events/pending", "size", "101")
+        );
     }
 }
