@@ -3,6 +3,7 @@ package kr.co.cking.member.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.presentation.UserSelectionResponse;
 import kr.co.cking.member.presentation.UserSummary;
 import kr.co.cking.member.repository.MemberRepository;
@@ -29,5 +30,13 @@ public class MemberQueryService {
         Member member = memberRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return UserSelectionResponse.from(member);
+    }
+
+    public void validateAdmin(Long userId) {
+        Member member = memberRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (member.getRole() != MemberRole.ADMIN) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        }
     }
 }

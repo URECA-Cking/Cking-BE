@@ -4,6 +4,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.member.presentation.UserSelectionResponse;
 import kr.co.cking.member.presentation.UserSummary;
@@ -54,5 +55,36 @@ class MemberQueryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void ADMIN_사용자는_관리자_검증을_통과한다() {
+        Member member = mock(Member.class);
+        when(member.getRole()).thenReturn(MemberRole.ADMIN);
+        when(repository.findById(1L)).thenReturn(Optional.of(member));
+
+        service.validateAdmin(1L);
+    }
+
+    @Test
+    void 존재하지_않는_관리자는_RESOURCE_NOT_FOUND다() {
+        when(repository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.validateAdmin(999L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void ADMIN이_아닌_사용자는_FORBIDDEN이다() {
+        Member member = mock(Member.class);
+        when(member.getRole()).thenReturn(MemberRole.USER);
+        when(repository.findById(1L)).thenReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> service.validateAdmin(1L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
     }
 }
