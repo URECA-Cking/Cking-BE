@@ -1,4 +1,4 @@
-package kr.co.cking.entry;
+package kr.co.cking.event;
 
 /**
  * Redis Lua 응모 처리 결과코드 10종(통합 API 명세 v2.5 §5.3, 최종·CREATOR_MISMATCH 없음).
