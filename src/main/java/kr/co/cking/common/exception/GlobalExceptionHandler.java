@@ -12,6 +12,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 @Slf4j
 @RestControllerAdvice
@@ -53,6 +54,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(CommonErrorCode.VALIDATION_FAILED.status())
                 .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED, detail));
+    }
+
+    /** Spring MVC 메서드 파라미터 제약 위반을 공통 입력 검증 오류로 변환한다. */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHandlerMethodValidation(HandlerMethodValidationException e) {
+        return ResponseEntity
+                .status(CommonErrorCode.VALIDATION_FAILED.status())
+                .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED));
     }
 
     /**

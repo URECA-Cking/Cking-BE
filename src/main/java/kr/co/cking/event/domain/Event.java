@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import kr.co.cking.common.exception.BusinessException;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -27,40 +28,40 @@ public class Event {
     private Long eventId;
 
     private Long creatorId;
-
     private String requestId;
-
     private String title;
-
     private String description;
-
     private Instant startAt;
-
     private Instant endAt;
-
     private Integer winnerCount;
-
     private String drawMethod;
 
     @Enumerated(EnumType.STRING)
     private EventStatus status;
 
     private String cutoffStreamId;
-
     private Instant closedAt;
-
     private Instant publishedAt;
-
     private Instant deletedAt;
-
     private Long createdBy;
 
     @Column(updatable = false)
     private Instant createdAt;
 
     @Builder
-    private Event(Long creatorId, String requestId, String title, String description, Instant startAt, Instant endAt,
-                  Integer winnerCount, String drawMethod, EventStatus status, Long createdBy, Instant createdAt) {
+    private Event(
+            Long creatorId,
+            String requestId,
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            Integer winnerCount,
+            String drawMethod,
+            EventStatus status,
+            Long createdBy,
+            Instant createdAt
+    ) {
         this.creatorId = creatorId;
         this.requestId = requestId;
         this.title = title;
@@ -74,23 +75,89 @@ public class Event {
         this.createdAt = createdAt;
     }
 
-    /**
-     * API 명세 §4.1 displayStatus 규칙. SCHEDULED는 시각 무관 UPCOMING,
-     * CLOSING 이후 상태는 시각 무관 CLOSED — OPEN만 endAt과 비교가 필요하다.
-     */
+    /** Creator가 작성한 새 Event를 초안 상태로 생성한다. */
+    public Event(
+            Long creatorId,
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            int winnerCount,
+            DrawMethod drawMethod,
+            Long createdBy,
+            String requestId
+    ) {
+        this.creatorId = creatorId;
+        this.requestId = requestId;
+        this.title = title;
+        this.description = description;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.winnerCount = winnerCount;
+        this.drawMethod = drawMethod.name();
+        this.status = EventStatus.DRAFT;
+        this.createdBy = createdBy;
+        this.createdAt = Instant.now();
+    }
+
+    public void requestApproval() {
+        requireStatus(EventStatus.DRAFT);
+        status = EventStatus.PENDING_APPROVAL;
+    }
+
+    public void approve() {
+        requireStatus(EventStatus.PENDING_APPROVAL);
+        status = EventStatus.SCHEDULED;
+    }
+
+    public void reject() {
+        requireStatus(EventStatus.PENDING_APPROVAL);
+        status = EventStatus.REJECTED;
+    }
+
+    public void changeToDraft() {
+        requireStatus(EventStatus.REJECTED);
+        status = EventStatus.DRAFT;
+    }
+
+    public void update(
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            int winnerCount,
+            DrawMethod drawMethod
+    ) {
+        requireStatus(EventStatus.DRAFT);
+        this.title = title;
+        this.description = description;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.winnerCount = winnerCount;
+        this.drawMethod = drawMethod.name();
+    }
+
+    public void delete() {
+        if (status != EventStatus.DRAFT && status != EventStatus.REJECTED) {
+            throw new BusinessException(EventErrorCode.INVALID_STATE);
+        }
+        deletedAt = Instant.now();
+    }
+
     public DisplayStatus displayStatus(Instant now) {
         return DisplayStatus.of(status, endAt, now);
     }
 
-    /**
-     * createdAt을 채우지 않고 저장하면 Hibernate가 INSERT에 NULL을 명시해서
-     * DB의 DEFAULT CURRENT_TIMESTAMP(6)가 적용되지 않고 NOT NULL 위반으로 실패한다.
-     * Builder로 특정 시각을 지정한 경우(테스트 등)는 그대로 두고, 생략된 경우만 채운다.
-     */
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
             createdAt = Instant.now();
+        }
+    }
+
+    private void requireStatus(EventStatus expected) {
+        if (status != expected) {
+            throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
     }
 }

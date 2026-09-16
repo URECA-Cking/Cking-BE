@@ -56,7 +56,7 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
 - 생성 상태는 DRAFT다. 성공은 201이며 응답은 `{ "eventId": 1, "status": "DRAFT" }`다.
 - `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다.
 - `userId`, `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가, description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이며 drawMethod는 MVP에서 WEIGHTED만 허용한다.
-- 시간은 ISO-8601로 받고 서버에서 UTC 기준으로 처리한다.
+- 시간은 `Z` 또는 `+09:00`처럼 offset을 포함한 ISO-8601 instant로 받는다. 서버는 이를 UTC instant로 정규화해 처리하며, 응답 시각은 UTC `Z` 형식이다.
 
 ## PATCH /api/creator/events/{eventId}
 
@@ -123,6 +123,7 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 
 - 없는 Member 또는 Event는 `RESOURCE_NOT_FOUND`, 권한·소유권 위반은 `FORBIDDEN`이다.
 - 허용되지 않은 상태의 수정·삭제·심사·승인 요청은 `INVALID_STATE`다.
-- 동일 Event의 상충하는 명령은 `CONCURRENT_COMMAND`다.
+- 승인·거절처럼 Event 행 잠금으로 직렬화되는 상충 명령은 `EventCommandService`가 잠금을 획득하며, 선행 명령이 상태를 바꾼 뒤 후행 명령이 `INVALID_STATE`가 된다.
+- Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.
 - Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
 - `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
