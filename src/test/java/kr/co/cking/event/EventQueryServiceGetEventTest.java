@@ -96,4 +96,29 @@ class EventQueryServiceGetEventTest {
 
         verify(eventCache).save(CachedEvent.from(event));
     }
+
+    @Test
+    void 운영용_조회는_DRAFT_이벤트도_반환한다() {
+        Event draft = Event.builder()
+                .creatorId(7L)
+                .title("초안 이벤트")
+                .startAt(Instant.parse("2026-09-01T00:00:00Z"))
+                .endAt(Instant.parse("2026-09-30T00:00:00Z"))
+                .winnerCount(3)
+                .status(EventStatus.DRAFT)
+                .build();
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(draft));
+
+        Event found = service.getEventForOperation(1L);
+
+        assertThat(found.getStatus()).isEqualTo(EventStatus.DRAFT);
+        verify(eventCache, never()).find(any());
+    }
+
+    @Test
+    void invalidate하면_캐시를_지운다() {
+        service.invalidate(1L);
+
+        verify(eventCache).evict(1L);
+    }
 }

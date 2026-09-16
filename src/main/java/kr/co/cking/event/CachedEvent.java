@@ -11,6 +11,7 @@ public record CachedEvent(
         Instant startAt,
         Instant endAt,
         Integer winnerCount,
+        String drawMethod,
         EventStatus status
 ) implements Serializable {
 
@@ -23,6 +24,7 @@ public record CachedEvent(
                 event.getStartAt(),
                 event.getEndAt(),
                 event.getWinnerCount(),
+                event.getDrawMethod(),
                 event.getStatus()
         );
     }

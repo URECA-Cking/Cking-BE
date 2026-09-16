@@ -8,8 +8,10 @@ public record EventSummary(
         String title,
         Instant startAt,
         Instant endAt,
+        EventStatus status,
+        DisplayStatus displayStatus,
         Integer winnerCount,
-        DisplayStatus displayStatus
+        String drawMethod
 ) {
 
     public static EventSummary from(Event event, Instant now) {
@@ -19,8 +21,10 @@ public record EventSummary(
                 event.getTitle(),
                 event.getStartAt(),
                 event.getEndAt(),
+                event.getStatus(),
+                event.displayStatus(now),
                 event.getWinnerCount(),
-                event.displayStatus(now)
+                event.getDrawMethod()
         );
     }
 }

@@ -9,8 +9,10 @@ public record EventDetail(
         String description,
         Instant startAt,
         Instant endAt,
-        Integer winnerCount,
+        EventStatus status,
         DisplayStatus displayStatus,
+        Integer winnerCount,
+        String drawMethod,
         long myTicketBalance
 ) {
 
@@ -22,8 +24,10 @@ public record EventDetail(
                 event.description(),
                 event.startAt(),
                 event.endAt(),
-                event.winnerCount(),
+                event.status(),
                 DisplayStatus.of(event.status(), event.endAt(), now),
+                event.winnerCount(),
+                event.drawMethod(),
                 myTicketBalance
         );
     }

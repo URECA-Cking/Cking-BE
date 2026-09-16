@@ -1,9 +1,8 @@
 package kr.co.cking.event;
 
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.response.PageResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -16,12 +15,14 @@ public class EventController {
     private final EventQueryService eventQueryService;
 
     @GetMapping("/api/events")
-    public ApiResponse<Page<EventSummary>> getEvents(
+    public ApiResponse<PageResponse<EventSummary>> getEvents(
             @RequestParam(required = false) Long creatorId,
             @RequestParam(required = false) DisplayStatus status,
-            Pageable pageable
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(eventQueryService.getEvents(creatorId, status, pageable));
+        PageResponse<EventSummary> events = PageResponse.from(eventQueryService.getEvents(creatorId, status, page, size));
+        return ApiResponse.success(events);
     }
 
     @GetMapping("/api/events/{eventId}")
