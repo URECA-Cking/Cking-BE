@@ -1,0 +1,260 @@
+﻿통합 ID,원본 조,요구사항,역할,분류,비고,우선순위,진행상태,확인 필요
+FR-P1-001,1조,회원가입·로그인 없이 사전에 생성된 가상 사용자를 선택해 서비스에 진입한다,태연,가상 사용자,세션/토큰 발급 기반 로직이라 미션·응모권 API보다 앞단 공통 인프라 성격,1차 확정,시작 전,No
+FR-P1-002,1조,선택된 userId를 기준으로 이후 미션 수행과 응모권 처리를 수행한다,태연,가상 사용자,클라이언트가 전달한 사용자 ID가 아닌 인증된 사용자 식별자를 이후 모든 미션·응모권·응모 API가 공통으로 사용,1차 확정,시작 전,No
+FR-P1-003,1조,존재하지 않는 가상 사용자 ID는 미션 및 응모권 처리에 사용할 수 없다,태연,가상 사용자,"가상 사용자는 최소 userId, name, phone, email 보유",1차 확정,시작 전,No
+FR-P1-004,1조,크리에이터별 출석·좋아요 미션을 조회할 수 있다,문구,미션조회,"GET /api/creators/{creatorId}/missions, 1차 MVP는 ATTENDANCE·LIKE만 지원(API명세 v2.5 §4.1)",1차 확정,시작 전,No
+FR-P1-005,1조,미션 완료 처리 API를 제공한다,문구,미션수행,"POST /api/creators/{creatorId}/missions/{missionId}/complete(공통 API로 확정, 미션별 개별 API는 폐기)",1차 확정,시작 전,No
+FR-P1-006,1조,출석 미션을 수행할 수 있다,문구,출석 미션,"userId+creatorId+periodKey 기준 하루 1회만 인정, periodKey는 KST 기준 yyyyMMdd",1차 확정,시작 전,No
+FR-P1-007,1조,출석 완료 시 해당 크리에이터 전용 응모권 1장을 지급한다,문구,출석 미션,성공 시 TicketEarnService.earn() 호출로 이어짐(FR-UA-20),1차 확정,시작 전,No
+FR-P1-008,1조,periodKey는 일 단위로 관리하고 중복 적립 가드를 둔다,문구,출석 미션,Redis 가드 키 mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd}에 SETNX로 처리,1차 확정,시작 전,No
+FR-P1-009,1조,좋아요는 크리에이터별 하루 1회만 인정한다,문구,좋아요 미션,"userId+creatorId+periodKey 기준, contentId는 중복 판정 기준에 포함하지 않음(2026-09-11 해소: 콘텐츠 기준 아님)",1차 확정,시작 전,No
+FR-P1-010,1조,좋아요 완료 시 해당 크리에이터 전용 응모권 1장을 지급한다,문구,좋아요 미션,"하루 최대 1장, TicketEarnService.earn() 호출로 이어짐",1차 확정,시작 전,No
+FR-P1-011,1조,1차 MVP에서 좋아요 활동은 Mock 방식으로 검증한다,문구,좋아요 미션,실제 SNS 연동 없이 버튼 클릭=완료 처리,1차 확정,시작 전,No
+FR-P1-012,1조,좋아요를 취소해도 이미 지급한 응모권은 회수하지 않는다,문구,좋아요 미션,회수 로직 없음,1차 확정,시작 전,No
+FR-P1-013,1조,좋아요 취소 후 다시 좋아요를 해도 같은 날 추가 보상은 지급하지 않는다,문구,좋아요 미션,가드 키가 이미 SET된 상태이므로 자연히 차단됨,1차 확정,시작 전,No
+FR-P1-014,1조,미션 완료 시각은 서버 시각 기준으로 기록한다,문구,미션수행,클라이언트가 전달한 시각은 신뢰하지 않음,1차 확정,시작 전,No
+FR-P1-015,1조,동일 사용자·크리에이터·미션·periodKey의 미션 완료는 한 번만 인정한다(Business Key),문구,미션 멱등성,"출석/좋아요 판정 키는 userId+creatorId+periodKey, EARN API Business Key는 userId+creatorId+missionId+periodKey로 레이어가 다름(임의 통합 금지)",1차 확정,시작 전,No
+FR-P1-016,1조,버튼 연타·새로고침·동시 요청으로 동일 미션이 중복 적립되지 않아야 한다,문구,미션 멱등성,Redis SETNX 가드로 원자적으로 차단,1차 확정,시작 전,No
+FR-P1-017,1조,동일 requestId 재전송은 한 번만 처리한다(네트워크 재시도 멱등성),태연,미션 멱등성,"Redis 멱등키 idem:mission:{requestId}, TTL 24시간(성능용 캐시, 최종 안전망은 DB request_id UNIQUE)",1차 확정,시작 전,No
+FR-P1-018,1조,이미 처리된 requestId가 재요청되면 추가 지급 없이 기존 처리 결과를 반환한다,태연,미션 멱등성,응답 status=ALREADY_PROCESSED(HTTP 200),1차 확정,시작 전,No
+FR-P1-019,1조,새로운 requestId로 동일 미션이 요청되면 Business Key로 중복 여부를 확인한다,태연,미션 멱등성,status=DUPLICATE_MISSION(HTTP 409),1차 확정,시작 전,No
+FR-P1-020,1조,동일 requestId로 다른 요청 내용이 들어오면 오류 처리한다,태연,미션 멱등성,status=REQUEST_ID_CONFLICT/IDEMPOTENCY_CONFLICT(HTTP 409),1차 확정,시작 전,No
+FR-P1-021,1조,미션 완료가 인정되면 시스템 2의 Ticket EARN 서비스를 호출해 응모권 적립을 요청한다,태연,응모권 적립 연동,"TicketEarnService.earn(EarnCommand) 동일 프로세스 내 Service Method 호출(HTTP 아님, 분리 계획 생기면 그때 전환). 요청 필드: requestId(UUID), userId, creatorId, missionType, missionId, periodKey(YYYY-MM-DD), missionKey, amount",1차 확정,시작 전,No
+FR-P1-022,1조,EARN 성공 응답의 판단 기준을 정의한다,태연,응모권 적립 연동,Redis Balance 변경+Stream(stream:ticket-earned) 발행 완료 시점을 성공으로 판단(DB Consumer 반영까지는 기다리지 않음),1차 확정,시작 전,No
+FR-P1-023,1조,EARN 처리 결과코드를 HTTP 응답으로 매핑한다,태연,응모권 적립 연동,EARN 결과 Enum은 확정. HTTP Status 매핑은 Service Method 전환 여부에 따라 별도 결정하며 현재 보류,1차 확정,시작 전,No
+FR-P1-024,1조,EARN 처리 결과가 불명확할 때(타임아웃 등) 재시도 방식을 정의한다,태연,응모권 적립 연동,새 requestId를 만들지 않고 동일 requestId+missionKey로 재시도. Redis 성공 이후 DB 반영 실패는 시스템2 Consumer가 재처리,1차 확정,시작 전,No
+FR-P1-025,1조,응모권 최대 보유량 제한을 두지 않는다,태연,응모권 데이터,Balance 상한 없음,1차 확정,시작 전,No
+FR-P1-026,1조,사용자는 크리에이터별 현재 응모권 잔액을 조회할 수 있다,태연,응모권 조회,userId + creatorId 기준으로 조회,1차 확정,시작 전,No
+FR-P1-027,1조,사용자는 크리에이터별 응모권 적립·사용 이력을 조회할 수 있다,태연,응모권 조회,EARN·SPEND 이력을 크리에이터별로 제공,1차 확정,시작 전,No
+FR-P1-028,1조,응모권 Ledger는 수정·삭제하지 않는 append-only 로그로 관리한다,태연,응모권 데이터,delta_amount는 EARN 양수·SPEND 음수,1차 확정,시작 전,No
+FR-P1-029,1조,응모권 변경은 Redis 원자 처리 → Stream 발행 → Consumer의 MySQL 반영 순서로 처리한다,태연,응모권 연동,Consumer가 ticket_ledger와 user_ticket_balance를 멱등 반영하며 Redis와 MySQL은 하나의 Transaction으로 묶지 않음,1차 확정,시작 전,No
+FR-P1-030,1조,응모 요청 시 Event의 creatorId와 응모권의 creatorId가 일치하는지 검증한다,태연,응모권 연동,실제 검증은 시스템2에서 하며 확인만 한다,1차 확정,시작 전,No
+FR-P1-031,1조,응모권 Balance와 Ledger는 Member + Creator 기준으로 관리한다,태연,응모권 데이터,같은 Creator의 여러 Event가 동일 Balance를 사용,1차 확정,시작 전,No
+FR-P1-032,1조,이벤트의 creatorId와 응모권의 creatorId가 일치해야 한다,태연,응모권 연동,"실제 응모 시 검증은 시스템 2, 기준·계약은 시스템 1과 공동 관리",1차 확정,시작 전,No
+FR-P1-033,1조,"B트랙 Consumer Group cg:ticket-history가 stream:ticket-deducted를 소비하여 event_entry, ticket_ledger, user_ticket_balance를 하나의 DB Transaction으로 반영한다",태연,응모권 연동,"실제 Consumer 구현은 파트2, DB 구조·정합성 Contract는 태연 담당. request_key는 DB request_id로 매핑하고 event_entry.request_id UNIQUE로 중복을 방지한다",1차 확정,시작 전,No
+FR-P1-034,1조,응모권 만료 기간을 두지 않는다,태연,응모권 데이터,만료 처리 없음,1차 확정,시작 전,No
+FR-P2-001,2조,이벤트 목록 조회 시 상태(예정/진행중/마감) 표시,성집,목록·상세조회,"Event.status를 표시 기준으로 사용한다. SCHEDULED=예정, OPEN=진행 중, CLOSING=마감 처리 중, CLOSED 이후 상태=마감. deleted_at IS NULL만 조회한다.",1차 확정,시작 전,No
+FR-P2-002,2조,이벤트 상세 조회 시 응모기간·필요 응모권수·보유 응모권수 함께 제공,성집,목록·상세조회,클라이언트는 eventId만 전달하고 서버가 Event의 creatorId를 resolve한 뒤 ticket:balance:{creatorId}:{userId}를 조회한다. 키에 eventId는 포함하지 않는다.,1차 확정,시작 전,No
+FR-P2-003,2조,목록 조회 캐싱(cache:event)으로 마감 임박 트래픽 대응,성집,목록·상세조회,TTL이 end_at 넘으면 마감 이벤트 계속 노출 위험 — TTL = 5초,1차 확정,시작 전,No
+FR-P2-004,2조,유저·이벤트 기준 보유 응모권 수 조회,성집,잔액조회,eventId로 creatorId를 resolve한 뒤 ticket:balance:{creatorId}:{userId} GET. 원자처리 불필요(단순읽기),1차 확정,시작 전,No
+FR-P2-005,2조,조회값이 응모 시 선택 가능 수량의 상한이 됨,성집,잔액조회,최종 검증은 Lua(A트랙)가 재수행,1차 확정,시작 전,No
+FR-P2-006,2조,적립 트리거별 중복 적립 방지(출석체크/좋아요),성집,적립(EARN) 중복방지,출석체크와 좋아요 모두 userId+creatorId+KST 날짜(yyyyMMdd) 기준 하루 1회만 인정한다. 같은 크리에이터의 여러 콘텐츠 좋아요도 같은 날 추가 보상은 지급하지 않으며 contentId는 중복 보상 판정에 포함하지 않는다. Redis 가드는 mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd} 키에 SETNX로 처리한다.,1차 확정,시작 전,No
+FR-P2-007,2조,적립 이력 append-only 저장(SPEND와 동일 테이블·형식 공유),성집,적립(EARN) 중복방지,ticket_ledger type=EARN,1차 확정,시작 전,No
+FR-P2-008,2조,"미션 엔진이 시스템2의 적립 서비스 메서드를 호출하고, Redis Lua로 중복검증·잔액 증가·EARN Stream 발행을 수행한다",성집,적립(EARN) 중복방지,"하나의 Spring Boot 애플리케이션 내부 TicketEarnService.earn(EarnCommand) 서비스 메서드 호출로 연동한다. EarnCommand는 requestId, userId, creatorId, missionType, missionId, periodKey, missionKey, amount를 포함하며 Business Key는 userId+creatorId+missionId+periodKey다. Lua가 중복검증·Redis Balance 증가·stream:ticket-earned 발행을 원자적으로 처리하고, Consumer가 미션 완료 기록·EARN Ledger·DB Balance를 저장한다.",1차 확정,시작 전,No
+FR-P2-009,2조,응모요청 파라미터(eventId/userId/requestId/ticketCount) 수신,성집,응모요청 API,requestId는 클라이언트 생성 UUID이며 B는 형식만 사전검증한다.,1차 확정,시작 전,No
+FR-P2-010,2조,ticketCount 컨트롤러 사전 검증(1 이상 100 이하 정수),성집,응모요청 API,Lua 호출 전 저비용 사전검증. 100장은 비정상적으로 큰 입력을 막기 위한 방어용 상한이며 최종 잔액 검증은 Lua가 수행한다.,1차 확정,시작 전,No
+FR-P2-011,2조,Lua 반환값을 HTTP 응답으로 매핑,성집,응모요청 API,Lua 결과코드 계약은 SUCCESS·DUPLICATE_REPLAY·EVENT_NOT_OPEN·EVENT_CLOSED·INSUFFICIENT_BALANCE·INVALID_TICKET_COUNT·IDEMPOTENCY_CONFLICT·GATE_NOT_LOADED·BALANCE_NOT_LOADED·SYSTEM_ERROR 10종이다. HTTP 상태는 공통 기준에 따라 각 코드와 1:1 매핑하며 구체 값은 구현 시 확정한다.,1차 확정,시작 전,No
+FR-P2-012,2조,Stream 컨슈머로 응모 이력 append-only 저장,성집,Stream 컨슈머,"컨슈머그룹 cg:ticket-history, 처리후 XACK",1차 확정,시작 전,No
+FR-P2-013,2조,재전달(at-least-once) 시 DB 중복 반영 방지,성집,Stream 컨슈머,event_entry.request_id UNIQUE. UNIQUE 위반 시 기존 데이터가 동일 요청인지 확인한 경우에만 정상 중복으로 처리한다.,1차 확정,시작 전,No
+FR-P2-014,2조,소비 결과로 user_ticket_balance 반영,성집,Stream 컨슈머,Redis 잔액과 별개의 DB 사본,1차 확정,시작 전,No
+FR-P2-015,2조,마감 오케스트레이션 내부에서 cutoff 범위의 Stream 처리 완료 상태를 확인한다,성집,처리완료 신호,"시스템2 마감 서비스가 cutoffStreamId 범위의 정상 승인 응모 DB 반영, 미처리·미ACK·미해결 Dead 응모 부재를 확인한다. 이 확인은 이벤트별 Stream 미처리 개수(pendingCount)를 반환하는 내부 API로 구현하며, 이 API는 시스템2(B트랙) 내부 구현으로 유지된다. 단 시스템3은 이 API를 직접 호출하지 않고 awaitDrain() 내부 구현에 흡수되어 쓰인다 — 외부(시스템3)에 노출되는 API가 없다는 뜻이지, API 자체가 없는 게 아니다. (v1.5.4 §6.6 근거)",1차 확정,시작 전,No
+FR-P2-016,2조,시스템2는 Drain 완료 후 CLOSED를 확정하고 Snapshot 생성 서비스를 호출한다,성집,처리완료 신호,시스템3은 Event.status == CLOSED만 신뢰하며 Redis Stream 상태를 다시 확인하지 않는다. CLOSED Commit 후 SnapshotService.createOfficialSnapshot(eventId)를 호출한다.,1차 확정,시작 전,No
+FR-P2-017,2조,실패 메시지는 PEL(Pending Entries List)에 남음,성집,실패재처리·DLQ,Redis Streams 기본 동작,1차 확정,시작 전,No
+FR-P2-018,2조,서버 재기동 후에도 PEL 미처리 메시지 이어받아 처리,성집,실패재처리·DLQ,XCLAIM으로 소유권 회수,1차 확정,시작 전,No
+FR-P2-019,2조,장기 미처리 메시지는 dead 스트림으로 재발행(DLQ 대체),성집,실패재처리·DLQ,Redis Streams는 DLQ 미지원 — XPENDING 기반 직접 구현,1차 확정,시작 전,No
+FR-P2-020,2조,Dead Stream으로 이동한 메시지는 운영자가 백오피스에서 확인 후 수동 replay 처리한다,성집,실패재처리·DLQ,최대 재시도 후 Dead Stream으로 이동하며 원본 Stream ID와 payload를 보존한다. 운영자가 수동 replay로 재처리한다. 지속적인 Redis·DB 불일치가 확인되어 별도 보정이 필요한 경우에만 ticket_ledger에 COMPENSATE를 append-only 기록하고 Redis를 DB 기준값으로 재동기화한다.,1차 확정,시작 전,No
+FR-P2-021,2조,Redis 잔액과 DB 잔액(및 이력 합계)을 주기적으로 비교,성집,정합성검증,배치 주기 5분,1차 확정,시작 전,No
+FR-P2-022,2조,불일치 발견 시 알림/로그 기록,성집,정합성검증,"일시적 Stream 비동기 지연은 즉시 오류·보정하지 않는다. 일정 시간 지속되거나 반복 검출된 불일치만 이상으로 판단한다. DB Ledger를 최종 기준으로 하며, 보정 시 COMPENSATE를 append-only 기록한 뒤 Redis를 DB 기준값으로 재동기화한다.",1차 확정,시작 전,No
+FR-P2-023,2조,자동 마감 대상(status=OPEN AND endAt≤now)을 조회하고 수동 마감 요청과 동일한 마감 서비스를 호출한다,성집,이벤트마감 배치,"자동·수동 마감 모두 시스템2의 동일한 마감 오케스트레이션을 사용한다. 시스템4는 권한과 요청 조건을 검증한 뒤 서비스 메서드로 전달한다. 마감 완료 여부 폴링은 관리자용 경량 상태조회 API GET /admin/events/{id}/closing-status로 확정(CLOSING/CLOSED 이분값만 반환, 진행률·미처리건수 등 세부 수치는 반환 안 함). 내부 구현은 시스템4 모듈이 시스템2 모듈의 서비스 메서드를 인프로세스로 직접 호출하는 방식이며 별도 HTTP 내부호출은 아니다. (v1.5.4 §6.2 근거)",1차 확정,시작 전,No
+FR-P2-024,2조,EventCommandService를 통해 OPEN → CLOSING → CLOSED를 순차 전이한다,성집,이벤트마감 배치,"Gate 차단과 cutoffStreamId 확정 후 EventCommandService.startClosing(eventId, cutoffStreamId)를 호출한다. 시스템2가 Drain 완료 조건을 확인한 뒤 completeClosing(eventId)로 CLOSED와 closedAt을 기록한다. CLOSED Commit 후 SnapshotService.createOfficialSnapshot(eventId)를 호출하며, Snapshot 생성 실패 시에도 CLOSED를 되돌리지 않는다.",1차 확정,시작 전,No
+FR-P2-025,2조,상태 전환과 함께 cache:event 무효화,성집,이벤트마감 배치,NFR-B-02 캐시 리스크의 실질적 해소 수단,1차 확정,시작 전,No
+FR-P2-026,2조,이벤트 생명주기 배치 실행 주기 결정,성집,이벤트마감 배치,EventLifecycleScheduler가 tick마다 먼저 status=SCHEDULED AND startAt≤now<endAt 이벤트를 조회해 open(eventId)를 호출하고 그다음 status=OPEN AND endAt≤now 이벤트를 탐색해 동일 마감 서비스를 호출한다. 자동 마감 주기는 10초로 확정한다. Stream Drain 완료 판단과는 별도이며 stream-lag API를 사용하지 않는다.,1차 확정,시작 전,No
+FR-P2-027,2조,이벤트 마감 여부를 Lua 내부에서 검증한다,자비,응모요청 API,"""자정 등 날짜 경계 케이스도 정확히 판정. 판단 근거는 FR-25에서 확정”",1차 확정,시작 전,No
+FR-P2-028,2조,잔액 충분 여부를 Lua 내부에서 검증한다,자비,응모요청 API,ticket:balance가 요청 수량 이상인지 확인. 요청 수량은 보유 응모권 수 내에서만 허용,1차 확정,시작 전,No
+FR-P2-029,2조,중복 요청 여부를 idem:{requestId} 존재 확인과 request fingerprint 비교로 검증한다,자비,응모요청 API,동일 requestId와 동일 fingerprint면 저장된 이전 응답을 그대로 반환한다. 동일 requestId에 다른 payload면 IDEMPOTENCY_CONFLICT로 처리한다. requestId는 B가 형식만 사전검증하고 실제 중복 판정은 여기서 수행한다.,1차 확정,시작 전,No
+FR-P2-030,2조,마감/잔액/중복 세 검증을 하나의 Lua 스크립트 안에서 순차 실행해 원자성을 보장한다,자비,응모요청 API,검증 사이에 다른 요청이 끼어들 수 없음(Redis Lua는 단일 스레드 실행),1차 확정,시작 전,No
+FR-P2-031,2조,"""마감 여부 판단 근거: event.status == OPEN && now < endAt로 확정”",자비,응모요청 API,"자연마감(배치 지연 틈)은 now < endAt 비교가, 수동마감(시간과 무관)은 status == OPEN 비교가 각각 막아줌 — 두 조건 AND로 확정. 수동 마감 API는 DB event.status 갱신과 동시에 Redis event:status:{eventId}도 갱신해야 함",1차 확정,시작 전,No
+FR-P2-032,2조,세 검증 통과 시 DECR로 잔액을 차감한다,자비,응모요청 API,,1차 확정,시작 전,No
+FR-P2-033,2조,차감과 함께 idem:{requestId} 키에 fingerprint와 응답을 저장한다(TTL 1시간),자비,응모요청 API,재요청 시 동일 fingerprint에 한해 결과를 재현한다. TTL 만료 후 최종 안전망은 event_entry.request_id UNIQUE다.,1차 확정,시작 전,No
+FR-P2-034,2조,차감 성공 시 XADD로 stream:ticket-deducted에 이벤트를 발행한다,자비,응모요청 API,"B의 Stream 컨슈머(FR-09, FR-10, FR-11)가 이 이벤트를 소비",1차 확정,시작 전,No
+FR-P2-035,2조,차감+idem 저장+Stream 발행을 같은 스크립트 안에서 원자적으로 실행한다,자비,응모요청 API,차감은 됐는데 이벤트는 발행 안 되는 반쪽 상태를 원천 차단,1차 확정,시작 전,No
+FR-P2-036,2조,Lua 반환값을 결과 코드 계약으로 정의하고 B와 연동한다,자비,응모요청 API,"FR-08의 10개 결과코드 계약을 사용한다. 동일 requestId·동일 payload는 DUPLICATE_REPLAY로 기존 성공 결과를 반환하고, payload가 다르면 IDEMPOTENCY_CONFLICT다.",1차 확정,시작 전,No
+FR-P2-037,2조,수동 마감 권한·상태 검증 및 화면 처리,성집,운영/결과 조회,"이벤트·응모 시스템은 수동 마감 요청자의 권한과 이벤트 상태를 검증한 뒤 시스템2의 마감 서비스 메서드를 호출한다. 크리에이터는 자신이 소유한 이벤트만, 관리자는 모든 이벤트를 수동 마감할 수 있다.
+
+Event.status가 OPEN인 경우에만 마감 처리를 시작한다. 이미 CLOSING 또는 CLOSED라면 오류를 발생시키지 않고 현재 상태를 반환한다.
+
+화면에서는 OPEN일 때 마감 버튼을 활성화한다. CLOSING에서는 버튼을 비활성화하고 ‘마감 처리 중’, CLOSED에서는 버튼을 비활성화하고 ‘마감 완료’로 표시한다.",1차 확정,시작 전,No
+FR-P2-038,2조,"Stream 소비는 at-least-once 전제, 중복소비가 잔액 이중반영 금지",성집,비기능요구사항,,1차 확정,시작 전,No
+FR-P2-039,2조,cache:event TTL은 end_at을 넘지 않도록 설계,성집,비기능요구사항,TTL = 5초,1차 확정,시작 전,No
+FR-P2-040,2조,컨슈머 재기동 시 PEL 미처리 메시지 유실 없이 이어받음,성집,비기능요구사항,,1차 확정,시작 전,No
+FR-P2-041,2조,정합성 검증 배치는 운영 중 지속적으로 스케줄 실행,성집,비기능요구사항,정합성 검증 배치 주기 5분,1차 확정,시작 전,No
+FR-P2-042,2조,시연·검증용 더미 유저·응모권 데이터 시딩 스크립트 준비,성집,비기능요구사항,"과제 전제조건 대응, A/B 공통 관심사",1차 신설,시작 전,No
+FR-P2-043,2조,Lua 스크립트의 동시성 정합성을 실제 부하 테스트로 검증한다,자비,비기능요구사항,코드 리뷰로 대체 불가 - 동시 요청 시 쿠폰이 초과 차감되지 않는지 실측 필요. B 목록에 이 항목이 없어서 A가 담당,확인 필요,시작 전,No
+FR-P2-044,2조,추첨 결과 공개 조건 및 중복 공개 처리,성집,운영/결과 조회,"시스템4는 관리자 권한과 결과 공개 조건을 검증한 뒤 결과 공개 서비스를 호출한다. 공개는 Event.status가 DRAW_COMPLETED이고 공식 Drawing이 COMPLETED + PRIVATE인 경우에만 허용한다.
+
+시스템3은 공식 Drawing의 visibility를 PRIVATE에서 PUBLIC으로 변경한 뒤 EventCommandService.publish(eventId)를 호출하여 Event.status를 PUBLISHED로 전환한다.
+
+이미 Drawing.visibility가 PUBLIC이고 Event.status가 PUBLISHED라면 중복 알림이나 추가 상태 변경 없이 기존 공개 결과를 반환한다. 화면에서는 공개 버튼을 비활성화하고 기존 공개 결과를 표시한다.",1차 확정,시작 전,No
+FR-P3-001,3조,"이벤트는 OPEN, CLOSING, CLOSED 상태 전이를 지원해야 한다.",윤희,이벤트 마감,Event 상태 변경은 EventCommandService를 통해 수행,1차 확정,시작 전,No
+FR-P3-002,3조,OPEN 상태이며 endAt <= now인 이벤트를 자동 마감 대상으로 조회해야 한다.,윤희,이벤트 마감,자동 마감 스케줄러,1차 확정,시작 전,No
+FR-P3-003,3조,자동 마감 대상 조회는 10초 주기로 수행해야 한다.,윤희,이벤트 마감,EventLifecycleScheduler,1차 확정,시작 전,No
+FR-P3-004,3조,크리에이터 또는 관리자의 수동 마감 요청을 처리할 수 있어야 한다.,윤희,이벤트 마감,권한 검증은 호출 측 운영 영역에서 수행,1차 확정,시작 전,No
+FR-P3-005,3조,수동 마감 요청 시 Gate 차단 이후 202 Accepted를 반환하고 Drain은 비동기로 처리해야 한다.,윤희,이벤트 마감,장시간 HTTP 요청 방지,1차 확정,시작 전,No
+FR-P3-006,3조,이벤트 마감 시작 시 신규 응모를 차단해야 한다.,윤희,이벤트 마감,Redis Entry Gate 차단,1차 확정,시작 전,No
+FR-P3-007,3조,Gate 차단 이후 신규 응모가 승인되어서는 안 된다.,윤희,이벤트 마감,동시성 검증 대상,1차 확정,시작 전,No
+FR-P3-008,3조,이벤트 마감 시 Redis Stream에 Close Barrier를 생성하고 마감 기준 cutoffStreamId를 확정해야 한다.,윤희,이벤트 마감,Barrier Stream ID를 cutoff로 사용,1차 확정,시작 전,No
+FR-P3-009,3조,동일 이벤트의 마감 재시도 시 최초 확정한 cutoff를 재사용해야 한다.,윤희,이벤트 마감,새로운 cutoff 생성 금지,1차 확정,시작 전,No
+FR-P3-010,3조,Gate 차단 및 cutoff 확정 후 Event를 OPEN → CLOSING으로 전이해야 한다.,윤희,이벤트 마감,cutoffStreamId DB 저장,1차 확정,시작 전,No
+FR-P3-011,3조,응모와 마감이 동시에 발생할 경우 Gate 차단 이전 정상 승인 응모만 추첨 대상에 포함해야 한다.,윤희,이벤트 마감,마감 동시성 핵심,1차 확정,시작 전,No
+FR-P3-012,3조,자동·수동 마감이 동시에 실행되어도 OPEN → CLOSING 상태 전이는 한 번만 발생해야 한다.,윤희,이벤트 마감,중복 마감 방지,1차 확정,시작 전,No
+FR-P3-013,3조,cutoff 범위의 정상 승인 응모가 모두 DB에 반영될 때까지 Drain해야 한다.,윤희,이벤트 마감,Entry/Ledger DB 반영 확인,1차 확정,시작 전,No
+FR-P3-014,3조,cutoff 범위에 미처리·미ACK 응모가 존재하지 않아야 CLOSED로 전환할 수 있다.,윤희,이벤트 마감,Drain 완료 조건,1차 확정,시작 전,No
+FR-P3-015,3조,cutoff 범위에 미해결 Dead Stream 응모가 존재하지 않아야 CLOSED로 전환할 수 있다.,윤희,이벤트 마감,장애 메시지 확인,1차 확정,시작 전,No
+FR-P3-016,3조,Drain 조건을 모두 만족한 경우에만 CLOSING → CLOSED로 전환하고 closedAt을 기록해야 한다.,윤희,이벤트 마감,CLOSED = 응모 데이터 확정 완료,1차 확정,시작 전,No
+FR-P3-017,3조,Drain 실패 또는 타임아웃 시 강제로 CLOSED로 전환하지 않고 CLOSING 상태를 유지해야 한다.,윤희,이벤트 마감,재시도/운영 알림 대상,1차 확정,시작 전,No
+FR-P3-018,3조,CLOSING 상태에서 서버가 재기동되어도 기존 cutoff를 이용해 Drain을 재개할 수 있어야 한다.,윤희,이벤트 마감,장애 복구,1차 확정,시작 전,No
+FR-P3-019,3조,관리자는 이벤트의 마감 상태를 CLOSING/CLOSED로 조회할 수 있어야 한다.,윤희,이벤트 마감,"closing-status API, 진행률·pendingCount 외부 노출 X",1차 확정,시작 전,No
+FR-P3-020,3조,Snapshot은 Event가 CLOSED인 경우에만 생성해야 한다.,윤희,이벤트 마감,OPEN/CLOSING 생성 금지,1차 확정,시작 전,No
+FR-P3-021,3조,CLOSED 확정 후 공식 Snapshot 생성을 트리거해야 한다.,윤희,이벤트 마감,CLOSED Commit과 Snapshot 생성 TX 분리,1차 확정,시작 전,No
+FR-P3-022,3조,동일 사용자의 여러 응모는 사용한 응모권 수를 합산하여 하나의 Candidate로 생성해야 한다.,윤희,이벤트 마감,userId + ticketCount,1차 확정,시작 전,No
+FR-P3-023,3조,ticketCount <= 0인 후보는 Snapshot 대상에서 제외해야 한다.,윤희,이벤트 마감,후보 유효성,1차 확정,시작 전,No
+FR-P3-024,3조,Snapshot Candidate는 항상 동일한 기준으로 정렬해야 한다.,윤희,이벤트 마감,기본 userId ASC,1차 확정,시작 전,No
+FR-P3-025,3조,Event 하나에는 공식 Snapshot이 하나만 존재해야 한다.,윤희,이벤트 마감,UNIQUE(event_id),1차 확정,시작 전,No
+FR-P3-026,3조,동일 Snapshot 생성 요청이 반복·동시 실행되어도 공식 Snapshot은 하나만 생성되어야 한다.,윤희,이벤트 마감,멱등성 + UNIQUE,1차 확정,시작 전,No
+FR-P3-027,3조,생성 완료된 공식 Snapshot과 Candidate는 수정되지 않아야 한다.,윤희,이벤트 마감,Immutable Snapshot,1차 확정,시작 전,No
+FR-P3-028,3조,최초 추첨과 모든 재추첨은 동일한 공식 Snapshot을 사용해야 한다.,윤희,이벤트 마감,재추첨 Snapshot 재생성 금지,1차 확정,시작 전,No
+FR-P3-029,3조,Snapshot 생성 시 후보 및 추첨 조건을 정규화하여 Snapshot Hash를 생성·저장해야 한다.,윤희,이벤트 마감,SHA-256 등,1차 확정,시작 전,No
+FR-P3-030,3조,"Snapshot Hash에는 eventId, userId, ticketCount, winnerCount, drawMethod, algorithmVersion이 포함되어야 한다.",윤희,이벤트 마감,Canonicalization 필요,1차 확정,시작 전,No
+FR-P3-031,3조,추첨 직전 Snapshot Hash를 동일한 정규화 방식으로 재계산하여 저장된 Hash와 비교해야 한다.,성원,이벤트 마감,"윤희가 생성, 성원이 추첨 직전 검증",1차 확정,시작 전,No
+FR-P3-032,3조,Snapshot Hash가 일치하지 않으면 공식 추첨을 실행해서는 안 된다.,성원,이벤트 마감,무결성 검증 실패,1차 확정,시작 전,No
+FR-P3-033,3조,Snapshot Hash 검증 결과와 검증 시각을 기록해야 한다.,성원,이벤트 마감,감사 가능성,1차 확정,시작 전,No
+FR-P3-034,3조,CLOSED 상태인데 Snapshot이 없는 이벤트를 탐색하여 Snapshot 생성을 복구해야 한다.,윤희,이벤트 마감,누락 복구 스케줄러,1차 확정,시작 전,No
+FR-P3-035,3조,각 Drawing은 추첨 결과를 결정적으로 재현할 수 있는 Seed를 가져야 한다.,성원,이벤트 마감,Drawing별 Seed,1차 확정,시작 전,No
+FR-P3-036,3조,동일 Drawing의 Retry에서는 Seed를 변경해서는 안 된다.,성원,이벤트 마감,재현성 보장,1차 확정,시작 전,No
+FR-P3-037,3조,추첨 엔진은 DrawInput을 입력받아 DrawOutput을 반환해야 한다.,성원,이벤트 마감,윤희↔성원 계약,1차 확정,시작 전,No
+FR-P3-038,3조,"DrawInput에는 Snapshot, Seed, Algorithm Version, winnerCount 및 후보자 정보를 포함해야 한다.",성원,이벤트 마감,후보 userId/ticketCount,1차 확정,시작 전,No
+FR-P3-039,3조,동일 DrawInput은 실행 시점이나 서버와 관계없이 동일 DrawOutput을 반환해야 한다.,성원,이벤트 마감,결정적 추첨,1차 확정,시작 전,No
+FR-P3-040,3조,추첨 엔진은 DB·Redis 등 외부 저장소에 직접 의존하지 않는 순수 로직으로 구현해야 한다.,성원,이벤트 마감,DrawingEngine,1차 확정,시작 전,No
+FR-P3-041,3조,응모권 수에 비례한 가중 추첨 WEIGHTED_V1을 지원해야 한다.,성원,이벤트 마감,현재 MVP 핵심 방식,1차 확정,시작 전,No
+FR-P3-042,3조,동일 Drawing에서 동일 사용자가 중복 당첨되어서는 안 된다.,성원,이벤트 마감,당첨 후 후보군 제거,1차 확정,시작 전,No
+FR-P3-043,3조,정확히 winnerCount명만 선정해야 한다.,성원,이벤트 마감,후보 충분 시,1차 확정,시작 전,No
+FR-P3-044,3조,winnerCount > candidateCount이면 추첨을 실행하지 않아야 한다.,성원,이벤트 마감,유효성 검증,1차 확정,시작 전,No
+FR-P3-045,3조,사용자의 응모권 수와 관계없이 동일 확률을 적용하는 UNIFORM_V1 추첨을 지원해야 한다.,성원,이벤트 마감,기존 통합 v1.5.4 MVP는 WEIGHTED 중심,신설,시작 전,No
+FR-P3-046,3조,Seed Commitment를 생성하여 마감 전 Seed 조작 여부를 사후 검증할 수 있어야 한다.,성원,이벤트 마감,"별도 추첨 요구사항 v2에는 존재, 통합 v1.5.4 반영 여부 확인",확인 필요,시작 전,No
+FR-P3-047,3조,최초 공식 추첨은 CLOSED + Snapshot 존재 + Hash 검증 성공 + Seed/Algorithm Version 확정 후에만 실행해야 한다.,윤희,이벤트 마감,INITIAL 실행 조건,1차 확정,시작 전,No
+FR-P3-048,3조,동일 Event에는 INITIAL Drawing이 하나만 존재해야 한다.,윤희,이벤트 마감,공식 추첨 단일성,1차 확정,시작 전,No
+FR-P3-049,3조,버튼 연타·동시 요청·다중 인스턴스에서도 INITIAL Drawing은 하나만 생성되어야 한다.,윤희,이벤트 마감,DB UNIQUE/동시성 제어,1차 확정,시작 전,No
+FR-P3-050,3조,Drawing은 READY → RUNNING → COMPLETED/FAILED 상태를 관리해야 한다.,윤희,이벤트 마감,Drawing lifecycle,1차 확정,시작 전,No
+FR-P3-051,3조,공식 추첨 실행 시 확정된 DrawInput으로 DrawingEngine을 호출해야 한다.,윤희,이벤트 마감,성원 엔진 호출,1차 확정,시작 전,No
+FR-P3-052,3조,"추첨 결과 Winner에는 drawingId, eventId, userId, rank, appliedTicketCount를 저장해야 한다.",윤희,이벤트 마감,Winner 불변 결과,1차 확정,시작 전,No
+FR-P3-053,3조,동일 Drawing 내 Winner의 rank와 userId가 중복되어서는 안 된다.,윤희/성원,이벤트 마감,엔진 + DB 양쪽 방어,1차 확정,시작 전,No
+FR-P3-054,3조,추첨 결과를 정규화하여 Result Hash를 생성·저장해야 한다.,성원,이벤트 마감,결과 무결성,1차 확정,시작 전,No
+FR-P3-055,3조,"INITIAL 추첨 완료 시 Winner 전체 저장, Drawing COMPLETED, resultHash 저장, Event CLOSED → DRAW_COMPLETED를 하나의 Transaction으로 처리해야 한다.",윤희,이벤트 마감,핵심 원자성,1차 확정,시작 전,No
+FR-P3-056,3조,INITIAL 결과 저장 중 하나라도 실패하면 전체 결과를 Rollback해야 한다.,윤희,이벤트 마감,부분 Winner 저장 금지,1차 확정,시작 전,No
+FR-P3-057,3조,추첨 실패 시 실패 단계·원인·시각·Retry 횟수를 기록해야 한다.,윤희,이벤트 마감,Attempt History,1차 확정,시작 전,No
+FR-P3-058,3조,일시적인 시스템 장애로 실패한 Drawing은 기존 Drawing으로 Retry할 수 있어야 한다.,윤희,이벤트 마감,새 Drawing 생성 X,1차 확정,시작 전,No
+FR-P3-059,3조,"Drawing Retry 시 Snapshot, Seed, Algorithm Version, winnerCount, Drawing ID를 변경해서는 안 된다.",윤희,이벤트 마감,동일 조건 재실행,1차 확정,시작 전,No
+FR-P3-060,3조,Snapshot Hash 불일치나 후보 부족 등 입력 자체가 유효하지 않은 경우 동일 조건 Retry를 수행하지 않아야 한다.,윤희,이벤트 마감,기술 실패와 비즈니스 실패 구분,1차 확정,시작 전,No
+FR-P3-061,3조,이미 정상 추첨 결과가 존재하는 Drawing에 재실행 요청이 오면 다시 추첨하지 않아야 한다.,윤희,이벤트 마감,중복 실행 방지,1차 확정,시작 전,No
+FR-P3-062,3조,RUNNING 중 서버가 종료된 경우 기존 Drawing을 기준으로 복구할 수 있어야 한다.,윤희,이벤트 마감,장애 복구,1차 확정,시작 전,No
+FR-P3-063,3조,완료된 Drawing을 당시 확정된 입력으로 재현 검증할 수 있어야 한다.,성원,이벤트 마감,INITIAL/REDRAW 모두,1차 확정,시작 전,No
+FR-P3-064,3조,"재현 검증에는 Snapshot, Snapshot Hash, Seed, Algorithm Version, Exclusion List, winnerCount를 사용해야 한다.",성원,이벤트 마감,현재 데이터 사용 금지,1차 확정,시작 전,No
+FR-P3-065,3조,"재현 결과의 Snapshot Hash, Input Hash, Winner, Rank, Result Hash를 기존 결과와 비교해야 한다.",성원,이벤트 마감,VERIFIED/FAILED,1차 확정,시작 전,No
+FR-P3-066,3조,재현 검증 결과는 VERIFIED 또는 VERIFICATION_FAILED로 기록해야 한다.,성원,이벤트 마감,Verification History,1차 확정,시작 전,No
+FR-P3-067,3조,재현 검증 이력은 append-only로 저장해야 한다.,성원,이벤트 마감,감사 가능성,1차 확정,시작 전,No
+FR-P3-068,3조,"재현 검증 과정에서 Event, Snapshot, Drawing, Winner를 변경해서는 안 된다.",성원,이벤트 마감,검증은 read-only,1차 확정,시작 전,No
+FR-P3-069,3조,승인된 RedrawRequest에 대해 실제 REDRAW Drawing을 실행할 수 있어야 한다.,윤희,이벤트 마감,운영 Workflow 승인 이후 호출,1차 확정,시작 전,No
+FR-P3-070,3조,재추첨은 최초 공식 Snapshot을 재사용해야 한다.,윤희,이벤트 마감,Snapshot 재생성 X,1차 확정,시작 전,No
+FR-P3-071,3조,재추첨 후보에서 해당 Event의 기존 모든 Winner를 제외해야 한다.,윤희,이벤트 마감,DECLINED/DISQUALIFIED도 재진입 금지,1차 확정,시작 전,No
+FR-P3-072,3조,재추첨은 최초 추첨과 동일한 drawMethod와 algorithmVersion을 사용해야 한다.,윤희/성원,이벤트 마감,새 Seed만 생성,1차 확정,시작 전,No
+FR-P3-073,3조,새로운 재추첨 Drawing에는 새로운 Seed를 생성해야 한다.,성원,이벤트 마감,Retry 시에는 동일 Seed,1차 확정,시작 전,No
+FR-P3-074,3조,후보 수가 vacancyCount보다 부족하면 REDRAW Drawing을 생성하지 않아야 한다.,윤희,이벤트 마감,부분 재추첨 X,1차 확정,시작 전,No
+FR-P3-075,3조,후보 부족 시 executionStatus=INSUFFICIENT_CANDIDATES로 처리해야 한다.,윤희,이벤트 마감,vacancyCount 임의 감소 X,1차 확정,시작 전,No
+FR-P3-076,3조,동일 RedrawRequest가 동시에 처리되어도 REDRAW Drawing은 하나만 생성되어야 한다.,윤희,이벤트 마감,재추첨 실행 멱등성,1차 확정,시작 전,No
+FR-P3-077,3조,REDRAW Drawing 실패 후 Retry 시 새로운 Drawing이나 Seed를 생성해서는 안 된다.,윤희,이벤트 마감,기존 Drawing 재사용,1차 확정,시작 전,No
+FR-P3-078,3조,추첨 완료 결과를 Kafka 이벤트로 발행해야 한다.,성원,이벤트 마감,새 역할분담에 등장,1차 확정,시작 전,No
+FR-P3-079,3조,추첨 결과 저장과 Outbox Event 저장을 동일 Transaction으로 처리해야 한다.,윤희,이벤트 마감,Kafka 채택 시 필요,확인 필요,시작 전,No
+FR-P3-080,3조,Outbox 이벤트를 Kafka로 전달하여 추첨 결과 후속 처리를 수행해야 한다.,성원,이벤트 마감,Outbox/Kafka 채택 전제,확인 필요,시작 전,No
+FR-P3-081,3조,공개된 추첨 결과 조회를 위한 Read Model을 제공해야 한다.,성원,이벤트 마감,CQRS성 구조가 실제 필요한지 확인,확인 필요,시작 전,No
+FR-P3-082,3조,동일 Snapshot + Seed + Algorithm Version + Exclusion List + winnerCount 입력은 항상 동일 Winner와 Rank를 생성해야 한다.,성원,이벤트 마감,결정적 재현성,1차 확정,시작 전,No
+FR-P3-083,3조,Event당 공식 Snapshot은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,동시 생성 포함,1차 확정,시작 전,No
+FR-P3-084,3조,Event당 INITIAL Drawing은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,다중 인스턴스 포함,1차 확정,시작 전,No
+FR-P3-085,3조,INITIAL 결과 확정은 Winner·Drawing·ResultHash·Event 상태가 원자적으로 저장되어야 한다.,윤희,이벤트 마감,Transaction invariant,1차 확정,시작 전,No
+FR-P3-086,3조,Gate 차단 이후 승인되는 신규 응모는 0건이어야 한다.,윤희,이벤트 마감,동시성 테스트,1차 확정,시작 전,No
+FR-P3-087,3조,CLOSED 이전 승인 응모의 Snapshot 누락은 0건이어야 한다.,윤희,이벤트 마감,마감/추첨 연결 정합성,1차 확정,시작 전,No
+FR-P3-088,3조,동일 Drawing에서 동일 사용자의 중복 당첨은 0건이어야 한다.,성원,이벤트 마감,알고리즘 검증,1차 확정,시작 전,No
+FR-P3-089,3조,기존 Winner가 재추첨에서 다시 당첨되는 경우는 0건이어야 한다.,윤희/성원,이벤트 마감,후보 필터 + 엔진 검증,1차 확정,시작 전,No
+FR-P4-090,4조,일반 사용자는 크리에이터 권한을 신청할 수 있다,혁준,Creator 승인,"신청 직후 creator_application.status=PENDING으로 생성한다. Creator 여부는 Member.role이 아니라 해당 Member의 Creator 존재 여부로 판단하며, 이미 Creator가 존재하는 Member는 신청할 수 없다.",1차 확정,시작 전,No
+FR-P4-091,4조,사용자는 자신의 크리에이터 신청 상태를 조회할 수 있다,혁준,Creator 승인,본인의 Creator 신청 상태 및 심사 결과를 조회한다.,1차 확정,시작 전,No
+FR-P4-092,4조,관리자는 크리에이터 신청 목록을 조회할 수 있다,혁준,Creator 승인,"관리자 권한을 검증하고 Creator 신청 목록을 조회한다. page/size 방식 사용. page=0 시작, size 기본 20, 최대 100.",1차 확정,시작 전,No
+FR-P4-093,4조,관리자는 PENDING 크리에이터 신청을 승인할 수 있다,혁준,Creator 승인,"PENDING → APPROVED 상태 변경, Creator 중복 존재 여부 확인, Creator 생성을 하나의 DB Transaction으로 처리한다. Creator는 해당 Member를 참조하며 Member당 최대 1개만 존재할 수 있다.",1차 확정,시작 전,No
+FR-P4-094,4조,관리자는 PENDING 크리에이터 신청을 거절할 수 있다,혁준,Creator 승인,PENDING → REJECTED로 변경하고 거절 사유와 심사 정보를 기록한다.,1차 확정,시작 전,No
+FR-P4-095,4조,APPROVED Creator만 이벤트 생성·관리 기능을 사용할 수 있다,혁준,Creator 승인,Event 생성·수정·삭제·승인 요청 전에 해당 Member에 대응하는 Creator가 존재하는지 확인한다. Creator 여부는 Member.role로 판단하지 않는다.,1차 확정,시작 전,No
+FR-P4-096,4조,크리에이터는 자신이 소유한 이벤트 목록을 조회할 수 있다,혁준,Event 운영,"요청 Member의 Creator를 확인하고 해당 Creator 소유 Event만 조회한다. 논리 삭제된 Event는 제외한다. page/size 방식 사용. page=0 시작, size 기본 20, 최대 100. 추가",1차 확정,시작 전,No
+FR-P4-097,4조,승인된 크리에이터는 DRAFT 이벤트를 생성할 수 있다,혁준,Event 운영,"승인된 Creator는 Event를 생성할 수 있으며, 생성 직후 Event 상태는 DRAFT로 저장한다.",1차 확정,시작 전,Yes
+FR-P4-098,4조,크리에이터는 DRAFT 또는 REJECTED 이벤트를 수정할 수 있다,혁준,Event 운영,"소유권을 검증하고 DRAFT, REJECTED 상태에서만 수정한다. REJECTED Event 수정 시 EventCommandService.changeToDraft(eventId)를 통해 REJECTED → DRAFT로 전환한다.",1차 확정,시작 전,No
+FR-P4-099,4조,크리에이터는 DRAFT 또는 REJECTED 이벤트를 논리 삭제할 수 있다,혁준,Event 운영,물리 삭제하지 않고 deletedAt을 기록한다. 그 외 상태에서는 삭제를 거부한다.,1차 확정,시작 전,No
+FR-P4-100,4조,크리에이터는 DRAFT 이벤트의 승인 요청을 할 수 있다,혁준,Event 승인,EventApprovalRequest를 생성한 뒤 EventCommandService.requestApproval(eventId)를 호출하여 DRAFT → PENDING_APPROVAL로 전환한다. 현재 상태가 허용되지 않으면 INVALID_STATE로 처리한다.,1차 확정,시작 전,No
+FR-P4-101,4조,PENDING_APPROVAL 이벤트는 수정할 수 없다,혁준,Event 승인,승인 심사 중인 Event에 대한 수정 요청을 거부한다.,1차 확정,시작 전,No
+FR-P4-102,4조,관리자는 승인 대기 이벤트를 조회할 수 있다,혁준,Event 승인,"PENDING_APPROVAL 상태의 Event와 승인 요청 정보를 조회한다. page/size 방식 사용. page=0 시작, size 기본 20, 최대 100.",1차 확정,시작 전,No
+FR-P4-103,4조,관리자는 승인 대기 이벤트를 승인할 수 있다,혁준,Event 승인,endAt이 이미 지난 Event는 승인하지 않는다. EventApprovalRequest를 APPROVED로 처리하고 EventCommandService.approve(eventId)를 호출하여 PENDING_APPROVAL → SCHEDULED로 전환한다.,1차 확정,시작 전,No
+FR-P4-104,4조,관리자는 승인 대기 이벤트를 거절할 수 있다,혁준,Event 승인,"EventApprovalRequest를 REJECTED로 처리하고 거절 사유를 기록한 뒤 EventCommandService.reject(eventId, reason)를 호출하여 PENDING_APPROVAL → REJECTED로 전환한다.",1차 확정,시작 전,No
+FR-P4-105,4조,Event 상태 변경은 공통 EventCommandService를 통해서만 수행한다,혁준,Event 상태,"Event 상태를 직접 변경하지 않고 모든 상태 전이는 공통 EventCommandService를 사용한다. 파트4는 requestApproval, approve, reject, changeToDraft, publish를 사용하며, 허용되지 않은 상태 전이는 INVALID_STATE, 존재하지 않는 Event는 RESOURCE_NOT_FOUND로 처리한다.",1차 확정,시작 전,No
+FR-P4-106,4조,크리에이터는 자신이 소유한 OPEN 이벤트의 수동 마감을 요청할 수 있다,혁준,수동 마감,"Creator 본인의 Event인지 검증한 뒤 파트2의 EventClosingService.startClosing(eventId)를 호출한다. 실제 Event 상태 확인, Gate 차단, Barrier 발행, cutoff 확정, OPEN → CLOSING, Drain 및 CLOSING → CLOSED 처리는 파트2가 담당한다. 이미 CLOSING 또는 CLOSED인 경우 새로운 마감 작업을 시작하지 않고 기존 상태를 멱등하게 반환한다.",1차 확정,시작 전,No
+FR-P4-107,4조,관리자는 OPEN 이벤트의 수동 마감을 요청할 수 있다,혁준,수동 마감,관리자 권한을 검증한 뒤 파트2의 EventClosingService.startClosing(eventId)를 호출한다. Event 상태와 실제 마감 처리 검증은 파트2가 담당하며 CLOSING 또는 CLOSED 재요청은 기존 상태를 멱등하게 반환한다.,1차 확정,시작 전,No
+FR-P4-108,4조,수동 마감 요청은 Gate 차단 후 202 Accepted로 응답한다,혁준,수동 마감,"EventClosingService.startClosing(eventId)가 Gate 차단, Barrier 발행, cutoff 확정 및 OPEN → CLOSING 처리를 완료한 뒤 ClosingResult(eventId, status)를 반환한다. 이후 Drain은 백그라운드에서 진행하며 클라이언트에는 202 Accepted와 ClosingResult를 공통 API 응답 봉투의 data로 반환한다.",1차 확정,시작 전,No
+FR-P4-109,4조,관리자는 이벤트 마감 완료 여부를 조회할 수 있다,혁준,수동 마감,"관리자 권한을 검증한 뒤 EventClosingService.getClosingStatus(eventId)를 호출하여 CLOSING 또는 CLOSED를 반환한다. cutoffStreamId, pendingCount, Stream lag, 진행률 등의 내부 마감 정보는 클라이언트에 노출하지 않는다.",1차 확정,시작 전,No
+FR-P4-110,4조,일반 사용자에게는 PUBLIC Drawing의 당첨 결과만 공개한다,혁준,결과 공개,Drawing.visibility=PUBLIC인 결과만 사용자에게 반환하며 PRIVATE 결과는 노출하지 않는다.,1차 확정,시작 전,No
+FR-P4-111,4조,공개 당첨 결과에는 개인정보 마스킹을 적용한다,혁준,개인정보,일반 사용자와 Creator에게 이름과 전화번호를 응답 단계에서 마스킹한다. DB 원본은 변경하지 않는다.,1차 확정,시작 전,No
+FR-P4-112,4조,관리자와 해당 당첨자 본인만 개인정보 원문을 조회할 수 있다,혁준,개인정보,관리자 또는 Winner 본인인 경우에만 원문 개인정보 조회를 허용한다.,1차 확정,시작 전,Yes
+FR-P4-113,4조,관리자는 COMPLETED·PRIVATE Drawing의 결과 공개를 요청할 수 있다,혁준,결과 공개,"공개 조건을 검증한 뒤 파트3의 Drawing 공개 Service Method를 호출한다. Drawing.status = COMPLETED이고 visibility = PRIVATE인 경우 PRIVATE → PUBLIC로 변경한다. 이미 PUBLIC인 경우 오류로 처리하지 않고 기존 공개 결과를 반환하여 멱등하게 처리하며, COMPLETED가 아닌 Drawing은 공개할 수 없다.",1차 확정,시작 전,No
+FR-P4-114,4조,최초 추첨 공개 완료 시 Event를 PUBLISHED로 전환한다,혁준,결과 공개,"INITIAL Drawing 공개는 파트4 PublicationService가 Transaction 경계를 소유한다. 파트3 Drawing 공개 Service의 PRIVATE → PUBLIC, EventCommandService.publish()를 통한 DRAW_COMPLETED → PUBLISHED, 당첨자 Notification 생성을 하나의 DB Transaction으로 처리하며, 중간 단계가 실패하면 전체 Rollback한다.",1차 확정,시작 전,No
+FR-P4-115,4조,재추첨 결과 공개 시 Event는 PUBLISHED를 유지한다,혁준,결과 공개,REDRAW Drawing 공개 시 파트4 PublicationService에서 파트3 Drawing 공개 Service를 호출하여 PRIVATE → PUBLIC로 변경하고 신규 당첨자 Notification을 생성한다. Event는 이미 PUBLISHED 상태이므로 상태를 변경하지 않는다. 동일 공개 요청은 멱등하게 처리한다.,1차 확정,시작 전,No
+FR-P4-116,4조,사용자는 자신의 당첨 내역과 운영 상태를 조회할 수 있다,혁준,Winner,Winner와 WinnerManagement를 기준으로 본인의 당첨 내역을 조회한다. Winner 자체는 불변 데이터다. Winner 생성 시 WinnerManagement(status=SELECTED) 초기 데이터도 파트3의 추첨 결과 확정 Transaction에서 함께 생성하여 Winner만 존재하고 WinnerManagement가 없는 중간 상태를 허용하지 않는다.,1차 확정,시작 전,No
+FR-P4-117,4조,당첨자 본인은 SELECTED 상태의 당첨을 포기할 수 있다,혁준,Winner,SELECTED → DECLINED만 허용하며 상태 변경과 WinnerStatusHistory 기록을 동일 Transaction으로 처리한다.,1차 확정,시작 전,No
+FR-P4-118,4조,관리자는 SELECTED Winner를 수령 완료 처리할 수 있다,혁준,Winner,SELECTED → RECEIVED만 허용하고 상태 변경 이력을 기록한다.,1차 확정,시작 전,No
+FR-P4-119,4조,관리자는 SELECTED Winner를 자격 상실 처리할 수 있다,혁준,Winner,SELECTED → DISQUALIFIED만 허용하고 상태 변경 이력을 기록한다.,1차 확정,시작 전,No
+FR-P4-120,4조,Winner 운영 종결 상태는 SELECTED로 되돌릴 수 없다,혁준,Winner,"RECEIVED, DECLINED, DISQUALIFIED는 종결 상태이며 역방향 전이를 허용하지 않는다.",1차 확정,시작 전,No
+FR-P4-121,4조,사용자 또는 관리자는 Winner 상태 변경 이력을 조회할 수 있다,혁준,Winner,WinnerStatusHistory의 이력을 시간순으로 조회하며 요청자의 접근 권한을 검증한다.,1차 확정,시작 전,No
+FR-P4-122,4조,DECLINED 또는 DISQUALIFIED로 발생한 결원만 재추첨 요청 대상이 된다,혁준,Redraw,재추첨은 자동 실행하지 않으며 WinnerManagement 상태를 기준으로 실제 미처리 결원을 계산한다.,1차 확정,시작 전,No
+FR-P4-123,4조,RedrawRequest 생성 시 vacancyCount는 서버가 실제 결원으로 계산한다,혁준,Redraw,클라이언트가 전달한 vacancyCount를 사용하지 않는다. Request와 Vacancy를 동일 Transaction에서 저장하고 실제 Vacancy 수와 일치시킨다.,1차 확정,시작 전,No
+FR-P4-124,4조,동일 재추첨 생성 요청은 idempotencyKey로 중복 생성되지 않아야 한다,혁준,Redraw,redraw_request.idempotency_key UNIQUE를 최종 중복 방어선으로 사용한다.,1차 확정,시작 전,No
+FR-P4-125,4조,동일 Winner 결원은 동시에 둘 이상의 진행 중 RedrawRequest가 점유할 수 없다,혁준,Redraw,요청 생성 시 결원 동시 점유를 방지하고 진행 중 Request 존재 여부를 확인한다.,1차 확정,시작 전,No
+FR-P4-126,4조,관리자는 RedrawRequest 상세 정보를 조회할 수 있다,혁준,Redraw,"요청 상태, 실행 상태, vacancyCount, 대상 결원, 심사 정보를 조회한다.",1차 확정,시작 전,No
+FR-P4-127,4조,관리자는 REQUESTED RedrawRequest를 승인할 수 있다,혁준,Redraw,REQUESTED → APPROVED로 변경하고 심사자와 심사 시각을 기록한다. 실행 전까지 executionStatus는 PENDING이다.,1차 확정,시작 전,No
+FR-P4-128,4조,관리자는 REQUESTED RedrawRequest를 거절할 수 있다,혁준,Redraw,REQUESTED → REJECTED로 변경하고 거절 사유와 심사 정보를 기록한다. 거절 요청은 실행하지 않는다.,1차 확정,시작 전,No
+FR-P4-129,4조,승인된 RedrawRequest만 실제 REDRAW 실행을 요청할 수 있다,혁준,Redraw,"status = APPROVED인 RedrawRequest만 실행할 수 있다. 실행 전 vacancyCount와 실제 Vacancy 수를 재검증한 뒤 파트3의 REDRAW 실행 Service를 RedrawCommand(redrawRequestId, eventId, originalDrawingId, vacancyCount) 계약으로 호출한다. 후보 산정, 기존 Winner 제외, Seed 생성, REDRAW Drawing 생성 및 Winner 저장은 파트3이 담당한다. 동일 redrawRequestId 재호출 시 새로운 Drawing이나 Seed를 생성하지 않고 기존 실행 결과를 반환한다.",1차 확정,시작 전,No
+FR-P4-130,4조,재추첨 실행 결과에 따라 executionStatus와 실행 이력을 관리한다,혁준,Redraw,"파트3 REDRAW 실행 결과가 EXECUTED이면 executionStatus = EXECUTED로 기록한다. ALREADY_EXECUTED이면 새로운 상태를 추가하지 않고 기존 EXECUTED 상태와 기존 drawingId를 사용한다. 후보 부족은 정상 비즈니스 결과로 INSUFFICIENT_CANDIDATES를 기록한다. DB 장애나 추첨 실행 오류 등 기술적 실패는 예외로 전달받고, 실행 Transaction Rollback 이후 별도 Transaction에서 executionStatus = FAILED 및 redraw_execution_history를 기록한다.",1차 확정,시작 전,No
+FR-P4-131,4조,후보가 vacancyCount보다 적으면 REDRAW Drawing을 생성하지 않는다,혁준,Redraw,INSUFFICIENT_CANDIDATES로 종결하며 부분 재추첨이나 vacancyCount 축소를 하지 않고 해당 결원은 최종 공석 처리한다.,1차 확정,시작 전,No
+FR-P4-132,4조,Drawing 공개 성공 이후에만 당첨자 인앱 알림을 생성한다,혁준,Notification,INITIAL/REDRAW Drawing이 PRIVATE → PUBLIC로 정상 변경된 이후 신규 Winner 대상 Notification을 생성한다.,1차 확정,시작 전,No
+FR-P4-133,4조,동일 Winner에 대한 동일 유형 알림은 중복 생성하지 않는다,혁준,Notification,동일 Winner와 알림 유형에 대한 중복 생성을 방지한다. Notification은 해당 Winner의 Member/Event/Drawing과 일치해야 한다.,1차 확정,시작 전,No
+FR-P4-134,4조,사용자는 자신의 인앱 알림 목록을 조회할 수 있다,혁준,Notification,"사용자 본인의 Notification만 조회한다. 사용자 본인의 Notification만 조회한다.
+cursor 기반 페이지네이션을 사용한다. 정렬은 createdAt DESC, notificationId DESC로 고정하고, 다음 cursor는 마지막 조회 항목의 createdAt + notificationId를 기준으로 한다.",1차 확정,시작 전,No
+FR-P4-135,4조,사용자는 자신의 알림을 읽음 처리할 수 있다,혁준,Notification,본인 알림에 대해서만 readAt을 기록하며 이미 읽은 요청은 멱등하게 처리한다.,1차 확정,시작 전,No
+FR-P4-136,4조,Creator 신청 생성 요청의 멱등성 정책을 확정해야 한다,혁준,API 미확정,"Creator 신청은 별도의 requestId 또는 idempotencyKey를 사용하지 않고 상태 기반으로 중복 요청을 처리한다.
+- 한 Member는 동시에 PENDING 상태의 Creator 신청을 최대 1개만 가질 수 있다.
+- 동일 Member에게 이미 PENDING 신청이 존재하면 새로운 신청을 생성하지 않고 기존 신청 결과를 반환한다.
+- 이미 Creator로 승인된 Member가 다시 신청하면 INVALID_STATE로 처리한다.
+- 기존 신청이 REJECTED 상태라면 새로운 Creator 신청을 생성할 수 있다.
+- 동시 요청으로 PENDING 신청이 중복 생성되지 않도록 서비스 Transaction에서 동시성을 제어한다.",1차 확정,시작 전,No
+FR-P4-137,4조,Event 생성·수정 요청의 멱등성 정책을 확정해야 한다,혁준,API 미확정,"Event 생성과 수정의 멱등성은 다음과 같이 처리한다.
+- Event 생성 POST /api/creator/events
+- requestId를 필수로 사용한다.
+- 동일 requestId + 동일 요청이 재전송되면 새로운 Event를 생성하지 않고 기존 Event를 반환한다.
+- 동일 requestId + 다른 요청 내용이 들어오면 IDEMPOTENCY_CONFLICT로 처리한다.
+- 동시 요청에 의한 중복 생성을 최종적으로 방지하기 위해 event.request_id에 UNIQUE 제약을 둔다.
+- Event 수정 PATCH /api/creator/events/{eventId}
+- 별도의 requestId 또는 멱등 키를 사용하지 않는다.
+- DRAFT, REJECTED 상태에서만 수정할 수 있다.
+- 동일 내용이 반복 요청되더라도 동일한 최종 상태가 되도록 처리한다.
+- REJECTED 상태에서 수정하면 해당 수정 처리 과정에서 REJECTED → DRAFT로 전이한다.
+- 그 외 수정 불가 상태에서는 INVALID_STATE로 처리한다.",1차 확정,시작 전,No
+FR-P4-138,4조,파트4 명령 API의 상세 Request 및 HTTP Status 매핑을 확정해야 한다.,혁준,API 미확정,"Command API의 공통 오류 계약은 다음과 같이 확정한다.
+- VALIDATION_FAILED → 400 Bad Request
+- 요청 값 또는 형식이 올바르지 않은 경우
+- FORBIDDEN → 403 Forbidden
+- 해당 작업을 수행할 권한이 없는 경우
+- RESOURCE_NOT_FOUND → 404 Not Found
+- 대상 리소스가 존재하지 않는 경우
+- INVALID_STATE → 409 Conflict
+- 리소스는 존재하지만 현재 상태에서 해당 명령을 수행할 수 없는 경우
+- IDEMPOTENCY_CONFLICT → 409 Conflict
+- 동일 requestId 또는 idempotencyKey에 이전 요청과 다른 내용이 전달된 경우
+- CONCURRENT_COMMAND → 409 Conflict
+- 동일 리소스에 대해 서로 충돌하는 명령이 동시에 처리되는 경우
+- SYSTEM_ERROR → 500 Internal Server Error
+- 서버 내부 오류
+
+UNAUTHORIZED는 회원가입·로그인 없이 가상 사용자를 선택하는 현재 인증 정책상 사용하지 않는다.
+동일 요청이 이미 성공한 경우에는 새로운 작업을 수행하지 않고 기존 성공 결과를 반환한다.
+여러 도메인에서 동일한 의미로 사용하는 오류는 공통 코드를 사용하고, 특정 도메인에서만 의미가 있는 오류는 도메인 전용 코드로 정의한다.",1차 확정,시작 전,No
