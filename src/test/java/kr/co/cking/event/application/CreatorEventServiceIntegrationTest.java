@@ -41,8 +41,8 @@ class CreatorEventServiceIntegrationTest {
     /** 고정 멱등 키를 사용하는 테스트가 이전 실행 데이터와 충돌하지 않도록 Event만 정리한다. */
     @BeforeEach
     void cleanTestEvents() {
-        jdbcTemplate.update("DELETE FROM event_approval_request WHERE event_id IN (SELECT event_id FROM event WHERE request_id LIKE ?)", "550e8400-e29b-41d4-a716-44665544000%");
-        jdbcTemplate.update("DELETE FROM event WHERE request_id LIKE ?", "550e8400-e29b-41d4-a716-44665544000%");
+        jdbcTemplate.update("DELETE FROM event_approval_request WHERE event_id IN (SELECT event_id FROM event WHERE request_id LIKE ?)", "550e8400-e29b-41d4-a716-4466554400%");
+        jdbcTemplate.update("DELETE FROM event WHERE request_id LIKE ?", "550e8400-e29b-41d4-a716-4466554400%");
     }
 
     /** 동일 요청 식별자와 동일 본문은 새 Event 대신 기존 Event를 반환하는지 검증한다. */
@@ -185,5 +185,96 @@ class CreatorEventServiceIntegrationTest {
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
                 .isEqualTo(kr.co.cking.event.domain.EventErrorCode.IDEMPOTENCY_CONFLICT);
+    }
+
+    /** Creator가 아닌 일반 사용자는 Event를 생성할 수 없는지 검증한다. */
+    @Test
+    void nonCreatorCannotCreateEvent() {
+        Member member = memberRepository.save(new Member("일반 사용자", null, null, MemberRole.USER));
+
+        assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440009", "팬미팅", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.FORBIDDEN);
+    }
+
+    /** 다른 Creator가 소유한 Event의 내용을 변경할 수 없는지 검증한다. */
+    @Test
+    void creatorCannotUpdateAnotherCreatorsEvent() {
+        Member owner = memberRepository.save(new Member("소유 크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(owner.getMemberId(), owner.getName()));
+        Member other = memberRepository.save(new Member("다른 크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(other.getMemberId(), other.getName()));
+        Event event = creatorEventService.create(new CreateEventCommand(
+                owner.getMemberId(), "550e8400-e29b-41d4-a716-446655440010", "원본", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED));
+
+        assertThatThrownBy(() -> creatorEventService.update(new UpdateEventCommand(
+                other.getMemberId(), event.getEventId(), "변경", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
+                1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.FORBIDDEN);
+    }
+
+    /** 빈 제목 또는 역전된 시간 범위의 생성 명령을 거부하는지 검증한다. */
+    @Test
+    void invalidCreateInputIsRejected() {
+        Member member = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
+        LocalDateTime startAt = LocalDateTime.now(ZoneOffset.UTC).plusDays(2);
+
+        assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440011", " ", null,
+                startAt, startAt.minusDays(1), 1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
+    }
+
+    /** 수정 명령의 필수값이 잘못되면 Event 내용을 변경하지 않고 거부하는지 검증한다. */
+    @Test
+    void invalidUpdateInputIsRejectedWithoutChangingEvent() {
+        Member member = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
+        Event event = creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440012", "원본", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED));
+
+        assertThatThrownBy(() -> creatorEventService.update(new UpdateEventCommand(
+                member.getMemberId(), event.getEventId(), "변경", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
+                0, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getTitle()).isEqualTo("원본");
+    }
+
+    /** 승인 대기 중인 Event는 Creator가 수정할 수 없는지 검증한다. */
+    @Test
+    void pendingApprovalEventCannotBeUpdated() {
+        Member member = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
+        Event event = creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440013", "원본", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                1, DrawMethod.WEIGHTED));
+        creatorEventService.requestApproval(member.getMemberId(), event.getEventId());
+
+        assertThatThrownBy(() -> creatorEventService.update(new UpdateEventCommand(
+                member.getMemberId(), event.getEventId(), "변경", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
+                1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.event.domain.EventErrorCode.INVALID_STATE);
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getTitle()).isEqualTo("원본");
     }
 }
