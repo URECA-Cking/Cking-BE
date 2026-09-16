@@ -1,6 +1,6 @@
 package kr.co.cking.snapshot.repository;
 
-import kr.co.cking.event.EventStatus;
+import kr.co.cking.event.domain.EventStatus;
 
 public record SnapshotEventSource(
         Long eventId,

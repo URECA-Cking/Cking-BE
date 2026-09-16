@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Optional;
 import kr.co.cking.common.exception.BusinessException;
-import kr.co.cking.event.EventStatus;
+import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;

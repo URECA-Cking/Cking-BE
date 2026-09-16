@@ -1,9 +1,15 @@
-package kr.co.cking.event;
+package kr.co.cking.event.application;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.event.application.dto.CachedEvent;
+import kr.co.cking.event.domain.EventStatus;
+import kr.co.cking.event.application.dto.EntryOutcome;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
 import kr.co.cking.event.application.service.EntrySpendService;
+import kr.co.cking.event.domain.EntryErrorCode;
+import kr.co.cking.event.domain.EntryResultCode;
+import kr.co.cking.event.presentation.dto.EntryRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

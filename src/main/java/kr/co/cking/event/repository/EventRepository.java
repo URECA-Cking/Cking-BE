@@ -1,4 +1,4 @@
-package kr.co.cking.event;
+package kr.co.cking.event.repository;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+
+import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.Event;
 
 public interface EventRepository extends JpaRepository<Event, Long> {
 
@@ -23,24 +26,24 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             select e from Event e
             where e.deletedAt is null
               and e.status not in (
-                  kr.co.cking.event.EventStatus.DRAFT,
-                  kr.co.cking.event.EventStatus.PENDING_APPROVAL,
-                  kr.co.cking.event.EventStatus.REJECTED
+                  kr.co.cking.event.domain.EventStatus.DRAFT,
+                  kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL,
+                  kr.co.cking.event.domain.EventStatus.REJECTED
               )
               and (:creatorId is null or e.creatorId = :creatorId)
               and (
                 :displayStatus is null
-                or (:displayStatus = 'UPCOMING' and e.status = kr.co.cking.event.EventStatus.SCHEDULED)
+                or (:displayStatus = 'UPCOMING' and e.status = kr.co.cking.event.domain.EventStatus.SCHEDULED)
                 or (:displayStatus = 'IN_PROGRESS'
-                    and e.status = kr.co.cking.event.EventStatus.OPEN and e.endAt > :now)
+                    and e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now)
                 or (:displayStatus = 'CLOSED'
                     and (
-                        (e.status = kr.co.cking.event.EventStatus.OPEN and e.endAt <= :now)
+                        (e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt <= :now)
                         or e.status in (
-                            kr.co.cking.event.EventStatus.CLOSING,
-                            kr.co.cking.event.EventStatus.CLOSED,
-                            kr.co.cking.event.EventStatus.DRAW_COMPLETED,
-                            kr.co.cking.event.EventStatus.PUBLISHED
+                            kr.co.cking.event.domain.EventStatus.CLOSING,
+                            kr.co.cking.event.domain.EventStatus.CLOSED,
+                            kr.co.cking.event.domain.EventStatus.DRAW_COMPLETED,
+                            kr.co.cking.event.domain.EventStatus.PUBLISHED
                         )
                     ))
               )

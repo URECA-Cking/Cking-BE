@@ -1,4 +1,4 @@
-package kr.co.cking.event;
+package kr.co.cking.event.repository;
 
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -8,6 +8,10 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.data.domain.PageRequest;
 
 import java.time.Instant;
+
+import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace;

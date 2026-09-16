@@ -1,4 +1,4 @@
-package kr.co.cking.event;
+package kr.co.cking.event.presentation.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;

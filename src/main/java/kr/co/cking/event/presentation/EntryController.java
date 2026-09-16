@@ -1,7 +1,11 @@
-package kr.co.cking.event;
+package kr.co.cking.event.presentation;
 
 import jakarta.validation.Valid;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.event.application.EventEntryService;
+import kr.co.cking.event.application.dto.EntryOutcome;
+import kr.co.cking.event.presentation.dto.EntryRequest;
+import kr.co.cking.event.presentation.dto.EntryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;

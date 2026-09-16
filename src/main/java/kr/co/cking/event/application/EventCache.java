@@ -1,4 +1,4 @@
-package kr.co.cking.event;
+package kr.co.cking.event.application;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
+
+import kr.co.cking.event.application.dto.CachedEvent;
 
 /**
  * 취합v1.5.4 §13.3(NFR-02/FR-03 확정) 기준: TTL은 5초로 고정하고, 어떤 경우에도

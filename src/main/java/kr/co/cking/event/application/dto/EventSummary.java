@@ -1,6 +1,10 @@
-package kr.co.cking.event;
+package kr.co.cking.event.application.dto;
 
 import java.time.Instant;
+
+import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventStatus;
 
 public record EventSummary(
         Long eventId,

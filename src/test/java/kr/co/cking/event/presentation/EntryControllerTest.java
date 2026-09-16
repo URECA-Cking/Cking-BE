@@ -1,6 +1,11 @@
-package kr.co.cking.event;
+package kr.co.cking.event.presentation;
 
 import tools.jackson.databind.ObjectMapper;
+import kr.co.cking.event.application.EventEntryService;
+import kr.co.cking.event.application.dto.EntryOutcome;
+import kr.co.cking.event.domain.EntryResultCode;
+import kr.co.cking.event.presentation.dto.EntryRequest;
+import kr.co.cking.event.presentation.dto.EntryResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;

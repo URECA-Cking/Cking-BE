@@ -1,9 +1,13 @@
-package kr.co.cking.event;
+package kr.co.cking.event.presentation;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
+import kr.co.cking.event.application.EventQueryService;
+import kr.co.cking.event.application.dto.EventDetail;
+import kr.co.cking.event.application.dto.EventSummary;
+import kr.co.cking.event.domain.DisplayStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;

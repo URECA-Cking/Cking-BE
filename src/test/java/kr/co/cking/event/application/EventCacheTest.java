@@ -1,4 +1,4 @@
-package kr.co.cking.event;
+package kr.co.cking.event.application;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +13,9 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Set;
+
+import kr.co.cking.event.application.dto.CachedEvent;
+import kr.co.cking.event.domain.EventStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

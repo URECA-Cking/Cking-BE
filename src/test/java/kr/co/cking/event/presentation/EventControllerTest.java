@@ -1,5 +1,10 @@
-package kr.co.cking.event;
+package kr.co.cking.event.presentation;
 
+import kr.co.cking.event.application.EventQueryService;
+import kr.co.cking.event.application.dto.EventDetail;
+import kr.co.cking.event.application.dto.EventSummary;
+import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.EventStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;

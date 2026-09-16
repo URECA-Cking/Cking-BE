@@ -2,7 +2,7 @@ package kr.co.cking.snapshot.repository;
 
 import java.util.List;
 import java.util.Optional;
-import kr.co.cking.event.EventStatus;
+import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;

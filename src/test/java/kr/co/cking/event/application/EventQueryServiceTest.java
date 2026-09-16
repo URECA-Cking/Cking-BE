@@ -1,5 +1,10 @@
-package kr.co.cking.event;
+package kr.co.cking.event.application;
 
+import kr.co.cking.event.application.dto.EventSummary;
+import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventStatus;
+import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.TicketBalanceQueryService;
 import org.junit.jupiter.api.Test;

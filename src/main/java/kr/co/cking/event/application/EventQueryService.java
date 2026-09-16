@@ -1,7 +1,14 @@
-package kr.co.cking.event;
+package kr.co.cking.event.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.event.application.dto.CachedEvent;
+import kr.co.cking.event.application.dto.EventDetail;
+import kr.co.cking.event.application.dto.EventSummary;
+import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventErrorCode;
+import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.TicketBalanceQueryService;
 import lombok.RequiredArgsConstructor;

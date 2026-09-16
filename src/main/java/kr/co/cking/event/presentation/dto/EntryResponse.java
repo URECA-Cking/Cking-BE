@@ -1,4 +1,4 @@
-package kr.co.cking.event;
+package kr.co.cking.event.presentation.dto;
 
 import java.util.UUID;
 
