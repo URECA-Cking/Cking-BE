@@ -1,0 +1,10 @@
+.git
+.github
+.gradle
+build
+docs
+notes
+*.md
+docker-compose*.yml
+Dockerfile
+.env
