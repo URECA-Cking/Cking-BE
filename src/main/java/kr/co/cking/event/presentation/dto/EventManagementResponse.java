@@ -4,6 +4,8 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import org.springframework.data.domain.Page;
 import java.util.List;
+import kr.co.cking.event.domain.EventApprovalRequest;
+import kr.co.cking.event.domain.EventApprovalRequestStatus;
 
 /** Creator Event 관리 API의 응답 데이터를 정의한다. */
 public final class EventManagementResponse {
@@ -23,6 +25,15 @@ public final class EventManagementResponse {
     public record Item(Long eventId, String title, EventStatus status) {
         /** Event 엔티티를 목록 항목으로 변환한다. */
         public static Item from(Event event) { return new Item(event.getEventId(), event.getTitle(), event.getStatus()); }
+    }
+
+    /** 관리자 승인 대기 목록의 승인 요청 항목을 반환한다. */
+    public record ApprovalItem(Long eventId, int approvalRound, EventApprovalRequestStatus status, java.time.Instant requestedAt) {
+        /** 승인 요청 엔티티를 관리자 목록 항목으로 변환한다. */
+        public static ApprovalItem from(EventApprovalRequest request) {
+            return new ApprovalItem(request.getEventId(), request.getApprovalRound(), request.getStatus(),
+                    request.getRequestedAt().toInstant(java.time.ZoneOffset.UTC));
+        }
     }
 
     /** 공통 목록 페이지 메타데이터를 반환한다. */

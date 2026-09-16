@@ -45,6 +45,16 @@ public class EventManagementController {
         return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
     }
 
+    /** 관리자의 Event 승인 대기 요청 목록을 페이지로 반환한다. */
+    @GetMapping("/api/admin/events/pending")
+    public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.ApprovalItem>> findPending(
+            @RequestParam Long userId, @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        var requests = eventReviewService.findPending(userId, PageRequest.of(page, size));
+        var items = requests.stream().map(EventManagementResponse.ApprovalItem::from).toList();
+        return ApiResponse.success(EventManagementResponse.PageResult.from(requests, items));
+    }
+
     /** Creator 소유 Event의 내용을 수정한다. */
     @PatchMapping("/api/creator/events/{eventId}")
     public ApiResponse<EventManagementResponse.Result> update(@PathVariable Long eventId,

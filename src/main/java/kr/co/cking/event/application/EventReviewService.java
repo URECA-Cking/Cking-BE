@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 /** 관리자의 Event 승인·거절과 승인 요청 이력 기록을 처리한다. */
 @Service
@@ -41,6 +43,13 @@ public class EventReviewService {
         request.approve(adminId);
         eventCommandService.approve(eventId);
         return request;
+    }
+
+    /** 관리자가 심사할 수 있는 대기 중 승인 요청 목록을 페이지로 조회한다. */
+    @Transactional(readOnly = true)
+    public Page<EventApprovalRequest> findPending(Long adminId, Pageable pageable) {
+        requireAdmin(adminId);
+        return approvalRequestRepository.findByStatusOrderByRequestedAtAscIdAsc(EventApprovalRequestStatus.PENDING, pageable);
     }
 
     /** 승인 대기 Event를 거절하고 현재 승인 요청 이력에 사유를 기록한다. */
