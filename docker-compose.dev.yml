@@ -1,0 +1,45 @@
+# 개발 서버(EC2)용. DB는 RDS를 사용하므로 mysql 서비스를 두지 않는다.
+# 환경변수는 같은 디렉터리의 .env에서 읽는다. .env는 커밋하지 않는다.
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: cking-redis
+    restart: unless-stopped
+    # noeviction: 응모권 잔액 키가 축출되면 명세 2.4의 BALANCE_NOT_LOADED 복구가 상시 유발된다.
+    # appendonly: 컨테이너 재시작 시 잔액을 잃지 않도록 AOF를 사용한다.
+    command: >
+      redis-server
+      --maxmemory-policy noeviction
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  app:
+    image: ghcr.io/ureca-cking/cking-be:latest
+    container_name: cking-app
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_HOST: ${DB_HOST}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  redis-data:
