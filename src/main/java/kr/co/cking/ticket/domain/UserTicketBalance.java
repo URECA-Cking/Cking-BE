@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.domain;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.EmbeddedId;
@@ -10,6 +10,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+
+import kr.co.cking.ticket.application.TicketBalanceQueryService;
 
 /**
  * 지금은 {@link TicketBalanceQueryService}의 읽기 전용 조회에만 쓰인다. EARN/SPEND

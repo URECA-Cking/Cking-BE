@@ -1,8 +1,11 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
+
+import kr.co.cking.ticket.domain.UserTicketBalance;
+import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;

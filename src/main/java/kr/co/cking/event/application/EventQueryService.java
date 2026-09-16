@@ -10,7 +10,7 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
-import kr.co.cking.ticket.TicketBalanceQueryService;
+import kr.co.cking.ticket.application.TicketBalanceQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;

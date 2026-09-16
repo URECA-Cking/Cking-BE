@@ -1,6 +1,8 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application.dto;
 
 import java.util.UUID;
+
+import kr.co.cking.ticket.application.TicketEarnService;
 
 /**
  * 미션 완료(T1) 쪽에서 {@link TicketEarnService#earn}을 호출할 때 전달하는 커맨드.

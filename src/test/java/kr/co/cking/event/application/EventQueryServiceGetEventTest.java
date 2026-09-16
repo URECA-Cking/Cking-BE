@@ -8,7 +8,7 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
-import kr.co.cking.ticket.TicketBalanceQueryService;
+import kr.co.cking.ticket.application.TicketBalanceQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

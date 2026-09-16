@@ -1,8 +1,11 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import kr.co.cking.ticket.domain.UserTicketBalance;
+import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 
 /**
  * 다른 도메인(event 등)이 잔액을 읽기 전용으로 조회할 때 쓰는 내부 진입점.

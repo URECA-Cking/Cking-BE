@@ -1,4 +1,7 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
+
+import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnResult;
 
 /**
  * EARN 적립 진입점. 미션 완료(T1) 쪽은 이 인터페이스만 호출한다.

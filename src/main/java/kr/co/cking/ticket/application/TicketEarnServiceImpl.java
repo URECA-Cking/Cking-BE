@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import java.util.List;
 
@@ -9,6 +9,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
+import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnResult;
+import kr.co.cking.ticket.application.dto.EarnResultCode;
 import lombok.extern.slf4j.Slf4j;
 
 /**

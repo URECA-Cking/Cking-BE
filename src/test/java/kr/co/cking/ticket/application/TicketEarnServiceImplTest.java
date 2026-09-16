@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import java.util.List;
 import java.util.UUID;
@@ -10,6 +10,10 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+
+import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnResult;
+import kr.co.cking.ticket.application.dto.EarnResultCode;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

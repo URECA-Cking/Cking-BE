@@ -1,4 +1,6 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application.dto;
+
+import kr.co.cking.ticket.application.TicketEarnService;
 
 /**
  * {@link TicketEarnService#earn} 결과코드. 통합 API 명세 v2.5 §3.5 기준 6종.
