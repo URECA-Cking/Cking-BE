@@ -29,9 +29,15 @@ public class CreatorEventService {
     private final EventRepository eventRepository;
     private final EventApprovalRequestRepository approvalRequestRepository;
     private final EventCommandService eventCommandService;
+    private final EventCreationLockManager creationLockManager;
 
     /** 요청 식별자 기준으로 Event를 멱등 생성하거나 동일 요청의 기존 Event를 반환한다. */
     public Event create(CreateEventCommand command) {
+        return creationLockManager.execute("event-create:" + command.requestId(), () -> createLocked(command));
+    }
+
+    /** 멱등 키 잠금 보유 중 생성 요청을 검증하고 기존 Event를 재사용한다. */
+    private Event createLocked(CreateEventCommand command) {
         validateCreate(command);
         return eventRepository.findByRequestId(command.requestId())
                 .map(existing -> returnExistingOrThrow(existing, command))

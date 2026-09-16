@@ -154,4 +154,21 @@ class CreatorEventServiceIntegrationTest {
 
         assertThat(creatorEventService.findMine(member.getMemberId(), PageRequest.of(0, 20)).getTotalElements()).isZero();
     }
+
+    /** 동일 요청 식별자에 다른 생성 본문을 재시도하면 멱등성 충돌을 반환하는지 검증한다. */
+    @Test
+    void sameRequestIdWithDifferentBodyThrowsIdempotencyConflict() {
+        Member member = memberRepository.save(new Member("크리에이터", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
+        creatorEventService.create(new CreateEventCommand(member.getMemberId(),
+                "550e8400-e29b-41d4-a716-446655440007", "원본", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED));
+
+        assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(member.getMemberId(),
+                "550e8400-e29b-41d4-a716-446655440007", "다른 제목", null,
+                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
+                .isEqualTo(kr.co.cking.event.domain.EventErrorCode.IDEMPOTENCY_CONFLICT);
+    }
 }
