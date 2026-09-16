@@ -12,6 +12,8 @@ import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.domain.Creator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +33,7 @@ public class EventReviewService {
     private final EventRepository eventRepository;
     private final EventApprovalRequestRepository approvalRequestRepository;
     private final EventCommandService eventCommandService;
+    private final CreatorRepository creatorRepository;
 
     /** 만료되지 않은 승인 대기 Event와 현재 요청을 승인 처리한다. */
     public EventApprovalRequest approve(Long adminId, Long eventId) {
@@ -47,9 +50,23 @@ public class EventReviewService {
 
     /** 관리자가 심사할 수 있는 대기 중 승인 요청 목록을 페이지로 조회한다. */
     @Transactional(readOnly = true)
-    public Page<EventApprovalRequest> findPending(Long adminId, Pageable pageable) {
+    public Page<PendingEvent> findPending(Long adminId, Pageable pageable) {
         requireAdmin(adminId);
-        return approvalRequestRepository.findByStatusOrderByRequestedAtAscIdAsc(EventApprovalRequestStatus.PENDING, pageable);
+        return approvalRequestRepository.findByStatusOrderByRequestedAtAscIdAsc(EventApprovalRequestStatus.PENDING, pageable)
+                .map(this::toPendingEvent);
+    }
+
+    /** 승인 요청과 연결된 Event·Creator 정보를 관리자 목록 항목으로 결합한다. */
+    private PendingEvent toPendingEvent(EventApprovalRequest request) {
+        Event event = eventRepository.findById(request.getEventId())
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        Creator creator = creatorRepository.findById(event.getCreatorId())
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        return new PendingEvent(request, event, creator.getName());
+    }
+
+    /** 관리자 승인 대기 목록에 필요한 승인 요청·Event·Creator 정보를 전달한다. */
+    public record PendingEvent(EventApprovalRequest request, Event event, String creatorName) {
     }
 
     /** 승인 대기 Event를 거절하고 현재 승인 요청 이력에 사유를 기록한다. */
