@@ -1,7 +1,7 @@
 -- 응모(Entry) 요청의 원자적 처리.
 --
 -- 순서(v1.5.4 §5.3 근거): Gate 확인 -> 시각 확인 -> 멱등성(requestId+fingerprint) 확인
--- -> Balance 확인 -> 차감 -> 결과 저장 -> Stream 발행. 전부 한 스크립트 안에서
+-- -> Balance 확인 -> 차감 -> Stream 발행 -> 멱등 결과 저장. 전부 한 스크립트 안에서
 -- 순차 실행되어 다른 요청이 중간에 끼어들 수 없다(FR-P2-030).
 --
 -- KEYS[1] = event:status:{eventId}                   String(OPEN/CLOSED)
@@ -10,7 +10,7 @@
 -- KEYS[4] = idem:{requestId}                         String(JSON: {fingerprint, result})
 --
 -- ARGV[1] = ticketCount
--- ARGV[2] = fingerprint      (호출측이 eventId+userId+ticketCount 등으로 계산해 전달)
+-- ARGV[2] = fingerprint      (EntrySpendService가 eventId+userId+ticketCount로 계산)
 -- ARGV[3] = streamKey        (예: stream:ticket-deducted)
 -- ARGV[4] = idemTtlSeconds   (FR-P2-033: 1시간 = 3600)
 -- ARGV[5] = eventId
@@ -88,11 +88,9 @@ if tonumber(balance) < ticketCount then
     return { 'INSUFFICIENT_BALANCE', balance }
 end
 
--- 5) 차감 + 결과 저장 + Stream 발행
---    Redis Lua는 명령 하나가 에러를 던져도 그 전에 실행된 쓰기를 자동으로 되돌리지 않는다.
---    XADD가 실패하면 idem 키가 아직 저장되지 않은 상태라 DB UNIQUE 안전망(FR-P2-033)도
---    적용되지 않으므로, 여기서만은 pcall로 직접 잡아 DECRBY를 보상(INCRBY)한 뒤 에러로
---    반환한다(호출측 Java에서 SYSTEM_ERROR로 매핑).
+-- 5) 차감 + Stream 발행 + 멱등 결과 저장
+-- Redis Lua는 실행 중 오류가 나도 이전 쓰기를 자동 롤백하지 않는다. XADD 실패는
+-- pcall로 잡아 INCRBY 보상 후 오류로 반환하며, Java가 SYSTEM_ERROR로 매핑한다.
 local newBalance = redis.call('DECRBY', balanceKey, ticketCount)
 
 local streamId = redis.pcall('XADD', streamKey, '*',
