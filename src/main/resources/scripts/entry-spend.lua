@@ -1,12 +1,8 @@
--- 응모(Entry) 요청의 원자적 처리.
---
--- 순서(issue #36 결정 - v1.5.4 §5.3 원문 순서에서 변경): 멱등성(requestId+fingerprint)
--- 확인 -> Gate 확인 -> 시각 확인 -> Balance 확인 -> 차감 -> Stream 발행 -> 멱등 결과
--- 저장. 이미 성공한 동일 requestId 요청은 그 사이 이벤트가 마감됐더라도 Gate/시각
--- 상태와 무관하게 DUPLICATE_REPLAY로 기존 성공 결과를 그대로 재현해야 하므로,
--- 멱등성 확인을 Gate/시각 확인보다 먼저 수행한다(#29에서 발견된 문제의 해결책).
--- 멱등키가 없는 신규 요청만 기존과 동일하게 Gate/시각/Balance를 검증한다.
--- 전부 한 스크립트 안에서 순차 실행되어 다른 요청이 중간에 끼어들 수 없다(FR-P2-030).
+-- 응모 요청을 하나의 Lua 스크립트에서 원자적으로 처리한다.
+-- 처리 순서: ticketCount 검증 → 멱등성 확인 → Gate 확인 → 시각 확인 → 잔액 확인
+-- → 차감 → Stream 발행 → 멱등 결과 저장
+-- 이미 성공한 동일 요청은 마감 이후에도 DUPLICATE_REPLAY로 기존 결과를 재현한다.
+-- 멱등키가 없는 신규 요청만 Gate·시각·잔액을 검증한다.
 --
 -- KEYS[1] = event:status:{eventId}                   String(OPEN/CLOSED)
 -- KEYS[2] = event:endat:{eventId}                     String(epoch millis, 불변)
