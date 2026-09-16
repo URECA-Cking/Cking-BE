@@ -11,6 +11,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import jakarta.validation.ConstraintViolationException;
 
 @Slf4j
 @RestControllerAdvice
@@ -35,6 +36,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(CommonErrorCode.VALIDATION_FAILED.status())
                 .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED, detail));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException e) {
+        return ResponseEntity.status(CommonErrorCode.VALIDATION_FAILED.status())
+                .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED));
     }
 
     /**

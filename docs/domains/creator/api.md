@@ -8,6 +8,7 @@ Creator 신청·심사 API의 상세 계약이다. 모든 성공·실패 응답�
 - Creator 여부는 `Member.role`이 아니라 승인된 `creator` 레코드 존재 여부로 판단한다.
 - 신청자 조회는 본인만, 관리자 목록·승인·거절은 `member.role == ADMIN`만 가능하다.
 - 승인·거절은 PENDING 신청만 처리한다. 심사 시 `reviewedBy`, `reviewedAt`을 기록한다.
+- 응답 시각은 UTC RFC 3339 형식(예: `2026-09-16T00:30:00Z`)이다.
 
 ## POST /api/creator/applications
 
@@ -103,5 +104,6 @@ Query: `userId`, `page`, `size`. `userId`는 관리자 식별자다. 기본 정�
 
 - 없는 Member 또는 신청은 `RESOURCE_NOT_FOUND`다.
 - 신청별 상태 변경은 동시 명령으로 충돌할 수 있으며 `CONCURRENT_COMMAND`를 사용한다.
+- 신청은 `memberId`, 심사는 신청 ID를 키로 한 MySQL advisory lock을 트랜잭션 완료까지 보유한다. 대기하지 못한 동시 명령은 `CONCURRENT_COMMAND`다. 이 정책은 별도 DB 스키마 변경을 요구하지 않는다.
 - `creator.member_id`의 UNIQUE 제약이 Member당 Creator 하나를 최종 보장한다.
 - `creator_application.reject_reason`은 최대 500자 저장 컬럼이다.

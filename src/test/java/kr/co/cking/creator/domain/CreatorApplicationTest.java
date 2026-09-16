@@ -29,4 +29,16 @@ class CreatorApplicationTest {
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CreatorErrorCode.INVALID_STATE);
     }
+
+    @Test
+    void pendingApplicationRecordsRejectReasonAndReviewerWhenRejected() {
+        CreatorApplication application = new CreatorApplication(10L);
+
+        application.reject(1L, "활동 정보가 부족합니다.");
+
+        assertThat(application.getStatus()).isEqualTo(CreatorApplicationStatus.REJECTED);
+        assertThat(application.getRejectReason()).isEqualTo("활동 정보가 부족합니다.");
+        assertThat(application.getReviewedBy()).isEqualTo(1L);
+        assertThat(application.getReviewedAt()).isNotNull();
+    }
 }

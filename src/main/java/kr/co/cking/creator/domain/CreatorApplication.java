@@ -58,6 +58,14 @@ public class CreatorApplication {
         reviewedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
+    public void reject(Long reviewerId, String reason) {
+        requirePending();
+        status = CreatorApplicationStatus.REJECTED;
+        rejectReason = reason;
+        reviewedBy = reviewerId;
+        reviewedAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
+
     private void requirePending() {
         if (status != CreatorApplicationStatus.PENDING) {
             throw new BusinessException(CreatorErrorCode.INVALID_STATE);
