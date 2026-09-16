@@ -1,7 +1,9 @@
 package kr.co.cking.event;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.TicketBalanceQueryService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -24,8 +26,14 @@ class EventQueryServiceGetEventTest {
     private final EventRepository eventRepository = mock(EventRepository.class);
     private final TicketBalanceQueryService ticketBalanceQueryService = mock(TicketBalanceQueryService.class);
     private final EventCache eventCache = mock(EventCache.class);
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final EventQueryService service =
-            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, eventCache);
+            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, eventCache, memberRepository);
+
+    @BeforeEach
+    void setUp() {
+        when(memberRepository.existsById(any())).thenReturn(true);
+    }
 
     private final Event event = Event.builder()
             .creatorId(7L)
@@ -46,6 +54,15 @@ class EventQueryServiceGetEventTest {
 
         assertThat(detail.myTicketBalance()).isEqualTo(42L);
         assertThat(detail.displayStatus()).isEqualTo(DisplayStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void 존재하지_않는_userId면_예외가_발생하고_이벤트를_조회하지_않는다() {
+        when(memberRepository.existsById(100L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.getEvent(1L, 100L))
+                .isInstanceOf(BusinessException.class);
+        verify(eventCache, never()).find(any());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package kr.co.cking.event;
 
+import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.TicketBalanceQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
@@ -43,7 +44,7 @@ class EventQueryServiceTest {
                 .thenReturn(new PageImpl<>(List.of(event)));
         EventQueryService service =
                 new EventQueryService(eventRepository, clock, mock(TicketBalanceQueryService.class),
-                        mock(EventCache.class));
+                        mock(EventCache.class), mock(MemberRepository.class));
 
         Page<EventSummary> result = service.getEvents(1L, DisplayStatus.IN_PROGRESS, 0, 10);
 
@@ -63,7 +64,7 @@ class EventQueryServiceTest {
         when(eventRepository.search(any(), nullable(DisplayStatus.class), any(), any())).thenReturn(new PageImpl<>(List.of()));
         EventQueryService service =
                 new EventQueryService(eventRepository, clock, mock(TicketBalanceQueryService.class),
-                        mock(EventCache.class));
+                        mock(EventCache.class), mock(MemberRepository.class));
 
         service.getEvents(null, null, 2, 50);
 

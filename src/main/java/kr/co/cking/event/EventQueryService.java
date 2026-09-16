@@ -1,6 +1,8 @@
 package kr.co.cking.event;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.TicketBalanceQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -24,6 +26,7 @@ public class EventQueryService {
     private final Clock clock;
     private final TicketBalanceQueryService ticketBalanceQueryService;
     private final EventCache eventCache;
+    private final MemberRepository memberRepository;
 
     /**
      * API 명세 §1.7: page=0부터, size 기본 20·최대 100(범위 검증은 컨트롤러에서),
@@ -38,6 +41,9 @@ public class EventQueryService {
     }
 
     public EventDetail getEvent(Long eventId, Long userId) {
+        if (!memberRepository.existsById(userId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+        }
         CachedEvent event = getCachedEvent(eventId);
         long myTicketBalance = ticketBalanceQueryService.getBalance(event.creatorId(), userId);
         return EventDetail.of(event, clock.instant(), myTicketBalance);
