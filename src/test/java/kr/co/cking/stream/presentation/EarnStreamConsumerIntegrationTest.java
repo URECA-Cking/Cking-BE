@@ -1,4 +1,4 @@
-package kr.co.cking.stream;
+package kr.co.cking.stream.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

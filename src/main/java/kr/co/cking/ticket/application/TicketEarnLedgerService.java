@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -8,6 +8,12 @@ import java.time.Instant;
 
 import kr.co.cking.mission.MissionCompletion;
 import kr.co.cking.mission.MissionCompletionRepository;
+import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.domain.TicketLedger;
+import kr.co.cking.ticket.domain.TicketLedgerType;
+import kr.co.cking.ticket.domain.UserTicketBalance;
+import kr.co.cking.ticket.repository.TicketLedgerRepository;
+import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

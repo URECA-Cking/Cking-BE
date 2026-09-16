@@ -1,4 +1,4 @@
-package kr.co.cking.stream;
+package kr.co.cking.stream.application.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -16,6 +16,8 @@ import org.springframework.data.redis.stream.StreamMessageListenerContainer.Stre
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+
+import kr.co.cking.stream.presentation.EarnStreamListener;
 
 /**
  * {@code stream:ticket-earned}을 {@code cg:ticket-earn} Consumer Group으로 소비한다.
@@ -48,9 +50,8 @@ public class EarnStreamConfig {
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> container =
                 StreamMessageListenerContainer.create(connectionFactory, options);
 
-        // ponytail: PEL 재수신(XCLAIM)과 Dead Stream 승격은 이슈 #39 범위 밖 — 컨슈머가
-        // 죽으면 처리 중이던 메시지는 PEL에 남는다. 별도 스케줄러(XPENDING+XCLAIM)로
-        // 이 패키지에 추가 예정(이슈 #43, T2-05).
+        // PEL 재수신(XCLAIM)·Dead Stream 승격은 EarnStreamPelRecoveryScheduler가 별도로
+        // 주기 실행한다(이슈 #43).
         container.receive(
                 Consumer.from(consumerGroup, CONSUMER_NAME),
                 StreamOffset.create(streamKey, ReadOffset.lastConsumed()),

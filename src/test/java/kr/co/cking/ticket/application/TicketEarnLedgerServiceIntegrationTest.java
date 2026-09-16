@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,6 +13,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.mission.MissionCompletion;
 import kr.co.cking.mission.MissionCompletionRepository;
+import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.domain.TicketLedger;
+import kr.co.cking.ticket.domain.TicketLedgerType;
+import kr.co.cking.ticket.domain.UserTicketBalance;
+import kr.co.cking.ticket.repository.TicketLedgerRepository;
+import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 
 /**
  * 완료조건(이슈 #39): mission_completion·ticket_ledger·user_ticket_balance 반영과
