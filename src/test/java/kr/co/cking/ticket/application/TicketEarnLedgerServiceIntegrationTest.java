@@ -1,6 +1,7 @@
 package kr.co.cking.ticket.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
 
@@ -32,8 +33,10 @@ import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 class TicketEarnLedgerServiceIntegrationTest {
 
     private static final long OWNER_MEMBER_ID = 97001L;
+    private static final long OTHER_OWNER_MEMBER_ID = 97003L;
     private static final long MEMBER_ID = 97002L;
     private static final long CREATOR_ID = 97101L;
+    private static final long OTHER_CREATOR_ID = 97102L;
     private static final long MISSION_ID = 97201L;
 
     @Autowired
@@ -57,9 +60,13 @@ class TicketEarnLedgerServiceIntegrationTest {
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
                 OWNER_MEMBER_ID, "크리에이터 회원", "USER");
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
+                OTHER_OWNER_MEMBER_ID, "다른 크리에이터 회원", "USER");
+        jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
                 MEMBER_ID, "적립 대상 회원", "USER");
         jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
                 CREATOR_ID, OWNER_MEMBER_ID, "테스트 크리에이터");
+        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
+                OTHER_CREATOR_ID, OTHER_OWNER_MEMBER_ID, "다른 테스트 크리에이터");
         jdbcTemplate.update("INSERT INTO mission (mission_id, creator_id, type, reward_amount) VALUES (?, ?, ?, ?)",
                 MISSION_ID, CREATOR_ID, "ATTENDANCE", 1);
     }
@@ -71,11 +78,13 @@ class TicketEarnLedgerServiceIntegrationTest {
 
     private void cleanUp() {
         jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", MEMBER_ID);
-        jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?", MEMBER_ID, CREATOR_ID);
+        jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ? AND creator_id IN (?, ?)",
+                MEMBER_ID, CREATOR_ID, OTHER_CREATOR_ID);
         jdbcTemplate.update("DELETE FROM mission_completion WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM mission WHERE mission_id = ?", MISSION_ID);
-        jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", CREATOR_ID);
-        jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?)", MEMBER_ID, OWNER_MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM creator WHERE creator_id IN (?, ?)", CREATOR_ID, OTHER_CREATOR_ID);
+        jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?, ?)",
+                MEMBER_ID, OWNER_MEMBER_ID, OTHER_OWNER_MEMBER_ID);
     }
 
     private EarnCommand command(UUID requestId, String periodKey, long amount) {
@@ -138,6 +147,36 @@ class TicketEarnLedgerServiceIntegrationTest {
 
         assertThat(completionCount).isEqualTo(1);
         assertThat(ledgerCount).isEqualTo(1);
+        assertThat(balance.getBalance()).isEqualTo(4L);
+    }
+
+    @Test
+    void missionId가_creatorId_소속이_아니면_반영하지_않는다() {
+        // MISSION_ID는 CREATOR_ID 소속인데, OTHER_CREATOR_ID로 요청이 들어온 경우
+        EarnCommand command = new EarnCommand(UUID.randomUUID(), MEMBER_ID, OTHER_CREATOR_ID, "ATTENDANCE",
+                MISSION_ID, "2026-09-16", "attendance:%d:2026-09-16".formatted(OTHER_CREATOR_ID), 3L);
+
+        assertThatThrownBy(() -> ticketEarnLedgerService.apply(command))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(missionCompletionRepository.findByRequestId(command.requestId().toString())).isEmpty();
+        assertThat(userTicketBalanceRepository.findByMemberIdAndCreatorId(MEMBER_ID, OTHER_CREATOR_ID)).isEmpty();
+    }
+
+    @Test
+    void 같은_requestId에_다른_내용이_들어오면_반영하지_않는다() {
+        UUID requestId = UUID.randomUUID();
+        ticketEarnLedgerService.apply(command(requestId, "2026-09-16", 4L));
+
+        EarnCommand conflicting = command(requestId, "2026-09-16", 999L);
+
+        assertThatThrownBy(() -> ticketEarnLedgerService.apply(conflicting))
+                .isInstanceOf(IllegalStateException.class);
+
+        UserTicketBalance balance = userTicketBalanceRepository
+                .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)
+                .orElseThrow();
+        // 최초 반영분(4)만 남아있고 충돌한 재요청(999)은 반영되지 않아야 한다.
         assertThat(balance.getBalance()).isEqualTo(4L);
     }
 }
