@@ -7,12 +7,15 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import kr.co.cking.common.exception.BusinessException;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
@@ -24,46 +27,55 @@ public class Event {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "event_id")
     private Long eventId;
 
-    @Column(name = "creator_id", nullable = false)
     private Long creatorId;
-
-    @Column(nullable = false, length = 200)
+    private String requestId;
     private String title;
-
-    @Column(columnDefinition = "TEXT")
     private String description;
-
-    @Column(name = "start_at", nullable = false)
-    private LocalDateTime startAt;
-
-    @Column(name = "end_at", nullable = false)
-    private LocalDateTime endAt;
-
-    @Column(name = "winner_count", nullable = false)
-    private int winnerCount;
+    private Instant startAt;
+    private Instant endAt;
+    private Integer winnerCount;
+    private String drawMethod;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "draw_method", nullable = false, length = 30)
-    private DrawMethod drawMethod;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
     private EventStatus status;
 
-    @Column(name = "created_by", nullable = false)
+    private String cutoffStreamId;
+    private Instant closedAt;
+    private Instant publishedAt;
+    private Instant deletedAt;
     private Long createdBy;
 
-    @Column(name = "request_id", nullable = false, length = 36)
-    private String requestId;
+    @Column(updatable = false)
+    private Instant createdAt;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
+    @Builder
+    private Event(
+            Long creatorId,
+            String requestId,
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            Integer winnerCount,
+            String drawMethod,
+            EventStatus status,
+            Long createdBy,
+            Instant createdAt
+    ) {
+        this.creatorId = creatorId;
+        this.requestId = requestId;
+        this.title = title;
+        this.description = description;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.winnerCount = winnerCount;
+        this.drawMethod = drawMethod;
+        this.status = status;
+        this.createdBy = createdBy;
+        this.createdAt = createdAt;
+    }
 
     /** Creator가 작성한 새 Event를 초안 상태로 생성한다. */
     public Event(
@@ -78,43 +90,38 @@ public class Event {
             String requestId
     ) {
         this.creatorId = creatorId;
+        this.requestId = requestId;
         this.title = title;
         this.description = description;
-        this.startAt = startAt;
-        this.endAt = endAt;
+        this.startAt = startAt.toInstant(ZoneOffset.UTC);
+        this.endAt = endAt.toInstant(ZoneOffset.UTC);
         this.winnerCount = winnerCount;
-        this.drawMethod = drawMethod;
+        this.drawMethod = drawMethod.name();
         this.status = EventStatus.DRAFT;
         this.createdBy = createdBy;
-        this.requestId = requestId;
-        this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        this.createdAt = Instant.now();
     }
 
-    /** 초안 Event를 승인 대기 상태로 전이한다. */
     public void requestApproval() {
         requireStatus(EventStatus.DRAFT);
         status = EventStatus.PENDING_APPROVAL;
     }
 
-    /** 승인 대기 Event를 예약 상태로 전이한다. */
     public void approve() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.SCHEDULED;
     }
 
-    /** 승인 대기 Event를 거절 상태로 전이한다. */
     public void reject() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.REJECTED;
     }
 
-    /** 거절된 Event를 다시 초안 상태로 전이한다. */
     public void changeToDraft() {
         requireStatus(EventStatus.REJECTED);
         status = EventStatus.DRAFT;
     }
 
-    /** 초안 Event의 운영 정보를 변경한다. */
     public void update(
             String title,
             String description,
@@ -126,23 +133,31 @@ public class Event {
         requireStatus(EventStatus.DRAFT);
         this.title = title;
         this.description = description;
-        this.startAt = startAt;
-        this.endAt = endAt;
+        this.startAt = startAt.toInstant(ZoneOffset.UTC);
+        this.endAt = endAt.toInstant(ZoneOffset.UTC);
         this.winnerCount = winnerCount;
-        this.drawMethod = drawMethod;
+        this.drawMethod = drawMethod.name();
     }
 
-    /** 초안 또는 거절된 Event에 논리 삭제 시각을 기록한다. */
     public void delete() {
         if (status != EventStatus.DRAFT && status != EventStatus.REJECTED) {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
-        deletedAt = LocalDateTime.now(ZoneOffset.UTC);
+        deletedAt = Instant.now();
     }
 
-    /** 허용된 현재 상태인지 검증한다. */
+    public DisplayStatus displayStatus(Instant now) {
+        return DisplayStatus.of(status, endAt, now);
+    }
+
+    @PrePersist
+    void prePersist() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
+
     private void requireStatus(EventStatus expected) {
-        // 상태 전이 전제조건을 aggregate 내부에서 일관되게 검증한다.
         if (status != expected) {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }

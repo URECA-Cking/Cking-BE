@@ -18,8 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -43,7 +42,7 @@ public class EventReviewService {
     public EventApprovalRequest approve(Long adminId, Long eventId) {
         requireAdmin(adminId);
         return eventCommandService.approve(eventId, event -> {
-            if (!event.getEndAt().isAfter(LocalDateTime.now(ZoneOffset.UTC))) {
+            if (!event.getEndAt().isAfter(Instant.now())) {
                 throw new BusinessException(EventErrorCode.INVALID_STATE);
             }
             EventApprovalRequest request = findPendingRequest(eventId);

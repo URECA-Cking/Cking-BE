@@ -1,0 +1,28 @@
+package kr.co.cking.event.presentation;
+
+import jakarta.validation.Valid;
+import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.event.application.EventEntryService;
+import kr.co.cking.event.application.dto.EntryCommand;
+import kr.co.cking.event.application.dto.EntryOutcome;
+import kr.co.cking.event.presentation.dto.EntryRequest;
+import kr.co.cking.event.presentation.dto.EntryResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequiredArgsConstructor
+public class EntryController {
+
+    private final EventEntryService eventEntryService;
+
+    @PostMapping("/api/events/{eventId}/entries")
+    public ApiResponse<EntryResponse> apply(@PathVariable Long eventId, @Valid @RequestBody EntryRequest request) {
+        EntryCommand command = new EntryCommand(request.userId(), request.requestId(), request.ticketCount());
+        EntryOutcome outcome = eventEntryService.apply(eventId, command);
+        return ApiResponse.of(outcome.code().name(), EntryResponse.accepted(outcome.requestId(), outcome.eventId()));
+    }
+}

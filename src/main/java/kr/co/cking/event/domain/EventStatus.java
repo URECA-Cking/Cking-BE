@@ -9,5 +9,9 @@ public enum EventStatus {
     CLOSING,
     CLOSED,
     DRAW_COMPLETED,
-    PUBLISHED
+    PUBLISHED;
+
+    public boolean isPubliclyVisible() {
+        return this != DRAFT && this != PENDING_APPROVAL && this != REJECTED;
+    }
 }

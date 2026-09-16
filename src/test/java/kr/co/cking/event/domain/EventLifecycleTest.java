@@ -16,6 +16,24 @@ import static org.mockito.Mockito.verify;
 
 class EventLifecycleTest {
 
+    /** 운영 승인으로 예약된 Event는 공개 조회에서 UPCOMING 상태로 계산된다. */
+    @Test
+    void approvedEventIsPubliclyVisibleAsUpcoming() {
+        Event event = new Event(
+                1L, "팬미팅", "설명",
+                LocalDateTime.of(2026, 9, 20, 9, 0),
+                LocalDateTime.of(2026, 9, 21, 9, 0),
+                3, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000"
+        );
+
+        event.requestApproval();
+        event.approve();
+
+        assertThat(event.getStatus().isPubliclyVisible()).isTrue();
+        assertThat(event.displayStatus(java.time.Instant.parse("2026-09-01T00:00:00Z")))
+                .isEqualTo(DisplayStatus.UPCOMING);
+    }
+
     /** 거절된 Event를 수정하면 초안으로 복귀하고 변경 값이 반영되는지 검증한다. */
     @Test
     void rejectedEventUpdateReturnsItToDraft() {

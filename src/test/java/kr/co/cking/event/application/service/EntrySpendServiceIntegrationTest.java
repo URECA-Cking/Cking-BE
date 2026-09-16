@@ -58,6 +58,8 @@ class EntrySpendServiceIntegrationTest {
                 EntryRedisKeys.idem("req-conflict"),
                 EntryRedisKeys.idem("req-xadd-fail"),
                 EntryRedisKeys.idem("req-concurrent"),
+                EntryRedisKeys.idem("req-replay-after-close"),
+                EntryRedisKeys.idem("req-conflict-after-close"),
                 EntryRedisKeys.idem("req-misc"),
                 STREAM_KEY
         ));
@@ -180,6 +182,40 @@ class EntrySpendServiceIntegrationTest {
 
         EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict", 2);
         EntrySpendResult conflicting = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict", 3);
+
+        assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(conflicting.code()).isEqualTo(EntrySpendResultCode.IDEMPOTENCY_CONFLICT);
+    }
+
+    // issue #29/#36: 성공 응답을 못 받은 클라이언트가 재시도했는데 그 사이 이벤트가
+    // 마감된 경우, Gate 상태와 무관하게 기존 성공 결과가 그대로 재현돼야 한다.
+    @Test
+    void 성공한_요청은_이벤트_마감_후_재시도해도_DUPLICATE_REPLAY를_반환한다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-replay-after-close", 2);
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "CLOSED");
+
+        EntrySpendResult retryAfterClose =
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-replay-after-close", 2);
+
+        assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(retryAfterClose.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
+        assertThat(retryAfterClose.streamId()).isEqualTo(first.streamId());
+    }
+
+    // 마감 여부와 무관하게 payload 불일치는 여전히 IDEMPOTENCY_CONFLICT여야 한다.
+    @Test
+    void 마감_후에도_같은_requestId에_다른_ticketCount면_IDEMPOTENCY_CONFLICT를_반환한다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict-after-close", 2);
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "CLOSED");
+
+        EntrySpendResult conflicting =
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict-after-close", 3);
 
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(conflicting.code()).isEqualTo(EntrySpendResultCode.IDEMPOTENCY_CONFLICT);

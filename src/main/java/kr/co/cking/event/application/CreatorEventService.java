@@ -147,14 +147,14 @@ public class CreatorEventService {
         return event.getCreatedBy().equals(command.userId())
                 && event.getTitle().equals(command.title().trim())
                 && java.util.Objects.equals(event.getDescription(), command.description())
-                && normalizeToMicros(event.getStartAt()).equals(normalizeToMicros(command.startAt()))
-                && normalizeToMicros(event.getEndAt()).equals(normalizeToMicros(command.endAt()))
+                && normalizeToMicros(event.getStartAt()).equals(normalizeToMicros(command.startAt().toInstant(java.time.ZoneOffset.UTC)))
+                && normalizeToMicros(event.getEndAt()).equals(normalizeToMicros(command.endAt().toInstant(java.time.ZoneOffset.UTC)))
                 && event.getWinnerCount() == command.winnerCount()
-                && event.getDrawMethod() == command.drawMethod();
+                && event.getDrawMethod().equals(command.drawMethod().name());
     }
 
     /** MySQL DATETIME(6) 저장 정밀도에 맞춰 멱등성 비교 시각을 마이크로초로 정규화한다. */
-    private java.time.LocalDateTime normalizeToMicros(java.time.LocalDateTime value) {
+    private java.time.Instant normalizeToMicros(java.time.Instant value) {
         return value.truncatedTo(java.time.temporal.ChronoUnit.MICROS)
                 .plusNanos(value.getNano() % 1_000 >= 500 ? 1_000 : 0);
     }

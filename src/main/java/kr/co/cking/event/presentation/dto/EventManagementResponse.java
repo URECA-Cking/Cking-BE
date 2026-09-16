@@ -26,9 +26,9 @@ public final class EventManagementResponse {
                        kr.co.cking.event.domain.DrawMethod drawMethod, EventStatus status, java.time.Instant createdAt) {
         /** Event 엔티티를 목록 항목으로 변환한다. */
         public static Item from(Event event) {
-            return new Item(event.getEventId(), event.getTitle(), event.getStartAt().toInstant(java.time.ZoneOffset.UTC),
-                    event.getEndAt().toInstant(java.time.ZoneOffset.UTC), event.getWinnerCount(), event.getDrawMethod(),
-                    event.getStatus(), event.getCreatedAt().toInstant(java.time.ZoneOffset.UTC));
+            return new Item(event.getEventId(), event.getTitle(), event.getStartAt(),
+                    event.getEndAt(), event.getWinnerCount(), kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()),
+                    event.getStatus(), event.getCreatedAt());
         }
     }
 
@@ -40,8 +40,8 @@ public final class EventManagementResponse {
         public static ApprovalItem from(kr.co.cking.event.application.EventReviewService.PendingEvent pending) {
             Event event = pending.event(); EventApprovalRequest request = pending.request();
             return new ApprovalItem(event.getEventId(), event.getCreatorId(), pending.creatorName(), event.getTitle(),
-                    event.getStartAt().toInstant(java.time.ZoneOffset.UTC), event.getEndAt().toInstant(java.time.ZoneOffset.UTC),
-                    event.getWinnerCount(), event.getDrawMethod(), event.getStatus(), request.getApprovalRound(),
+                    event.getStartAt(), event.getEndAt(),
+                    event.getWinnerCount(), kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()), event.getStatus(), request.getApprovalRound(),
                     request.getRequestedAt().toInstant(java.time.ZoneOffset.UTC));
         }
     }

@@ -16,21 +16,25 @@ import org.springframework.stereotype.Service;
 import kr.co.cking.event.application.config.EntryRedisKeys;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EntrySpendServiceImpl implements EntrySpendService {
 
     // FR-P2-033 확정값 (1시간)
     private static final long IDEM_TTL_SECONDS = 3600L;
 
     private final StringRedisTemplate redisTemplate;
-
-    @Qualifier("entrySpendLuaScript")
     private final DefaultRedisScript<List> entrySpendLuaScript;
+
+    public EntrySpendServiceImpl(
+            StringRedisTemplate redisTemplate,
+            @Qualifier("entrySpendLuaScript") DefaultRedisScript<List> entrySpendLuaScript
+    ) {
+        this.redisTemplate = redisTemplate;
+        this.entrySpendLuaScript = entrySpendLuaScript;
+    }
 
     // FR-P2-034 / 취합v1.5.4 §5.3 확정값. 실제 운영 키는 기본값 그대로 쓰고,
     // 테스트는 별도 키로 격리해서 이 키를 지우거나 타입을 바꾸는 조작이

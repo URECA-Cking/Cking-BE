@@ -1,5 +1,6 @@
 package kr.co.cking.common.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import kr.co.cking.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -11,7 +12,6 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import jakarta.validation.ConstraintViolationException;
 
 @Slf4j
 @RestControllerAdvice
@@ -38,10 +38,21 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED, detail));
     }
 
+    /**
+     * {@code @Validated}가 붙은 컨트롤러의 {@code @RequestParam}/{@code @PathVariable}
+     * 제약(예: page/size 범위) 위반. {@code @RequestBody}의 {@link MethodArgumentNotValidException}과
+     * 달리 필드 바인딩 자체는 성공했고 값 범위만 벗어난 경우다.
+     */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException e) {
-        return ResponseEntity.status(CommonErrorCode.VALIDATION_FAILED.status())
-                .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED));
+        String detail = e.getConstraintViolations().stream()
+                .findFirst()
+                .map(v -> "%s: %s".formatted(v.getPropertyPath(), v.getMessage()))
+                .orElse(CommonErrorCode.VALIDATION_FAILED.message());
+        log.warn("constraint violation: {}", detail);
+        return ResponseEntity
+                .status(CommonErrorCode.VALIDATION_FAILED.status())
+                .body(ApiResponse.error(CommonErrorCode.VALIDATION_FAILED, detail));
     }
 
     /**
