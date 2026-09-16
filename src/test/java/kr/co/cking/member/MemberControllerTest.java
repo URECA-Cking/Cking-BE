@@ -65,4 +65,13 @@ class MemberControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }
+
+    @Test
+    void userId가_null이면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/demo/users/select")
+                        .contentType("application/json")
+                        .content("{\"userId\":null}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
 }
