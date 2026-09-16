@@ -43,6 +43,43 @@ DB의 `UNIQUE(draw_snapshot.event_id)`는 애플리케이션 잠금 외의 최�
 
 Drawing 모듈은 Snapshot Entity나 Repository를 직접 사용하지 않고 이 서비스만 호출한다. 이 검증은 read-only이며 `verification_status`와 `verified_at` 기록은 추첨 검증 담당 범위에서 처리한다.
 
+## 관리자 조회 API
+
+### `GET /api/admin/events/{eventId}/snapshot`
+
+- 권한: `ADMIN`
+- 사용자 식별: 필수 query parameter `userId` (`Long`)
+- 처리 순서: Member 존재 여부와 `ADMIN` 권한을 확인한 뒤 Event의 공식 Snapshot을 조회한다.
+- 조회는 read-only이며 Snapshot과 Candidate를 변경하지 않는다.
+- Candidate는 `userId ASC` 순서로 반환한다.
+
+응답 `data`는 다음 필드를 포함한다.
+
+```json
+{
+  "snapshotId": 20,
+  "eventId": 10,
+  "winnerCount": 2,
+  "drawMethod": "WEIGHTED",
+  "algorithmVersion": "WEIGHTED_V1",
+  "candidateCount": 2,
+  "totalTicketCount": 10,
+  "snapshotHash": "a3a997ca2bed6ff1ad71484b6d13cc7a07dec9b0260c5bb040c55ddcb87ec281",
+  "createdAt": "2026-09-16T00:00:00Z",
+  "candidates": [
+    { "userId": 1, "ticketCount": 3 },
+    { "userId": 2, "ticketCount": 7 }
+  ]
+}
+```
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | 식별자 누락·타입 불일치·양수 제약 위반 |
+| `RESOURCE_NOT_FOUND` | 요청한 Member가 존재하지 않음 |
+| `FORBIDDEN` | 요청한 Member가 `ADMIN`이 아님 |
+| `SNAPSHOT_NOT_FOUND` | Event의 공식 Snapshot이 존재하지 않음 |
+
 ## Snapshot Hash 계약
 
 Hash 알고리즘은 SHA-256이고 결과는 64자리 lowercase hex 문자열이다. 정규화 문자열은 UTF-8로 인코딩하며 줄바꿈은 LF(`\n`)만 사용한다. 마지막 Candidate 행 뒤에도 LF를 포함한다.
