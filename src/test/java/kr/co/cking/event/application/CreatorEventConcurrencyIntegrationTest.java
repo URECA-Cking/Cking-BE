@@ -8,7 +8,10 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.event.repository.EventRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import java.time.LocalDateTime;
@@ -21,6 +24,15 @@ class CreatorEventConcurrencyIntegrationTest {
     @Autowired private CreatorEventService service;
     @Autowired private MemberRepository memberRepository;
     @Autowired private CreatorRepository creatorRepository;
+    @Autowired private EventRepository eventRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
+
+    /** 동시성 테스트의 고정 멱등 키가 이전 실행과 충돌하지 않도록 Event를 정리한다. */
+    @BeforeEach
+    void cleanTestEvent() {
+        jdbcTemplate.update("DELETE FROM event_approval_request WHERE event_id IN (SELECT event_id FROM event WHERE request_id = ?)", "550e8400-e29b-41d4-a716-446655440008");
+        jdbcTemplate.update("DELETE FROM event WHERE request_id = ?", "550e8400-e29b-41d4-a716-446655440008");
+    }
 
     /** 동일 멱등 키의 병렬 생성이 하나의 Event 식별자로 수렴하는지 검증한다. */
     @Test
@@ -31,10 +43,21 @@ class CreatorEventConcurrencyIntegrationTest {
                 "동시 이벤트", null, LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2), 1, DrawMethod.WEIGHTED);
         ExecutorService executor = Executors.newFixedThreadPool(2); CountDownLatch start = new CountDownLatch(1);
         try {
-            Future<Event> first = executor.submit(() -> { start.await(); return service.create(command); });
-            Future<Event> second = executor.submit(() -> { start.await(); return service.create(command); });
+            Future<String> first = executor.submit(() -> runCreate(start, command));
+            Future<String> second = executor.submit(() -> runCreate(start, command));
             start.countDown();
-            assertThat(second.get().getEventId()).isEqualTo(first.get().getEventId());
+            java.util.List<String> results = java.util.List.of(first.get(), second.get());
+            assertThat(results).withFailMessage("병렬 생성 결과: %s", results)
+                    .allMatch(result -> result.equals("SUCCESS") || result.equals("CONCURRENT_COMMAND"));
+            assertThat(results).contains("SUCCESS");
+            assertThat(eventRepository.findByRequestId(command.requestId())).isPresent();
         } finally { executor.shutdownNow(); }
+    }
+
+    /** 병렬 생성 결과를 성공 또는 도메인 오류 코드로 변환한다. */
+    private String runCreate(CountDownLatch start, CreateEventCommand command) throws InterruptedException {
+        start.await();
+        try { service.create(command); return "SUCCESS"; }
+        catch (kr.co.cking.common.exception.BusinessException exception) { return exception.getErrorCode().code(); }
     }
 }

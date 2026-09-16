@@ -9,14 +9,17 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
 import kr.co.cking.event.domain.EventApprovalRequestStatus;
 import kr.co.cking.event.domain.EventStatus;
+import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.event.repository.EventApprovalRequestRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -25,13 +28,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
-@Transactional
 class CreatorEventServiceIntegrationTest {
 
     @Autowired private CreatorEventService creatorEventService;
     @Autowired private MemberRepository memberRepository;
     @Autowired private CreatorRepository creatorRepository;
     @Autowired private EventReviewService eventReviewService;
+    @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private EventRepository eventRepository;
+    @Autowired private EventApprovalRequestRepository approvalRequestRepository;
+
+    /** 고정 멱등 키를 사용하는 테스트가 이전 실행 데이터와 충돌하지 않도록 Event만 정리한다. */
+    @BeforeEach
+    void cleanTestEvents() {
+        jdbcTemplate.update("DELETE FROM event_approval_request WHERE event_id IN (SELECT event_id FROM event WHERE request_id LIKE ?)", "550e8400-e29b-41d4-a716-44665544000%");
+        jdbcTemplate.update("DELETE FROM event WHERE request_id LIKE ?", "550e8400-e29b-41d4-a716-44665544000%");
+    }
 
     /** 동일 요청 식별자와 동일 본문은 새 Event 대신 기존 Event를 반환하는지 검증한다. */
     @Test
@@ -40,7 +52,8 @@ class CreatorEventServiceIntegrationTest {
         creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
         CreateEventCommand command = new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440000", "팬미팅", "설명",
-                LocalDateTime.now(ZoneOffset.UTC).plusDays(1), LocalDateTime.now(ZoneOffset.UTC).plusDays(2),
+                LocalDateTime.of(2030, 1, 2, 3, 4, 5, 123_456_789),
+                LocalDateTime.of(2030, 1, 3, 3, 4, 5, 123_456_789),
                 3, DrawMethod.WEIGHTED
         );
 
@@ -65,7 +78,7 @@ class CreatorEventServiceIntegrationTest {
 
         assertThat(approvalRequest.getApprovalRound()).isEqualTo(1);
         assertThat(approvalRequest.getStatus()).isEqualTo(EventApprovalRequestStatus.PENDING);
-        assertThat(event.getStatus()).isEqualTo(EventStatus.PENDING_APPROVAL);
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus()).isEqualTo(EventStatus.PENDING_APPROVAL);
     }
 
     /** 관리자 거절이 승인 요청 이력의 거절 사유와 Event 상태를 함께 변경하는지 검증한다. */
@@ -82,9 +95,10 @@ class CreatorEventServiceIntegrationTest {
 
         eventReviewService.reject(admin.getMemberId(), event.getEventId(), "일정 확인이 필요합니다.");
 
-        assertThat(request.getStatus()).isEqualTo(EventApprovalRequestStatus.REJECTED);
-        assertThat(request.getRejectReason()).isEqualTo("일정 확인이 필요합니다.");
-        assertThat(event.getStatus()).isEqualTo(EventStatus.REJECTED);
+        EventApprovalRequest reviewed = approvalRequestRepository.findById(request.getId()).orElseThrow();
+        assertThat(reviewed.getStatus()).isEqualTo(EventApprovalRequestStatus.REJECTED);
+        assertThat(reviewed.getRejectReason()).isEqualTo("일정 확인이 필요합니다.");
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus()).isEqualTo(EventStatus.REJECTED);
     }
 
     /** Creator가 자신의 초안 Event를 논리 삭제하면 이후 조회 대상에서 제외할 수 있는지 검증한다. */
@@ -99,7 +113,7 @@ class CreatorEventServiceIntegrationTest {
 
         creatorEventService.delete(member.getMemberId(), event.getEventId());
 
-        assertThat(event.getDeletedAt()).isNotNull();
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getDeletedAt()).isNotNull();
     }
 
     /** 거절된 Event를 Creator가 수정하면 상태가 EventCommandService를 통해 DRAFT로 복귀하는지 검증한다. */
@@ -120,8 +134,9 @@ class CreatorEventServiceIntegrationTest {
                 LocalDateTime.now(ZoneOffset.UTC).plusDays(3), LocalDateTime.now(ZoneOffset.UTC).plusDays(4),
                 2, DrawMethod.WEIGHTED));
 
-        assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
-        assertThat(event.getTitle()).isEqualTo("변경");
+        Event updated = eventRepository.findById(event.getEventId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(EventStatus.DRAFT);
+        assertThat(updated.getTitle()).isEqualTo("변경");
     }
 
     /** 종료된 Event는 관리자 승인을 허용하지 않는지 검증한다. */
