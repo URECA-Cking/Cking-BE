@@ -16,6 +16,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import java.util.List;
 
 /** Creator Event 관리와 관리자 심사 HTTP 요청을 처리한다. */
 @RestController
@@ -25,6 +32,16 @@ public class EventManagementController {
 
     private final CreatorEventService creatorEventService;
     private final EventReviewService eventReviewService;
+
+    /** Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 반환한다. */
+    @GetMapping("/api/creator/events")
+    public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.Item>> findMine(
+            @RequestParam Long userId, @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        Page<Event> events = creatorEventService.findMine(userId, PageRequest.of(page, size));
+        List<EventManagementResponse.Item> items = events.stream().map(EventManagementResponse.Item::from).toList();
+        return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
+    }
 
     /** Creator의 Event 생성 요청을 멱등 명령으로 전달한다. */
     @PostMapping("/api/creator/events")

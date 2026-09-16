@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,5 +47,18 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(1))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
+    }
+
+    /** Creator Event 목록 API가 공통 페이지 봉투를 반환하는지 검증한다. */
+    @Test
+    void creatorEventListReturnsPageEnvelope() throws Exception {
+        given(creatorEventService.findMine(org.mockito.ArgumentMatchers.eq(1L), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of()));
+
+        mockMvc.perform(get("/api/creator/events").param("userId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.totalElements").value(0));
     }
 }
