@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class EventTest {
 
@@ -44,6 +45,18 @@ class EventTest {
             assertThat(event.displayStatus(Instant.parse("2026-09-01T00:00:00Z")))
                     .as("status=%s", status)
                     .isEqualTo(DisplayStatus.CLOSED);
+        }
+    }
+
+    @Test
+    void draft_pendingApproval_rejected_이벤트는_표시상태가_정의되지_않아_예외가_난다() {
+        for (EventStatus status : new EventStatus[]{
+                EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.REJECTED}) {
+            Event event = eventOf(status);
+
+            assertThatThrownBy(() -> event.displayStatus(Instant.parse("2026-09-01T00:00:00Z")))
+                    .as("status=%s", status)
+                    .isInstanceOf(IllegalStateException.class);
         }
     }
 

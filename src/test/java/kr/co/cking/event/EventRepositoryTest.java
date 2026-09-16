@@ -58,6 +58,21 @@ class EventRepositoryTest {
         assertThat(closed.getContent()).hasSize(2);
     }
 
+    @Test
+    void 승인전_거절_이벤트는_필터_여부와_무관하게_제외된다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        persistEvent(creatorId, memberId, EventStatus.DRAFT, END, null);
+        persistEvent(creatorId, memberId, EventStatus.PENDING_APPROVAL, END, null);
+        persistEvent(creatorId, memberId, EventStatus.REJECTED, END, null);
+        persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, null);
+        Instant now = Instant.parse("2026-09-15T00:00:00Z");
+
+        var noFilter = eventRepository.search(null, (DisplayStatus) null, now, PageRequest.of(0, 10));
+
+        assertThat(noFilter.getContent()).hasSize(1).allMatch(e -> e.getStatus() == EventStatus.SCHEDULED);
+    }
+
     private void persistEvent(long creatorId, long memberId, EventStatus status, Instant endAt, Instant deletedAt) {
         persistEventBetween(creatorId, memberId, status, START, endAt, deletedAt);
     }

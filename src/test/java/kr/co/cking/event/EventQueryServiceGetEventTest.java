@@ -58,6 +58,23 @@ class EventQueryServiceGetEventTest {
     }
 
     @Test
+    void 승인전_이벤트를_조회하면_예외가_발생한다() {
+        Event draft = Event.builder()
+                .creatorId(7L)
+                .title("초안 이벤트")
+                .startAt(Instant.parse("2026-09-01T00:00:00Z"))
+                .endAt(Instant.parse("2026-09-30T00:00:00Z"))
+                .winnerCount(3)
+                .status(EventStatus.DRAFT)
+                .build();
+        when(eventCache.find(1L)).thenReturn(Optional.empty());
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(draft));
+
+        assertThatThrownBy(() -> service.getEvent(1L, 100L))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     void 캐시에_있으면_레포지토리를_거치지_않는다() {
         CachedEvent cached = CachedEvent.from(event);
         when(eventCache.find(1L)).thenReturn(Optional.of(cached));

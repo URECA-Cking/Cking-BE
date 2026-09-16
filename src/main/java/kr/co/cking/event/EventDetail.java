@@ -14,20 +14,6 @@ public record EventDetail(
         long myTicketBalance
 ) {
 
-    public static EventDetail of(Event event, Instant now, long myTicketBalance) {
-        return new EventDetail(
-                event.getEventId(),
-                event.getCreatorId(),
-                event.getTitle(),
-                event.getDescription(),
-                event.getStartAt(),
-                event.getEndAt(),
-                event.getWinnerCount(),
-                event.displayStatus(now),
-                myTicketBalance
-        );
-    }
-
     public static EventDetail of(CachedEvent event, Instant now, long myTicketBalance) {
         return new EventDetail(
                 event.eventId(),

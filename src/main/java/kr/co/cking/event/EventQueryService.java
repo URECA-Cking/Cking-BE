@@ -42,7 +42,7 @@ public class EventQueryService {
 
     private CachedEvent loadAndCache(Long eventId) {
         Event event = eventRepository.findById(eventId)
-                .filter(e -> e.getDeletedAt() == null)
+                .filter(e -> e.getDeletedAt() == null && e.getStatus().isPubliclyVisible())
                 .orElseThrow(() -> new BusinessException(EventErrorCode.EVENT_NOT_FOUND));
         CachedEvent cached = CachedEvent.from(event);
         eventCache.save(cached);
