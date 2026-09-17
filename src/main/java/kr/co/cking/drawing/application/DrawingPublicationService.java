@@ -11,6 +11,7 @@ import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
+import kr.co.cking.drawing.application.DrawingPublicationResult.PublicationOutcome;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.event.application.EventDrawingQueryService;
 import kr.co.cking.event.application.dto.EventDrawingSource;
@@ -29,7 +30,12 @@ import lombok.RequiredArgsConstructor;
  * 뒤 Event 전이를 별도로 다시 호출하면 안 된다(재호출 시 두 번째 호출이 이미 PUBLISHED인
  * Event에 대해 {@code INVALID_STATE}로 실패해 호출자의 Transaction 전체가 Rollback된다).
  * 관리자 권한(adminId)은 호출자가 1차 검증하는 것을 전제로 하되, 도메인 경계를 넘는 호출이므로
- * 이 메서드도 {@link MemberQueryService#validateAdmin}으로 방어적으로 재검증한다.
+ * 이 메서드도 {@link MemberQueryService#validateAdmin}으로 방어적으로 재검증한다. 반환값의
+ * {@link DrawingPublicationResult#outcome}이 {@code PUBLISHED}일 때만 이번 호출에서 실제
+ * 전이가 일어났다는 뜻이다 — 호출자는 이 값이 {@code PUBLISHED}일 때만 신규 Winner
+ * Notification을 생성해야 한다(FR-P4-132·FR-P4-133). {@code ALREADY_PUBLISHED}(멱등
+ * 재요청)에서도 매번 Notification 생성을 시도하면 DB unique 제약 위반으로 멱등 성공이어야
+ * 할 호출이 예외로 실패할 수 있다.
  *
  * <p>공개는 Event.status가 {@code DRAW_COMPLETED}이고 공식 INITIAL Drawing이
  * {@code COMPLETED}+{@code PRIVATE}인 경우에만 허용하며, Drawing 공개와 Event
@@ -78,7 +84,7 @@ public class DrawingPublicationService {
             if (event.status() != EventStatus.PUBLISHED) {
                 throw new BusinessException(EventErrorCode.INVALID_STATE);
             }
-            return toResult(drawing);
+            return toResult(drawing, PublicationOutcome.ALREADY_PUBLISHED);
         }
 
         if (event.status() != EventStatus.DRAW_COMPLETED) {
@@ -87,15 +93,16 @@ public class DrawingPublicationService {
 
         drawing.publish(clock.instant());
         eventCommandService.publish(drawing.getEventId());
-        return toResult(drawing);
+        return toResult(drawing, PublicationOutcome.PUBLISHED);
     }
 
-    private DrawingPublicationResult toResult(Drawing drawing) {
+    private DrawingPublicationResult toResult(Drawing drawing, PublicationOutcome outcome) {
         return new DrawingPublicationResult(
                 drawing.getId(),
                 drawing.getEventId(),
                 drawing.getVisibility(),
-                drawing.getPublishedAt()
+                drawing.getPublishedAt(),
+                outcome
         );
     }
 }

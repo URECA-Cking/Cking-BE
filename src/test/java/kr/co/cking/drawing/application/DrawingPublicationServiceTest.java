@@ -65,6 +65,7 @@ class DrawingPublicationServiceTest {
         DrawingPublicationResult result = drawingPublicationService.publish(1L, 99L);
 
         assertThat(result.visibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(result.outcome()).isEqualTo(DrawingPublicationResult.PublicationOutcome.PUBLISHED);
         verify(memberQueryService).validateAdmin(99L);
         verify(eventCommandService).publish(10L);
     }
@@ -78,6 +79,7 @@ class DrawingPublicationServiceTest {
         DrawingPublicationResult result = drawingPublicationService.publish(1L, 99L);
 
         assertThat(result.visibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(result.outcome()).isEqualTo(DrawingPublicationResult.PublicationOutcome.ALREADY_PUBLISHED);
         verify(memberQueryService).validateAdmin(99L);
         verifyNoInteractions(eventCommandService);
     }

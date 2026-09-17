@@ -8,6 +8,21 @@ public record DrawingPublicationResult(
         Long drawingId,
         Long eventId,
         DrawingVisibility visibility,
-        Instant publishedAt
+        Instant publishedAt,
+        PublicationOutcome outcome
 ) {
+
+    /**
+     * 이번 호출에서 {@code PRIVATE → PUBLIC} 전이가 실제로 일어났는지 구분한다(FR-P4-132·
+     * FR-P4-133). 호출자(시스템4)는 {@code PUBLISHED}일 때만 신규 Winner Notification을
+     * 생성해야 한다 — {@code ALREADY_PUBLISHED}(멱등 재요청)에서도 매번 생성을 시도하면,
+     * DB unique 제약(`uk_notification_winner_type`)이 최종 중복은 막아도 그 제약 위반
+     * 예외가 멱등 성공이어야 할 호출 전체를 실패시킬 수 있다.
+     */
+    public enum PublicationOutcome {
+        /** 이번 호출에서 Drawing이 PRIVATE에서 PUBLIC으로 새로 전이됐다. */
+        PUBLISHED,
+        /** 이미 PUBLIC이던 Drawing의 멱등 재요청이라 상태를 바꾸지 않았다. */
+        ALREADY_PUBLISHED
+    }
 }

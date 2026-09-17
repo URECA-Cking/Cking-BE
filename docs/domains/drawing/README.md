@@ -43,10 +43,17 @@ REDRAW Drawing 공개(FR-P4-115, Event가 이미 `PUBLISHED`인 경우)는 제�
 - 입력: `drawingId`(`Long`, 양수), `adminId`(`Long`, 양수). 관리자 권한은 호출자(시스템4)가
   1차 검증하는 것을 전제로 하되, 도메인 경계를 넘는 호출이므로 이 메서드도
   `MemberQueryService.validateAdmin(adminId)`로 방어적으로 재검증한다.
-- 반환: 불변 결과 `DrawingPublicationResult(drawingId, eventId, visibility, publishedAt)`.
+- 반환: 불변 결과 `DrawingPublicationResult(drawingId, eventId, visibility, publishedAt, outcome)`.
   영속 상태의 `Drawing` Entity를 그대로 반환하지 않는다 — 도메인 간 참조는 Entity가 아닌
   ID·DTO를 쓴다는 원칙(README "9. 코드 구조")에 따라, 호출자가 이 도메인의 Entity에 직접
-  의존하거나 같은 Transaction에서 상태를 바꿀 여지를 없앤다.
+  의존하거나 같은 Transaction에서 상태를 바꿀 여지를 없앤다. `outcome`(`PublicationOutcome`)은
+  이번 호출에서 실제 `PRIVATE → PUBLIC` 전이가 일어났는지(`PUBLISHED`) 아니면 이미 공개된
+  상태의 멱등 재요청인지(`ALREADY_PUBLISHED`)를 구분한다. `visibility`만으로는 최초 공개와
+  멱등 재요청을 구분할 수 없다(둘 다 `PUBLIC` + 기존 `publishedAt`을 반환). 호출자(시스템4)는
+  **`outcome == PUBLISHED`일 때만** 신규 Winner Notification을 생성해야 한다(FR-P4-132·
+  FR-P4-133) — `ALREADY_PUBLISHED`에서도 매번 Notification 생성을 시도하면, DB unique
+  제약(`uk_notification_winner_type`)이 최종 중복 저장은 막아도 그 제약 위반 예외가 멱등
+  성공이어야 할 호출 전체를 실패시킬 수 있다.
 - **중요**: 이 메서드가 `EventCommandService.publish(eventId)`까지 이미 호출해 Event
   전이를 완료한다. 호출자는 이 메서드가 반환된 뒤 Event 전이를 별도로 다시 호출하면 안
   된다 — 재호출하면 두 번째 호출이 이미 `PUBLISHED`인 Event에 대해 `INVALID_STATE`로

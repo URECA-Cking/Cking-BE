@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -18,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.drawing.application.DrawingPublicationResult.PublicationOutcome;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.event.domain.EventErrorCode;
@@ -124,8 +126,13 @@ class DrawingPublicationServiceIntegrationTest {
             start.countDown();
 
             // 두 요청 모두 예외 없이 PUBLIC을 반환해야 한다(하나는 최초 전이, 하나는 멱등 성공).
-            assertThat(first.get().visibility()).isEqualTo(DrawingVisibility.PUBLIC);
-            assertThat(second.get().visibility()).isEqualTo(DrawingVisibility.PUBLIC);
+            DrawingPublicationResult firstResult = first.get();
+            DrawingPublicationResult secondResult = second.get();
+            assertThat(firstResult.visibility()).isEqualTo(DrawingVisibility.PUBLIC);
+            assertThat(secondResult.visibility()).isEqualTo(DrawingVisibility.PUBLIC);
+            // 정확히 하나만 PUBLISHED(실제 전이)이고 나머지 하나는 ALREADY_PUBLISHED(멱등)여야 한다.
+            assertThat(List.of(firstResult.outcome(), secondResult.outcome()))
+                    .containsExactlyInAnyOrder(PublicationOutcome.PUBLISHED, PublicationOutcome.ALREADY_PUBLISHED);
         }
 
         assertThat(drawingRepository.findById(DRAWING_ID).orElseThrow().getVisibility())
@@ -140,11 +147,13 @@ class DrawingPublicationServiceIntegrationTest {
         insertSnapshot();
         insertDrawing(DrawingVisibility.PRIVATE);
 
-        service.publish(DRAWING_ID, ADMIN_ID);
+        DrawingPublicationResult first = service.publish(DRAWING_ID, ADMIN_ID);
         Instant firstPublishedAt = drawingRepository.findById(DRAWING_ID).orElseThrow().getPublishedAt();
 
         DrawingPublicationResult replay = service.publish(DRAWING_ID, ADMIN_ID);
 
+        assertThat(first.outcome()).isEqualTo(PublicationOutcome.PUBLISHED);
+        assertThat(replay.outcome()).isEqualTo(PublicationOutcome.ALREADY_PUBLISHED);
         // DB 컬럼은 DATETIME(6)라 나노초 이하가 잘리므로, 두 값 모두 DB에서 다시 읽어 비교한다.
         assertThat(replay.publishedAt()).isEqualTo(firstPublishedAt);
         assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name())
