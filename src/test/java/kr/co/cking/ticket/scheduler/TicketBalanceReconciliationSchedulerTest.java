@@ -2,6 +2,8 @@ package kr.co.cking.ticket.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -115,6 +118,39 @@ class TicketBalanceReconciliationSchedulerTest {
         assertThat(logAppender.list)
                 .anyMatch(event -> event.getLevel() == Level.WARN && event.getFormattedMessage().contains("파싱"));
         assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.INFO);
+    }
+
+    @Test
+    void 파싱_실패로_한_주기를_건너뛰면_스트릭이_초기화돼_다시_INFO부터_시작한다() {
+        givenBalance(1L, 10L, 5L);
+        givenRedisValue(1L, 10L, "3");
+        scheduler.reconcile();
+
+        givenBalance(1L, 10L, 5L);
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn("not-a-number");
+        scheduler.reconcile();
+        logAppender.list.clear();
+
+        givenBalance(1L, 10L, 5L);
+        givenRedisValue(1L, 10L, "3");
+        scheduler.reconcile();
+
+        assertThat(logAppender.list).noneMatch(event -> event.getLevel() == Level.WARN);
+        assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.INFO);
+    }
+
+    @Test
+    void Redis_연결_자체가_실패하면_이번_주기를_중단하고_WARN_한_번만_남긴다() {
+        when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
+                UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L)))
+                .thenThrow(new RedisConnectionFailureException("connection refused"));
+
+        scheduler.reconcile();
+
+        assertThat(logAppender.list.stream().filter(event -> event.getLevel() == Level.WARN)).hasSize(1);
+        verify(valueOperations, never()).get(TicketRedisKeys.balance(10L, 2L));
     }
 
     private void givenBalance(Long memberId, Long creatorId, Long balance) {

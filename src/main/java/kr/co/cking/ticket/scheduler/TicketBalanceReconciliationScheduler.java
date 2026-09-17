@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -44,9 +45,14 @@ public class TicketBalanceReconciliationScheduler {
             BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
             try {
                 check(key, balance.getBalance());
+            } catch (RedisConnectionFailureException e) {
+                // Redis 연결 자체가 끊긴 경우 - key마다 반복 경고하지 않고 이번 주기를 중단한다.
+                log.warn("Redis 연결 실패로 이번 주기 정합성 검사를 중단합니다.", e);
+                return;
             } catch (Exception e) {
-                // Redis 값 타입 오류(WRONGTYPE)·숫자 파싱 실패 등으로 이 key 검사가 실패해도
-                // 나머지 Balance 검사를 계속 진행한다.
+                // Redis 값 타입 오류(WRONGTYPE)·숫자 파싱 실패 등 이 key만의 문제는 나머지 Balance
+                // 검사를 계속 진행한다. 정상 비교가 끊겼으므로 연속 불일치 스트릭도 초기화한다.
+                mismatchStreaks.remove(key);
                 log.warn("Redis Balance 조회·파싱에 실패했습니다. memberId={}, creatorId={}",
                         key.memberId(), key.creatorId(), e);
             }
