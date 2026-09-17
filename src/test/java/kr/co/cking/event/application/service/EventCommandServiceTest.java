@@ -46,8 +46,9 @@ class EventCommandServiceTest {
         Event event = eventOf(EventStatus.OPEN);
         when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
 
-        eventCommandService.startClosing(1L, "123-0");
+        EventStatus result = eventCommandService.startClosing(1L, "123-0");
 
+        assertThat(result).isEqualTo(EventStatus.CLOSING);
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
         assertThat(event.getCutoffStreamId()).isEqualTo("123-0");
         verify(eventPublisher).publishEvent(new EventClosingStateChangedEvent(1L));
@@ -59,8 +60,9 @@ class EventCommandServiceTest {
         event.startClosing("123-0");
         when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
 
-        eventCommandService.startClosing(1L, "123-0");
+        EventStatus result = eventCommandService.startClosing(1L, "123-0");
 
+        assertThat(result).isEqualTo(EventStatus.CLOSING);
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
         verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any(Object.class));
     }
@@ -73,6 +75,17 @@ class EventCommandServiceTest {
         assertThatThrownBy(() -> eventCommandService.startClosing(1L, "123-0"))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+    }
+
+    @Test
+    void startClosing은_이미_CLOSED면_현재_상태를_멱등하게_반환한다() {
+        Event event = eventOf(EventStatus.CLOSED);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        EventStatus result = eventCommandService.startClosing(1L, "123-0");
+
+        assertThat(result).isEqualTo(EventStatus.CLOSED);
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any(Object.class));
     }
 
     @Test

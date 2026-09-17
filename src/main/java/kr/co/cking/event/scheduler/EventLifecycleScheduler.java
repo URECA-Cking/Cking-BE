@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import kr.co.cking.event.application.service.EventCommandService;
-import kr.co.cking.event.application.service.EventCutoffBarrier;
+import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.application.service.EventDrainChecker;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
@@ -37,7 +37,7 @@ public class EventLifecycleScheduler {
 
     private final EventRepository eventRepository;
     private final EventCommandService eventCommandService;
-    private final EventCutoffBarrier eventCutoffBarrier;
+    private final EventClosingService eventClosingService;
     private final EventDrainChecker eventDrainChecker;
     private final OfficialSnapshotService officialSnapshotService;
     private final Clock clock;
@@ -70,8 +70,7 @@ public class EventLifecycleScheduler {
         for (Event event : eventRepository.findByStatusAndEndAtLessThanEqual(EventStatus.OPEN, now)) {
             Long eventId = event.getEventId();
             try {
-                String cutoffStreamId = eventCutoffBarrier.close(eventId);
-                eventCommandService.startClosing(eventId, cutoffStreamId);
+                eventClosingService.startClosing(eventId);
             } catch (RuntimeException e) {
                 log.error("이벤트 마감 시작(OPEN→CLOSING)에 실패했습니다. eventId={}", eventId, e);
             }

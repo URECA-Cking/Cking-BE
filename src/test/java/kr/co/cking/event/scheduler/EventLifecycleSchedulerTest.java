@@ -19,7 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import kr.co.cking.event.application.service.EventCommandService;
-import kr.co.cking.event.application.service.EventCutoffBarrier;
+import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.application.service.EventDrainChecker;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
@@ -38,7 +38,7 @@ class EventLifecycleSchedulerTest {
     private EventCommandService eventCommandService;
 
     @Mock
-    private EventCutoffBarrier eventCutoffBarrier;
+    private EventClosingService eventClosingService;
 
     @Mock
     private EventDrainChecker eventDrainChecker;
@@ -66,6 +66,19 @@ class EventLifecycleSchedulerTest {
         scheduler.run();
 
         verify(eventCommandService).open(1L);
+    }
+
+    @Test
+    void 종료시각이_지난_OPEN_이벤트는_공통_마감_서비스로_요청한다() {
+        Event event = org.mockito.Mockito.mock(Event.class);
+        when(event.getEventId()).thenReturn(1L);
+        when(clock.instant()).thenReturn(NOW);
+        when(eventRepository.findByStatusAndEndAtLessThanEqual(EventStatus.OPEN, NOW))
+                .thenReturn(List.of(event));
+
+        scheduler.run();
+
+        verify(eventClosingService).startClosing(1L);
     }
 
     @Test

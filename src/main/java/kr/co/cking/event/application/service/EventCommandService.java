@@ -132,16 +132,20 @@ public class EventCommandService {
 
     /**
      * Gate 차단·cutoff 확정(barrier) 이후 호출. 동일 cutoff로 이미 CLOSING이면 재시도로 보고
-     * 멱등하게 반환한다. 그 외 OPEN이 아닌 상태(DRAFT, SCHEDULED 등)에서 호출되면
-     * {@link EventErrorCode#INVALID_STATE}로 구분해 실패시킨다.
+     * 멱등하게 반환한다. 이미 CLOSED인 경우에도 완료 상태를 반환한다. 그 외 OPEN이 아닌 상태
+     * (DRAFT, SCHEDULED 등)에서 호출되면 {@link EventErrorCode#INVALID_STATE}로 구분해 실패시킨다.
      */
-    public void startClosing(Long eventId, String cutoffStreamId) {
+    public EventStatus startClosing(Long eventId, String cutoffStreamId) {
         Event event = findEvent(eventId);
         if (event.getStatus() == EventStatus.CLOSING && Objects.equals(event.getCutoffStreamId(), cutoffStreamId)) {
-            return;
+            return EventStatus.CLOSING;
+        }
+        if (event.getStatus() == EventStatus.CLOSED) {
+            return EventStatus.CLOSED;
         }
         event.startClosing(cutoffStreamId);
         eventPublisher.publishEvent(new EventClosingStateChangedEvent(eventId));
+        return EventStatus.CLOSING;
     }
 
     /**
