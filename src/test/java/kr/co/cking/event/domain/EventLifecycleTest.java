@@ -167,7 +167,8 @@ class EventLifecycleTest {
         EventRepository eventRepository = mock(EventRepository.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher,
+                mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.open(1L);
 
@@ -182,7 +183,8 @@ class EventLifecycleTest {
         EventRepository eventRepository = mock(EventRepository.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher,
+                mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.open(1L);
 
@@ -200,7 +202,8 @@ class EventLifecycleTest {
         Event event = closedEvent();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository,
+                mock(ApplicationEventPublisher.class), mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.completeDrawing(1L);
 
@@ -214,7 +217,8 @@ class EventLifecycleTest {
         Event event = scheduledEvent();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository,
+                mock(ApplicationEventPublisher.class), mock(kr.co.cking.event.application.EventQueryService.class));
 
         assertThatThrownBy(() -> eventCommandService.completeDrawing(1L))
                 .isInstanceOf(BusinessException.class)
@@ -228,7 +232,8 @@ class EventLifecycleTest {
         Event event = drawingCompletedEvent();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository,
+                mock(ApplicationEventPublisher.class), mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.publish(1L);
 
@@ -243,7 +248,8 @@ class EventLifecycleTest {
         Event event = closedEvent();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository,
+                mock(ApplicationEventPublisher.class), mock(kr.co.cking.event.application.EventQueryService.class));
 
         assertThatThrownBy(() -> eventCommandService.publish(1L))
                 .isInstanceOf(BusinessException.class)
@@ -289,7 +295,8 @@ class EventLifecycleTest {
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(scheduledPathEvent));
         given(eventRepository.findByEventId(2L)).willReturn(java.util.Optional.of(drawingPathEvent));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository,
+                mock(ApplicationEventPublisher.class), mock(kr.co.cking.event.application.EventQueryService.class));
 
         eventCommandService.requestApproval(1L);
         eventCommandService.approve(1L);
