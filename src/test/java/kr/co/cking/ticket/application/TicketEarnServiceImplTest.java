@@ -1,5 +1,6 @@
 package kr.co.cking.ticket.application;
 
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +19,7 @@ import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 실제 로컬 Redis에 붙어서 Lua 스크립트까지 검증한다(EventCacheTest와 동일하게
@@ -166,5 +168,54 @@ class TicketEarnServiceImplTest {
 
         assertThat(result.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    // 실패 시 idem을 저장하지 않는다는 보상 로직의 의도를 고정한다 - 같은
+    // requestId로 재시도하면 ALREADY_PROCESSED가 아니라 다시 처리를 시도해
+    // EARN_ACCEPTED로 끝나야 한다.
+    @Test
+    void XADD가_실패한_요청을_같은_requestId로_재시도하면_EARN_ACCEPTED를_반환한다() {
+        redisTemplate.opsForValue().set(TEST_STREAM_KEY, "not-a-stream");
+        EarnCommand command = newCommand(UUID.randomUUID());
+
+        EarnResult failed = earn(command);
+        assertThat(failed.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
+
+        redisTemplate.delete(TEST_STREAM_KEY);
+        EarnResult retried = earn(command);
+
+        assertThat(retried.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    // SETNX 이후 INCRBY 자체가 타입 충돌로 실패해도 가드가 남으면 안 된다 - 안 풀면
+    // 실제로는 적립되지 않았는데도 오늘 하루 이 미션을 다시 받을 수 없게 된다.
+    @Test
+    void INCRBY가_실패하면_가드를_풀고_같은_requestId로_재시도할_수_있다() {
+        redisTemplate.opsForValue().set(TicketRedisKeys.balance(CREATOR_ID, USER_ID), "not-a-number");
+        EarnCommand command = newCommand(UUID.randomUUID());
+
+        EarnResult failed = earn(command);
+
+        assertThat(failed.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
+        assertThat(redisTemplate.hasKey(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT)
+        )).isFalse();
+
+        redisTemplate.delete(TicketRedisKeys.balance(CREATOR_ID, USER_ID));
+        EarnResult retried = earn(command);
+
+        assertThat(retried.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    // System 2(EARN) 책임: periodKey가 zero-padding된 yyyy-MM-dd가 아니면 Lua 호출
+    // 전에 거부해야 한다("2026-9-16" 같은 값, 2026-09-17 팀 결정).
+    @Test
+    void periodKey_형식이_올바르지_않으면_예외를_던진다() {
+        EarnCommand command = new EarnCommand(
+                UUID.randomUUID(), USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, "2026-9-16", MISSION_KEY, 1L);
+
+        assertThatThrownBy(() -> earn(command)).isInstanceOf(DateTimeParseException.class);
     }
 }

@@ -3,6 +3,8 @@ package kr.co.cking.ticket.application;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -30,8 +32,9 @@ public class TicketEarnServiceImpl implements TicketEarnService {
 
     // FR-P1-017 확정값 (24시간)
     private static final long IDEM_TTL_SECONDS = 86_400L;
-    // 명세에 없어 방어적으로 설정한 값 (2일)
-    private static final long GUARD_TTL_SECONDS = 172_800L;
+    // 팀 확정값 (25시간, PR #63 리뷰 반영) — 가드 키에 yyyyMMdd가 포함돼 자정 지나면
+    // 자연 만료되지만, 서버 시간대 오차에 대비해 24시간+1시간 여유를 둔다.
+    private static final long GUARD_TTL_SECONDS = 90_000L;
 
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> ticketEarnLuaScript;
@@ -50,7 +53,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
     @Override
     public EarnResult earn(EarnCommand command) {
         String requestId = command.requestId().toString();
-        String periodKeyGuardFormat = command.periodKey().replace("-", "");
+        String periodKeyGuardFormat = toGuardPeriodKey(command.periodKey());
         String fingerprint = computeFingerprint(command);
         List<?> result;
 
@@ -88,6 +91,14 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         }
 
         return parse(result, command);
+    }
+
+    // periodKey 형식 검증과 가드 키 변환은 System 2(EARN) 책임이다(T1은 KST 기준
+    // LocalDate.now()로 생성하지만, "2026-9-16"처럼 padding 없는 값은 여기서
+    // strict하게 걸러 EARN Contract 경계에서 거부한다 - 2026-09-17 팀 결정).
+    private String toGuardPeriodKey(String periodKey) {
+        LocalDate date = LocalDate.parse(periodKey, DateTimeFormatter.ISO_LOCAL_DATE);
+        return date.format(DateTimeFormatter.BASIC_ISO_DATE);
     }
 
     // requestId를 제외한 요청 내용을 해시로 요약해 REQUEST_ID_CONFLICT 판정에 사용한다.

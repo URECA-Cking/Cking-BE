@@ -17,7 +17,9 @@
 --                             missionId+periodKey+missionKey+amount로 계산)
 -- ARGV[3] = streamKey        (예: stream:ticket-earned)
 -- ARGV[4] = idemTtlSeconds   (FR-P1-017 확정: 24시간 = 86400)
--- ARGV[5] = guardTtlSeconds  (가드 키 만료. 명세에 없어 방어적으로 2일 = 172800으로 설정)
+-- ARGV[5] = guardTtlSeconds  (가드 키 만료. 팀 확정 25시간 = 90000 — 키에 yyyyMMdd가
+--                             포함돼 자정 지나면 자연 만료되지만, 서버 시간대 오차 대비
+--                             24시간+1시간 여유를 둔다. PR #63 리뷰 반영)
 -- ARGV[6] = requestId
 -- ARGV[7] = userId
 -- ARGV[8] = creatorId
@@ -66,15 +68,23 @@ end
 -- 2) 중복 적립 가드 (userId+missionType+creatorId+yyyyMMdd, FR-P2-006)
 -- EARN API Business Key(userId+creatorId+missionId+periodKey, FR-P2-008)와는
 -- 다른 레이어의 별도 키다 - 임의로 통합하지 않는다(취합v1.5.4 §4.2).
-local guardAcquired = redis.call('SETNX', guardKey, requestId)
-if guardAcquired == 0 then
+local guardAcquired = redis.call('SET', guardKey, requestId, 'NX', 'EX', guardTtl)
+if not guardAcquired then
     return { 'DUPLICATE_MISSION' }
 end
-redis.call('EXPIRE', guardKey, guardTtl)
 
--- 3) Balance 증가 + Stream 발행
+-- 3) Balance 증가 + Stream 발행. Balance 키가 없으면 0에서 시작(INCRBY가 자동
+-- 생성) — 취합v1.5.4 §2.4가 EARN 최초 적립을 Balance Key 미존재 정책(SPEND는
+-- BALANCE_NOT_LOADED 반환)의 명시적 예외로 확정했다. Redis 재기동/eviction으로
+-- 기존 유저의 키가 사라진 경우도 이 경로를 타 신규 유저처럼 0에서 재생성될 수
+-- 있으나, 이는 §2.4가 받아들인 트레이드오프이며 §13.2 정합성 배치가 뒤늦게 보정한다.
 local balanceExisted = redis.call('EXISTS', balanceKey) == 1
-local newBalance = redis.call('INCRBY', balanceKey, amount)
+local newBalance = redis.pcall('INCRBY', balanceKey, amount)
+
+if type(newBalance) == 'table' and newBalance.err then
+    redis.call('DEL', guardKey)
+    return redis.error_reply('INCRBY_FAILED: ' .. newBalance.err)
+end
 
 local streamId = redis.pcall('XADD', streamKey, '*',
     'requestId', requestId,
