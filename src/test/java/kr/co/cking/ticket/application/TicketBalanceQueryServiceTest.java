@@ -3,6 +3,7 @@ package kr.co.cking.ticket.application;
 import java.time.Instant;
 import java.util.Optional;
 
+import kr.co.cking.ticket.TicketBalanceResponse;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 import org.junit.jupiter.api.Test;

@@ -12,6 +12,8 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 
+import kr.co.cking.ticket.application.TicketBalanceQueryService;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
