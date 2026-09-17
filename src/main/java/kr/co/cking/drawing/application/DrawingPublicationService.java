@@ -20,13 +20,14 @@ import kr.co.cking.member.application.MemberQueryService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 관리자의 추첨 결과 공개 요청을 처리한다(통합 API 명세 v2.5 No.35, 취합v1.5.4 §12,
- * FR-P2-044). 공개는 Event.status가 {@code DRAW_COMPLETED}이고 공식 INITIAL Drawing이
- * {@code COMPLETED}+{@code PRIVATE}인 경우에만 허용하며, Drawing 공개와 Event
- * {@code DRAW_COMPLETED→PUBLISHED} 전이를 한 Tx로 묶어 둘 다 반영되거나 둘 다 반영되지
- * 않도록 한다. REDRAW 공개(FR-P4-115, Event가 이미 PUBLISHED인 경우)는 이번 구현 범위에서
- * 제외한다. 당첨자 Notification 생성(FR-P4-114)과의 원자성은 아직 해결되지 않았다 —
- * {@code docs/domains/drawing/README.md}의 "미해결" 절을 참고한다.
+ * 검증된 INITIAL Drawing 공개를 처리하는 내부 Service 계약이다(FR-P2-044, 취합v1.5.4 §12).
+ * 외부 HTTP API로 노출하지 않는다 — 관리자 권한 검증·외부 엔드포인트·당첨자 Notification
+ * 생성(FR-P4-114)은 호출자(시스템4의 PublicationService)가 자신의 Transaction 경계 안에서
+ * 담당한다({@code docs/domains/drawing/README.md}의 "책임 경계" 절 참고). 공개는 Event.status가
+ * {@code DRAW_COMPLETED}이고 공식 INITIAL Drawing이 {@code COMPLETED}+{@code PRIVATE}인
+ * 경우에만 허용하며, Drawing 공개와 Event {@code DRAW_COMPLETED→PUBLISHED} 전이를 한 Tx로
+ * 묶어 둘 다 반영되거나 둘 다 반영되지 않도록 한다. REDRAW 공개(FR-P4-115, Event가 이미
+ * PUBLISHED인 경우)는 이번 구현 범위에서 제외한다.
  */
 @Service
 @RequiredArgsConstructor

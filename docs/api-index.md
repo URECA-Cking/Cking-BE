@@ -38,7 +38,7 @@
 | 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 신청 목록 | - |
 | 33 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/approve` | 승인 | 상태 기반 |
 | 34 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/reject` | 거절 | 상태 기반 |
-| 35 | 외부 | 공개 | ADMIN | POST | `/api/admin/drawings/{drawingId}/publish` | 결과 공개 | 상태 기반 |
+| 35 | 내부 | 공개 | INTERNAL | CALL | `DrawingPublicationService.publish(drawingId, adminId)` | 결과 공개(Drawing PRIVATE→PUBLIC + Event DRAW_COMPLETED→PUBLISHED) | 상태 기반 |
 | 36 | 외부 | Winner | USER | GET | `/api/me/winners` | 내 당첨 조회 | - |
 | 37 | 외부 | Winner | USER | POST | `/api/me/winners/{winnerId}/decline` | 당첨 포기 | 상태 기반 |
 | 38 | 외부 | Winner | ADMIN | POST | `/api/admin/winners/{winnerId}/receive` | 수령 완료 | 상태 기반 |
