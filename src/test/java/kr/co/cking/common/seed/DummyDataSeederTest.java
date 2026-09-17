@@ -69,9 +69,9 @@ class DummyDataSeederTest {
         assertThat(redisTemplate.hasKey(DummyDataSeeder.SEED_LOCK_KEY)).isFalse();
     }
 
-    // member.email에 UNIQUE 제약이 없어 find-or-create가 원자적이지 않다(PR #90 리뷰) -
-    // 두 실행이 겹치는 걸 막기 위해 Redis SETNX 락을 쓴다. 락이 이미 걸려 있으면
-    // 이 프로세스는 아무것도 만들지 않고 그대로 건너뛰어야 한다.
+    // member.email에 UNIQUE 제약이 없어 find-or-create가 원자적이지 않다 - 두 실행이
+    // 겹치는 걸 막기 위해 Redis 락을 쓴다. 락이 이미 걸려 있으면 이 프로세스는
+    // 아무것도 만들지 않고 그대로 건너뛰어야 한다.
     @Test
     void 락이_이미_걸려있으면_시딩을_건너뛴다() {
         redisTemplate.opsForValue().set(DummyDataSeeder.SEED_LOCK_KEY, "locked");
@@ -79,6 +79,32 @@ class DummyDataSeederTest {
         seeder.run();
 
         assertThat(dummyMemberIds("dummy-%@cking.test")).isEmpty();
+    }
+
+    // 락 해제는 compare-and-delete Lua 스크립트로 한다 - 내 토큰과 다르면 지우면 안
+    // 된다. TTL 만료 후 다른 프로세스가 새 락을 잡은 뒤 내 지연된 해제 호출이
+    // 도착하는 상황을 실제 타이밍 없이, 스크립트 자체의 동작만으로 재현한다:
+    // "남의 토큰"을 미리 넣어두고 내 토큰으로 해제를 시도했을 때 안 지워지는지 본다.
+    @Test
+    void 락_해제_스크립트는_토큰이_다르면_지우지_않는다() {
+        redisTemplate.opsForValue().set(DummyDataSeeder.SEED_LOCK_KEY, "other-process-token");
+
+        Long deleted = redisTemplate.execute(
+                DummyDataSeeder.RELEASE_LOCK_SCRIPT, List.of(DummyDataSeeder.SEED_LOCK_KEY), "my-token");
+
+        assertThat(deleted).isZero();
+        assertThat(redisTemplate.opsForValue().get(DummyDataSeeder.SEED_LOCK_KEY)).isEqualTo("other-process-token");
+    }
+
+    @Test
+    void 락_해제_스크립트는_토큰이_같으면_지운다() {
+        redisTemplate.opsForValue().set(DummyDataSeeder.SEED_LOCK_KEY, "my-token");
+
+        Long deleted = redisTemplate.execute(
+                DummyDataSeeder.RELEASE_LOCK_SCRIPT, List.of(DummyDataSeeder.SEED_LOCK_KEY), "my-token");
+
+        assertThat(deleted).isEqualTo(1L);
+        assertThat(redisTemplate.hasKey(DummyDataSeeder.SEED_LOCK_KEY)).isFalse();
     }
 
     @Test
@@ -93,8 +119,7 @@ class DummyDataSeederTest {
 
     // 중간 실패로 일부 더미 유저만 DB에 남은 상황(예: 15명 중 1명 누락)을 시뮬레이션한다.
     // find-or-create 방식이라 재실행하면 빠진 것만 채워야 하고, 이미 있던 나머지는
-    // 그대로 유지돼야 한다(PR #83 리뷰: "user #1만 확인하고 skip"하던 예전 로직은
-    // 이 경우 영원히 안 채워졌다).
+    // 그대로 유지돼야 한다.
     @Test
     void 일부_더미_유저가_누락된_상태에서_재실행하면_빠진_유저만_채운다() {
         seeder.run();
@@ -136,10 +161,8 @@ class DummyDataSeederTest {
         assertThat(memberRepository.count()).isEqualTo(memberCountBeforeRepair);
     }
 
-    // PR #83 리뷰의 핵심 재현: 시딩 후 실제 응모권 사용으로 DB=3, Redis="3"이 된 상태에서
-    // (Redis 키가 지워진 게 아니라 이미 정상 존재) 시더를 재실행해도 Redis가 5로
-    // 되돌아가면 안 된다 - 예전 코드는 INITIAL_BALANCE를 조건 없이 SET해서 이 경우
-    // 시더 스스로 DB/Redis 불일치를 만들어냈다.
+    // 시딩 후 실제 응모권 사용으로 DB=3, Redis="3"이 된 상태에서(Redis 키가 지워진
+    // 게 아니라 이미 정상 존재) 시더를 재실행해도 Redis가 5로 되돌아가면 안 된다.
     @Test
     void 사용으로_잔액이_바뀐_뒤_재실행해도_Redis가_초기값으로_되돌아가지_않는다() {
         seeder.run();
