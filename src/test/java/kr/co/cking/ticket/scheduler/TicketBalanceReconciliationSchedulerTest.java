@@ -102,6 +102,21 @@ class TicketBalanceReconciliationSchedulerTest {
         assertThat(logAppender.list).noneMatch(event -> event.getLevel() == Level.WARN);
     }
 
+    @Test
+    void 특정_key의_Redis_값이_숫자가_아니어도_나머지_key_검사를_계속한다() {
+        when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
+                UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn("not-a-number");
+        givenRedisValue(2L, 10L, "3");
+
+        scheduler.reconcile();
+
+        assertThat(logAppender.list)
+                .anyMatch(event -> event.getLevel() == Level.WARN && event.getFormattedMessage().contains("파싱"));
+        assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.INFO);
+    }
+
     private void givenBalance(Long memberId, Long creatorId, Long balance) {
         when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
                 UserTicketBalance.builder().memberId(memberId).creatorId(creatorId).balance(balance).build()));

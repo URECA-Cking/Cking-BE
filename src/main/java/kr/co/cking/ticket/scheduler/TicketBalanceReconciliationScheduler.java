@@ -41,7 +41,15 @@ public class TicketBalanceReconciliationScheduler {
     @Scheduled(fixedDelayString = "${cking.ticket.reconciliation-interval-ms:300000}")
     public void reconcile() {
         for (UserTicketBalance balance : userTicketBalanceRepository.findAll()) {
-            check(new BalanceKey(balance.getMemberId(), balance.getCreatorId()), balance.getBalance());
+            BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
+            try {
+                check(key, balance.getBalance());
+            } catch (Exception e) {
+                // Redis 값 타입 오류(WRONGTYPE)·숫자 파싱 실패 등으로 이 key 검사가 실패해도
+                // 나머지 Balance 검사를 계속 진행한다.
+                log.warn("Redis Balance 조회·파싱에 실패했습니다. memberId={}, creatorId={}",
+                        key.memberId(), key.creatorId(), e);
+            }
         }
     }
 
