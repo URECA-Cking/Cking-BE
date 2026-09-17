@@ -6,6 +6,7 @@
 - [공통 API 규약](common/api.md): 응답 형식, 사용자 식별, 멱등성, 오류 코드 배치 원칙과 공통 API를 확인한다.
 - [통합 작업단위 관리표](management/work-items.csv): 작업 배정·진척을 확인한다.
 - [통합 RTM](management/rtm.csv): 요구사항 추적·릴리스 점검에 사용한다.
+- [DrawingEngine JMH 성능 테스트](performance/drawing-engine-jmh.md): 추첨 엔진의 처리량, p95 및 메모리 할당량 측정 방법을 확인한다.
 
 ## 정본
 
