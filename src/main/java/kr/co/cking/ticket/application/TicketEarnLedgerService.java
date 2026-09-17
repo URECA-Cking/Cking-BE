@@ -3,10 +3,13 @@ package kr.co.cking.ticket.application;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Optional;
 
-import kr.co.cking.mission.Mission;
 import kr.co.cking.mission.MissionCompletion;
 import kr.co.cking.mission.MissionCompletionRepository;
 import kr.co.cking.mission.MissionRepository;
@@ -37,10 +40,11 @@ public class TicketEarnLedgerService {
     @Transactional
     public void apply(EarnCommand command) {
         String requestId = command.requestId().toString();
+        String fingerprint = computeFingerprint(command);
 
         Optional<MissionCompletion> existing = missionCompletionRepository.findByRequestId(requestId);
         if (existing.isPresent()) {
-            verifySameRequest(existing.get(), command);
+            verifySameRequest(existing.get(), command, fingerprint);
             log.info("이미 반영된 EARN 요청이라 재적립하지 않습니다. requestId={}", requestId);
             return;
         }
@@ -66,6 +70,7 @@ public class TicketEarnLedgerService {
                         .missionId(command.missionId())
                         .periodKey(command.periodKey())
                         .requestId(requestId)
+                        .payloadFingerprint(fingerprint)
                         .completedAt(now)
                         .build()
         );
@@ -101,30 +106,35 @@ public class TicketEarnLedgerService {
 
     // 같은 requestId라도 payload가 다르면 다른 요청이다 — 존재 여부만으로 멱등 재처리를
     // 판단하지 않고, 기존 데이터와 내용까지 일치하는 경우에만 정상 재전달로 인정한다.
-    private void verifySameRequest(MissionCompletion existing, EarnCommand command) {
-        boolean sameCompletion = existing.getMemberId().equals(command.userId())
-                && existing.getCreatorId().equals(command.creatorId())
-                && existing.getMissionId().equals(command.missionId())
-                && existing.getPeriodKey().equals(command.periodKey());
-
-        if (!sameCompletion) {
+    // 필드 하나하나를 비교하면 새 필드가 추가될 때마다 빠뜨리기 쉬우므로(리뷰에서
+    // missionType·missionKey 누락이 지적됨), 저장해 둔 전체 payload fingerprint와
+    // 비교한다 — SPEND 쪽 EntrySpendServiceImpl과 동일한 패턴.
+    private void verifySameRequest(MissionCompletion existing, EarnCommand command, String fingerprint) {
+        if (!existing.getPayloadFingerprint().equals(fingerprint)) {
             throw new IllegalStateException(
-                    "동일 requestId에 다른 요청 내용이 감지됐습니다. requestId=%s, 기존=(memberId=%d, creatorId=%d, missionId=%d, periodKey=%s), 신규=(memberId=%d, creatorId=%d, missionId=%d, periodKey=%s)"
-                            .formatted(command.requestId(),
-                                    existing.getMemberId(), existing.getCreatorId(),
-                                    existing.getMissionId(), existing.getPeriodKey(),
-                                    command.userId(), command.creatorId(),
-                                    command.missionId(), command.periodKey()));
+                    "동일 requestId에 다른 요청 내용이 감지됐습니다. requestId=%s"
+                            .formatted(command.requestId()));
         }
+    }
 
-        Long existingAmount = ticketLedgerRepository.findByRequestId(command.requestId().toString())
-                .map(TicketLedger::getDeltaAmount)
-                .orElse(null);
+    // EntrySpendServiceImpl.computeFingerprint와 동일한 패턴. requestId는 상관관계
+    // 키일 뿐 내용이 아니므로 fingerprint 계산에서 제외한다.
+    private String computeFingerprint(EarnCommand command) {
+        String payload = String.join(":",
+                String.valueOf(command.userId()),
+                String.valueOf(command.creatorId()),
+                command.missionType(),
+                String.valueOf(command.missionId()),
+                command.periodKey(),
+                command.missionKey(),
+                String.valueOf(command.amount()));
 
-        if (existingAmount != null && !existingAmount.equals(command.amount())) {
-            throw new IllegalStateException(
-                    "동일 requestId에 다른 amount가 감지됐습니다. requestId=%s, 기존amount=%d, 신규amount=%d"
-                            .formatted(command.requestId(), existingAmount, command.amount()));
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
         }
     }
 }

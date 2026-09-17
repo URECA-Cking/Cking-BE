@@ -217,6 +217,22 @@ class TicketEarnLedgerServiceIntegrationTest {
         assertThat(balance.getBalance()).isEqualTo(4L);
     }
 
+    // PR #54 리뷰 반영: userId/creatorId/missionId/periodKey/amount만 비교하던 기존
+    // verifySameRequest()는 missionType·missionKey만 다른 재전달을 정상 재전달로
+    // 오판할 수 있었다. payload fingerprint 비교로 바뀐 뒤 이 케이스가 제대로
+    // IDEMPOTENCY 위반으로 잡히는지 확인한다.
+    @Test
+    void 같은_requestId에_missionType만_달라도_반영하지_않는다() {
+        UUID requestId = UUID.randomUUID();
+        ticketEarnLedgerService.apply(command(requestId, "2026-09-16", 4L));
+
+        EarnCommand conflicting = new EarnCommand(requestId, MEMBER_ID, CREATOR_ID, "LIKE",
+                MISSION_ID, "2026-09-16", "attendance:%d:2026-09-16".formatted(CREATOR_ID), 4L);
+
+        assertThatThrownBy(() -> ticketEarnLedgerService.apply(conflicting))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     @Test
     void missionId가_creatorId_소속이_아니면_반영하지_않는다() {
         // MISSION_ID는 CREATOR_ID 소속인데, OTHER_CREATOR_ID로 요청이 들어온 경우
