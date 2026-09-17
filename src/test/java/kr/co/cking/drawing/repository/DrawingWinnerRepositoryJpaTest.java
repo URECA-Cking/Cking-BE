@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = Replace.NONE)
@@ -95,6 +96,39 @@ class DrawingWinnerRepositoryJpaTest {
     }
 
     @Test
+    void 동일_Seed는_둘_이상의_Drawing에_연결할_수_없다() {
+        Fixture firstFixture = fixture();
+        Fixture secondFixture = fixture();
+        drawingRepository.saveAndFlush(initialDrawing(firstFixture));
+
+        Drawing duplicate = Drawing.createInitial(
+                secondFixture.eventId(),
+                secondFixture.snapshotId(),
+                firstFixture.seedId(),
+                "WEIGHTED",
+                "WEIGHTED_V1",
+                2,
+                secondFixture.requestedBy()
+        );
+
+        assertThatThrownBy(() -> drawingRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 동일_RedrawRequest는_둘_이상의_Drawing에_연결할_수_없다() {
+        Fixture fixture = fixture();
+        Drawing original = drawingRepository.saveAndFlush(initialDrawing(fixture));
+        long redrawRequestId = insertRedrawRequest(fixture, original.getId());
+        Drawing first = redrawDrawing(fixture, 1, insertSeed(), original.getId(), redrawRequestId);
+        drawingRepository.saveAndFlush(first);
+        Drawing duplicate = redrawDrawing(fixture, 2, insertSeed(), original.getId(), redrawRequestId);
+
+        assertThatThrownBy(() -> drawingRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void Winner를_rankInDrawing_ASC로_조회하고_Management를_조회한다() {
         Fixture fixture = fixture();
         Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
@@ -123,6 +157,52 @@ class DrawingWinnerRepositoryJpaTest {
         assertThat(found.getUpdatedAt()).isNotNull();
     }
 
+    @Test
+    void 동일_Drawing에서_Winner_순위는_중복될_수_없다() {
+        Fixture fixture = fixture();
+        Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
+        long firstMemberId = insertMember("후보1", "USER");
+        long secondMemberId = insertMember("후보2", "USER");
+        winnerRepository.saveAndFlush(Winner.create(
+                fixture.eventId(), drawing.getId(), firstMemberId, 1, 3L));
+
+        Winner duplicate = Winner.create(
+                fixture.eventId(), drawing.getId(), secondMemberId, 1, 5L);
+
+        assertThatThrownBy(() -> winnerRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 동일_Event에서_같은_Member는_중복_당첨될_수_없다() {
+        Fixture fixture = fixture();
+        Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
+        long memberId = insertMember("후보", "USER");
+        winnerRepository.saveAndFlush(Winner.create(
+                fixture.eventId(), drawing.getId(), memberId, 1, 3L));
+
+        Winner duplicate = Winner.create(
+                fixture.eventId(), drawing.getId(), memberId, 2, 5L);
+
+        assertThatThrownBy(() -> winnerRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void Winner에는_하나의_WinnerManagement만_연결할_수_있다() {
+        Fixture fixture = fixture();
+        Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
+        long memberId = insertMember("후보", "USER");
+        Winner winner = winnerRepository.saveAndFlush(Winner.create(
+                fixture.eventId(), drawing.getId(), memberId, 1, 3L));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(winner.getId()));
+
+        WinnerManagement duplicate = WinnerManagement.selected(winner.getId());
+
+        assertThatThrownBy(() -> winnerManagementRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private Drawing initialDrawing(Fixture fixture) {
         return Drawing.createInitial(
                 fixture.eventId(),
@@ -133,6 +213,29 @@ class DrawingWinnerRepositoryJpaTest {
                 2,
                 fixture.requestedBy()
         );
+    }
+
+    private Drawing redrawDrawing(
+            Fixture fixture,
+            int drawNo,
+            long seedId,
+            long originalDrawingId,
+            long redrawRequestId
+    ) {
+        Drawing drawing = Drawing.createInitial(
+                fixture.eventId(),
+                fixture.snapshotId(),
+                seedId,
+                "WEIGHTED",
+                "WEIGHTED_V1",
+                1,
+                fixture.requestedBy()
+        );
+        ReflectionTestUtils.setField(drawing, "drawNo", drawNo);
+        ReflectionTestUtils.setField(drawing, "drawType", DrawingType.REDRAW);
+        ReflectionTestUtils.setField(drawing, "originalDrawingId", originalDrawingId);
+        ReflectionTestUtils.setField(drawing, "redrawRequestId", redrawRequestId);
+        return drawing;
     }
 
     private Fixture fixture() {
@@ -197,6 +300,25 @@ class DrawingWinnerRepositoryJpaTest {
     private long insertSeed() {
         entityManager.createNativeQuery("INSERT INTO draw_seed (seed_value) VALUES (:seedValue)")
                 .setParameter("seedValue", new byte[]{1, 2, 3})
+                .executeUpdate();
+        return lastInsertId();
+    }
+
+    private long insertRedrawRequest(Fixture fixture, long originalDrawingId) {
+        entityManager.createNativeQuery("""
+                        INSERT INTO redraw_request (
+                            event_id, original_drawing_id, vacancy_count, idempotency_key,
+                            status, execution_status, requested_by, requested_at
+                        ) VALUES (
+                            :eventId, :originalDrawingId, 1, :idempotencyKey,
+                            'APPROVED', 'PENDING', :requestedBy, :requestedAt
+                        )
+                        """)
+                .setParameter("eventId", fixture.eventId())
+                .setParameter("originalDrawingId", originalDrawingId)
+                .setParameter("idempotencyKey", UUID.randomUUID().toString())
+                .setParameter("requestedBy", fixture.requestedBy())
+                .setParameter("requestedAt", Instant.parse("2026-09-16T00:00:00Z"))
                 .executeUpdate();
         return lastInsertId();
     }
