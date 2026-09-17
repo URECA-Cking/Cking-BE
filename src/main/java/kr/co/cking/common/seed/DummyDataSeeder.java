@@ -1,5 +1,6 @@
 package kr.co.cking.common.seed;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +34,12 @@ import lombok.extern.slf4j.Slf4j;
  * find-or-create로 개별 처리해, 중간에 실패해도(예: 15명 중 10명만 커밋된 상태) 트랜잭션이
  * 통째로 롤백되어 부분 생성 상태가 남지 않고, 재실행 시 처음부터 다시 채운다. Redis
  * SET은 그 자체로 멱등이라 매 실행마다 무조건 다시 써도 안전하다.</p>
+ *
+ * <p>{@code member.email}에 DB UNIQUE 제약이 없어(find-or-create가 원자적이지 않음),
+ * 두 프로세스가 겹쳐 실행되면 둘 다 "없음"을 보고 각자 insert해 더미 유저가 중복
+ * 생성될 수 있다. DB 스키마 문서에 없는 제약을 공유 테이블(member)에 새로 추가하는
+ * 대신, 시딩 범위 안에서만 끝나는 Redis SETNX 락으로 애초에 겹쳐 실행되지 않게
+ * 막는다(PR #90 리뷰).</p>
  */
 @Slf4j
 @Component
@@ -44,6 +51,8 @@ public class DummyDataSeeder implements CommandLineRunner {
     private static final int CREATOR_COUNT = 3;
     private static final long INITIAL_BALANCE = 5L;
     private static final String EMAIL_DOMAIN = "@cking.test";
+    static final String SEED_LOCK_KEY = "seed:dummy-data:lock";
+    private static final Duration SEED_LOCK_TTL = Duration.ofSeconds(60);
 
     private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;
@@ -53,12 +62,22 @@ public class DummyDataSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        List<Member> users = ensureDummyUsers();
-        List<Creator> creators = ensureDummyCreators();
-        seedBalances(users, creators);
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(SEED_LOCK_KEY, "locked", SEED_LOCK_TTL);
+        if (!Boolean.TRUE.equals(acquired)) {
+            log.info("다른 프로세스가 이미 더미 데이터를 시딩 중이라 건너뜁니다.");
+            return;
+        }
 
-        log.info("더미 데이터 시딩 완료 - 유저 {}명, 크리에이터 {}명, 유저당 초기 잔액 {}장",
-                users.size(), creators.size(), INITIAL_BALANCE);
+        try {
+            List<Member> users = ensureDummyUsers();
+            List<Creator> creators = ensureDummyCreators();
+            seedBalances(users, creators);
+
+            log.info("더미 데이터 시딩 완료 - 유저 {}명, 크리에이터 {}명, 유저당 초기 잔액 {}장",
+                    users.size(), creators.size(), INITIAL_BALANCE);
+        } finally {
+            redisTemplate.delete(SEED_LOCK_KEY);
+        }
     }
 
     private List<Member> ensureDummyUsers() {

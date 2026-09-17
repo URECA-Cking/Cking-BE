@@ -66,6 +66,19 @@ class DummyDataSeederTest {
                 Long.class, firstUser, firstCreator);
         assertThat(balance).isEqualTo(5L);
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(firstCreator, firstUser))).isEqualTo("5");
+        assertThat(redisTemplate.hasKey(DummyDataSeeder.SEED_LOCK_KEY)).isFalse();
+    }
+
+    // member.email에 UNIQUE 제약이 없어 find-or-create가 원자적이지 않다(PR #90 리뷰) -
+    // 두 실행이 겹치는 걸 막기 위해 Redis SETNX 락을 쓴다. 락이 이미 걸려 있으면
+    // 이 프로세스는 아무것도 만들지 않고 그대로 건너뛰어야 한다.
+    @Test
+    void 락이_이미_걸려있으면_시딩을_건너뛴다() {
+        redisTemplate.opsForValue().set(DummyDataSeeder.SEED_LOCK_KEY, "locked");
+
+        seeder.run();
+
+        assertThat(dummyMemberIds("dummy-%@cking.test")).isEmpty();
     }
 
     @Test
@@ -152,6 +165,8 @@ class DummyDataSeederTest {
     }
 
     private void deleteDummyData() {
+        redisTemplate.delete(DummyDataSeeder.SEED_LOCK_KEY);
+
         List<Long> creatorIds = jdbcTemplate.queryForList(
                 "SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
                         + "WHERE m.email LIKE 'dummy-creator-%@cking.test'",
