@@ -16,6 +16,7 @@ class DrawingEngineTest {
 
     private static final DrawingSeed FIRST_SEED = DrawingSeed.from("00".repeat(32));
     private static final DrawingSeed SECOND_SEED = DrawingSeed.from("01".repeat(32));
+    private static final String SNAPSHOT_HASH = "ab".repeat(32);
 
     private final DrawingEngine drawingEngine = new WeightedV1DrawingEngine();
 
@@ -120,7 +121,9 @@ class DrawingEngineTest {
     @Test
     void 지원하지_않는_algorithmVersion이면_추첨하지_않는다() {
         DrawInput input = new DrawInput(
+                10L,
                 1L,
+                SNAPSHOT_HASH,
                 FIRST_SEED,
                 "WEIGHTED_V2",
                 1,
@@ -175,7 +178,9 @@ class DrawingEngineTest {
             Set<Long> excludedMemberIds
     ) {
         return new DrawInput(
+                10L,
                 1L,
+                SNAPSHOT_HASH,
                 seed,
                 DrawingAlgorithmVersion.WEIGHTED_V1.name(),
                 winnerCount,
