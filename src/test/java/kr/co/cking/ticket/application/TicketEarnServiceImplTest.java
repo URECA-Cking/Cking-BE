@@ -218,4 +218,36 @@ class TicketEarnServiceImplTest {
 
         assertThatThrownBy(() -> earn(command)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    // idem SET 자체의 실패를 강제로 재현할 수는 없다(SET은 키 타입과 무관하게 항상
+    // 성공). 대신 성공 뒤 idem 키만 수동으로 지워 "idem 저장 실패 직후"와 동일한
+    // 상태(가드는 있고 idem은 없음)를 만들어, 가드 값(requestId+fingerprint)이
+    // 보조 멱등성 장치로 동작하는지 검증한다.
+    @Test
+    void idem_키가_없어도_같은_requestId_재시도는_가드로_ALREADY_PROCESSED를_복구한다() {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        EarnResult first = earn(command);
+        assertThat(first.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        redisTemplate.delete(TicketRedisKeys.idemMission(command.requestId().toString()));
+        EarnResult retried = earn(command);
+
+        assertThat(retried.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    @Test
+    void idem_키가_없어도_같은_requestId_다른_amount면_가드로_REQUEST_ID_CONFLICT를_반환한다() {
+        UUID requestId = UUID.randomUUID();
+        EarnCommand first = newCommand(requestId);
+        EarnResult firstResult = earn(first);
+        assertThat(firstResult.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        redisTemplate.delete(TicketRedisKeys.idemMission(requestId.toString()));
+        EarnCommand conflicting =
+                new EarnCommand(requestId, USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, PERIOD_KEY, MISSION_KEY, 5L);
+        EarnResult conflictResult = earn(conflicting);
+
+        assertThat(conflictResult.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
+    }
 }

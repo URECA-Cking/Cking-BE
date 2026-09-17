@@ -30,8 +30,9 @@
 --
 -- 반환: { resultCode, ...옵션 필드 } (EarnResultCode 6종 중 4종은 이 스크립트가 반환)
 --   ALREADY_PROCESSED   -- 동일 requestId, 동일 fingerprint -> 기존 결과 재반환
---   REQUEST_ID_CONFLICT -- 동일 requestId, 다른 fingerprint
---   DUPLICATE_MISSION   -- 새 requestId, 이미 완료된 미션(가드 SETNX 실패)
+--                           (idem 히트, 또는 idem 저장 실패 후 가드로 복구)
+--   REQUEST_ID_CONFLICT -- 동일 requestId, 다른 fingerprint (idem 또는 가드 기준)
+--   DUPLICATE_MISSION   -- 다른 requestId, 이미 완료된 미션(가드 값의 requestId 불일치)
 --   EARN_ACCEPTED       -- { 'EARN_ACCEPTED', streamId, 적립후잔액 }
 -- (EARN_PROCESSING_FAILED/EARN_STATUS_UNKNOWN은 스크립트가 아니라 호출측 Java가 매핑한다)
 
@@ -68,9 +69,21 @@ end
 -- 2) 중복 적립 가드 (userId+missionType+creatorId+yyyyMMdd, FR-P2-006)
 -- EARN API Business Key(userId+creatorId+missionId+periodKey, FR-P2-008)와는
 -- 다른 레이어의 별도 키다 - 임의로 통합하지 않는다(취합v1.5.4 §4.2).
-local guardAcquired = redis.call('SET', guardKey, requestId, 'NX', 'EX', guardTtl)
+-- 값에 requestId뿐 아니라 fingerprint까지 저장해, idem 저장이 실패해도 가드가
+-- 보조 멱등성 장치 역할을 한다(PR #63 리뷰) - 동일 requestId+fingerprint 재시도는
+-- ALREADY_PROCESSED로, requestId만 같고 fingerprint가 다르면 REQUEST_ID_CONFLICT로,
+-- requestId 자체가 다르면 진짜 DUPLICATE_MISSION으로 구분한다.
+local guardValue = requestId .. ':' .. fingerprint
+local guardAcquired = redis.call('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
 if not guardAcquired then
-    return { 'DUPLICATE_MISSION' }
+    local existingGuard = redis.call('GET', guardKey)
+    if existingGuard == guardValue then
+        return { 'ALREADY_PROCESSED' }
+    elseif string.sub(existingGuard, 1, #requestId + 1) == requestId .. ':' then
+        return { 'REQUEST_ID_CONFLICT' }
+    else
+        return { 'DUPLICATE_MISSION' }
+    end
 end
 
 -- 3) Balance 증가 + Stream 발행. Balance 키가 없으면 0에서 시작(INCRBY가 자동
@@ -107,6 +120,12 @@ if type(streamId) == 'table' and streamId.err then
 end
 
 local result = { 'EARN_ACCEPTED', streamId, tostring(newBalance) }
-redis.call('SET', idemKey, cjson.encode({ fingerprint = fingerprint, result = result }), 'EX', idemTtl)
+
+-- idem 저장은 정합성 백스톱이 아니라 성능 최적화용 캐시다(FR-P1-017) - 여기서
+-- 실패해도 Balance 증가와 Stream 발행은 이미 끝난 정상 처리이므로 pcall로 감싸
+-- 무시하고 EARN_ACCEPTED를 그대로 반환한다. 실패 시 idem이 비어도 가드 값에
+-- fingerprint까지 있어 같은 requestId 재시도는 위 2)에서 ALREADY_PROCESSED로
+-- 복구된다(PR #63 리뷰).
+redis.pcall('SET', idemKey, cjson.encode({ fingerprint = fingerprint, result = result }), 'EX', idemTtl)
 
 return result
