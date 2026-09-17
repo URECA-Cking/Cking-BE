@@ -131,6 +131,48 @@ class CreatorEventConcurrencyIntegrationTest {
         }
     }
 
+    /** 병렬 INITIAL Drawing 완료 호출에서도 Event 행 잠금으로 DRAW_COMPLETED 전이는 한 번만 성공한다. */
+    @Test
+    void concurrentDrawingCompletionTransitionsClosedEventExactlyOnce() throws Exception {
+        Event event = persistClosedEvent("550e8400-e29b-41d4-a716-446655440017");
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<String> first = executor.submit(() -> runCompleteDrawing(start, event.getEventId()));
+            Future<String> second = executor.submit(() -> runCompleteDrawing(start, event.getEventId()));
+            start.countDown();
+
+            java.util.List<String> results = java.util.List.of(first.get(), second.get());
+
+            assertThat(results).containsExactlyInAnyOrder("DRAW_COMPLETED", "INVALID_STATE");
+            assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus())
+                    .isEqualTo(EventStatus.DRAW_COMPLETED);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    /** 병렬 결과 공개 호출에서도 Event 행 잠금으로 PUBLISHED 전이는 한 번만 성공한다. */
+    @Test
+    void concurrentPublishingTransitionsDrawingCompletedEventExactlyOnce() throws Exception {
+        Event event = persistDrawingCompletedEvent("550e8400-e29b-41d4-a716-446655440018");
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<String> first = executor.submit(() -> runPublish(start, event.getEventId()));
+            Future<String> second = executor.submit(() -> runPublish(start, event.getEventId()));
+            start.countDown();
+
+            java.util.List<String> results = java.util.List.of(first.get(), second.get());
+
+            assertThat(results).containsExactlyInAnyOrder("PUBLISHED", "INVALID_STATE");
+            assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus())
+                    .isEqualTo(EventStatus.PUBLISHED);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     /** SCHEDULED 캐시가 있어도 OPEN 전이 성공 뒤에는 stale cache:event 항목을 제거한다. */
     @Test
     void openingScheduledEventEvictsCachedEvent() {
@@ -174,6 +216,28 @@ class CreatorEventConcurrencyIntegrationTest {
         }
     }
 
+    /** 병렬 INITIAL Drawing 완료 호출의 결과를 상태 또는 오류 코드로 변환한다. */
+    private String runCompleteDrawing(CountDownLatch start, Long eventId) throws InterruptedException {
+        start.await();
+        try {
+            eventCommandService.completeDrawing(eventId);
+            return "DRAW_COMPLETED";
+        } catch (kr.co.cking.common.exception.BusinessException exception) {
+            return exception.getErrorCode().code();
+        }
+    }
+
+    /** 병렬 결과 공개 호출의 결과를 상태 또는 오류 코드로 변환한다. */
+    private String runPublish(CountDownLatch start, Long eventId) throws InterruptedException {
+        start.await();
+        try {
+            eventCommandService.publish(eventId);
+            return "PUBLISHED";
+        } catch (kr.co.cking.common.exception.BusinessException exception) {
+            return exception.getErrorCode().code();
+        }
+    }
+
     private Event persistScheduledEvent(String requestId) {
         Member creator = memberRepository.saveAndFlush(new Member("캐시 시작 크리에이터", null, null, MemberRole.USER));
         Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
@@ -186,6 +250,42 @@ class CreatorEventConcurrencyIntegrationTest {
                 .winnerCount(1)
                 .drawMethod(DrawMethod.WEIGHTED.name())
                 .status(EventStatus.SCHEDULED)
+                .createdBy(creator.getMemberId())
+                .createdAt(Instant.now())
+                .build());
+    }
+
+    /** 병렬 추첨 완료 전이 테스트에 사용할 CLOSED Event를 저장한다. */
+    private Event persistClosedEvent(String requestId) {
+        Member creator = memberRepository.saveAndFlush(new Member("동시 추첨 크리에이터", null, null, MemberRole.USER));
+        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        return eventRepository.saveAndFlush(Event.builder()
+                .creatorId(savedCreator.getCreatorId())
+                .requestId(requestId)
+                .title("동시 추첨 완료 이벤트")
+                .startAt(Instant.now().minus(java.time.Duration.ofDays(2)))
+                .endAt(Instant.now().minus(java.time.Duration.ofDays(1)))
+                .winnerCount(1)
+                .drawMethod(DrawMethod.WEIGHTED.name())
+                .status(EventStatus.CLOSED)
+                .createdBy(creator.getMemberId())
+                .createdAt(Instant.now())
+                .build());
+    }
+
+    /** 병렬 결과 공개 전이 테스트에 사용할 DRAW_COMPLETED Event를 저장한다. */
+    private Event persistDrawingCompletedEvent(String requestId) {
+        Member creator = memberRepository.saveAndFlush(new Member("동시 공개 크리에이터", null, null, MemberRole.USER));
+        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        return eventRepository.saveAndFlush(Event.builder()
+                .creatorId(savedCreator.getCreatorId())
+                .requestId(requestId)
+                .title("동시 결과 공개 이벤트")
+                .startAt(Instant.now().minus(java.time.Duration.ofDays(2)))
+                .endAt(Instant.now().minus(java.time.Duration.ofDays(1)))
+                .winnerCount(1)
+                .drawMethod(DrawMethod.WEIGHTED.name())
+                .status(EventStatus.DRAW_COMPLETED)
                 .createdBy(creator.getMemberId())
                 .createdAt(Instant.now())
                 .build());
