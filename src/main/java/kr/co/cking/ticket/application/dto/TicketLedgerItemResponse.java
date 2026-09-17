@@ -1,6 +1,8 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application.dto;
 
 import java.time.Instant;
+
+import kr.co.cking.ticket.repository.TicketLedgerView;
 
 public record TicketLedgerItemResponse(
         Long ledgerId,

@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

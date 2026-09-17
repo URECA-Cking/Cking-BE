@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import lombok.RequiredArgsConstructor;
 import kr.co.cking.common.exception.BusinessException;
@@ -12,7 +12,11 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 
-import kr.co.cking.ticket.application.TicketBalanceQueryService;
+import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
+import kr.co.cking.ticket.application.dto.TicketLedgerItemResponse;
+import kr.co.cking.ticket.application.dto.TicketLedgerPage;
+import kr.co.cking.ticket.repository.TicketLedgerRepository;
+import kr.co.cking.ticket.repository.TicketLedgerView;
 
 @Service
 @RequiredArgsConstructor

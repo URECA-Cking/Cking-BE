@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.presentation;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +9,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.Instant;
 import java.util.List;
 
+import kr.co.cking.ticket.application.TicketQueryService;
+import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
+import kr.co.cking.ticket.application.dto.TicketLedgerItemResponse;
+import kr.co.cking.ticket.application.dto.TicketLedgerPage;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;

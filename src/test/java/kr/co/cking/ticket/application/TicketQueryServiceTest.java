@@ -1,11 +1,15 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.application;
 
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
 
-import kr.co.cking.ticket.application.TicketBalanceQueryService;
+import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
+import kr.co.cking.ticket.application.dto.TicketLedgerItemResponse;
+import kr.co.cking.ticket.application.dto.TicketLedgerPage;
+import kr.co.cking.ticket.repository.TicketLedgerRepository;
+import kr.co.cking.ticket.repository.TicketLedgerView;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

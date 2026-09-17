@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.repository;
 
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;

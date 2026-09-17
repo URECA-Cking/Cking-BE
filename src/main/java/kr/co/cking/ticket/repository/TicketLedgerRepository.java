@@ -1,4 +1,4 @@
-package kr.co.cking.ticket;
+package kr.co.cking.ticket.repository;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -7,6 +7,8 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+
+import kr.co.cking.ticket.domain.TicketLedger;
 
 public interface TicketLedgerRepository extends JpaRepository<TicketLedger, Long> {
 
