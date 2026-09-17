@@ -5,11 +5,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import io.lettuce.core.RedisCommandExecutionException;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
@@ -45,20 +48,37 @@ public class TicketBalanceReconciliationScheduler {
             BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
             try {
                 check(key, balance.getBalance());
-            } catch (RedisConnectionFailureException e) {
-                // Redis 연결 자체가 끊긴 경우 - key마다 반복 경고하지 않고 이번 주기를 중단한다.
-                // 이번 주기는 비교 자체를 못 했으므로 모든 key의 연속 불일치 스트릭도 초기화한다.
-                mismatchStreaks.clear();
-                log.warn("Redis 연결 실패로 이번 주기 정합성 검사를 중단합니다.", e);
+            } catch (RedisConnectionFailureException | QueryTimeoutException e) {
+                abortCycle(e);
                 return;
+            } catch (RedisSystemException e) {
+                // WRONGTYPE 등 명령 실행 오류(원인이 RedisCommandExecutionException)만 key 단위
+                // 문제다. 그 외(연결 종료 등 일반 RedisException)는 Redis 통신 장애로 본다.
+                if (e.getCause() instanceof RedisCommandExecutionException) {
+                    failKey(key, e);
+                } else {
+                    abortCycle(e);
+                    return;
+                }
             } catch (Exception e) {
-                // Redis 값 타입 오류(WRONGTYPE)·숫자 파싱 실패 등 이 key만의 문제는 나머지 Balance
-                // 검사를 계속 진행한다. 정상 비교가 끊겼으므로 연속 불일치 스트릭도 초기화한다.
-                mismatchStreaks.remove(key);
-                log.warn("Redis Balance 조회·파싱에 실패했습니다. memberId={}, creatorId={}",
-                        key.memberId(), key.creatorId(), e);
+                failKey(key, e);
             }
         }
+    }
+
+    private void abortCycle(Exception e) {
+        // Redis 연결/타임아웃 등 통신 장애 - key마다 반복 경고하지 않고 이번 주기를 중단한다.
+        // 이번 주기는 비교 자체를 못 했으므로 모든 key의 연속 불일치 스트릭도 초기화한다.
+        mismatchStreaks.clear();
+        log.warn("Redis 통신 장애로 이번 주기 정합성 검사를 중단합니다.", e);
+    }
+
+    private void failKey(BalanceKey key, Exception e) {
+        // Redis 값 타입 오류(WRONGTYPE)·숫자 파싱 실패 등 이 key만의 문제는 나머지 Balance
+        // 검사를 계속 진행한다. 정상 비교가 끊겼으므로 연속 불일치 스트릭도 초기화한다.
+        mismatchStreaks.remove(key);
+        log.warn("Redis Balance 조회·파싱에 실패했습니다. memberId={}, creatorId={}",
+                key.memberId(), key.creatorId(), e);
     }
 
     private void check(BalanceKey key, long dbBalance) {

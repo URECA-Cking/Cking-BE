@@ -12,7 +12,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -20,6 +22,8 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import io.lettuce.core.RedisCommandExecutionException;
+import io.lettuce.core.RedisException;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
@@ -169,6 +173,56 @@ class TicketBalanceReconciliationSchedulerTest {
         givenBalance(1L, 10L, 5L);
         // 이전 스텁이 thenThrow였으므로 when(...).thenReturn(...)으로 재스텁하면 재스텁 과정에서
         // 옛 스텁(예외)이 먼저 실행된다 - doReturn().when(...)으로 안전하게 교체한다.
+        org.mockito.Mockito.doReturn("3").when(valueOperations).get(TicketRedisKeys.balance(10L, 1L));
+        scheduler.reconcile();
+
+        assertThat(logAppender.list).noneMatch(event -> event.getLevel() == Level.WARN);
+        assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.INFO);
+    }
+
+    @Test
+    void WRONGTYPE처럼_원인이_RedisCommandExecutionException이면_key_단위_오류로_다음_key를_계속_검사한다() {
+        when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
+                UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenThrow(
+                new RedisSystemException("Error in execution", new RedisCommandExecutionException("WRONGTYPE")));
+        givenRedisValue(2L, 10L, "3");
+
+        scheduler.reconcile();
+
+        assertThat(logAppender.list.stream().filter(event -> event.getLevel() == Level.WARN)).hasSize(1);
+        assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.INFO);
+        verify(valueOperations).get(TicketRedisKeys.balance(10L, 2L));
+    }
+
+    @Test
+    void RedisSystemException의_원인이_일반_RedisException이면_연결장애로_보고_다음_key를_검사하지_않는다() {
+        when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
+                UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenThrow(
+                new RedisSystemException("Redis exception", new RedisException("Connection closed")));
+
+        scheduler.reconcile();
+
+        assertThat(logAppender.list.stream().filter(event -> event.getLevel() == Level.WARN)).hasSize(1);
+        verify(valueOperations, never()).get(TicketRedisKeys.balance(10L, 2L));
+    }
+
+    @Test
+    void QueryTimeoutException_발생시_전체_스트릭이_초기화돼_다음_정상_주기_불일치는_INFO부터_시작한다() {
+        givenBalance(1L, 10L, 5L);
+        givenRedisValue(1L, 10L, "3");
+        scheduler.reconcile();
+
+        givenBalance(1L, 10L, 5L);
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L)))
+                .thenThrow(new QueryTimeoutException("Redis command timed out"));
+        scheduler.reconcile();
+        logAppender.list.clear();
+
+        givenBalance(1L, 10L, 5L);
         org.mockito.Mockito.doReturn("3").when(valueOperations).get(TicketRedisKeys.balance(10L, 1L));
         scheduler.reconcile();
 
