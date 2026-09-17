@@ -1,5 +1,7 @@
 package kr.co.cking.winner.domain;
 
+import static kr.co.cking.common.validation.DomainValidator.requirePositive;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -45,9 +47,7 @@ public class WinnerManagement {
     private Instant updatedAt;
 
     public static WinnerManagement selected(Long winnerId) {
-        if (winnerId == null || winnerId <= 0) {
-            throw new IllegalArgumentException("winnerId는 양수여야 합니다.");
-        }
+        requirePositive(winnerId, "winnerId");
 
         WinnerManagement management = new WinnerManagement();
         management.winnerId = winnerId;

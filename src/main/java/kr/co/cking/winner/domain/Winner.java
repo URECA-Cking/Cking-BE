@@ -1,5 +1,7 @@
 package kr.co.cking.winner.domain;
 
+import static kr.co.cking.common.validation.DomainValidator.requirePositive;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -74,9 +76,4 @@ public class Winner {
         return winner;
     }
 
-    private static void requirePositive(Long value, String name) {
-        if (value == null || value <= 0) {
-            throw new IllegalArgumentException(name + "는 양수여야 합니다.");
-        }
-    }
 }

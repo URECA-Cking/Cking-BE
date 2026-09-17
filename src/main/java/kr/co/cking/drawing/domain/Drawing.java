@@ -1,5 +1,7 @@
 package kr.co.cking.drawing.domain;
 
+import static kr.co.cking.common.validation.DomainValidator.requirePositive;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -140,12 +142,6 @@ public class Drawing {
         drawing.requestedBy = requestedBy;
         drawing.attemptCount = 0;
         return drawing;
-    }
-
-    private static void requirePositive(Long value, String name) {
-        if (value == null || value <= 0) {
-            throw new IllegalArgumentException(name + "는 양수여야 합니다.");
-        }
     }
 
     private static void requireText(String value, String name) {
