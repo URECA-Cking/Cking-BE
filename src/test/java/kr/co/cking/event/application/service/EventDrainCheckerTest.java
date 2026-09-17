@@ -18,6 +18,7 @@ import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
@@ -132,6 +133,24 @@ class EventDrainCheckerTest {
         );
         redisTemplate.opsForStream().acknowledge(STREAM_KEY, GROUP, cutoff);
         // myMessage(eventId=1)는 ACK하지 않고 남겨둔다.
+
+        assertThat(eventDrainChecker.isDrained(1L, cutoff.getValue())).isFalse();
+    }
+
+    @Test
+    void 앞선_만건이_다른_이벤트여도_그_뒤의_대상_이벤트_PEL을_확인한다() {
+        for (int index = 0; index < 10_000; index++) {
+            redisTemplate.opsForStream().add(MapRecord.create(STREAM_KEY, Map.of("eventId", "2")));
+        }
+        RecordId cutoff = redisTemplate.opsForStream()
+                .add(MapRecord.create(STREAM_KEY, Map.of("eventId", "1")));
+        createGroupFromZero();
+
+        redisTemplate.opsForStream().read(
+                Consumer.from(GROUP, CONSUMER),
+                StreamReadOptions.empty().count(10_001),
+                StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+        );
 
         assertThat(eventDrainChecker.isDrained(1L, cutoff.getValue())).isFalse();
     }

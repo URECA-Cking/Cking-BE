@@ -31,6 +31,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class EventDrainChecker {
 
+    private static final long PENDING_PAGE_SIZE = 10_000L;
+
     private final StringRedisTemplate redisTemplate;
     private final DeadStreamMessageQueryRepository deadStreamMessageQueryRepository;
     private final String entryStreamKey;
@@ -74,20 +76,35 @@ public class EventDrainChecker {
 
     /** cutoff 이하 PEL 메시지 중, 페이로드의 eventId가 일치하는 것이 있으면 true. */
     private boolean hasPendingMessageForEvent(Long eventId, String cutoffStreamId) {
-        PendingMessages pending = redisTemplate.opsForStream()
-                .pending(entryStreamKey, consumerGroup, Range.closed("-", cutoffStreamId), 10_000L);
-        if (pending.isEmpty()) {
-            return false;
-        }
+        Range<String> range = Range.closed("-", cutoffStreamId);
+        while (true) {
+            PendingMessages pending = redisTemplate.opsForStream()
+                    .pending(entryStreamKey, consumerGroup, range, PENDING_PAGE_SIZE);
+            if (pending.isEmpty()) {
+                return false;
+            }
+            if (containsPendingMessageForEvent(eventId, pending)) {
+                return true;
+            }
 
+            String lastPendingId = pending.get(pending.size() - 1).getId().getValue();
+            if (pending.size() < PENDING_PAGE_SIZE || compare(lastPendingId, cutoffStreamId) >= 0) {
+                return false;
+            }
+            range = Range.leftOpen(lastPendingId, cutoffStreamId);
+        }
+    }
+
+    private boolean containsPendingMessageForEvent(Long eventId, PendingMessages pending) {
         Set<String> pendingIds = pending.stream()
                 .map(message -> message.getId().getValue())
                 .collect(Collectors.toSet());
         String minId = pending.get(0).getId().getValue();
+        String maxId = pending.get(pending.size() - 1).getId().getValue();
         String targetEventId = String.valueOf(eventId);
 
         List<MapRecord<String, Object, Object>> records = redisTemplate.opsForStream()
-                .range(entryStreamKey, Range.closed(minId, cutoffStreamId));
+                .range(entryStreamKey, Range.closed(minId, maxId));
 
         return records.stream()
                 .filter(record -> pendingIds.contains(record.getId().getValue()))
