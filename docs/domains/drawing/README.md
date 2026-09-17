@@ -8,6 +8,28 @@
 
 Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entity를 직접 참조하지 않고 `Long` 식별자만 저장한다. 다른 도메인의 상태 변경은 해당 도메인의 Service를 통해 수행한다.
 
+## 관리자 INITIAL Drawing 요청 API
+
+### `POST /api/admin/events/{eventId}/drawings`
+
+현재 이 API는 INITIAL Drawing 실행 전의 관리자 권한·Event·Snapshot 조건을 검증한다. 실제
+`Drawing` 생성, Seed 연결, 엔진 실행, Winner 저장은 실행 오케스트레이션에서 수행한다.
+
+- Request Body: `{ "userId": 1 }` (`Long`, 양수, 필수)
+- 성공: `200 OK`, 공통 `ApiResponse`의 `data`에 `eventId`, `snapshotId`, `winnerCount`,
+  `drawMethod`, `algorithmVersion`, `candidateCount`를 반환한다.
+- 요청자는 존재하는 `ADMIN` Member여야 한다.
+- Event는 삭제되지 않은 `CLOSED` 상태여야 하며, 공식 Snapshot Hash 검증을 통과해야 한다.
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | eventId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | 요청한 Member 또는 Event가 존재하지 않음 |
+| `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
+| `INVALID_STATE` | Event가 삭제됐거나 CLOSED 상태가 아님 |
+| `SNAPSHOT_NOT_FOUND` | 공식 Snapshot이 없음 |
+| `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot의 Hash 또는 집계값이 일치하지 않음 |
+
 ## 추첨 엔진 계약
 
 `DrawingEngine`은 `DrawInput`을 받아 `DrawOutput`을 반환하는 순수 추첨 엔진 인터페이스다.
