@@ -3,8 +3,8 @@ package kr.co.cking.drawing.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.List;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
+import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import org.junit.jupiter.api.Test;
 
 class DrawingTest {
@@ -70,16 +70,11 @@ class DrawingTest {
     }
 
     private VerifiedSnapshot verifiedSnapshot() {
-        return new VerifiedSnapshot(
-                2L,
-                1L,
-                0,
-                0L,
+        return VerifiedSnapshotTestFactory.create(
+                2L, 1L,
                 2,
                 "WEIGHTED",
-                "WEIGHTED_V1",
-                "0".repeat(64),
-                List.of()
+                "WEIGHTED_V1"
         );
     }
 }

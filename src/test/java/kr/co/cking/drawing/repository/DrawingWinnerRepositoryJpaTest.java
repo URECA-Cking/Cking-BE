@@ -14,6 +14,7 @@ import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
+import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
@@ -257,17 +258,14 @@ class DrawingWinnerRepositoryJpaTest {
     }
 
     private DrawingSnapshotContract snapshotContract(Fixture fixture) {
-        return DrawingSnapshotContract.from(new VerifiedSnapshot(
+        VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(
                 fixture.snapshotId(),
                 fixture.eventId(),
-                0,
-                0L,
                 2,
                 "WEIGHTED",
-                "WEIGHTED_V1",
-                "0".repeat(64),
-                List.of()
-        ));
+                "WEIGHTED_V1"
+        );
+        return DrawingSnapshotContract.from(snapshot);
     }
 
     private Drawing redrawDrawing(

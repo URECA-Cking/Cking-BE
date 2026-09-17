@@ -16,7 +16,7 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 - INITIAL Drawing은 `originalDrawingId`와 `redrawRequestId`를 갖지 않는다.
 - 최초 상태는 `READY`, 공개 상태는 `PRIVATE`, 시도 횟수는 0이다.
 - `(eventId, drawNo)`와 `seedId`는 각각 유일하다.
-- INITIAL Drawing의 `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion`, `winnerCount`는 `VerifiedSnapshot`으로만 생성할 수 있는 하나의 `DrawingSnapshotContract`에서 가져온다.
+- INITIAL Drawing의 `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion`, `winnerCount`는 `VerifiedSnapshot`으로만 생성할 수 있는 하나의 `DrawingSnapshotContract`에서 가져온다. `VerifiedSnapshot`은 public 생성자를 제공하지 않으며 Snapshot 무결성 검증 경로에서만 생성한다.
 - `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion` 일치는 DB 복합 FK로도 강제한다. REDRAW의 `winnerCount`는 결원 수이므로 Snapshot 원본 당첨자 수와 다를 수 있다.
 - 동시 명령 감지를 위해 `version`을 낙관적 락 필드로 사용한다.
 
