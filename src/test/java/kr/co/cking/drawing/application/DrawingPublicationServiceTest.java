@@ -24,6 +24,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
+import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.event.application.EventDrawingQueryService;
@@ -123,7 +124,7 @@ class DrawingPublicationServiceTest {
     @Test
     void REDRAW_Drawing은_이_API로_공개할_수_없다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
-        ReflectionTestUtils.setField(drawing, "drawType", kr.co.cking.drawing.domain.DrawingType.REDRAW);
+        ReflectionTestUtils.setField(drawing, "drawType", DrawingType.REDRAW);
         when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))

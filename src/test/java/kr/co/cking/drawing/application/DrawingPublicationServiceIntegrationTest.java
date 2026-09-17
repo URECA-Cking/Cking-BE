@@ -3,7 +3,12 @@ package kr.co.cking.drawing.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -104,17 +109,17 @@ class DrawingPublicationServiceIntegrationTest {
         insertSnapshot();
         insertDrawing(DrawingVisibility.PRIVATE);
 
-        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
-        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
 
-        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-            java.util.concurrent.Callable<Drawing> task = () -> {
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Callable<Drawing> task = () -> {
                 ready.countDown();
                 start.await();
                 return service.publish(DRAWING_ID, ADMIN_ID);
             };
-            java.util.concurrent.Future<Drawing> first = executor.submit(task);
-            java.util.concurrent.Future<Drawing> second = executor.submit(task);
+            Future<Drawing> first = executor.submit(task);
+            Future<Drawing> second = executor.submit(task);
 
             ready.await();
             start.countDown();
@@ -137,7 +142,7 @@ class DrawingPublicationServiceIntegrationTest {
         insertDrawing(DrawingVisibility.PRIVATE);
 
         service.publish(DRAWING_ID, ADMIN_ID);
-        java.time.Instant firstPublishedAt = drawingRepository.findById(DRAWING_ID).orElseThrow().getPublishedAt();
+        Instant firstPublishedAt = drawingRepository.findById(DRAWING_ID).orElseThrow().getPublishedAt();
 
         Drawing replay = service.publish(DRAWING_ID, ADMIN_ID);
 
