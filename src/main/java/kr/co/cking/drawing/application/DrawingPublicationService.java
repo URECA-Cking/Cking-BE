@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
+import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.drawing.repository.DrawingRepository;
@@ -49,8 +50,9 @@ public class DrawingPublicationService {
 
     /**
      * 이미 공개된 Drawing이면 상태를 바꾸지 않고 현재 상태를 그대로 반환한다(중복 공개 요청 멱등
-     * 처리). 이때도 Event가 실제로 PUBLISHED인지 재확인해, Drawing만 PUBLIC이고 Event는
-     * PUBLISHED로 전환되지 않은 불일치 상태를 성공으로 위장하지 않는다.
+     * 처리). 이때도 Event가 실제로 PUBLISHED인지, Drawing.status가 실제로 COMPLETED인지 재확인해,
+     * Drawing만 PUBLIC이고 Event는 PUBLISHED로 전환되지 않았거나 애초에 완료되지 않은 추첨인
+     * 불일치 상태를 성공으로 위장하지 않는다.
      *
      * <p>Drawing과 Event 행을 모두 잠근 뒤 조회해 동시 공개 요청을 직렬화한다. Drawing만 잠그고
      * Event는 일반 조회로 읽으면, MySQL REPEATABLE READ의 트랜잭션 스냅샷 때문에 뒤에 도착한
@@ -65,6 +67,9 @@ public class DrawingPublicationService {
                 .orElseThrow(() -> new BusinessException(DrawingErrorCode.DRAWING_NOT_FOUND));
         if (drawing.getDrawType() != DrawingType.INITIAL) {
             throw new BusinessException(DrawingErrorCode.DRAWING_TYPE_NOT_SUPPORTED);
+        }
+        if (drawing.getStatus() != DrawingStatus.COMPLETED) {
+            throw new BusinessException(DrawingErrorCode.DRAWING_NOT_COMPLETED);
         }
 
         EventDrawingSource event = eventDrawingQueryService.getDrawingSourceForUpdate(drawing.getEventId());

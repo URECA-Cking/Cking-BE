@@ -112,13 +112,25 @@ class DrawingPublicationServiceTest {
         Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
         ReflectionTestUtils.setField(drawing, "eventId", 1L);
         when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
-        when(eventDrawingQueryService.getDrawingSourceForUpdate(1L)).thenReturn(sourceOf(1L, EventStatus.DRAW_COMPLETED));
-        ReflectionTestUtils.setField(drawingPublicationService, "clock",
-                Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.DRAWING_NOT_COMPLETED);
+        verifyNoInteractions(eventDrawingQueryService, eventCommandService);
+    }
+
+    @Test
+    void 이미_공개된_Drawing이라도_status가_COMPLETED가_아니면_DRAWING_NOT_COMPLETED이다() {
+        // 정상 흐름에서는 나오지 않아야 하는 데이터 불일치(예: 수동 DB 조작)를 가정한다.
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+        ReflectionTestUtils.setField(drawing, "eventId", 1L);
+        ReflectionTestUtils.setField(drawing, "visibility", DrawingVisibility.PUBLIC);
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+
+        assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.DRAWING_NOT_COMPLETED);
+        verifyNoInteractions(eventDrawingQueryService, eventCommandService);
     }
 
     @Test

@@ -51,8 +51,11 @@ REDRAW Drawing 공개(FR-P4-115, Event가 이미 `PUBLISHED`인 경우)는 제�
   전이를 완료한다. 호출자는 이 메서드가 반환된 뒤 Event 전이를 별도로 다시 호출하면 안
   된다 — 재호출하면 두 번째 호출이 이미 `PUBLISHED`인 Event에 대해 `INVALID_STATE`로
   실패해 호출자의 Transaction 전체가 Rollback된다.
-- 공개 조건: 대상 Drawing이 `drawType = INITIAL`, `status = COMPLETED`, `visibility = PRIVATE`이고
-  Event.status가 `DRAW_COMPLETED`여야 한다.
+- 공개 조건: 대상 Drawing이 `drawType = INITIAL`, `status = COMPLETED`여야 한다(`visibility`는
+  `PRIVATE`이면 새로 공개, `PUBLIC`이면 멱등 재요청). `status != COMPLETED`는 `visibility`와
+  무관하게 항상 `DRAWING_NOT_COMPLETED`로 거부한다 — `status`가 `COMPLETED`가 아닌데
+  `visibility`만 `PUBLIC`인 데이터 불일치를 멱등 성공으로 위장하지 않기 위해서다. 새로 공개하는
+  경우 Event.status가 `DRAW_COMPLETED`여야 한다.
 - Drawing `PRIVATE → PUBLIC` 전이와 `EventCommandService.publish(eventId)`를 한 DB Tx로
   묶어, 하나라도 실패하면 전체 Rollback한다(부분 반영 금지). 동시 공개 요청은 Drawing·Event
   행을 모두 잠근 뒤 조회해 직렬화하며, 뒤에 도착한 요청은 잠금 해제 후 갱신된 Drawing·Event
