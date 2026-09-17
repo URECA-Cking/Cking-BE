@@ -57,5 +57,6 @@
 | 51 | 내부 | Snapshot | INTERNAL | CALL | `SnapshotIntegrityService.verifyForDrawing(eventId)` | 추첨 전 Snapshot 무결성 검증 | - |
 | 52 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.open(eventId)` | 예약 Event를 OPEN으로 전이 | Event 행 잠금 |
 | 53 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.completeDrawing(eventId)` | 초기 추첨 완료 Event를 DRAW_COMPLETED로 전이 | Event 행 잠금 |
+| 54 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.publish(eventId)` | 추첨 완료 Event를 PUBLISHED로 전이 | Event 행 잠금 |
 
-No. 9, No. 50~53은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+No. 9, No. 50~54는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

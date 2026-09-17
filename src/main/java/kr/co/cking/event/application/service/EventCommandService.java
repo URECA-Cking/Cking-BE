@@ -65,6 +65,14 @@ public class EventCommandService {
         });
     }
 
+    /** 추첨이 완료된 Event를 시스템4 결과 공개 흐름에서 공개 상태로 전이한다. */
+    public void publish(Long eventId) {
+        execute(eventId, event -> {
+            event.publish();
+            return null;
+        });
+    }
+
     /** 승인 대기 Event를 거절 상태로 전이한다. */
     public void reject(Long eventId, String reason) {
         reject(eventId, event -> null);

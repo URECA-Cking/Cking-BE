@@ -121,6 +121,12 @@ public class Event {
         status = EventStatus.DRAW_COMPLETED;
     }
 
+    /** 추첨이 완료된 Event를 결과 공개 상태로 전이한다. */
+    public void publish() {
+        requireStatus(EventStatus.DRAW_COMPLETED);
+        status = EventStatus.PUBLISHED;
+    }
+
     public void reject() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.REJECTED;

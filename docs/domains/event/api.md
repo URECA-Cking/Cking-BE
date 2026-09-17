@@ -12,7 +12,7 @@ Creator의 Event 관리와 관리자 심사 API 계약이다. 모든 성공·실
 DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPEN
                                       └--reject--> REJECTED --changeToDraft--> DRAFT
 
-CLOSED --completeDrawing--> DRAW_COMPLETED
+CLOSED --completeDrawing--> DRAW_COMPLETED --publish--> PUBLISHED
 ```
 
 ## 내부 Lifecycle 계약
@@ -26,6 +26,11 @@ CLOSED --completeDrawing--> DRAW_COMPLETED
 이 메서드는 Event 행의 비관적 잠금 안에서 `CLOSED → DRAW_COMPLETED`만 허용한다. 병렬 호출은 한 건만
 성공하고, 후행 호출과 다른 상태는 `INVALID_STATE`로 실패한다. Snapshot 생성·검증과 DrawingEngine 실행은
 이 계약의 책임이 아니며 호출자가 동일 Transaction에서 조합한다.
+
+시스템4의 결과 공개 Transaction은 `EventCommandService.publish(eventId)`를 호출한다. 이 메서드는 Event 행의
+비관적 잠금 안에서 `DRAW_COMPLETED → PUBLISHED`만 허용한다. 병렬 공개 요청은 한 건만 성공하고, 후행 호출과
+다른 상태는 `INVALID_STATE`로 실패한다. Drawing 공개 상태 변경과 Winner 알림 생성은 이 계약의 책임이 아니며
+호출자가 동일 Transaction에서 조합한다.
 
 ## GET /api/creator/events
 
