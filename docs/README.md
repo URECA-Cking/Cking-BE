@@ -19,5 +19,6 @@
 `domains/<도메인>/README.md`와 `domains/<도메인>/api.md`는 해당 도메인 작업자가 처음 필요해질 때 추가한다. 책임, 소유 데이터, 상태 전이, 불변조건, 외부 API 계약처럼 코드만으로 파악하기 어려운 정보를 적는다.
 
 - [Snapshot](domains/snapshot/README.md): 공식 후보 확정, 멱등 생성, Snapshot Hash 정규화 계약
+- [Drawing](domains/drawing/README.md): 추첨 실행과 당첨 결과 영속성 경계
 
 빈 도메인 문서나 디렉터리는 미리 만들지 않는다. 문서는 원칙적으로 300줄 이하로 유지하며, 이를 넘으면 관심사별 파일로 분리한다.

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Optional;
 import kr.co.cking.common.exception.BusinessException;
@@ -61,6 +62,14 @@ class SnapshotIntegrityServiceTest {
         assertThat(verified.candidates()).containsExactlyElementsOf(values);
         assertThatThrownBy(() -> verified.candidates().clear())
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void VerifiedSnapshot은_외부에서_생성하거나_확장할_수_없다() {
+        assertThat(Modifier.isFinal(VerifiedSnapshot.class.getModifiers())).isTrue();
+        assertThat(VerifiedSnapshot.class.getConstructors()).isEmpty();
+        assertThat(VerifiedSnapshot.class.getDeclaredConstructors())
+                .allSatisfy(constructor -> assertThat(Modifier.isPrivate(constructor.getModifiers())).isTrue());
     }
 
     @Test

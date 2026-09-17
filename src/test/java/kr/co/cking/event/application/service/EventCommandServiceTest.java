@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.event.application.EventQueryService;
@@ -34,11 +35,14 @@ class EventCommandServiceTest {
     @Mock
     private EventQueryService eventQueryService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private EventCommandService eventCommandService;
 
     @BeforeEach
     void setUp() {
-        eventCommandService = new EventCommandService(eventRepository, eventQueryService, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
+        eventCommandService = new EventCommandService(eventRepository, eventQueryService, eventPublisher, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
     }
 
     @Test
