@@ -12,7 +12,7 @@ public class EventClosingService {
     private final EventCutoffBarrier eventCutoffBarrier;
     private final EventCommandService eventCommandService;
 
-    /** Gate를 닫고 cutoff를 확정한 뒤 Event를 CLOSING으로 전이한다. */
+    /** Gate를 닫고 cutoff를 확정한 뒤 마감을 시작하거나, 이미 진행·완료된 현재 상태를 반환한다. */
     public ClosingResult startClosing(Long eventId) {
         String cutoffStreamId = eventCutoffBarrier.close(eventId);
         EventStatus status = eventCommandService.startClosing(eventId, cutoffStreamId);

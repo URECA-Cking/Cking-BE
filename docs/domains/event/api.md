@@ -169,3 +169,9 @@ Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요
 ```json
 { "eventId": 1, "status": "CLOSING" }
 ```
+
+이미 완료된 Event를 재요청한 경우의 응답은 다음과 같다.
+
+```json
+{ "eventId": 1, "status": "CLOSED" }
+```
