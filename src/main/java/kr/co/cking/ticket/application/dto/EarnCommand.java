@@ -1,5 +1,6 @@
 package kr.co.cking.ticket.application.dto;
 
+import java.util.Map;
 import java.util.UUID;
 
 import kr.co.cking.ticket.application.TicketEarnService;
@@ -23,4 +24,20 @@ public record EarnCommand(
         String missionKey,
         Long amount
 ) {
+    /**
+     * {@code stream:ticket-earned} Redis Stream 메시지 필드(정상 소비·PEL 재처리·Dead
+     * Stream replay 공통 포맷)를 커맨드로 변환한다.
+     */
+    public static EarnCommand fromStreamFields(Map<String, String> fields) {
+        return new EarnCommand(
+                UUID.fromString(fields.get("requestId")),
+                Long.valueOf(fields.get("userId")),
+                Long.valueOf(fields.get("creatorId")),
+                fields.get("missionType"),
+                Long.valueOf(fields.get("missionId")),
+                fields.get("periodKey"),
+                fields.get("missionKey"),
+                Long.valueOf(fields.get("amount"))
+        );
+    }
 }

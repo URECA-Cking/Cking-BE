@@ -34,6 +34,13 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     /** EventLifecycleScheduler가 자동 마감 대상(OPEN이고 endAt이 지난 이벤트)을 찾을 때 쓴다. */
     List<Event> findByStatusAndEndAtLessThanEqual(EventStatus status, Instant endAt);
 
+    /** EventLifecycleScheduler가 자동 시작 대상(SCHEDULED이고 startAt <= now < endAt)을 찾을 때 쓴다. */
+    List<Event> findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
+            EventStatus status,
+            Instant startAt,
+            Instant endAt
+    );
+
     /** 서버 재기동 후 Drain이 끝나지 않은 CLOSING 이벤트를 재개할 때 쓴다. */
     List<Event> findByStatus(EventStatus status);
 

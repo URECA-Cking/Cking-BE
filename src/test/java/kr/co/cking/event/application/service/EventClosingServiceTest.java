@@ -1,42 +1,90 @@
 package kr.co.cking.event.application.service;
 
-import kr.co.cking.event.domain.EventStatus;
-import org.junit.jupiter.api.Test;
-import org.mockito.InOrder;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.BDDMockito.given;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import java.time.Instant;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventErrorCode;
+import kr.co.cking.event.domain.EventStatus;
+import kr.co.cking.event.repository.EventRepository;
+
+@ExtendWith(MockitoExtension.class)
 class EventClosingServiceTest {
 
+    @Mock
+    private EventCutoffBarrier eventCutoffBarrier;
+
+    @Mock
+    private EventCommandService eventCommandService;
+
+    @Mock
+    private EventRepository eventRepository;
+
+    @InjectMocks
+    private EventClosingService eventClosingService;
+
     @Test
-    void startClosingDelegatesGateAndStateTransitionToSystemTwoComponents() {
-        EventCutoffBarrier eventCutoffBarrier = mock(EventCutoffBarrier.class);
-        EventCommandService eventCommandService = mock(EventCommandService.class);
-        given(eventCutoffBarrier.close(10L)).willReturn("1-0");
-        given(eventCommandService.startClosing(10L, "1-0")).willReturn(EventStatus.CLOSING);
+    void Gate와_cutoff를_확정한_뒤_CLOSING_전이를_요청한다() {
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.of(eventOf(EventStatus.OPEN)));
+        when(eventCutoffBarrier.close(1L)).thenReturn("123-0");
+        when(eventCommandService.startClosing(1L, "123-0")).thenReturn(EventStatus.CLOSING);
 
-        EventClosingService.ClosingResult result = new EventClosingService(eventCutoffBarrier, eventCommandService)
-                .startClosing(10L);
+        EventClosingService.ClosingResult result = eventClosingService.startClosing(1L);
 
-        assertThat(result).isEqualTo(new EventClosingService.ClosingResult(10L, EventStatus.CLOSING));
         InOrder inOrder = inOrder(eventCutoffBarrier, eventCommandService);
-        inOrder.verify(eventCutoffBarrier).close(10L);
-        inOrder.verify(eventCommandService).startClosing(10L, "1-0");
+        inOrder.verify(eventCutoffBarrier).close(1L);
+        inOrder.verify(eventCommandService).startClosing(1L, "123-0");
+        assertThat(result).isEqualTo(new EventClosingService.ClosingResult(1L, EventStatus.CLOSING));
     }
 
     @Test
-    void startClosing은_이미_마감된_실제_상태를_반환한다() {
-        EventCutoffBarrier eventCutoffBarrier = mock(EventCutoffBarrier.class);
-        EventCommandService eventCommandService = mock(EventCommandService.class);
-        given(eventCutoffBarrier.close(10L)).willReturn("1-0");
-        given(eventCommandService.startClosing(10L, "1-0")).willReturn(EventStatus.CLOSED);
+    void 이미_CLOSING이면_Redis를_건드리지_않고_현재_상태를_반환한다() {
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.of(eventOf(EventStatus.CLOSING)));
 
-        EventClosingService.ClosingResult result = new EventClosingService(eventCutoffBarrier, eventCommandService)
-                .startClosing(10L);
+        EventClosingService.ClosingResult result = eventClosingService.startClosing(1L);
 
-        assertThat(result).isEqualTo(new EventClosingService.ClosingResult(10L, EventStatus.CLOSED));
+        assertThat(result).isEqualTo(new EventClosingService.ClosingResult(1L, EventStatus.CLOSING));
+        verifyNoInteractions(eventCutoffBarrier, eventCommandService);
+    }
+
+    @Test
+    void 이미_CLOSED면_Redis를_건드리지_않고_현재_상태를_반환한다() {
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.of(eventOf(EventStatus.CLOSED)));
+
+        EventClosingService.ClosingResult result = eventClosingService.startClosing(1L);
+
+        assertThat(result).isEqualTo(new EventClosingService.ClosingResult(1L, EventStatus.CLOSED));
+        verifyNoInteractions(eventCutoffBarrier, eventCommandService);
+    }
+
+    @Test
+    void OPEN이_아닌_잘못된_상태면_Redis를_건드리기_전에_실패한다() {
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.of(eventOf(EventStatus.DRAFT)));
+
+        assertThatThrownBy(() -> eventClosingService.startClosing(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+        verifyNoInteractions(eventCutoffBarrier, eventCommandService);
+    }
+
+    private Event eventOf(EventStatus status) {
+        return Event.builder()
+                .status(status)
+                .startAt(Instant.parse("2026-09-10T00:00:00Z"))
+                .endAt(Instant.parse("2026-09-20T00:00:00Z"))
+                .build();
     }
 }

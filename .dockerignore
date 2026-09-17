@@ -8,3 +8,4 @@ notes
 docker-compose*.yml
 Dockerfile
 .env
+deploy

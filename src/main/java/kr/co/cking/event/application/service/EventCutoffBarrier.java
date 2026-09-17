@@ -45,7 +45,8 @@ public class EventCutoffBarrier {
                         EntryRedisKeys.cutoff(eventId),
                         entryStreamKey
                 ),
-                CLOSED_GATE_VALUE
+                CLOSED_GATE_VALUE,
+                String.valueOf(eventId)
         );
     }
 }

@@ -13,6 +13,7 @@ import kr.co.cking.event.application.service.EventDrainChecker;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.snapshot.application.OfficialSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -38,12 +39,30 @@ public class EventLifecycleScheduler {
     private final EventCommandService eventCommandService;
     private final EventClosingService eventClosingService;
     private final EventDrainChecker eventDrainChecker;
+    private final OfficialSnapshotService officialSnapshotService;
     private final Clock clock;
 
     @Scheduled(fixedDelayString = "${cking.event.lifecycle-interval-ms:10000}")
     public void run() {
+        openScheduledEvents();
         startClosingOverdueEvents();
         completeDrainedEvents();
+    }
+
+    private void openScheduledEvents() {
+        Instant now = clock.instant();
+        for (Event event : eventRepository.findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
+                EventStatus.SCHEDULED,
+                now,
+                now
+        )) {
+            Long eventId = event.getEventId();
+            try {
+                eventCommandService.open(eventId);
+            } catch (RuntimeException e) {
+                log.error("이벤트 자동 시작(SCHEDULED→OPEN)에 실패했습니다. eventId={}", eventId, e);
+            }
+        }
     }
 
     private void startClosingOverdueEvents() {
@@ -67,8 +86,9 @@ public class EventLifecycleScheduler {
                 continue;
             }
             try {
-                if (eventDrainChecker.isDrained(cutoffStreamId)) {
-                    eventCommandService.completeClosing(eventId, clock.instant());
+                if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
+                    eventCommandService.completeClosing(eventId);
+                    officialSnapshotService.createIfAbsent(eventId);
                 }
             } catch (RuntimeException e) {
                 log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);
