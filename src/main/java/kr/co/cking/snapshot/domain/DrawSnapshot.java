@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,7 +24,13 @@ import org.hibernate.annotations.CreationTimestamp;
 
 @Getter
 @Entity
-@Table(name = "draw_snapshot")
+@Table(
+        name = "draw_snapshot",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_snapshot_drawing_contract",
+                columnNames = {"id", "event_id", "draw_method", "algorithm_version"}
+        )
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DrawSnapshot {
 

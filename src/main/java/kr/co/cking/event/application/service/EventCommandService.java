@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.repository.EventRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,7 @@ import java.util.function.Function;
 public class EventCommandService {
 
     private final EventRepository eventRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** DRAFT Event를 승인 대기 상태로 전이한다. */
     public void requestApproval(Long eventId) {
@@ -43,6 +45,31 @@ public class EventCommandService {
             T result = beforeTransition.apply(event);
             event.approve();
             return result;
+        });
+    }
+
+    /** 예약된 Event를 응모 가능한 공개 상태로 전이한다. */
+    public void open(Long eventId) {
+        execute(eventId, event -> {
+            event.open();
+            return null;
+        });
+        eventPublisher.publishEvent(new EventOpenedEvent(eventId));
+    }
+
+    /** 초기 추첨이 완료된 CLOSED Event를 추첨 완료 상태로 전이한다. */
+    public void completeDrawing(Long eventId) {
+        execute(eventId, event -> {
+            event.completeDrawing();
+            return null;
+        });
+    }
+
+    /** 추첨이 완료된 Event를 시스템4 결과 공개 흐름에서 공개 상태로 전이한다. */
+    public void publish(Long eventId) {
+        execute(eventId, event -> {
+            event.publish();
+            return null;
         });
     }
 
