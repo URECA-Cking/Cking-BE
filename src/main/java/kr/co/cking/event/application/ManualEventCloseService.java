@@ -14,12 +14,16 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-/** 수동 마감 요청의 요청자 권한과 시작 가능 상태를 검증한다. */
+/**
+ * 수동 마감 요청의 요청자 권한과 시작 가능 상태를 검증한다.
+ *
+ * <p>Redis Gate 차단과 cutoff 확정은 {@link EventClosingService}에서 먼저 수행하고,
+ * 상태 전이는 그 뒤 {@code EventCommandService}가 소유한 짧은 DB 트랜잭션에서 처리한다.
+ * 따라서 이 서비스는 트랜잭션을 열지 않는다.
+ */
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class ManualEventCloseService {
 
     private final MemberRepository memberRepository;
