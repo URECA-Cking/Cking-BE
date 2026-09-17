@@ -11,6 +11,8 @@ import kr.co.cking.drawing.domain.seed.DeterministicRandom;
 import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class DrawingEngineTest {
 
@@ -100,8 +102,26 @@ class DrawingEngineTest {
     }
 
     @Test
-    void ticketCount가_0_이하이면_입력을_거부한다() {
-        assertThatThrownBy(() -> new CandidateValue(1L, 0L))
+    void ticketCount가_최소_정상값이면_추첨할_수_있다() {
+        List<CandidateValue> minimumWeightCandidates = List.of(
+                new CandidateValue(1L, 1L),
+                new CandidateValue(2L, 1L)
+        );
+
+        DrawOutput output = drawingEngine.draw(
+                input(FIRST_SEED, 2, minimumWeightCandidates, Set.of())
+        );
+
+        assertThat(output.winners()).hasSize(2);
+        assertThat(output.winners())
+                .extracting(DrawWinner::appliedTicketCount)
+                .containsOnly(1L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L, Long.MIN_VALUE})
+    void ticketCount가_0_이하이면_입력을_거부한다(long invalidTicketCount) {
+        assertThatThrownBy(() -> new CandidateValue(1L, invalidTicketCount))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ticketCount");
     }
@@ -148,6 +168,23 @@ class DrawingEngineTest {
         ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("long 범위");
+    }
+
+    @Test
+    void 가중치_합계가_long_최댓값이면_정상적으로_추첨한다() {
+        List<CandidateValue> maximumWeightCandidates = List.of(
+                new CandidateValue(1L, Long.MAX_VALUE - 1L),
+                new CandidateValue(2L, 1L)
+        );
+
+        DrawOutput output = drawingEngine.draw(
+                input(FIRST_SEED, 2, maximumWeightCandidates, Set.of())
+        );
+
+        assertThat(output.winners()).hasSize(2);
+        assertThat(output.winners())
+                .extracting(DrawWinner::memberId)
+                .containsExactlyInAnyOrder(1L, 2L);
     }
 
     @Test
