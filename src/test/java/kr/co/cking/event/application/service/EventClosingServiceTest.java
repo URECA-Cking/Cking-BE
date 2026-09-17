@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.domain.EventStatus;
@@ -80,6 +81,36 @@ class EventClosingServiceTest {
         verifyNoInteractions(eventCutoffBarrier, eventCommandService);
     }
 
+    /** 마감 진행 중이거나 완료된 Event의 상태만 조회한다. */
+    @Test
+    void CLOSING과_CLOSED_상태만_조회한다() {
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.of(eventOf(EventStatus.CLOSING)));
+
+        assertThat(eventClosingService.getClosingStatus(1L)).isEqualTo(EventStatus.CLOSING);
+
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.of(eventOf(EventStatus.CLOSED)));
+
+        assertThat(eventClosingService.getClosingStatus(1L)).isEqualTo(EventStatus.CLOSED);
+        verifyNoInteractions(eventCutoffBarrier, eventCommandService);
+    }
+
+    /** 존재하지 않거나 아직 마감되지 않은 Event의 상태 조회를 거절한다. */
+    @Test
+    void 조회할_수_없는_Event는_오류를_반환한다() {
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> eventClosingService.getClosingStatus(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", CommonErrorCode.RESOURCE_NOT_FOUND);
+
+        when(eventRepository.findById(1L)).thenReturn(java.util.Optional.of(eventOf(EventStatus.OPEN)));
+
+        assertThatThrownBy(() -> eventClosingService.getClosingStatus(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+    }
+
+    /** 테스트에 필요한 최소 Event 상태 객체를 만든다. */
     private Event eventOf(EventStatus status) {
         return Event.builder()
                 .status(status)

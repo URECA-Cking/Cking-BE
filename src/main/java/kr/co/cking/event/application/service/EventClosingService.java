@@ -34,6 +34,16 @@ public class EventClosingService {
         return new ClosingResult(eventId, status);
     }
 
+    /** 마감 처리 중이거나 완료된 Event의 외부 공개용 마감 상태만 조회한다. */
+    public EventStatus getClosingStatus(Long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (event.getStatus() != EventStatus.CLOSING && event.getStatus() != EventStatus.CLOSED) {
+            throw new BusinessException(EventErrorCode.INVALID_STATE);
+        }
+        return event.getStatus();
+    }
+
     public record ClosingResult(Long eventId, EventStatus status) {
     }
 }

@@ -26,7 +26,7 @@
 | 20 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/approve` | Event 승인 | 상태 기반 |
 | 21 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/reject` | Event 거절 | 상태 기반 |
 | 22 | 외부 | Close | CREATOR/ADMIN | POST | `/api/events/{eventId}/close` | 수동 마감 요청 | 상태 기반 |
-| 23 | 외부 | Close | ADMIN | GET | `/api/admin/events/{eventId}/closing-status` | 마감 상태 조회 | - |
+| 23 | 외부 | Close | ADMIN | GET | `/api/admin/events/{eventId}/closing-status` | 마감 상태만 조회(진행률·Pending·Stream 정보 제외) | - |
 | 24 | 외부 | Snapshot | ADMIN | GET | `/api/admin/events/{eventId}/snapshot` | Snapshot 조회 | - |
 | 25 | 외부 | Drawing | ADMIN | POST | `/api/admin/events/{eventId}/drawings` | INITIAL Drawing | 상태 기반 |
 | 26 | 외부 | Drawing | ADMIN | GET | `/api/admin/drawings/{drawingId}` | Drawing 조회 | - |
