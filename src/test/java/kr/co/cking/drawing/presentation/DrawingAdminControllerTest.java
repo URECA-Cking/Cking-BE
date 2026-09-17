@@ -7,16 +7,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.drawing.application.DrawingPublicationService;
 import kr.co.cking.drawing.application.InitialDrawingPreparation;
 import kr.co.cking.drawing.application.InitialDrawingPreparationService;
+import kr.co.cking.drawing.domain.Drawing;
+import kr.co.cking.drawing.domain.DrawingErrorCode;
+import kr.co.cking.drawing.domain.DrawingSnapshotContract;
+import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
+import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(DrawingAdminController.class)
@@ -27,6 +34,9 @@ class DrawingAdminControllerTest {
 
     @MockitoBean
     private InitialDrawingPreparationService initialDrawingPreparationService;
+
+    @MockitoBean
+    private DrawingPublicationService drawingPublicationService;
 
     @Test
     void 관리자는_공통_성공_응답으로_INITIAL_Drawing_준비_정보를_받는다() throws Exception {
@@ -119,5 +129,40 @@ class DrawingAdminControllerTest {
                         .content("{\"userId\":0}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 관리자는_완료된_Drawing_결과를_공개할_수_있다() throws Exception {
+        Drawing drawing = completedDrawing();
+        ReflectionTestUtils.setField(drawing, "visibility", DrawingVisibility.PUBLIC);
+        when(drawingPublicationService.publish(5L, 1L)).thenReturn(drawing);
+
+        mockMvc.perform(post("/api/admin/drawings/5/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.drawingId").value(10))
+                .andExpect(jsonPath("$.data.eventId").value(10))
+                .andExpect(jsonPath("$.data.visibility").value("PUBLIC"));
+    }
+
+    @Test
+    void 완료되지_않은_Drawing_공개_요청은_DRAWING_NOT_COMPLETED를_반환한다() throws Exception {
+        when(drawingPublicationService.publish(5L, 1L))
+                .thenThrow(new BusinessException(DrawingErrorCode.DRAWING_NOT_COMPLETED));
+
+        mockMvc.perform(post("/api/admin/drawings/5/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DRAWING_NOT_COMPLETED"));
+    }
+
+    private Drawing completedDrawing() {
+        VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(20L, 10L, 2, "WEIGHTED", "WEIGHTED_V1");
+        Drawing drawing = Drawing.createInitial(DrawingSnapshotContract.from(snapshot), 3L, 4L);
+        ReflectionTestUtils.setField(drawing, "id", 10L);
+        return drawing;
     }
 }

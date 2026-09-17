@@ -2,6 +2,8 @@ package kr.co.cking.drawing.domain;
 
 import static kr.co.cking.common.validation.DomainValidator.requirePositive;
 
+import kr.co.cking.common.exception.BusinessException;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -135,5 +137,20 @@ public class Drawing {
         drawing.requestedBy = requestedBy;
         drawing.attemptCount = 0;
         return drawing;
+    }
+
+    /**
+     * 완료된 추첨의 결과를 공개한다. 이미 공개된 경우 상태를 바꾸지 않고 조용히 반환한다(취합v1.5.4
+     * §12: 동일 공개 요청 중복 실행 시 알림 중복 생성 0건 — 호출부가 이 멱등성을 근거로 삼는다).
+     */
+    public void publish(Instant now) {
+        if (visibility == DrawingVisibility.PUBLIC) {
+            return;
+        }
+        if (status != DrawingStatus.COMPLETED) {
+            throw new BusinessException(DrawingErrorCode.DRAWING_NOT_COMPLETED);
+        }
+        visibility = DrawingVisibility.PUBLIC;
+        publishedAt = now;
     }
 }
