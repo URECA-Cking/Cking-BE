@@ -3,6 +3,7 @@ package kr.co.cking.notification.presentation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.notification.application.NotificationReadResult;
@@ -31,7 +32,7 @@ public class NotificationController {
     /** 요청 사용자의 알림을 페이지 단위로 반환한다. */
     @GetMapping("/api/me/notifications")
     public ApiResponse<PageResponse<NotificationSummary>> findMine(
-            @RequestParam Long userId,
+            @RequestParam @Positive Long userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
@@ -41,7 +42,7 @@ public class NotificationController {
     /** 요청 사용자의 Notification을 읽음 처리하고 최초 읽음 시각을 반환한다. */
     @PatchMapping("/api/me/notifications/{notificationId}/read")
     public ApiResponse<NotificationReadResult> read(
-            @PathVariable Long notificationId,
+            @PathVariable @Positive Long notificationId,
             @Valid @RequestBody NotificationReadRequest request
     ) {
         return ApiResponse.success(notificationReadService.read(request.userId(), notificationId));

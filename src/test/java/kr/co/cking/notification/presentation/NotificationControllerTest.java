@@ -95,6 +95,16 @@ class NotificationControllerTest {
     }
 
     @Test
+    void 목록_조회_userId가_양수가_아니면_400을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/me/notifications").param("userId", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(get("/api/me/notifications").param("userId", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     void 읽음_처리_성공_응답을_반환한다() throws Exception {
         when(notificationReadService.read(1L, 10L))
                 .thenReturn(new NotificationReadResult(10L, Instant.parse("2026-09-17T00:00:00Z")));
@@ -109,6 +119,19 @@ class NotificationControllerTest {
     @Test
     void 읽음_처리_userId가_없으면_400을_반환한다() throws Exception {
         mockMvc.perform(patch("/api/me/notifications/10/read").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 읽음_처리_식별자가_양수가_아니면_400을_반환한다() throws Exception {
+        mockMvc.perform(patch("/api/me/notifications/10/read").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(patch("/api/me/notifications/0/read").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(patch("/api/me/notifications/-1/read").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":1}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }

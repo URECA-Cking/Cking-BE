@@ -4,7 +4,7 @@
 
 ## GET /api/me/notifications
 
-Query: `userId`(필수), `page`(기본 0), `size`(기본 20, 최대 100).
+Query: `userId`(필수 양수), `page`(기본 0), `size`(기본 20, 최대 100).
 
 요청 Member가 존재해야 하며, 해당 Member의 Notification만 반환한다. 정렬은 `createdAt DESC, notificationId DESC`다. `readAt`이 `null`이면 읽지 않음이며, 값이 있으면 읽음이다.
 
@@ -33,7 +33,7 @@ Query: `userId`(필수), `page`(기본 0), `size`(기본 20, 최대 100).
 
 ## PATCH /api/me/notifications/{notificationId}/read
 
-사용자가 자신의 인앱 알림을 읽음 처리한다. 요청 본문은 `{"userId": 1}`이다.
+사용자가 자신의 인앱 알림을 읽음 처리한다. 경로의 `notificationId`와 요청 본문의 `userId`는 모두 양수여야 한다.
 
 ```json
 {
