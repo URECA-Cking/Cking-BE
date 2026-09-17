@@ -3,6 +3,9 @@
 ## WEIGHTED_V1 추첨 계약
 
 `WEIGHTED_V1`은 응모권 수를 정수 가중치로 사용하여 복원 없이 당첨자를 선정한다.
+`DrawingEngine`은 `DrawInput`을 받아 `DrawOutput`을 반환하는 순수 추첨 엔진 인터페이스이며,
+`WeightedV1DrawingEngine`이 `WEIGHTED_V1` 알고리즘을 구현한다. 새로운 알고리즘은
+`DrawingEngine`의 별도 구현체로 추가한다.
 
 1. 후보를 `memberId ASC`로 정규화한다.
 2. 제외 대상의 가중치를 추첨 후보군에 포함하지 않는다.

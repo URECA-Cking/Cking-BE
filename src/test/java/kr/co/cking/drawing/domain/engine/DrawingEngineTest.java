@@ -17,7 +17,7 @@ class DrawingEngineTest {
     private static final DrawingSeed FIRST_SEED = DrawingSeed.from("00".repeat(32));
     private static final DrawingSeed SECOND_SEED = DrawingSeed.from("01".repeat(32));
 
-    private final DrawingEngine drawingEngine = new DrawingEngine();
+    private final DrawingEngine drawingEngine = new WeightedV1DrawingEngine();
 
     @Test
     void 동일한_입력과_Seed로_재실행하면_동일한_당첨자와_순위를_반환한다() {
