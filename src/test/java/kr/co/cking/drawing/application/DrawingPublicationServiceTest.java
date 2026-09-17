@@ -56,8 +56,8 @@ class DrawingPublicationServiceTest {
     @Test
     void DRAW_COMPLETED_Event의_완료된_Drawing을_공개한다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
-        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.DRAW_COMPLETED));
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.DRAW_COMPLETED));
         ReflectionTestUtils.setField(drawingPublicationService, "clock",
                 Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC));
 
@@ -71,8 +71,8 @@ class DrawingPublicationServiceTest {
     @Test
     void 이미_공개된_Drawing은_Event가_PUBLISHED면_그대로_반환한다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PUBLIC);
-        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.PUBLISHED));
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.PUBLISHED));
 
         Drawing result = drawingPublicationService.publish(1L, 99L);
 
@@ -84,8 +84,8 @@ class DrawingPublicationServiceTest {
     @Test
     void 이미_공개된_Drawing인데_Event가_PUBLISHED가_아니면_INVALID_STATE이다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PUBLIC);
-        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.DRAW_COMPLETED));
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.DRAW_COMPLETED));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)
@@ -96,8 +96,8 @@ class DrawingPublicationServiceTest {
     @Test
     void Event가_DRAW_COMPLETED가_아니면_INVALID_STATE이고_Drawing을_바꾸지_않는다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
-        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.CLOSED));
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.CLOSED));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)
@@ -110,8 +110,8 @@ class DrawingPublicationServiceTest {
     void 완료되지_않은_Drawing은_공개할_수_없다() {
         Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
         ReflectionTestUtils.setField(drawing, "eventId", 1L);
-        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventDrawingQueryService.getDrawingSource(1L)).thenReturn(sourceOf(1L, EventStatus.DRAW_COMPLETED));
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(1L)).thenReturn(sourceOf(1L, EventStatus.DRAW_COMPLETED));
         ReflectionTestUtils.setField(drawingPublicationService, "clock",
                 Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC));
 
@@ -124,7 +124,7 @@ class DrawingPublicationServiceTest {
     void REDRAW_Drawing은_이_API로_공개할_수_없다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
         ReflectionTestUtils.setField(drawing, "drawType", kr.co.cking.drawing.domain.DrawingType.REDRAW);
-        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)
@@ -134,7 +134,7 @@ class DrawingPublicationServiceTest {
 
     @Test
     void 존재하지_않는_Drawing이면_DRAWING_NOT_FOUND이다() {
-        when(drawingRepository.findById(1L)).thenReturn(Optional.empty());
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)

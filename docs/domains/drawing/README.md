@@ -35,8 +35,10 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 ### `POST /api/admin/drawings/{drawingId}/publish`
 
 FR-P2-044·통합 API 명세 v2.5 No.35. INITIAL Drawing의 결과를 공개하고 Event를
-`DRAW_COMPLETED → PUBLISHED`로 전이한다. REDRAW Drawing 공개(FR-P4-115, Event가 이미
-`PUBLISHED`인 경우)는 이 API의 대상이 아니며 별도 API에서 처리한다.
+`DRAW_COMPLETED → PUBLISHED`로 전이한다. 이번 구현 범위는 INITIAL 공개만이며, REDRAW
+Drawing 공개(FR-P4-115, Event가 이미 `PUBLISHED`인 경우)는 이번 구현 범위에서 제외하고
+후속 작업에서 계약을 확정한다(별도 API로 확정된 것은 아니며, 같은 엔드포인트를 확장할지
+새 엔드포인트를 둘지는 미정).
 
 - Request Body: `{ "userId": 1 }` (`Long`, 양수, 필수)
 - 성공: `200 OK`, 공통 `ApiResponse`의 `data`에 `drawingId`, `eventId`, `visibility`를 반환한다.
@@ -44,13 +46,28 @@ FR-P2-044·통합 API 명세 v2.5 No.35. INITIAL Drawing의 결과를 공개하�
 - 공개 조건: 대상 Drawing이 `drawType = INITIAL`, `status = COMPLETED`, `visibility = PRIVATE`이고
   Event.status가 `DRAW_COMPLETED`여야 한다.
 - Drawing `PRIVATE → PUBLIC` 전이와 `EventCommandService.publish(eventId)`를 한 DB Tx로
-  묶어, 하나라도 실패하면 전체 Rollback한다(부분 반영 금지).
+  묶어, 하나라도 실패하면 전체 Rollback한다(부분 반영 금지). 동시 공개 요청은 Drawing·Event
+  행을 모두 잠근 뒤 조회해 직렬화하며, 뒤에 도착한 요청은 잠금 해제 후 갱신된 Drawing·Event
+  상태를 다시 읽어 멱등 성공으로 처리한다. Drawing만 잠그고 Event를 일반 조회로 읽으면
+  MySQL REPEATABLE READ의 트랜잭션 스냅샷 때문에 Drawing은 최신인데 Event는 낡은 값을
+  보는 불일치가 생길 수 있어, Event도 같은 방식(행 잠금)으로 조회한다.
 - 멱등 재요청: Drawing이 이미 `PUBLIC`이고 Event가 이미 `PUBLISHED`면 상태를 바꾸지 않고
   기존 결과를 그대로 반환한다. Drawing만 `PUBLIC`이고 Event가 `PUBLISHED`가 아니면(정상
   흐름에서는 발생하지 않아야 하는 불일치) `INVALID_STATE`로 실패해, 이 불일치를 성공으로
   위장하지 않는다.
-- 당첨자 Notification 생성(FR-P4-114)은 이 API의 책임이 아니다. 시스템4의 공개 오케스트레이션이
-  이 API(또는 대응하는 Service 계약)를 호출한 뒤 Notification을 별도로 생성한다.
+
+**⚠️ 미해결: 당첨자 Notification 생성(FR-P4-114) 원자성.** FR-P4-114는 Drawing 공개·Event
+전이·Winner Notification 생성을 하나의 Transaction으로 묶어야 한다고 명시한다. 이 API는
+Drawing 공개와 Event 전이만 한 Tx로 처리하고 Notification은 생성하지 않는다(쓰기용
+Notification Command 서비스가 아직 없음). 즉 현재 상태로는 이 API 호출만으로 FR-P4-114의
+원자성 요구를 만족하지 못하며, 다음 중 하나로 경계를 다시 정해야 한다.
+
+1. 이 API를 외부에 노출하지 않고 시스템3의 내부 Service 계약(Drawing 공개)으로만 유지한다.
+2. 시스템4의 PublicationService가 이 Controller/Transaction 경계를 대체 소유하고, 그 안에서
+   Drawing 공개·Event 전이·Notification 생성을 모두 수행한다.
+
+어느 쪽이든 다른 팀원(시스템4)의 작업 범위에 영향을 주므로 이 PR에서 단독으로 결정하지 않고
+팀 논의로 확정한다.
 
 | 코드 | 조건 |
 | --- | --- |
@@ -59,7 +76,7 @@ FR-P2-044·통합 API 명세 v2.5 No.35. INITIAL Drawing의 결과를 공개하�
 | `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
 | `DRAWING_NOT_FOUND` | Drawing이 존재하지 않음 |
 | `DRAWING_NOT_COMPLETED` | Drawing.status가 COMPLETED가 아님 |
-| `DRAWING_TYPE_NOT_SUPPORTED` | Drawing.drawType이 INITIAL이 아님(REDRAW는 이 API 대상 아님) |
+| `DRAWING_TYPE_NOT_SUPPORTED` | Drawing.drawType이 INITIAL이 아님(REDRAW는 이번 구현 범위 제외) |
 | `INVALID_STATE` | Event.status가 기대 상태(DRAW_COMPLETED 또는 멱등 재요청 시 PUBLISHED)가 아님 |
 
 ## 추첨 엔진 계약

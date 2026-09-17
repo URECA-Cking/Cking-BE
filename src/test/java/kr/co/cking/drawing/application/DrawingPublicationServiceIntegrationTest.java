@@ -83,7 +83,7 @@ class DrawingPublicationServiceIntegrationTest {
     }
 
     @Test
-    void Event가_DRAW_COMPLETED가_아니면_Drawing_공개도_Rollback된다() {
+    void Event가_DRAW_COMPLETED가_아니면_Drawing을_바꾸지_않고_실패한다() {
         insertEvent("CLOSED");
         insertSnapshot();
         insertDrawing(DrawingVisibility.PRIVATE);
@@ -96,6 +96,38 @@ class DrawingPublicationServiceIntegrationTest {
                 .isEqualTo(DrawingVisibility.PRIVATE);
         assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name())
                 .isEqualTo("CLOSED");
+    }
+
+    @Test
+    void 동시_공개_요청은_한_번만_전이되고_나머지는_멱등하게_성공한다() throws Exception {
+        insertEvent("DRAW_COMPLETED");
+        insertSnapshot();
+        insertDrawing(DrawingVisibility.PRIVATE);
+
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<Drawing> task = () -> {
+                ready.countDown();
+                start.await();
+                return service.publish(DRAWING_ID, ADMIN_ID);
+            };
+            java.util.concurrent.Future<Drawing> first = executor.submit(task);
+            java.util.concurrent.Future<Drawing> second = executor.submit(task);
+
+            ready.await();
+            start.countDown();
+
+            // 두 요청 모두 예외 없이 PUBLIC을 반환해야 한다(하나는 최초 전이, 하나는 멱등 성공).
+            assertThat(first.get().getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
+            assertThat(second.get().getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        }
+
+        assertThat(drawingRepository.findById(DRAWING_ID).orElseThrow().getVisibility())
+                .isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name())
+                .isEqualTo("PUBLISHED");
     }
 
     @Test
