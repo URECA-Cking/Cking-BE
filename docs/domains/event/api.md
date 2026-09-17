@@ -9,9 +9,16 @@ Creator의 Event 관리와 관리자 심사 API 계약이다. 모든 성공·실
 - Event 상태는 Repository로 직접 변경하지 않는다. 아래 전이는 `EventCommandService`를 사용한다.
 
 ```text
-DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED
+DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPEN
                                       └--reject--> REJECTED --changeToDraft--> DRAFT
 ```
+
+## 내부 Lifecycle 계약
+
+시스템2 `EventLifecycleScheduler`는 시작 대상(`status = SCHEDULED`, `startAt <= now < endAt`)마다
+`EventCommandService.open(eventId)`를 호출한다. 이 메서드는 Event 행의 비관적 잠금 안에서
+`SCHEDULED → OPEN`만 허용한다. 같은 Event에 대한 병렬 호출은 한 건만 성공하고, 잠금 대기 후
+이미 `OPEN`을 확인한 호출은 `INVALID_STATE`로 실패한다. 존재하지 않는 Event는 `RESOURCE_NOT_FOUND`다.
 
 ## GET /api/creator/events
 

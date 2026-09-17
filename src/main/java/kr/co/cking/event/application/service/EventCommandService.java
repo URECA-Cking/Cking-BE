@@ -46,6 +46,14 @@ public class EventCommandService {
         });
     }
 
+    /** 예약된 Event를 응모 가능한 공개 상태로 전이한다. */
+    public void open(Long eventId) {
+        execute(eventId, event -> {
+            event.open();
+            return null;
+        });
+    }
+
     /** 승인 대기 Event를 거절 상태로 전이한다. */
     public void reject(Long eventId, String reason) {
         reject(eventId, event -> null);

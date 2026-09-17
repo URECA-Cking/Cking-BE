@@ -158,6 +158,32 @@ class EventLifecycleTest {
     }
 
     @Test
+    void commandServiceOpensScheduledEvent() {
+        Event event = scheduledEvent();
+        EventRepository eventRepository = mock(EventRepository.class);
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+
+        eventCommandService.open(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
+        verify(eventRepository).findByEventId(1L);
+    }
+
+    @Test
+    void scheduledEventCanOpenOnlyOnce() {
+        Event event = scheduledEvent();
+
+        event.open();
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
+        assertThatThrownBy(event::open)
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(EventErrorCode.INVALID_STATE);
+    }
+
+    @Test
     void commandServiceRejectsPendingEventAndAllowsReturnToDraft() {
         Event event = new Event(
                 1L,
@@ -179,5 +205,22 @@ class EventLifecycleTest {
         eventCommandService.changeToDraft(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    private Event scheduledEvent() {
+        Event event = new Event(
+                1L,
+                "팬미팅",
+                "설명",
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)),
+                3,
+                DrawMethod.WEIGHTED,
+                1L,
+                "550e8400-e29b-41d4-a716-446655440000"
+        );
+        event.requestApproval();
+        event.approve();
+        return event;
     }
 }

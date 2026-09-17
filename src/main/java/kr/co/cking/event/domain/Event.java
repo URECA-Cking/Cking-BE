@@ -110,6 +110,11 @@ public class Event {
         status = EventStatus.SCHEDULED;
     }
 
+    public void open() {
+        requireStatus(EventStatus.SCHEDULED);
+        status = EventStatus.OPEN;
+    }
+
     public void reject() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.REJECTED;
