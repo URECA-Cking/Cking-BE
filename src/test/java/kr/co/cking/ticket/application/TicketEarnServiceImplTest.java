@@ -1,5 +1,6 @@
 package kr.co.cking.ticket.application;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 실제 로컬 Redis에 붙어서 Lua 스크립트까지 검증한다(EventCacheTest와 동일하게
  * Spring 컨텍스트 없이 직접 연결 — 이 리포의 @SpringBootTest는 로컬 MySQL/Flyway
  * 상태에 따라 실패할 수 있어 그 경로를 타지 않는다). 이 테스트가 만든 키만
- * 지우도록 전용 prefix(stream)와 고정 Business Key를 매 테스트 전후로 정리한다.
+ * 지우도록 전용 stream 키와 고정 테스트 식별자를 매 테스트 전후로 정리한다.
  */
 class TicketEarnServiceImplTest {
 
@@ -34,10 +35,15 @@ class TicketEarnServiceImplTest {
     private static final String PERIOD_KEY = "2026-09-16";
     private static final String PERIOD_KEY_GUARD_FORMAT = "20260916";
     private static final String MISSION_KEY = "attendance:creator:2026-09-16";
+    // Balance는 creatorId+userId 기준이라, 같은 Balance에 다른 미션으로 먼저
+    // 적립해둘 때(가드가 겹치지 않도록)만 이 미션 타입을 쓴다.
+    private static final String OTHER_MISSION_TYPE = "LIKE";
 
     private LettuceConnectionFactory connectionFactory;
     private StringRedisTemplate redisTemplate;
     private TicketEarnServiceImpl service;
+    // earn()으로 사용한 requestId를 모아뒀다가 teardown에서 idem 키까지 지운다.
+    private final List<UUID> requestIds = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -65,16 +71,25 @@ class TicketEarnServiceImplTest {
     private void cleanUpKeys() {
         redisTemplate.delete(TicketRedisKeys.balance(CREATOR_ID, USER_ID));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
+        redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, OTHER_MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
         redisTemplate.delete(TEST_STREAM_KEY);
+        requestIds.forEach(id -> redisTemplate.delete(TicketRedisKeys.idemMission(id.toString())));
+        requestIds.clear();
     }
 
     private EarnCommand newCommand(UUID requestId) {
         return new EarnCommand(requestId, USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, PERIOD_KEY, MISSION_KEY, 1L);
     }
 
+    // 모든 테스트는 service.earn()을 직접 부르지 않고 이 메서드를 거친다.
+    private EarnResult earn(EarnCommand command) {
+        requestIds.add(command.requestId());
+        return service.earn(command);
+    }
+
     @Test
     void 잔액을_늘리고_스트림에_발행한다() {
-        EarnResult result = service.earn(newCommand(UUID.randomUUID()));
+        EarnResult result = earn(newCommand(UUID.randomUUID()));
 
         assertThat(result.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
@@ -82,13 +97,12 @@ class TicketEarnServiceImplTest {
     }
 
     // FR-P1-017: 같은 requestId 재전송은 재적립 없이 기존 성공 결과를 재현해야 한다.
-    // (예전 버전은 가드가 없어서 이 케이스가 실제로 잔액을 중복 증가시켰다 - 이슈 #30에서 고침)
     @Test
     void 같은_요청을_재시도하면_ALREADY_PROCESSED를_반환하고_잔액이_중복증가하지_않는다() {
         EarnCommand command = newCommand(UUID.randomUUID());
 
-        EarnResult first = service.earn(command);
-        EarnResult retry = service.earn(command);
+        EarnResult first = earn(command);
+        EarnResult retry = earn(command);
 
         assertThat(first.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(retry.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
@@ -102,37 +116,55 @@ class TicketEarnServiceImplTest {
         EarnCommand conflicting =
                 new EarnCommand(requestId, USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, PERIOD_KEY, MISSION_KEY, 5L);
 
-        EarnResult firstResult = service.earn(first);
-        EarnResult conflictResult = service.earn(conflicting);
+        EarnResult firstResult = earn(first);
+        EarnResult conflictResult = earn(conflicting);
 
         assertThat(firstResult.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(conflictResult.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
     }
 
-    // FR-P2-006: 새 requestId라도 같은 Business Key(userId+creatorId+missionId+periodKey)면
-    // 가드(SETNX)에 막혀 중복 지급되지 않아야 한다.
+    // FR-P2-006: 새 requestId라도 같은 가드 키(userId+missionType+creatorId+yyyyMMdd)면
+    // SETNX에 막혀 중복 지급되지 않아야 한다(EARN API Business Key와는 다른 키, FR-P2-008).
     @Test
     void 새_requestId로_같은_미션을_다시_요청하면_DUPLICATE_MISSION을_반환한다() {
-        service.earn(newCommand(UUID.randomUUID()));
+        earn(newCommand(UUID.randomUUID()));
 
-        EarnResult duplicate = service.earn(newCommand(UUID.randomUUID()));
+        EarnResult duplicate = earn(newCommand(UUID.randomUUID()));
 
         assertThat(duplicate.code()).isEqualTo(EarnResultCode.DUPLICATE_MISSION);
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
     }
 
-    // XADD 실패 시 Balance뿐 아니라 가드도 풀어야 한다 - 안 풀면 실제로는 적립되지
-    // 않았는데도 오늘 하루 이 미션을 영원히 다시 받을 수 없게 된다.
+    // XADD 실패 시 가드도 풀어야 한다 - 안 풀면 실제로는 적립되지 않았는데도 오늘
+    // 하루 이 미션을 다시 받을 수 없게 된다. 원래 Balance 키가 없었던 경우이므로
+    // "0"이 아니라 키 자체가 사라져야 한다(§2.4, entry-spend.lua와 동일 원칙).
     @Test
-    void XADD가_실패하면_잔액과_가드를_모두_보상한다() {
+    void XADD가_실패하고_원래_Balance_키가_없었으면_삭제로_복구한다() {
         redisTemplate.opsForValue().set(TEST_STREAM_KEY, "not-a-stream");
 
-        EarnResult result = service.earn(newCommand(UUID.randomUUID()));
+        EarnResult result = earn(newCommand(UUID.randomUUID()));
 
         assertThat(result.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
-        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("0");
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
         assertThat(redisTemplate.hasKey(
                 TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT)
         )).isFalse();
+    }
+
+    // 원래 Balance 키가 이미 존재했던 경우(다른 미션으로 먼저 적립된 상태)라면
+    // 삭제가 아니라 DECRBY로 원래 값까지만 되돌려야 한다.
+    @Test
+    void XADD가_실패하고_원래_Balance_키가_있었으면_DECRBY로_복구한다() {
+        EarnCommand priorMission = new EarnCommand(
+                UUID.randomUUID(), USER_ID, CREATOR_ID, OTHER_MISSION_TYPE, 30L, PERIOD_KEY, "like:creator:2026-09-16", 1L);
+        EarnResult priorResult = earn(priorMission);
+        assertThat(priorResult.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        redisTemplate.opsForValue().set(TEST_STREAM_KEY, "not-a-stream");
+
+        EarnResult result = earn(newCommand(UUID.randomUUID()));
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
     }
 }

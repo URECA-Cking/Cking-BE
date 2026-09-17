@@ -1,10 +1,12 @@
--- EARN(적립) 요청의 원자적 처리 — 멱등성 확인 + 중복 적립(Business Key) 가드 +
+-- EARN(적립) 요청의 원자적 처리 — 멱등성 확인 + 중복 적립 가드 +
 -- Balance 증가 + Stream 발행을 하나의 스크립트에서 원자적으로 수행한다 (FR-P2-006/008).
 --
--- 순서(entry-spend.lua와 동일 원칙, 성집·자비 합의 2026-09-16): 멱등성 확인 -> 중복
+-- 순서(entry-spend.lua와 동일 원칙): 멱등성 확인 -> 중복
 -- 적립 가드 -> Balance 증가 -> Stream 발행 -> 성공 시에만 멱등 결과 저장. XADD 실패
 -- 시 Balance와 가드 모두 보상한다 — 가드를 안 풀면 실제로는 적립되지 않았는데도
--- 오늘 하루 이 미션을 영원히 다시 받을 수 없게 된다.
+-- 오늘 하루 이 미션을 영원히 다시 받을 수 없게 된다. Balance 보상은 원래 키가
+-- 있었는지(EXISTS)에 따라 DECRBY/DEL을 구분한다 — 원래 없던 키를 0으로 남기면
+-- entry-spend.lua가 구분하는 "키 없음(BALANCE_NOT_LOADED)"과 "0"이 뒤섞인다(§2.4).
 --
 -- KEYS[1] = idem:mission:{requestId}                                        String(JSON, TTL 24h, FR-P1-017)
 -- KEYS[2] = mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd} String(SETNX, FR-P2-006)
@@ -61,7 +63,9 @@ if stored then
     end
 end
 
--- 2) 중복 적립 가드 (Business Key: userId+creatorId+missionId+periodKey, FR-P2-006)
+-- 2) 중복 적립 가드 (userId+missionType+creatorId+yyyyMMdd, FR-P2-006)
+-- EARN API Business Key(userId+creatorId+missionId+periodKey, FR-P2-008)와는
+-- 다른 레이어의 별도 키다 - 임의로 통합하지 않는다(취합v1.5.4 §4.2).
 local guardAcquired = redis.call('SETNX', guardKey, requestId)
 if guardAcquired == 0 then
     return { 'DUPLICATE_MISSION' }
@@ -69,6 +73,7 @@ end
 redis.call('EXPIRE', guardKey, guardTtl)
 
 -- 3) Balance 증가 + Stream 발행
+local balanceExisted = redis.call('EXISTS', balanceKey) == 1
 local newBalance = redis.call('INCRBY', balanceKey, amount)
 
 local streamId = redis.pcall('XADD', streamKey, '*',
@@ -82,7 +87,11 @@ local streamId = redis.pcall('XADD', streamKey, '*',
     'amount', ARGV[1])
 
 if type(streamId) == 'table' and streamId.err then
-    redis.call('DECRBY', balanceKey, amount)
+    if balanceExisted then
+        redis.call('DECRBY', balanceKey, amount)
+    else
+        redis.call('DEL', balanceKey)
+    end
     redis.call('DEL', guardKey)
     return redis.error_reply('XADD_FAILED: ' .. streamId.err)
 end

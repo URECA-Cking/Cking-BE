@@ -9,6 +9,7 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -21,8 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * 멱등성 확인(FR-P1-017) + 중복 적립 가드(FR-P2-006) + Redis Balance 증가 +
- * {@code stream:ticket-earned} 발행을 {@code ticket-earn.lua} 하나로 원자 처리한다
- * (이슈 #30, 성집·자비 2026-09-16 합의).
+ * {@code stream:ticket-earned} 발행을 {@code ticket-earn.lua} 하나로 원자 처리한다.
  */
 @Slf4j
 @Service
@@ -77,6 +77,10 @@ public class TicketEarnServiceImpl implements TicketEarnService {
                     command.periodKey(),
                     command.missionKey()
             );
+        } catch (QueryTimeoutException e) {
+            log.error("EARN Lua 실행이 타임아웃되어 처리 여부를 알 수 없습니다. requestId={}, userId={}",
+                    command.requestId(), command.userId(), e);
+            return new EarnResult(EarnResultCode.EARN_STATUS_UNKNOWN);
         } catch (DataAccessException e) {
             log.error("EARN Lua 실행 중 Redis 접근에 실패했습니다. requestId={}, userId={}",
                     command.requestId(), command.userId(), e);
@@ -86,8 +90,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         return parse(result, command);
     }
 
-    // FR-P2-006/008: 동일 requestId라도 요청 내용이 다르면 REQUEST_ID_CONFLICT로
-    // 구분해야 하므로, requestId를 제외한 요청 내용을 요약한 값을 여기서 계산한다.
+    // requestId를 제외한 요청 내용을 해시로 요약해 REQUEST_ID_CONFLICT 판정에 사용한다.
     private String computeFingerprint(EarnCommand command) {
         String payload = command.userId() + ":" + command.creatorId() + ":" + command.missionType()
                 + ":" + command.missionId() + ":" + command.periodKey() + ":" + command.missionKey()
