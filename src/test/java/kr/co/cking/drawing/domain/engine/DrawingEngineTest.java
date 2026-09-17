@@ -3,9 +3,11 @@ package kr.co.cking.drawing.domain.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import kr.co.cking.drawing.domain.seed.DeterministicRandom;
 import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import org.junit.jupiter.api.Test;
@@ -50,6 +52,22 @@ class DrawingEngineTest {
         DrawOutput second = drawingEngine.draw(input(SECOND_SEED, 3, candidates(), Set.of()));
 
         assertThat(first.winners()).isNotEqualTo(second.winners());
+    }
+
+    @Test
+    void 기존_누적_선형_방식과_동일한_당첨_결과를_유지한다() {
+        List<DrawingSeed> seeds = List.of(
+                FIRST_SEED,
+                SECOND_SEED,
+                DrawingSeed.from("ab".repeat(32))
+        );
+
+        for (DrawingSeed seed : seeds) {
+            DrawInput input = input(seed, 3, candidates(), Set.of());
+
+            assertThat(drawingEngine.draw(input).winners())
+                    .containsExactlyElementsOf(drawWithLinearScan(input));
+        }
     }
 
     @Test
@@ -164,6 +182,31 @@ class DrawingEngineTest {
                 candidates,
                 excludedMemberIds
         );
+    }
+
+    private List<DrawWinner> drawWithLinearScan(DrawInput input) {
+        List<CandidateValue> drawingPool = new ArrayList<>(input.candidates());
+        DeterministicRandom random = new DeterministicRandom(input.seed());
+        List<DrawWinner> winners = new ArrayList<>();
+
+        for (int rank = 1; rank <= input.winnerCount(); rank++) {
+            long totalWeight = drawingPool.stream()
+                    .mapToLong(CandidateValue::ticketCount)
+                    .sum();
+            long selectedWeight = random.nextLong(totalWeight);
+            long cumulativeWeight = 0L;
+
+            for (int index = 0; index < drawingPool.size(); index++) {
+                cumulativeWeight += drawingPool.get(index).ticketCount();
+                if (selectedWeight < cumulativeWeight) {
+                    CandidateValue winner = drawingPool.remove(index);
+                    winners.add(new DrawWinner(winner.memberId(), rank, winner.ticketCount()));
+                    break;
+                }
+            }
+        }
+
+        return winners;
     }
 
     private List<CandidateValue> candidates() {
