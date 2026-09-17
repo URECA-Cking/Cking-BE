@@ -4,31 +4,27 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TicketQueryServiceTest {
 
-    private final UserTicketBalanceRepository balanceRepository = mock(UserTicketBalanceRepository.class);
+    private final TicketBalanceQueryService balanceQueryService = mock(TicketBalanceQueryService.class);
     private final TicketLedgerRepository ledgerRepository = mock(TicketLedgerRepository.class);
-    private final TicketQueryService service = new TicketQueryService(balanceRepository, ledgerRepository);
+    private final TicketQueryService service = new TicketQueryService(balanceQueryService, ledgerRepository);
 
     @Test
     void balance는_member와_creator기준으로_조회한다() {
-        UserTicketBalance balance = UserTicketBalance.builder()
-                .memberId(1L)
-                .creatorId(2L)
-                .balance(15L)
-                .updatedAt(Instant.parse("2026-09-16T00:00:00Z"))
-                .build();
-        when(balanceRepository.findByMemberIdAndCreatorId(1L, 2L)).thenReturn(Optional.of(balance));
+        when(balanceQueryService.getBalanceDetail(2L, 1L))
+                .thenReturn(new TicketBalanceResponse(1L, 2L, 15L, Instant.parse("2026-09-16T00:00:00Z")));
 
         TicketBalanceResponse result = service.getBalance(2L, 1L);
 
+        verify(balanceQueryService).getBalanceDetail(2L, 1L);
         assertThat(result.userId()).isEqualTo(1L);
         assertThat(result.creatorId()).isEqualTo(2L);
         assertThat(result.balance()).isEqualTo(15L);
@@ -37,7 +33,8 @@ class TicketQueryServiceTest {
 
     @Test
     void balance가_없으면_0으로_반환한다() {
-        when(balanceRepository.findByMemberIdAndCreatorId(1L, 2L)).thenReturn(Optional.empty());
+        when(balanceQueryService.getBalanceDetail(2L, 1L))
+                .thenReturn(new TicketBalanceResponse(1L, 2L, 0L, null));
 
         TicketBalanceResponse result = service.getBalance(2L, 1L);
 

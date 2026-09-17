@@ -19,9 +19,18 @@ public class TicketBalanceQueryService {
 
     private final UserTicketBalanceRepository userTicketBalanceRepository;
 
-    public long getBalance(Long creatorId, Long memberId) {
+    public TicketBalanceResponse getBalanceDetail(Long creatorId, Long memberId) {
         return userTicketBalanceRepository.findByMemberIdAndCreatorId(memberId, creatorId)
-                .map(UserTicketBalance::getBalance)
-                .orElse(0L);
+                .map(balance -> new TicketBalanceResponse(
+                        memberId,
+                        creatorId,
+                        balance.getBalance(),
+                        balance.getUpdatedAt()
+                ))
+                .orElseGet(() -> new TicketBalanceResponse(memberId, creatorId, 0L, null));
+    }
+
+    public long getBalance(Long creatorId, Long memberId) {
+        return getBalanceDetail(creatorId, memberId).balance();
     }
 }

@@ -17,13 +17,11 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class TicketQueryService {
 
-    private final UserTicketBalanceRepository balanceRepository;
+    private final TicketBalanceQueryService balanceQueryService;
     private final TicketLedgerRepository ledgerRepository;
 
     public TicketBalanceResponse getBalance(Long creatorId, Long memberId) {
-        return balanceRepository.findByMemberIdAndCreatorId(memberId, creatorId)
-                .map(balance -> new TicketBalanceResponse(memberId, creatorId, balance.getBalance(), balance.getUpdatedAt()))
-                .orElseGet(() -> new TicketBalanceResponse(memberId, creatorId, 0L, null));
+        return balanceQueryService.getBalanceDetail(creatorId, memberId);
     }
 
     public TicketLedgerPage getLedger(Long creatorId, Long memberId, int size, String cursor) {
