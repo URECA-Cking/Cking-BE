@@ -125,6 +125,7 @@ public class Event {
     public void publish() {
         requireStatus(EventStatus.DRAW_COMPLETED);
         status = EventStatus.PUBLISHED;
+        publishedAt = Instant.now();
     }
 
     public void reject() {

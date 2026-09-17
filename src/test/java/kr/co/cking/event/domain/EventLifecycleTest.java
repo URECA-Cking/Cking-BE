@@ -231,6 +231,7 @@ class EventLifecycleTest {
         eventCommandService.publish(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+        assertThat(event.getPublishedAt()).isNotNull();
         verify(eventRepository).findByEventId(1L);
     }
 
@@ -270,6 +271,32 @@ class EventLifecycleTest {
         eventCommandService.changeToDraft(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    /** EventCommandService가 지원하는 생명주기 전이를 정해진 순서로 수행하는지 검증한다. */
+    @Test
+    void commandServiceExecutesSupportedLifecycleTransitions() {
+        Event scheduledPathEvent = new Event(
+                1L, "전체 전이", "설명",
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)),
+                3, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000"
+        );
+        Event drawingPathEvent = closedEvent();
+        EventRepository eventRepository = mock(EventRepository.class);
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(scheduledPathEvent));
+        given(eventRepository.findByEventId(2L)).willReturn(java.util.Optional.of(drawingPathEvent));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+
+        eventCommandService.requestApproval(1L);
+        eventCommandService.approve(1L);
+        eventCommandService.open(1L);
+        eventCommandService.completeDrawing(2L);
+        eventCommandService.publish(2L);
+
+        assertThat(scheduledPathEvent.getStatus()).isEqualTo(EventStatus.OPEN);
+        assertThat(drawingPathEvent.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+        assertThat(drawingPathEvent.getPublishedAt()).isNotNull();
     }
 
     private Event scheduledEvent() {
