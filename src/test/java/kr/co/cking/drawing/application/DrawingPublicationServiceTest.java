@@ -26,11 +26,11 @@ import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.event.application.EventDrawingQueryService;
+import kr.co.cking.event.application.dto.EventDrawingSource;
 import kr.co.cking.event.application.service.EventCommandService;
-import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.domain.EventStatus;
-import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
@@ -42,7 +42,7 @@ class DrawingPublicationServiceTest {
     private DrawingRepository drawingRepository;
 
     @Mock
-    private EventRepository eventRepository;
+    private EventDrawingQueryService eventDrawingQueryService;
 
     @Mock
     private EventCommandService eventCommandService;
@@ -57,7 +57,7 @@ class DrawingPublicationServiceTest {
     void DRAW_COMPLETED_Event의_완료된_Drawing을_공개한다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
         when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventRepository.findById(10L)).thenReturn(Optional.of(eventOf(EventStatus.DRAW_COMPLETED)));
+        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.DRAW_COMPLETED));
         ReflectionTestUtils.setField(drawingPublicationService, "clock",
                 Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC));
 
@@ -69,22 +69,35 @@ class DrawingPublicationServiceTest {
     }
 
     @Test
-    void 이미_공개된_Drawing은_Event를_건드리지_않고_그대로_반환한다() {
+    void 이미_공개된_Drawing은_Event가_PUBLISHED면_그대로_반환한다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PUBLIC);
         when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.PUBLISHED));
 
         Drawing result = drawingPublicationService.publish(1L, 99L);
 
         assertThat(result.getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
         verify(memberQueryService).validateAdmin(99L);
-        verifyNoInteractions(eventRepository, eventCommandService);
+        verifyNoInteractions(eventCommandService);
+    }
+
+    @Test
+    void 이미_공개된_Drawing인데_Event가_PUBLISHED가_아니면_INVALID_STATE이다() {
+        Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PUBLIC);
+        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.DRAW_COMPLETED));
+
+        assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+        verifyNoInteractions(eventCommandService);
     }
 
     @Test
     void Event가_DRAW_COMPLETED가_아니면_INVALID_STATE이고_Drawing을_바꾸지_않는다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
         when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventRepository.findById(10L)).thenReturn(Optional.of(eventOf(EventStatus.CLOSED)));
+        when(eventDrawingQueryService.getDrawingSource(10L)).thenReturn(sourceOf(10L, EventStatus.CLOSED));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)
@@ -98,13 +111,25 @@ class DrawingPublicationServiceTest {
         Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
         ReflectionTestUtils.setField(drawing, "eventId", 1L);
         when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
-        when(eventRepository.findById(1L)).thenReturn(Optional.of(eventOf(EventStatus.DRAW_COMPLETED)));
+        when(eventDrawingQueryService.getDrawingSource(1L)).thenReturn(sourceOf(1L, EventStatus.DRAW_COMPLETED));
         ReflectionTestUtils.setField(drawingPublicationService, "clock",
                 Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.DRAWING_NOT_COMPLETED);
+    }
+
+    @Test
+    void REDRAW_Drawing은_이_API로_공개할_수_없다() {
+        Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
+        ReflectionTestUtils.setField(drawing, "drawType", kr.co.cking.drawing.domain.DrawingType.REDRAW);
+        when(drawingRepository.findById(1L)).thenReturn(Optional.of(drawing));
+
+        assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.DRAWING_TYPE_NOT_SUPPORTED);
+        verifyNoInteractions(eventDrawingQueryService, eventCommandService);
     }
 
     @Test
@@ -141,11 +166,7 @@ class DrawingPublicationServiceTest {
         return kr.co.cking.drawing.domain.DrawingSnapshotContract.from(snapshot);
     }
 
-    private Event eventOf(EventStatus status) {
-        return Event.builder()
-                .status(status)
-                .startAt(Instant.parse("2026-09-10T00:00:00Z"))
-                .endAt(Instant.parse("2026-09-20T00:00:00Z"))
-                .build();
+    private EventDrawingSource sourceOf(Long eventId, EventStatus status) {
+        return new EventDrawingSource(eventId, status, null);
     }
 }
