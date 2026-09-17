@@ -15,7 +15,7 @@ public record EarnCommand(
         String missionType,
         Long missionId,
         /**
-         * KST 기준 {@code YYYY-MM-DD} (DB {@code mission_completion.period_key} 컬럼,
+         * UTC 기준 {@code YYYY-MM-DD} (DB {@code mission_completion.period_key} 컬럼,
          * API 명세 §3.2와 동일한 형식). RTM의 미션 Redis 가드 키에 박히는
          * {@code yyyyMMdd} 세그먼트와는 별개 값이니 혼동하지 않는다.
          */
