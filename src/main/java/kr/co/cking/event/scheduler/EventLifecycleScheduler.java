@@ -69,7 +69,7 @@ public class EventLifecycleScheduler {
             }
             try {
                 if (eventDrainChecker.isDrained(cutoffStreamId)) {
-                    eventCommandService.completeClosing(eventId, clock.instant());
+                    eventCommandService.completeClosing(eventId);
                 }
             } catch (RuntimeException e) {
                 log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);
