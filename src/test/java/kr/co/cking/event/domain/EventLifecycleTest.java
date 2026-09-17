@@ -1,6 +1,7 @@
 package kr.co.cking.event.domain;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.repository.EventRepository;
 import org.junit.jupiter.api.Test;
@@ -103,7 +104,7 @@ class EventLifecycleTest {
         );
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(EventQueryService.class));
 
         eventCommandService.requestApproval(1L);
 
@@ -150,7 +151,7 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(EventQueryService.class));
 
         eventCommandService.approve(1L);
 
@@ -161,26 +162,33 @@ class EventLifecycleTest {
     void commandServiceOpensScheduledEvent() {
         Event event = scheduledEvent();
         EventRepository eventRepository = mock(EventRepository.class);
+        EventQueryService eventQueryService = mock(EventQueryService.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventQueryService);
 
         eventCommandService.open(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
         verify(eventRepository).findByEventId(1L);
+        verify(eventQueryService).invalidate(1L);
     }
 
     @Test
-    void scheduledEventCanOpenOnlyOnce() {
+    void alreadyOpenEventDoesNotInvalidateCacheAgain() {
         Event event = scheduledEvent();
+        EventRepository eventRepository = mock(EventRepository.class);
+        EventQueryService eventQueryService = mock(EventQueryService.class);
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventQueryService);
 
-        event.open();
+        eventCommandService.open(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
-        assertThatThrownBy(event::open)
+        assertThatThrownBy(() -> eventCommandService.open(1L))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(EventErrorCode.INVALID_STATE);
+        verify(eventQueryService).invalidate(1L);
     }
 
     @Test
@@ -199,7 +207,7 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(EventQueryService.class));
 
         eventCommandService.reject(1L, "일정 확인 필요");
         eventCommandService.changeToDraft(1L);

@@ -32,6 +32,8 @@ class CreatorEventConcurrencyIntegrationTest {
     @Autowired private EventApprovalRequestRepository approvalRequestRepository;
     @Autowired private EventReviewService eventReviewService;
     @Autowired private EventCommandService eventCommandService;
+    @Autowired private EventQueryService eventQueryService;
+    @Autowired private EventCache eventCache;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     /** 동시성 테스트의 고정 멱등 키가 이전 실행과 충돌하지 않도록 Event를 정리한다. */
@@ -129,6 +131,21 @@ class CreatorEventConcurrencyIntegrationTest {
         }
     }
 
+    /** SCHEDULED 캐시가 있어도 OPEN 전이 성공 뒤에는 stale cache:event 항목을 제거한다. */
+    @Test
+    void openingScheduledEventEvictsCachedEvent() {
+        Event event = persistScheduledEvent("550e8400-e29b-41d4-a716-446655440016");
+        eventQueryService.getCachedEvent(event.getEventId());
+
+        assertThat(eventCache.find(event.getEventId())).isPresent();
+
+        eventCommandService.open(event.getEventId());
+
+        assertThat(eventCache.find(event.getEventId())).isEmpty();
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus())
+                .isEqualTo(EventStatus.OPEN);
+    }
+
     /** 병렬 생성 결과를 성공 또는 도메인 오류 코드로 변환한다. */
     private String runCreate(CountDownLatch start, CreateEventCommand command) throws InterruptedException {
         start.await();
@@ -155,5 +172,22 @@ class CreatorEventConcurrencyIntegrationTest {
         } catch (kr.co.cking.common.exception.BusinessException exception) {
             return exception.getErrorCode().code();
         }
+    }
+
+    private Event persistScheduledEvent(String requestId) {
+        Member creator = memberRepository.saveAndFlush(new Member("캐시 시작 크리에이터", null, null, MemberRole.USER));
+        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        return eventRepository.saveAndFlush(Event.builder()
+                .creatorId(savedCreator.getCreatorId())
+                .requestId(requestId)
+                .title("캐시 시작 이벤트")
+                .startAt(Instant.now().minusSeconds(1))
+                .endAt(Instant.now().plus(java.time.Duration.ofDays(1)))
+                .winnerCount(1)
+                .drawMethod(DrawMethod.WEIGHTED.name())
+                .status(EventStatus.SCHEDULED)
+                .createdBy(creator.getMemberId())
+                .createdAt(Instant.now())
+                .build());
     }
 }
