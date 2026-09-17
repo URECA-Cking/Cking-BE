@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -46,7 +47,7 @@ class NotificationQueryServiceTest {
         when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
         when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of(event));
-        when(drawingRepository.findByIdIn(List.of(200L))).thenReturn(List.of(drawing));
+        when(drawingRepository.findAllById(List.of(200L))).thenReturn(List.of(drawing));
         when(event.getEventId()).thenReturn(100L);
         when(event.getTitle()).thenReturn("팬미팅 이벤트");
         when(drawing.getId()).thenReturn(200L);
@@ -81,6 +82,25 @@ class NotificationQueryServiceTest {
     }
 
     @Test
+    void Notification의_연관_데이터가_없으면_서버_정합성_오류로_처리한다() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        NotificationRepository notificationRepository = mock(NotificationRepository.class);
+        EventRepository eventRepository = mock(EventRepository.class);
+        DrawingRepository drawingRepository = mock(DrawingRepository.class);
+        Notification notification = notification(10L, 100L, 200L, 300L, NotificationType.INITIAL_WINNER);
+        when(memberRepository.existsById(10L)).thenReturn(true);
+        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+                .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
+        when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of());
+        NotificationQueryService service = new NotificationQueryService(
+                memberRepository, notificationRepository, eventRepository, drawingRepository
+        );
+
+        assertThatThrownBy(() -> service.findMine(10L, 0, 20))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void 요청한_사용자_ID로만_알림을_조회한다() {
         MemberRepository memberRepository = mock(MemberRepository.class);
         NotificationRepository notificationRepository = mock(NotificationRepository.class);
@@ -89,15 +109,18 @@ class NotificationQueryServiceTest {
         when(memberRepository.existsById(10L)).thenReturn(true);
         when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(2, 50, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(2, 50), 0));
-        when(eventRepository.findByEventIdIn(List.of())).thenReturn(List.of());
-        when(drawingRepository.findByIdIn(List.of())).thenReturn(List.of());
         NotificationQueryService service = new NotificationQueryService(
                 memberRepository, notificationRepository, eventRepository, drawingRepository
         );
 
-        service.findMine(10L, 2, 50);
+        var result = service.findMine(10L, 2, 50);
 
+        assertThat(result).isEmpty();
+        assertThat(result.getNumber()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(50);
+        assertThat(result.getTotalElements()).isZero();
         verify(notificationRepository).findByMemberId(10L, PageRequest.of(2, 50, NOTIFICATION_LIST_SORT));
+        verifyNoInteractions(eventRepository, drawingRepository);
     }
 
     private Notification notification(

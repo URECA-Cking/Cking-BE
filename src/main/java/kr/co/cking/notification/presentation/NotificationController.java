@@ -19,6 +19,7 @@ public class NotificationController {
 
     private final NotificationQueryService notificationQueryService;
 
+    /** 요청 사용자의 알림을 페이지 단위로 반환한다. */
     @GetMapping("/api/me/notifications")
     public ApiResponse<PageResponse<NotificationSummary>> findMine(
             @RequestParam Long userId,

@@ -53,6 +53,7 @@ public class Notification {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** 결과 공개 시 생성할 Notification의 변경 불가 정보를 설정한다. */
     public Notification(
             Long memberId,
             Long eventId,
@@ -71,6 +72,7 @@ public class Notification {
         this.body = body;
     }
 
+    /** 저장 직전에 생성 시각이 비어 있으면 현재 시각을 설정한다. */
     @PrePersist
     void assignCreatedAtIfMissing() {
         if (createdAt == null) {

@@ -18,6 +18,7 @@ public record NotificationSummary(
         Instant readAt
 ) {
 
+    /** Notification과 연관 Event·Drawing을 API 응답용 요약으로 변환한다. */
     public static NotificationSummary of(Notification notification, Event event, Drawing drawing) {
         return new NotificationSummary(
                 notification.getNotificationId(),
