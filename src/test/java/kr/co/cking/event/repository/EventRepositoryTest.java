@@ -63,6 +63,59 @@ class EventRepositoryTest {
     }
 
     @Test
+    void endAt이_지난_OPEN_이벤트만_자동마감_대상으로_조회된다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        persistEvent(creatorId, memberId, EventStatus.OPEN, Instant.parse("2026-09-11T00:00:00Z"), null);
+        persistEvent(creatorId, memberId, EventStatus.OPEN, Instant.parse("2026-09-30T00:00:00Z"), null);
+        persistEvent(creatorId, memberId, EventStatus.CLOSING, Instant.parse("2026-09-11T00:00:00Z"), null);
+        Instant now = Instant.parse("2026-09-15T00:00:00Z");
+
+        var overdue = eventRepository.findByStatusAndEndAtLessThanEqual(EventStatus.OPEN, now);
+
+        assertThat(overdue).hasSize(1).allMatch(e -> e.getEndAt().isBefore(now));
+    }
+
+    @Test
+    void 시작시각이_지났고_종료시각은_남은_SCHEDULED_이벤트만_자동시작_대상으로_조회된다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        Instant now = Instant.parse("2026-09-15T00:00:00Z");
+        persistEventBetween(creatorId, memberId, EventStatus.SCHEDULED,
+                Instant.parse("2026-09-14T00:00:00Z"), Instant.parse("2026-09-16T00:00:00Z"));
+        persistEventBetween(creatorId, memberId, EventStatus.SCHEDULED,
+                Instant.parse("2026-09-16T00:00:00Z"), Instant.parse("2026-09-17T00:00:00Z"));
+        persistEventBetween(creatorId, memberId, EventStatus.SCHEDULED,
+                Instant.parse("2026-09-13T00:00:00Z"), Instant.parse("2026-09-15T00:00:00Z"));
+        persistEventBetween(creatorId, memberId, EventStatus.OPEN,
+                Instant.parse("2026-09-14T00:00:00Z"), Instant.parse("2026-09-16T00:00:00Z"));
+
+        var scheduled = eventRepository.findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
+                EventStatus.SCHEDULED,
+                now,
+                now
+        );
+
+        assertThat(scheduled).hasSize(1)
+                .allMatch(event -> event.getStatus() == EventStatus.SCHEDULED
+                        && !event.getStartAt().isAfter(now)
+                        && event.getEndAt().isAfter(now));
+    }
+
+    @Test
+    void CLOSING_상태_이벤트만_조회된다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        persistEvent(creatorId, memberId, EventStatus.OPEN, END, null);
+        persistEvent(creatorId, memberId, EventStatus.CLOSING, END, null);
+        persistEvent(creatorId, memberId, EventStatus.CLOSED, END, null);
+
+        var closing = eventRepository.findByStatus(EventStatus.CLOSING);
+
+        assertThat(closing).hasSize(1).allMatch(e -> e.getStatus() == EventStatus.CLOSING);
+    }
+
+    @Test
     void 승인전_거절_이벤트는_필터_여부와_무관하게_제외된다() {
         long memberId = insertMember();
         long creatorId = insertCreator(memberId);
