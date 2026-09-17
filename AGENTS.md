@@ -3,6 +3,8 @@
 - 기본으로 `README.md`와 `docs/README.md`만 읽는다.
 - 작업 범위에 관련된 문서·코드·마이그레이션만 추가로 읽는다.
 - API 계약의 정본은 `docs/api-index.md`와 해당 도메인 API 문서다.
+- 외부 REST API를 추가·수정하기 전에는 `docs/common/api.md`를 반드시 읽고 따른다.
+- 인증 도입 전 사용자 식별 규약(`userId`의 위치·타입)은 `docs/common/api.md`를 정본으로 한다.
 - DB 구조의 정본은 `src/main/resources/db/migration/`이다.
 - 공통 오류는 `common`, 업무 오류는 각 도메인 `ErrorCode` enum에 둔다.
 - 다른 도메인의 Entity·Repository로 상태를 직접 변경하지 않는다.
