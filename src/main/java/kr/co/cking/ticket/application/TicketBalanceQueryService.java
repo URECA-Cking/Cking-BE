@@ -9,9 +9,9 @@ import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 
 /**
- * 다른 도메인(event 등)이 잔액을 읽기 전용으로 조회할 때 쓰는 내부 진입점.
- * 잔액 적립·차감(Ledger 처리)은 T1-04 담당 범위라 여기서 다루지 않는다 —
- * 이 클래스가 커지면 그 작업과 조율해서 합친다.
+ * 응모권 잔액을 읽기 전용으로 조회하는 공통 내부 진입점.
+ * Event 상세 조회와 Creator Ticket 조회에서 재사용한다.
+ * 잔액 적립·차감 및 Ledger 기록은 별도 응모권 처리 흐름에서 담당한다.
  */
 @Service
 @RequiredArgsConstructor
