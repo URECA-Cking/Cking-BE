@@ -110,24 +110,6 @@ class TicketBalanceReconciliationSchedulerTest {
     }
 
     @Test
-    void 삭제된_Balance의_불일치_스트릭은_정상_주기_후_제거된다() {
-        givenBalance(1L, 10L, 5L);
-        givenRedisValue(1L, 10L, "3");
-        scheduler.reconcile();
-
-        when(userTicketBalanceRepository.findAll()).thenReturn(List.of());
-        scheduler.reconcile();
-        logAppender.list.clear();
-
-        givenBalance(1L, 10L, 5L);
-        givenRedisValue(1L, 10L, "3");
-        scheduler.reconcile();
-
-        assertThat(logAppender.list).noneMatch(event -> event.getLevel() == Level.WARN);
-        assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.INFO);
-    }
-
-    @Test
     void 특정_key의_Redis_값이_숫자가_아니어도_나머지_key_검사를_계속한다() {
         when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
                 UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),

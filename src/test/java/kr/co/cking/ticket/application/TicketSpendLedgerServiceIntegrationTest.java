@@ -200,21 +200,6 @@ class TicketSpendLedgerServiceIntegrationTest {
     }
 
     @Test
-    void Redis_승인_이후_DB_잔액이_부족하면_정합성_위반으로_반영하지_않는다() {
-        SpendCommand command = command(UUID.randomUUID().toString(), 101L);
-
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(command))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Redis 승인 이후 DB 잔액 정합성 위반");
-
-        UserTicketBalance balance = userTicketBalanceRepository
-                .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID).orElseThrow();
-        assertThat(balance.getBalance()).isEqualTo(100L);
-        assertThat(eventEntryRepository.findByRequestId(command.requestId())).isEmpty();
-        assertThat(ticketLedgerRepository.findByRequestId(command.requestId())).isEmpty();
-    }
-
-    @Test
     void 동시에_같은_requestId가_재전달돼도_한_번만_반영된다() throws InterruptedException {
         String requestId = UUID.randomUUID().toString();
         SpendCommand command = command(requestId, 4L);

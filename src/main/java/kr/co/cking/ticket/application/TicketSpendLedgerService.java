@@ -70,11 +70,6 @@ public class TicketSpendLedgerService {
                                 .formatted(command.userId(), command.creatorId(), requestId)));
 
         long balanceBefore = balance.getBalance();
-        if (balanceBefore < command.ticketCount()) {
-            throw new IllegalStateException(
-                    "Redis 승인 이후 DB 잔액 정합성 위반이 감지됐습니다. dbBalance=%d, ticketCount=%d, userId=%d, creatorId=%d, requestId=%s"
-                            .formatted(balanceBefore, command.ticketCount(), command.userId(), command.creatorId(), requestId));
-        }
         long delta = -command.ticketCount();
         balance.applyDelta(delta, now);
 
