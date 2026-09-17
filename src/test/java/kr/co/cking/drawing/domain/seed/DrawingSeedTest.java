@@ -39,4 +39,27 @@ class DrawingSeedTest {
         assertThatThrownBy(() -> DrawingSeed.from("gg".repeat(DrawingSeed.BYTE_LENGTH)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void Seed는_32바이트_바이너리로_저장하고_복원한다() {
+        DrawingSeed original = DrawingSeed.from("0123456789abcdef".repeat(4));
+
+        DrawingSeed restored = DrawingSeed.fromBytes(original.bytes());
+
+        assertThat(restored).isEqualTo(original);
+        assertThat(restored.bytes()).hasSize(DrawingSeed.BYTE_LENGTH);
+    }
+
+    @Test
+    void 저장된_Seed가_32바이트가_아니면_거부한다() {
+        assertThatThrownBy(() -> DrawingSeed.fromBytes(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("32바이트");
+        assertThatThrownBy(() -> DrawingSeed.fromBytes(new byte[DrawingSeed.BYTE_LENGTH - 1]))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("32바이트");
+        assertThatThrownBy(() -> DrawingSeed.fromBytes(new byte[DrawingSeed.BYTE_LENGTH + 1]))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("32바이트");
+    }
 }

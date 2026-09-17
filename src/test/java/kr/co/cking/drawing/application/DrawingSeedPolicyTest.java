@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.domain.seed.DrawingSeedGenerator;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,9 @@ class DrawingSeedPolicyTest {
 
     @Test
     void Drawing_Retry에서는_저장된_Seed를_재사용한다() {
-        DrawingSeedPolicy policy = new DrawingSeedPolicy(() -> SECOND_SEED);
+        DrawingSeedPolicy policy = new DrawingSeedPolicy(() -> {
+            throw new AssertionError("Retry에서는 신규 Seed를 생성하면 안 됩니다.");
+        });
 
         DrawingSeed reused = policy.reuseForRetry(FIRST_SEED.value());
 
@@ -58,6 +61,20 @@ class DrawingSeedPolicyTest {
         assertThatThrownBy(() -> policy.createForRedraw(null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("이전 Drawing");
+    }
+
+    @Test
+    void REDRAW_Seed가_100회_연속_중복되면_생성을_중단한다() {
+        AtomicInteger generationCount = new AtomicInteger();
+        DrawingSeedPolicy policy = new DrawingSeedPolicy(() -> {
+            generationCount.incrementAndGet();
+            return FIRST_SEED;
+        });
+
+        assertThatThrownBy(() -> policy.createForRedraw(FIRST_SEED))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("다른 Seed");
+        assertThat(generationCount).hasValue(100);
     }
 
     @Test

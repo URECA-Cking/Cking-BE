@@ -22,6 +22,16 @@ public record DrawingSeed(String value) {
         return new DrawingSeed(value);
     }
 
+    /**
+     * 저장소에서는 Seed를 정규 hex 문자열이 아닌 32바이트 바이너리로 저장한다.
+     */
+    public static DrawingSeed fromBytes(byte[] bytes) {
+        if (bytes == null || bytes.length != BYTE_LENGTH) {
+            throw new IllegalArgumentException("저장된 Seed는 " + BYTE_LENGTH + "바이트여야 합니다.");
+        }
+        return new DrawingSeed(HexFormat.of().formatHex(bytes));
+    }
+
     public byte[] bytes() {
         return HexFormat.of().parseHex(value);
     }
