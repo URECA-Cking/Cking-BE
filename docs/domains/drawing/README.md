@@ -78,3 +78,80 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 - `WinnerManagementRepository.findByWinnerId(winnerId)`: Winner 운영 상태 조회
 
 DB 구조와 제약조건의 정본은 `src/main/resources/db/migration/`이다.
+
+## DrawInput Hash 계약
+
+`inputHash`는 확정된 추첨 입력 전체를 식별한다. Hash 알고리즘은 SHA-256이고 결과는 64자리
+lowercase hex 문자열이다. 정규화 문자열은 UTF-8로 인코딩하며 줄바꿈은 LF(`\n`)만 사용한다.
+마지막 행 뒤에도 LF를 포함하고 숫자는 0 채우기 없는 10진수 문자열로 표현한다.
+
+Candidate는 `memberId ASC`, 제외 대상은 `memberId ASC`로 정렬한다. 두 목록이 비어 있어도 섹션
+헤더를 생략하지 않는다.
+
+```text
+CKING_DRAW_INPUT_V1
+eventId={eventId}
+snapshotId={snapshotId}
+snapshotHash={snapshotHash}
+seed={seed}
+algorithmVersion={algorithmVersion}
+winnerCount={winnerCount}
+candidates
+{memberId},{ticketCount}
+excludedMemberIds
+{memberId}
+```
+
+예시는 다음과 같다.
+
+```text
+CKING_DRAW_INPUT_V1
+eventId=10
+snapshotId=20
+snapshotHash=abababababababababababababababababababababababababababababababab
+seed=0101010101010101010101010101010101010101010101010101010101010101
+algorithmVersion=WEIGHTED_V1
+winnerCount=2
+candidates
+1,3
+2,7
+excludedMemberIds
+3
+4
+```
+
+위 문자열의 SHA-256은
+`d09cdf4de6c7e737db35653f1d4ebca18aca5d52546cfa2d08c26f58a94cd969`이다.
+
+## Result Hash 계약
+
+`resultHash`는 결과가 어떤 입력에서 생성됐는지 함께 검증할 수 있도록 `inputHash`를 포함한다.
+Winner는 전달 순서와 관계없이 `rank ASC`로 정렬한다. Winner 행의 필드 순서는 `rank`, `memberId`,
+`appliedTicketCount`이며 중복 rank 또는 중복 memberId는 허용하지 않는다.
+
+```text
+CKING_DRAW_RESULT_V1
+inputHash={inputHash}
+algorithmVersion={algorithmVersion}
+winners
+{rank},{memberId},{appliedTicketCount}
+```
+
+Winner가 없으면 `winners\n`에서 끝난다. `resultHash` 자신은 정규화 대상에 포함하지 않는다.
+
+예시는 다음과 같다.
+
+```text
+CKING_DRAW_RESULT_V1
+inputHash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+algorithmVersion=WEIGHTED_V1
+winners
+1,1,3
+2,2,7
+```
+
+위 문자열의 SHA-256은
+`22afbb6396cb7df1e9772d386d76ef3646b3c14f97dfd51bfe078d8116ecc657`이다.
+
+정규화와 Hash 생성은 외부 저장소나 현재 시각에 의존하지 않는다. `drawing.input_hash`,
+`drawing.result_hash`, Winner와 상태 전이를 저장하는 트랜잭션은 추첨 실행 오케스트레이션의 책임이다.

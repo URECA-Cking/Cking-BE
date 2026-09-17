@@ -7,7 +7,9 @@ import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.snapshot.domain.CandidateValue;
 
 public record DrawInput(
+        Long eventId,
         Long snapshotId,
+        String snapshotHash,
         DrawingSeed seed,
         String algorithmVersion,
         int winnerCount,
@@ -16,8 +18,8 @@ public record DrawInput(
 ) {
 
     public DrawInput {
-        validateRequiredValues(snapshotId, seed, algorithmVersion, winnerCount, candidates,
-                excludedMemberIds);
+        validateRequiredValues(eventId, snapshotId, snapshotHash, seed, algorithmVersion,
+                winnerCount, candidates, excludedMemberIds);
         validateCandidates(candidates);
         validateExcludedMemberIds(excludedMemberIds);
 
@@ -29,15 +31,23 @@ public record DrawInput(
     }
 
     private static void validateRequiredValues(
+            Long eventId,
             Long snapshotId,
+            String snapshotHash,
             DrawingSeed seed,
             String algorithmVersion,
             int winnerCount,
             List<CandidateValue> candidates,
             Set<Long> excludedMemberIds
     ) {
+        if (eventId == null || eventId <= 0) {
+            throw new IllegalArgumentException("eventId는 양수여야 합니다.");
+        }
         if (snapshotId == null || snapshotId <= 0) {
             throw new IllegalArgumentException("snapshotId는 양수여야 합니다.");
+        }
+        if (snapshotHash == null || !snapshotHash.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("snapshotHash는 SHA-256 lowercase hex여야 합니다.");
         }
         if (seed == null) {
             throw new IllegalArgumentException("Seed는 필수입니다.");
