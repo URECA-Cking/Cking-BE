@@ -1,7 +1,9 @@
 package kr.co.cking.ticket.scheduler;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -44,8 +46,11 @@ public class TicketBalanceReconciliationScheduler {
 
     @Scheduled(fixedDelayString = "${cking.ticket.reconciliation-interval-ms:300000}")
     public void reconcile() {
-        for (UserTicketBalance balance : userTicketBalanceRepository.findAll()) {
+        List<UserTicketBalance> balances = userTicketBalanceRepository.findAll();
+        Set<BalanceKey> observedKeys = new HashSet<>();
+        for (UserTicketBalance balance : balances) {
             BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
+            observedKeys.add(key);
             try {
                 check(key, balance.getBalance());
             } catch (RedisConnectionFailureException | QueryTimeoutException e) {
@@ -64,6 +69,8 @@ public class TicketBalanceReconciliationScheduler {
                 failKey(key, e);
             }
         }
+        // DB에서 삭제된 Balance의 이전 불일치 기록은 이후 주기에 다시 관찰될 수 없으므로 제거한다.
+        mismatchStreaks.keySet().retainAll(observedKeys);
     }
 
     private void abortCycle(Exception e) {
