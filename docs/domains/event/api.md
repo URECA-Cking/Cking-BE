@@ -11,6 +11,8 @@ Creator의 Event 관리와 관리자 심사 API 계약이다. 모든 성공·실
 ```text
 DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPEN
                                       └--reject--> REJECTED --changeToDraft--> DRAFT
+
+CLOSED --completeDrawing--> DRAW_COMPLETED
 ```
 
 ## 내부 Lifecycle 계약
@@ -19,6 +21,11 @@ DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPE
 `EventCommandService.open(eventId)`를 호출한다. 이 메서드는 Event 행의 비관적 잠금 안에서
 `SCHEDULED → OPEN`만 허용한다. 같은 Event에 대한 병렬 호출은 한 건만 성공하고, 잠금 대기 후
 이미 `OPEN`을 확인한 호출은 `INVALID_STATE`로 실패한다. 존재하지 않는 Event는 `RESOURCE_NOT_FOUND`다.
+
+시스템3의 INITIAL Drawing 완료 Transaction은 `EventCommandService.completeDrawing(eventId)`를 호출한다.
+이 메서드는 Event 행의 비관적 잠금 안에서 `CLOSED → DRAW_COMPLETED`만 허용한다. 병렬 호출은 한 건만
+성공하고, 후행 호출과 다른 상태는 `INVALID_STATE`로 실패한다. Snapshot 생성·검증과 DrawingEngine 실행은
+이 계약의 책임이 아니며 호출자가 동일 Transaction에서 조합한다.
 
 ## GET /api/creator/events
 

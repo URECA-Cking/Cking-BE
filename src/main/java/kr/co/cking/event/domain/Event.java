@@ -115,6 +115,12 @@ public class Event {
         status = EventStatus.OPEN;
     }
 
+    /** 마감된 Event를 초기 추첨 완료 상태로 전이한다. */
+    public void completeDrawing() {
+        requireStatus(EventStatus.CLOSED);
+        status = EventStatus.DRAW_COMPLETED;
+    }
+
     public void reject() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.REJECTED;

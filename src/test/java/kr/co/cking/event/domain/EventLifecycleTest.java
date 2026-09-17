@@ -192,6 +192,34 @@ class EventLifecycleTest {
         verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
     }
 
+    /** CLOSED Event가 초기 추첨 완료 후 DRAW_COMPLETED로 전이하는지 검증한다. */
+    @Test
+    void commandServiceCompletesDrawingForClosedEvent() {
+        Event event = closedEvent();
+        EventRepository eventRepository = mock(EventRepository.class);
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+
+        eventCommandService.completeDrawing(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.DRAW_COMPLETED);
+        verify(eventRepository).findByEventId(1L);
+    }
+
+    /** CLOSED가 아닌 Event의 초기 추첨 완료 전이는 거부하는지 검증한다. */
+    @Test
+    void commandServiceRejectsDrawingCompletionForNonClosedEvent() {
+        Event event = scheduledEvent();
+        EventRepository eventRepository = mock(EventRepository.class);
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
+
+        assertThatThrownBy(() -> eventCommandService.completeDrawing(1L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(EventErrorCode.INVALID_STATE);
+    }
+
     @Test
     void commandServiceRejectsPendingEventAndAllowsReturnToDraft() {
         Event event = new Event(
@@ -231,5 +259,21 @@ class EventLifecycleTest {
         event.requestApproval();
         event.approve();
         return event;
+    }
+
+    /** 추첨 완료 전이 테스트에 사용할 CLOSED Event를 생성한다. */
+    private Event closedEvent() {
+        return Event.builder()
+                .creatorId(1L)
+                .requestId("550e8400-e29b-41d4-a716-446655440000")
+                .title("마감 이벤트")
+                .startAt(Instant.now().minus(java.time.Duration.ofDays(2)))
+                .endAt(Instant.now().minus(java.time.Duration.ofDays(1)))
+                .winnerCount(3)
+                .drawMethod(DrawMethod.WEIGHTED.name())
+                .status(EventStatus.CLOSED)
+                .createdBy(1L)
+                .createdAt(Instant.now())
+                .build();
     }
 }
