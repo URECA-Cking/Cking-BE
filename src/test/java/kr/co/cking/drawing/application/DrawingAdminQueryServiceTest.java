@@ -77,8 +77,8 @@ class DrawingAdminQueryServiceTest {
         when(winnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(DRAWING_ID))
                 .thenReturn(List.of(first, second));
         when(memberQueryService.findMemberInfosByIds(List.of(2L, 3L))).thenReturn(Map.of(
-                2L, new MemberInfo(2L, "둘"),
-                3L, new MemberInfo(3L, "셋")
+                2L, new MemberInfo(2L, "둘", "010-0000-0002", "two@example.com"),
+                3L, new MemberInfo(3L, "셋", "010-0000-0003", "three@example.com")
         ));
 
         DrawingResultQuery result = service.getDrawingResult(DRAWING_ID, ADMIN_ID);
@@ -87,7 +87,11 @@ class DrawingAdminQueryServiceTest {
         verify(memberQueryService).findMemberInfosByIds(List.of(2L, 3L));
         assertThat(result.drawingId()).isEqualTo(DRAWING_ID);
         assertThat(result.winners()).extracting(DrawingWinnerResult::rankInDrawing).containsExactly(1, 2);
-        assertThat(result.winners()).extracting(DrawingWinnerResult::userName).containsExactly("둘", "셋");
+        assertThat(result.winners()).extracting(DrawingWinnerResult::name).containsExactly("둘", "셋");
+        assertThat(result.winners()).extracting(DrawingWinnerResult::phone)
+                .containsExactly("010-0000-0002", "010-0000-0003");
+        assertThat(result.winners()).extracting(DrawingWinnerResult::email)
+                .containsExactly("two@example.com", "three@example.com");
         assertThatThrownBy(() -> result.winners().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
 

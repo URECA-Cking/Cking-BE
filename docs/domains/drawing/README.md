@@ -80,7 +80,9 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
       "eventId": 10,
       "drawingId": 20,
       "userId": 2,
-      "userName": "홍길동",
+      "name": "홍길동",
+      "phone": "010-0000-0002",
+      "email": "hong@example.com",
       "rankInDrawing": 1,
       "appliedTicketCount": 7,
       "createdAt": "2026-09-17T00:02:00Z"

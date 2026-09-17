@@ -163,9 +163,9 @@ class DrawingAdminControllerTest {
     @Test
     void 관리자는_순위순으로_Drawing_결과를_조회한다() throws Exception {
         when(drawingAdminQueryService.getDrawingResult(20L, 1L)).thenReturn(new DrawingResultQuery(20L, List.of(
-                new DrawingWinnerResult(100L, 10L, 20L, 2L, "둘", 1, 7L,
+                new DrawingWinnerResult(100L, 10L, 20L, 2L, "둘", "010-0000-0002", "two@example.com", 1, 7L,
                         Instant.parse("2026-09-17T00:02:00Z")),
-                new DrawingWinnerResult(101L, 10L, 20L, 3L, "셋", 2, 3L,
+                new DrawingWinnerResult(101L, 10L, 20L, 3L, "셋", "010-0000-0003", "three@example.com", 2, 3L,
                         Instant.parse("2026-09-17T00:02:00Z"))
         )));
 
@@ -175,7 +175,9 @@ class DrawingAdminControllerTest {
                 .andExpect(jsonPath("$.data.drawingId").value(20))
                 .andExpect(jsonPath("$.data.winners[0].winnerId").value(100))
                 .andExpect(jsonPath("$.data.winners[0].userId").value(2))
-                .andExpect(jsonPath("$.data.winners[0].userName").value("둘"))
+                .andExpect(jsonPath("$.data.winners[0].name").value("둘"))
+                .andExpect(jsonPath("$.data.winners[0].phone").value("010-0000-0002"))
+                .andExpect(jsonPath("$.data.winners[0].email").value("two@example.com"))
                 .andExpect(jsonPath("$.data.winners[0].rankInDrawing").value(1))
                 .andExpect(jsonPath("$.data.winners[0].appliedTicketCount").value(7))
                 .andExpect(jsonPath("$.data.winners[1].rankInDrawing").value(2));

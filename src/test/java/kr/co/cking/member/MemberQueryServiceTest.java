@@ -95,16 +95,20 @@ class MemberQueryServiceTest {
         Member first = mock(Member.class);
         when(first.getMemberId()).thenReturn(1L);
         when(first.getName()).thenReturn("홍길동");
+        when(first.getPhone()).thenReturn("010-0000-0001");
+        when(first.getEmail()).thenReturn("one@example.com");
         Member second = mock(Member.class);
         when(second.getMemberId()).thenReturn(2L);
         when(second.getName()).thenReturn("김철수");
+        when(second.getPhone()).thenReturn("010-0000-0002");
+        when(second.getEmail()).thenReturn("two@example.com");
         when(repository.findByMemberIdIn(List.of(1L, 2L))).thenReturn(List.of(second, first));
 
         Map<Long, MemberInfo> result = service.findMemberInfosByIds(List.of(1L, 2L));
 
         assertThat(result).containsExactlyInAnyOrderEntriesOf(Map.of(
-                1L, new MemberInfo(1L, "홍길동"),
-                2L, new MemberInfo(2L, "김철수")
+                1L, new MemberInfo(1L, "홍길동", "010-0000-0001", "one@example.com"),
+                2L, new MemberInfo(2L, "김철수", "010-0000-0002", "two@example.com")
         ));
     }
 }

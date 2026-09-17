@@ -9,7 +9,9 @@ public record DrawingWinnerResult(
         Long eventId,
         Long drawingId,
         Long userId,
-        String userName,
+        String name,
+        String phone,
+        String email,
         int rankInDrawing,
         long appliedTicketCount,
         Instant createdAt
@@ -22,6 +24,8 @@ public record DrawingWinnerResult(
                 winner.getDrawingId(),
                 member.memberId(),
                 member.name(),
+                member.phone(),
+                member.email(),
                 winner.getRankInDrawing(),
                 winner.getAppliedTicketCount(),
                 winner.getCreatedAt()
