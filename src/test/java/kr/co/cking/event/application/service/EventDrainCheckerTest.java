@@ -42,7 +42,7 @@ class EventDrainCheckerTest {
 
     @Test
     void 그룹이_없으면_Drain되지_않은_것으로_본다() {
-        assertThat(eventDrainChecker.isDrained("0-0")).isFalse();
+        assertThat(eventDrainChecker.isDrained(1L, "0-0")).isFalse();
     }
 
     @Test
@@ -57,7 +57,7 @@ class EventDrainCheckerTest {
         );
         redisTemplate.opsForStream().acknowledge(STREAM_KEY, GROUP, recordId);
 
-        assertThat(eventDrainChecker.isDrained(recordId.getValue())).isTrue();
+        assertThat(eventDrainChecker.isDrained(1L, recordId.getValue())).isTrue();
     }
 
     @Test
@@ -71,7 +71,7 @@ class EventDrainCheckerTest {
                 StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
         );
 
-        assertThat(eventDrainChecker.isDrained(recordId.getValue())).isFalse();
+        assertThat(eventDrainChecker.isDrained(1L, recordId.getValue())).isFalse();
     }
 
     @Test
@@ -87,7 +87,42 @@ class EventDrainCheckerTest {
 
         redisTemplate.opsForStream().add(MapRecord.create(STREAM_KEY, Map.of("eventId", "2")));
 
-        assertThat(eventDrainChecker.isDrained(beforeCutoff.getValue())).isTrue();
+        assertThat(eventDrainChecker.isDrained(1L, beforeCutoff.getValue())).isTrue();
+    }
+
+    @Test
+    void 다른_이벤트의_PEL_메시지는_이_이벤트의_Drain_판정에_영향을_주지_않는다() {
+        redisTemplate.opsForStream().add(MapRecord.create(STREAM_KEY, Map.of("eventId", "2")));
+        RecordId myCutoff = redisTemplate.opsForStream()
+                .add(MapRecord.create(STREAM_KEY, Map.of("eventId", "1")));
+        createGroupFromZero();
+
+        redisTemplate.opsForStream().read(
+                Consumer.from(GROUP, CONSUMER),
+                StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+        );
+        redisTemplate.opsForStream().acknowledge(STREAM_KEY, GROUP, myCutoff);
+        // eventId=2 메시지는 ACK하지 않아 그룹 전체 PEL에는 남아있다.
+
+        assertThat(eventDrainChecker.isDrained(1L, myCutoff.getValue())).isTrue();
+    }
+
+    @Test
+    void 이_이벤트의_PEL_메시지가_cutoff_이하에_남아있으면_Drain되지_않은_것으로_본다() {
+        RecordId myMessage = redisTemplate.opsForStream()
+                .add(MapRecord.create(STREAM_KEY, Map.of("eventId", "1")));
+        RecordId cutoff = redisTemplate.opsForStream()
+                .add(MapRecord.create(STREAM_KEY, Map.of("eventId", "1")));
+        createGroupFromZero();
+
+        redisTemplate.opsForStream().read(
+                Consumer.from(GROUP, CONSUMER),
+                StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+        );
+        redisTemplate.opsForStream().acknowledge(STREAM_KEY, GROUP, cutoff);
+        // myMessage(eventId=1)는 ACK하지 않고 남겨둔다.
+
+        assertThat(eventDrainChecker.isDrained(1L, cutoff.getValue())).isFalse();
     }
 
     private void createGroupFromZero() {

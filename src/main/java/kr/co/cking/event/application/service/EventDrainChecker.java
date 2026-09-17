@@ -1,7 +1,14 @@
 package kr.co.cking.event.application.service;
 
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.domain.Range;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamInfo.XInfoGroup;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -9,8 +16,16 @@ import org.springframework.stereotype.Component;
 
 /**
  * 응모 Stream({@code stream:ticket-deducted})의 {@code cg:ticket-history} Consumer Group이
- * cutoff streamId까지 전부 소비·ACK했는지 확인한다. 이게 true여야 마감 처리 중인
- * 이벤트를 CLOSED로 확정해도 안전하다(§6.6, awaitDrain에 흡수되는 pendingCount 확인).
+ * 특정 이벤트의 cutoff streamId까지 그 이벤트에 속한 메시지를 전부 소비·ACK했는지 확인한다.
+ * 이게 true여야 마감 처리 중인 이벤트를 CLOSED로 확정해도 안전하다(§6.6).
+ *
+ * <p>Stream에는 여러 이벤트의 응모가 섞여 들어오므로, 그룹 전체의 pendingCount만으로는
+ * 판단할 수 없다 - 다른 이벤트의 PEL 메시지 때문에 이 이벤트가 계속 막히거나, 반대로
+ * 이 이벤트의 미해결 메시지를 놓칠 수 있다. cutoff 이하 PEL 중 이 이벤트에 속한 메시지가
+ * 있는지를 직접 확인한다.
+ *
+ * <p>ponytail: Dead Stream(UNRESOLVED)으로 옮겨진 뒤 ACK된 메시지는 PEL에 잡히지 않아
+ * 이 체크를 통과한다 - dead_stream_message 조회는 PR #54(DeadStreamMessage 엔티티) 머지 후 추가한다.
  */
 @Component
 public class EventDrainChecker {
@@ -30,15 +45,41 @@ public class EventDrainChecker {
     }
 
     /**
-     * lastDeliveredId가 cutoff 이상이고 PEL(미확인 메시지)이 없어야 Drain 완료로 본다.
-     * 그룹이 아직 없으면(NOGROUP) 아무 메시지도 소비되지 않은 것이므로 false를 반환한다.
+     * lastDeliveredId가 cutoff 이상이고, cutoff 이하 PEL에 이 이벤트({@code eventId}) 메시지가
+     * 없어야 Drain 완료로 본다. 그룹이 아직 없으면(NOGROUP) 아무 메시지도 소비되지 않은 것이므로
+     * false를 반환한다.
      */
-    public boolean isDrained(String cutoffStreamId) {
+    public boolean isDrained(Long eventId, String cutoffStreamId) {
         XInfoGroup group = findGroup();
         if (group == null) {
             return false;
         }
-        return compare(group.lastDeliveredId(), cutoffStreamId) >= 0 && group.pendingCount() == 0L;
+        if (compare(group.lastDeliveredId(), cutoffStreamId) < 0) {
+            return false;
+        }
+        return !hasPendingMessageForEvent(eventId, cutoffStreamId);
+    }
+
+    /** cutoff 이하 PEL 메시지 중, 페이로드의 eventId가 일치하는 것이 있으면 true. */
+    private boolean hasPendingMessageForEvent(Long eventId, String cutoffStreamId) {
+        PendingMessages pending = redisTemplate.opsForStream()
+                .pending(entryStreamKey, consumerGroup, Range.closed("-", cutoffStreamId), 10_000L);
+        if (pending.isEmpty()) {
+            return false;
+        }
+
+        Set<String> pendingIds = pending.stream()
+                .map(message -> message.getId().getValue())
+                .collect(Collectors.toSet());
+        String minId = pending.get(0).getId().getValue();
+        String targetEventId = String.valueOf(eventId);
+
+        List<MapRecord<String, Object, Object>> records = redisTemplate.opsForStream()
+                .range(entryStreamKey, Range.closed(minId, cutoffStreamId));
+
+        return records.stream()
+                .filter(record -> pendingIds.contains(record.getId().getValue()))
+                .anyMatch(record -> targetEventId.equals(record.getValue().get("eventId")));
     }
 
     private XInfoGroup findGroup() {

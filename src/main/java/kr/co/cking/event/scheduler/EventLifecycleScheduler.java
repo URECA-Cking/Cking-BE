@@ -68,7 +68,7 @@ public class EventLifecycleScheduler {
                 continue;
             }
             try {
-                if (eventDrainChecker.isDrained(cutoffStreamId)) {
+                if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
                     eventCommandService.completeClosing(eventId);
                 }
             } catch (RuntimeException e) {
