@@ -2,6 +2,7 @@ package kr.co.cking.member;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
@@ -11,6 +12,7 @@ import kr.co.cking.member.presentation.UserSummary;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,5 +88,23 @@ class MemberQueryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    void 사용자_ID_목록을_한번에_사용자_정보로_조회한다() {
+        Member first = mock(Member.class);
+        when(first.getMemberId()).thenReturn(1L);
+        when(first.getName()).thenReturn("홍길동");
+        Member second = mock(Member.class);
+        when(second.getMemberId()).thenReturn(2L);
+        when(second.getName()).thenReturn("김철수");
+        when(repository.findByMemberIdIn(List.of(1L, 2L))).thenReturn(List.of(second, first));
+
+        Map<Long, MemberInfo> result = service.findMemberInfosByIds(List.of(1L, 2L));
+
+        assertThat(result).containsExactlyInAnyOrderEntriesOf(Map.of(
+                1L, new MemberInfo(1L, "홍길동"),
+                2L, new MemberInfo(2L, "김철수")
+        ));
     }
 }
