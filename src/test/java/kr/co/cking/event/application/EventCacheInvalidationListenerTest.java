@@ -1,6 +1,7 @@
 package kr.co.cking.event.application;
 
 import kr.co.cking.event.application.service.EventOpenedEvent;
+import kr.co.cking.event.application.service.EventClosingStateChangedEvent;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -9,6 +10,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 class EventCacheInvalidationListenerTest {
+
+    @Test
+    void 마감_상태전이_커밋후_이벤트_캐시를_무효화한다() throws Exception {
+        EventQueryService eventQueryService = mock(EventQueryService.class);
+        EventCacheInvalidationListener listener = new EventCacheInvalidationListener(eventQueryService);
+
+        listener.invalidateAfterClosingTransition(new EventClosingStateChangedEvent(1L));
+
+        verify(eventQueryService).invalidate(1L);
+    }
 
     @Test
     void 캐시_무효화_실패는_OPEN_전이_후속_처리를_실패시키지_않는다() {

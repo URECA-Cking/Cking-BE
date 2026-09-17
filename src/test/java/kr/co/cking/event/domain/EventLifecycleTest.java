@@ -306,7 +306,6 @@ class EventLifecycleTest {
     private EventCommandService newEventCommandService(EventRepository eventRepository, ApplicationEventPublisher eventPublisher) {
         return new EventCommandService(
                 eventRepository,
-                mock(kr.co.cking.event.application.EventQueryService.class),
                 eventPublisher,
                 java.time.Clock.systemUTC()
         );

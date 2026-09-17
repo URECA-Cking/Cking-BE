@@ -1,6 +1,7 @@
 package kr.co.cking.event.application;
 
 import kr.co.cking.event.application.service.EventOpenedEvent;
+import kr.co.cking.event.application.service.EventClosingStateChangedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -17,10 +18,19 @@ class EventCacheInvalidationListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void invalidateAfterOpen(EventOpenedEvent event) {
+        invalidate(event.eventId(), "opening");
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void invalidateAfterClosingTransition(EventClosingStateChangedEvent event) {
+        invalidate(event.eventId(), "closing transition");
+    }
+
+    private void invalidate(Long eventId, String transition) {
         try {
-            eventQueryService.invalidate(event.eventId());
+            eventQueryService.invalidate(eventId);
         } catch (RuntimeException exception) {
-            log.warn("Failed to evict event cache after opening event: eventId={}", event.eventId(), exception);
+            log.warn("Failed to evict event cache after {}: eventId={}", transition, eventId, exception);
         }
     }
 }

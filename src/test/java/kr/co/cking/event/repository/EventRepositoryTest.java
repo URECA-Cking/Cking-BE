@@ -77,6 +77,32 @@ class EventRepositoryTest {
     }
 
     @Test
+    void 시작시각이_지났고_종료시각은_남은_SCHEDULED_이벤트만_자동시작_대상으로_조회된다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        Instant now = Instant.parse("2026-09-15T00:00:00Z");
+        persistEventBetween(creatorId, memberId, EventStatus.SCHEDULED,
+                Instant.parse("2026-09-14T00:00:00Z"), Instant.parse("2026-09-16T00:00:00Z"));
+        persistEventBetween(creatorId, memberId, EventStatus.SCHEDULED,
+                Instant.parse("2026-09-16T00:00:00Z"), Instant.parse("2026-09-17T00:00:00Z"));
+        persistEventBetween(creatorId, memberId, EventStatus.SCHEDULED,
+                Instant.parse("2026-09-13T00:00:00Z"), Instant.parse("2026-09-15T00:00:00Z"));
+        persistEventBetween(creatorId, memberId, EventStatus.OPEN,
+                Instant.parse("2026-09-14T00:00:00Z"), Instant.parse("2026-09-16T00:00:00Z"));
+
+        var scheduled = eventRepository.findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
+                EventStatus.SCHEDULED,
+                now,
+                now
+        );
+
+        assertThat(scheduled).hasSize(1)
+                .allMatch(event -> event.getStatus() == EventStatus.SCHEDULED
+                        && !event.getStartAt().isAfter(now)
+                        && event.getEndAt().isAfter(now));
+    }
+
+    @Test
     void CLOSING_상태_이벤트만_조회된다() {
         long memberId = insertMember();
         long creatorId = insertCreator(memberId);

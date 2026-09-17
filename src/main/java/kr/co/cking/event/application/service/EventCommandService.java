@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
-import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.domain.EventStatus;
@@ -32,7 +31,6 @@ import lombok.RequiredArgsConstructor;
 public class EventCommandService {
 
     private final EventRepository eventRepository;
-    private final EventQueryService eventQueryService;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
@@ -143,7 +141,7 @@ public class EventCommandService {
             return;
         }
         event.startClosing(cutoffStreamId);
-        eventQueryService.invalidate(eventId);
+        eventPublisher.publishEvent(new EventClosingStateChangedEvent(eventId));
     }
 
     /**
@@ -157,7 +155,7 @@ public class EventCommandService {
             return;
         }
         event.completeClosing(clock.instant());
-        eventQueryService.invalidate(eventId);
+        eventPublisher.publishEvent(new EventClosingStateChangedEvent(eventId));
     }
 
     /** Event 행 잠금 획득과 명령 실행을 하나의 상태 변경 진입점으로 묶는다. */

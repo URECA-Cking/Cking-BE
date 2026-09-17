@@ -18,7 +18,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import kr.co.cking.common.exception.BusinessException;
-import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.domain.EventStatus;
@@ -33,20 +32,17 @@ class EventCommandServiceTest {
     private EventRepository eventRepository;
 
     @Mock
-    private EventQueryService eventQueryService;
-
-    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private EventCommandService eventCommandService;
 
     @BeforeEach
     void setUp() {
-        eventCommandService = new EventCommandService(eventRepository, eventQueryService, eventPublisher, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
+        eventCommandService = new EventCommandService(eventRepository, eventPublisher, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
     }
 
     @Test
-    void startClosing은_OPEN_이벤트를_CLOSING으로_전이하고_캐시를_무효화한다() {
+    void startClosing은_OPEN_이벤트를_CLOSING으로_전이하고_커밋후_캐시무효화_이벤트를_발행한다() {
         Event event = eventOf(EventStatus.OPEN);
         when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
 
@@ -54,7 +50,7 @@ class EventCommandServiceTest {
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
         assertThat(event.getCutoffStreamId()).isEqualTo("123-0");
-        verify(eventQueryService).invalidate(1L);
+        verify(eventPublisher).publishEvent(new EventClosingStateChangedEvent(1L));
     }
 
     @Test
@@ -66,7 +62,7 @@ class EventCommandServiceTest {
         eventCommandService.startClosing(1L, "123-0");
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
-        verify(eventQueryService, never()).invalidate(1L);
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any(Object.class));
     }
 
     @Test
@@ -77,11 +73,10 @@ class EventCommandServiceTest {
         assertThatThrownBy(() -> eventCommandService.startClosing(1L, "123-0"))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
-        verify(eventQueryService, never()).invalidate(1L);
     }
 
     @Test
-    void completeClosing은_CLOSING_이벤트를_CLOSED로_전이하고_캐시를_무효화한다() {
+    void completeClosing은_CLOSING_이벤트를_CLOSED로_전이하고_커밋후_캐시무효화_이벤트를_발행한다() {
         Event event = eventOf(EventStatus.CLOSING);
         when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
 
@@ -89,7 +84,7 @@ class EventCommandServiceTest {
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSED);
         assertThat(event.getClosedAt()).isEqualTo(FIXED_NOW);
-        verify(eventQueryService).invalidate(1L);
+        verify(eventPublisher).publishEvent(new EventClosingStateChangedEvent(1L));
     }
 
     @Test
@@ -100,7 +95,7 @@ class EventCommandServiceTest {
         eventCommandService.completeClosing(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSED);
-        verify(eventQueryService, never()).invalidate(1L);
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any(Object.class));
     }
 
     @Test
@@ -111,7 +106,6 @@ class EventCommandServiceTest {
         assertThatThrownBy(() -> eventCommandService.completeClosing(1L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
-        verify(eventQueryService, never()).invalidate(1L);
     }
 
     private static Event eventOf(EventStatus status) {

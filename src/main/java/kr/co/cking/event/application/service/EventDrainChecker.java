@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import kr.co.cking.stream.repository.DeadStreamMessageQueryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Range;
@@ -24,22 +25,25 @@ import org.springframework.stereotype.Component;
  * 이 이벤트의 미해결 메시지를 놓칠 수 있다. cutoff 이하 PEL 중 이 이벤트에 속한 메시지가
  * 있는지를 직접 확인한다.
  *
- * <p>ponytail: Dead Stream(UNRESOLVED)으로 옮겨진 뒤 ACK된 메시지는 PEL에 잡히지 않아
- * 이 체크를 통과한다 - dead_stream_message 조회는 PR #54(DeadStreamMessage 엔티티) 머지 후 추가한다.
+ * <p>Dead Stream으로 옮긴 뒤 ACK된 메시지는 PEL에서 사라지므로, 같은 이벤트의 cutoff 이하
+ * 미해결 SPEND 메시지도 함께 확인한다.
  */
 @Component
 public class EventDrainChecker {
 
     private final StringRedisTemplate redisTemplate;
+    private final DeadStreamMessageQueryRepository deadStreamMessageQueryRepository;
     private final String entryStreamKey;
     private final String consumerGroup;
 
     public EventDrainChecker(
             StringRedisTemplate redisTemplate,
+            DeadStreamMessageQueryRepository deadStreamMessageQueryRepository,
             @Value("${cking.entry.stream-key:stream:ticket-deducted}") String entryStreamKey,
             @Value("${cking.entry.history-consumer-group:cg:ticket-history}") String consumerGroup
     ) {
         this.redisTemplate = redisTemplate;
+        this.deadStreamMessageQueryRepository = deadStreamMessageQueryRepository;
         this.entryStreamKey = entryStreamKey;
         this.consumerGroup = consumerGroup;
     }
@@ -57,7 +61,15 @@ public class EventDrainChecker {
         if (compare(group.lastDeliveredId(), cutoffStreamId) < 0) {
             return false;
         }
-        return !hasPendingMessageForEvent(eventId, cutoffStreamId);
+        if (hasPendingMessageForEvent(eventId, cutoffStreamId)) {
+            return false;
+        }
+        return !hasUnresolvedDeadStreamMessage(eventId, cutoffStreamId);
+    }
+
+    private boolean hasUnresolvedDeadStreamMessage(Long eventId, String cutoffStreamId) {
+        return deadStreamMessageQueryRepository.findUnresolvedSpendSourceStreamIds(eventId).stream()
+                .anyMatch(sourceStreamId -> compare(sourceStreamId, cutoffStreamId) <= 0);
     }
 
     /** cutoff 이하 PEL 메시지 중, 페이로드의 eventId가 일치하는 것이 있으면 true. */
