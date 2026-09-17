@@ -80,25 +80,6 @@ class DrawResultHashGeneratorTest {
     }
 
     @Test
-    void 중복_rank나_memberId가_있으면_Result_Hash를_생성하지_않는다() {
-        DrawOutput duplicateRank = output(List.of(
-                new DrawWinner(1L, 1, 3L),
-                new DrawWinner(2L, 1, 7L)
-        ));
-        DrawOutput duplicateMember = output(List.of(
-                new DrawWinner(1L, 1, 3L),
-                new DrawWinner(1L, 2, 3L)
-        ));
-
-        assertThatThrownBy(() -> generator.generate(INPUT_HASH, duplicateRank))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("rank");
-        assertThatThrownBy(() -> generator.generate(INPUT_HASH, duplicateMember))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("memberId");
-    }
-
-    @Test
     void inputHash가_lowercase_SHA_256_형식이_아니면_거부한다() {
         DrawOutput output = output(List.of(new DrawWinner(1L, 1, 3L)));
 

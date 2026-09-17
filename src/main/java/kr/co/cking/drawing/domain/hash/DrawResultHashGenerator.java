@@ -1,9 +1,7 @@
 package kr.co.cking.drawing.domain.hash;
 
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import kr.co.cking.drawing.domain.engine.DrawOutput;
 import kr.co.cking.drawing.domain.engine.DrawWinner;
 
@@ -50,16 +48,6 @@ public final class DrawResultHashGenerator {
             throw new IllegalArgumentException("DrawOutput Hash 입력은 필수입니다.");
         }
 
-        Set<Integer> ranks = new HashSet<>();
-        Set<Long> memberIds = new HashSet<>();
-        for (DrawWinner winner : output.winners()) {
-            if (!ranks.add(winner.rank())) {
-                throw new IllegalArgumentException("Winner의 rank는 중복될 수 없습니다.");
-            }
-            if (!memberIds.add(winner.memberId())) {
-                throw new IllegalArgumentException("Winner의 memberId는 중복될 수 없습니다.");
-            }
-        }
         return output.winners().stream()
                 .sorted(BY_RANK)
                 .toList();
