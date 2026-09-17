@@ -12,6 +12,7 @@
 - `type`은 `INITIAL_WINNER` 또는 `REDRAW_WINNER`다.
 - `(winner_id, type)`은 유일하므로 같은 당첨 결과에 같은 종류의 알림이 중복 생성되지 않는다.
 - 목록 정렬은 `created_at DESC, id DESC`다.
+- 목록 조회 인덱스는 `(member_id, created_at DESC, id DESC)`다.
 
 ## Repository 계약
 
