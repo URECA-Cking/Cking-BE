@@ -5,6 +5,8 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.AdminClosingStatusQueryService;
 import kr.co.cking.event.domain.EventStatus;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -52,6 +54,21 @@ class AdminClosingStatusControllerTest {
     @Test
     void getClosingStatusRejectsMissingUserId() throws Exception {
         mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 0 이하 Event ID 또는 관리자 ID는 Controller 계층에서 거절한다. */
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void getClosingStatusRejectsNonPositiveIds(long invalidId) throws Exception {
+        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", invalidId)
+                        .queryParam("userId", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L)
+                        .queryParam("userId", String.valueOf(invalidId)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
