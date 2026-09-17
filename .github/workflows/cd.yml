@@ -5,9 +5,15 @@ on:
     branches: [develop]
   workflow_dispatch:
 
+# 기본은 읽기만 주고, 필요한 권한은 job별로 연다. 서드파티 액션이 쓸 수 있는 범위를 좁힌다.
 permissions:
   contents: read
-  packages: write
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_ROLE_ARN: arn:aws:iam::551372961758:role/dev-cking-github-actions-role
+  DEPLOY_BUCKET: dev-cking-deploy-551372961758
+  INSTANCE_ID: i-0735892ba2bb25a70
 
 jobs:
   build-and-push:
@@ -15,6 +21,13 @@ jobs:
     # 개발 서버가 t4g(ARM)이므로 ARM 러너에서 네이티브 빌드한다.
     # x86 러너에서 QEMU로 크로스 빌드하면 Gradle 빌드가 몇 배 느려진다.
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write   # GHCR push
+    # 같은 브랜치에 push가 연달아 오면 오래된 빌드를 취소한다. 뒤 커밋이 앞 커밋을 포함하므로 결과는 같다.
+    concurrency:
+      group: cd-build-${{ github.ref }}
+      cancel-in-progress: true
 
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
@@ -45,8 +58,98 @@ jobs:
           context: .
           platforms: linux/arm64
           push: true
-          tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
-            ${{ steps.meta.outputs.image }}:latest
+          # 불변 태그만 push한다. latest는 동시 빌드 시 과거 커밋 이미지로 덮어써질 수 있다.
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to dev server
+    needs: build-and-push
+    # develop만 배포한다. 다른 브랜치의 수동 실행은 이미지 빌드까지만 하고 이 job은 건너뛴다.
+    # 실제 차단은 IAM 신뢰 정책(sub = develop)이 한다. 이 조건은 워크플로를 고치면 우회되므로
+    # 방어선이 아니라, 배포 대상이 아님을 실패가 아닌 skipped로 드러내기 위한 것이다.
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write   # OIDC 토큰 발급. AWS 역할을 맡는 데 필요하다.
+    # 실행 중인 배포는 취소하지 않는다. 컨테이너 교체 도중 워크플로가 취소되는 것을 막고,
+    # dev 서버에는 한 번에 하나의 배포만 들어가도록 직렬화한다.
+    concurrency:
+      group: cd-deploy-dev
+      cancel-in-progress: false
+
+    env:
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 배포 파일 S3 업로드
+        # 태그별 경로에 둔다. 어느 배포에 어떤 compose가 쓰였는지 추적할 수 있다.
+        run: |
+          aws s3 cp docker-compose.dev.yml "s3://$DEPLOY_BUCKET/releases/$IMAGE_TAG/docker-compose.yml"
+          aws s3 cp deploy/deploy.sh       "s3://$DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh"
+
+      - name: SSM Run Command 전송
+        id: send
+        # deploy.sh는 자기 자신을 받을 수 없으므로 인라인 명령이 먼저 받아서 실행한다.
+        # Run Command는 명령들을 하나의 스크립트로 합쳐 실행하고 마지막 줄의 결과만 본다.
+        # set -e가 없으면 다운로드가 실패해도 서버에 남은 이전 deploy.sh가 실행되어 성공으로 기록된다.
+        run: |
+          PARAMETERS=$(jq -n \
+            --arg dl "aws s3 cp s3://$DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh /opt/cking/deploy.sh" \
+            --arg run "/opt/cking/deploy.sh $IMAGE_TAG" \
+            '{commands: ["set -e", $dl, "chmod +x /opt/cking/deploy.sh", $run], executionTimeout: ["600"]}')
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy $IMAGE_TAG" \
+            --parameters "$PARAMETERS" \
+            --query Command.CommandId --output text)
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+
+      - name: 배포 결과 확인
+        # Run Command는 비동기다. 상태를 폴링해 Success가 아니면 워크플로를 실패시킨다.
+        env:
+          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+        run: |
+          for i in $(seq 1 60); do
+            # 전송 직후에는 invocation이 아직 조회되지 않을 수 있다(eventual consistency).
+            # 이 오류만 재시도한다. 여기서 죽으면 서버 배포는 계속 도는데 워크플로만 실패로 남는다.
+            # 권한·네트워크 등 다른 오류는 기다려도 해결되지 않으므로 즉시 실패시킨다.
+            if ! STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>&1); then
+              if [[ "$STATUS" == *InvocationDoesNotExist* ]]; then
+                sleep 5
+                continue
+              fi
+              echo "상태 조회 실패: $STATUS"
+              exit 1
+            fi
+            case "$STATUS" in
+              Success)
+                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                  --query StandardOutputContent --output text
+                exit 0 ;;
+              Failed|TimedOut|Cancelled|Cancelling)
+                echo "배포 실패: $STATUS"
+                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                  --query '[StandardOutputContent,StandardErrorContent]' --output text
+                exit 1 ;;
+              Pending|InProgress|Delayed)
+                sleep 10 ;;
+              *)
+                echo "알 수 없는 상태: $STATUS"
+                exit 1 ;;
+            esac
+          done
+          echo "배포 결과 확인 시간 초과 (10분)"
+          exit 1
