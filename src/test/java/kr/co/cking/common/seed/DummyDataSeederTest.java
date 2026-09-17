@@ -1,0 +1,211 @@
+package kr.co.cking.common.seed;
+
+import java.util.List;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+
+import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.ticket.application.config.TicketRedisKeys;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * {@code seed} 프로필을 명시적으로 켰을 때만 {@link DummyDataSeeder} 빈이 생성되므로,
+ * 일반 {@code @SpringBootTest}(기본 local 프로필)에서는 이 시더가 자동 실행되지 않는다.
+ * 이 테스트만 {@code seed}를 추가로 켜서 검증한다.
+ */
+@SpringBootTest
+@ActiveProfiles({"local", "seed"})
+class DummyDataSeederTest {
+
+    private static final String DUMMY_EMAIL_LIKE = "dummy-%@cking.test";
+
+    @Autowired
+    private DummyDataSeeder seeder;
+    @Autowired
+    private MemberRepository memberRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    @BeforeEach
+    void cleanUp() {
+        deleteDummyData();
+    }
+
+    @AfterEach
+    void tearDown() {
+        deleteDummyData();
+    }
+
+    @Test
+    void 더미_유저_크리에이터_잔액을_DB와_Redis에_채운다() {
+        seeder.run();
+
+        List<Long> userIds = dummyMemberIds("dummy-user-%@cking.test");
+        List<Long> creatorIds = jdbcTemplate.queryForList(
+                "SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                        + "WHERE m.email LIKE 'dummy-creator-%@cking.test'",
+                Long.class);
+
+        assertThat(userIds).hasSize(15);
+        assertThat(creatorIds).hasSize(3);
+
+        Long firstUser = userIds.get(0);
+        Long firstCreator = creatorIds.get(0);
+        Long balance = jdbcTemplate.queryForObject(
+                "SELECT balance FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?",
+                Long.class, firstUser, firstCreator);
+        assertThat(balance).isEqualTo(5L);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(firstCreator, firstUser))).isEqualTo("5");
+        assertThat(redisTemplate.hasKey(DummyDataSeeder.SEED_LOCK_KEY)).isFalse();
+    }
+
+    // member.email에 UNIQUE 제약이 없어 find-or-create가 원자적이지 않다 - 두 실행이
+    // 겹치는 걸 막기 위해 Redis 락을 쓴다. 락이 이미 걸려 있으면 이 프로세스는
+    // 아무것도 만들지 않고 그대로 건너뛰어야 한다.
+    @Test
+    void 락이_이미_걸려있으면_시딩을_건너뛴다() {
+        redisTemplate.opsForValue().set(DummyDataSeeder.SEED_LOCK_KEY, "locked");
+
+        seeder.run();
+
+        assertThat(dummyMemberIds("dummy-%@cking.test")).isEmpty();
+    }
+
+    // 락 해제는 compare-and-delete Lua 스크립트로 한다 - 내 토큰과 다르면 지우면 안
+    // 된다. TTL 만료 후 다른 프로세스가 새 락을 잡은 뒤 내 지연된 해제 호출이
+    // 도착하는 상황을 실제 타이밍 없이, 스크립트 자체의 동작만으로 재현한다:
+    // "남의 토큰"을 미리 넣어두고 내 토큰으로 해제를 시도했을 때 안 지워지는지 본다.
+    @Test
+    void 락_해제_스크립트는_토큰이_다르면_지우지_않는다() {
+        redisTemplate.opsForValue().set(DummyDataSeeder.SEED_LOCK_KEY, "other-process-token");
+
+        Long deleted = redisTemplate.execute(
+                DummyDataSeeder.RELEASE_LOCK_SCRIPT, List.of(DummyDataSeeder.SEED_LOCK_KEY), "my-token");
+
+        assertThat(deleted).isZero();
+        assertThat(redisTemplate.opsForValue().get(DummyDataSeeder.SEED_LOCK_KEY)).isEqualTo("other-process-token");
+    }
+
+    @Test
+    void 락_해제_스크립트는_토큰이_같으면_지운다() {
+        redisTemplate.opsForValue().set(DummyDataSeeder.SEED_LOCK_KEY, "my-token");
+
+        Long deleted = redisTemplate.execute(
+                DummyDataSeeder.RELEASE_LOCK_SCRIPT, List.of(DummyDataSeeder.SEED_LOCK_KEY), "my-token");
+
+        assertThat(deleted).isEqualTo(1L);
+        assertThat(redisTemplate.hasKey(DummyDataSeeder.SEED_LOCK_KEY)).isFalse();
+    }
+
+    @Test
+    void 다시_실행해도_중복_생성하지_않는다() {
+        seeder.run();
+        long userCountAfterFirstRun = memberRepository.count();
+
+        seeder.run();
+
+        assertThat(memberRepository.count()).isEqualTo(userCountAfterFirstRun);
+    }
+
+    // 중간 실패로 일부 더미 유저만 DB에 남은 상황(예: 15명 중 1명 누락)을 시뮬레이션한다.
+    // find-or-create 방식이라 재실행하면 빠진 것만 채워야 하고, 이미 있던 나머지는
+    // 그대로 유지돼야 한다.
+    @Test
+    void 일부_더미_유저가_누락된_상태에서_재실행하면_빠진_유저만_채운다() {
+        seeder.run();
+        List<Long> userIdsBeforeGap = dummyMemberIds("dummy-user-%@cking.test");
+        Long removedUserId = userIdsBeforeGap.get(0);
+        jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ?", removedUserId);
+        jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", removedUserId);
+
+        seeder.run();
+
+        List<Long> userIdsAfterRepair = dummyMemberIds("dummy-user-%@cking.test");
+        assertThat(userIdsAfterRepair).hasSize(15);
+        assertThat(userIdsAfterRepair).doesNotContain(removedUserId);
+    }
+
+    // Redis만 유실된 상황(DB는 온전)을 시뮬레이션한다. SET은 멱등이라 재실행하면
+    // DB 재생성 없이도 Redis 값만 다시 채워져야 한다. 이때도 INITIAL_BALANCE가 아니라
+    // "그 시점의 실제 DB 값"으로 복구돼야 하므로, DB를 응모권 사용 상황(3)으로 바꿔둔
+    // 뒤 검증한다.
+    @Test
+    void Redis_잔액만_유실된_상태에서_재실행하면_DB_값_기준으로_Redis를_복구한다() {
+        seeder.run();
+        List<Long> userIds = dummyMemberIds("dummy-user-%@cking.test");
+        List<Long> creatorIds = jdbcTemplate.queryForList(
+                "SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                        + "WHERE m.email LIKE 'dummy-creator-%@cking.test'",
+                Long.class);
+        Long userId = userIds.get(0);
+        Long creatorId = creatorIds.get(0);
+        String key = TicketRedisKeys.balance(creatorId, userId);
+        jdbcTemplate.update(
+                "UPDATE user_ticket_balance SET balance = 3 WHERE member_id = ? AND creator_id = ?", userId, creatorId);
+        redisTemplate.delete(key);
+        long memberCountBeforeRepair = memberRepository.count();
+
+        seeder.run();
+
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("3");
+        assertThat(memberRepository.count()).isEqualTo(memberCountBeforeRepair);
+    }
+
+    // 시딩 후 실제 응모권 사용으로 DB=3, Redis="3"이 된 상태에서(Redis 키가 지워진
+    // 게 아니라 이미 정상 존재) 시더를 재실행해도 Redis가 5로 되돌아가면 안 된다.
+    @Test
+    void 사용으로_잔액이_바뀐_뒤_재실행해도_Redis가_초기값으로_되돌아가지_않는다() {
+        seeder.run();
+        List<Long> userIds = dummyMemberIds("dummy-user-%@cking.test");
+        List<Long> creatorIds = jdbcTemplate.queryForList(
+                "SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                        + "WHERE m.email LIKE 'dummy-creator-%@cking.test'",
+                Long.class);
+        Long userId = userIds.get(0);
+        Long creatorId = creatorIds.get(0);
+        String key = TicketRedisKeys.balance(creatorId, userId);
+        jdbcTemplate.update(
+                "UPDATE user_ticket_balance SET balance = 3 WHERE member_id = ? AND creator_id = ?", userId, creatorId);
+        redisTemplate.opsForValue().set(key, "3");
+
+        seeder.run();
+
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("3");
+    }
+
+    private List<Long> dummyMemberIds(String emailLike) {
+        return jdbcTemplate.queryForList("SELECT member_id FROM member WHERE email LIKE ?", Long.class, emailLike);
+    }
+
+    private void deleteDummyData() {
+        redisTemplate.delete(DummyDataSeeder.SEED_LOCK_KEY);
+
+        List<Long> creatorIds = jdbcTemplate.queryForList(
+                "SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                        + "WHERE m.email LIKE 'dummy-creator-%@cking.test'",
+                Long.class);
+        List<Long> userIds = dummyMemberIds("dummy-user-%@cking.test");
+
+        for (Long creatorId : creatorIds) {
+            for (Long userId : userIds) {
+                redisTemplate.delete(TicketRedisKeys.balance(creatorId, userId));
+            }
+        }
+
+        jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id IN "
+                + "(SELECT member_id FROM member WHERE email LIKE 'dummy-user-%@cking.test')");
+        jdbcTemplate.update("DELETE FROM creator WHERE member_id IN "
+                + "(SELECT member_id FROM member WHERE email LIKE 'dummy-creator-%@cking.test')");
+        jdbcTemplate.update("DELETE FROM member WHERE email LIKE ?", DUMMY_EMAIL_LIKE);
+    }
+}
