@@ -178,9 +178,10 @@ Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요
 
 ## GET /api/admin/events/{eventId}/closing-status
 
-`userId`는 필수 쿼리 파라미터다. 요청 Member가 존재하고 역할이 `ADMIN`이어야 한다.
-대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를 확인한다. `CLOSING`이면 마감
-진행 중, `CLOSED`이면 마감 완료를 의미한다. 그 외 Event 상태는 `INVALID_STATE`다.
+`eventId`와 `userId`는 양수 Long이어야 하며, `userId`는 필수 쿼리 파라미터다. 요청 Member가 존재하고
+역할이 `ADMIN`이어야 한다. 대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를
+확인한다. `CLOSING`이면 마감 진행 중, `CLOSED`이면 마감 완료를 의미한다. 그 외 Event 상태는
+`INVALID_STATE`다.
 
 성공은 200이며, 응답에는 상태만 포함한다. 진행률, Pending 수, cutoff Stream ID를 비롯한 Stream 내부
 정보는 반환하지 않는다.
@@ -189,4 +190,5 @@ Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요
 { "status": "CLOSING" }
 ```
 
-없는 Member 또는 Event는 `RESOURCE_NOT_FOUND`, 관리자가 아닌 Member는 `FORBIDDEN`이다.
+식별자가 누락·0 이하이거나 형식이 올바르지 않으면 `VALIDATION_FAILED`, 없는 Member 또는 Event는
+`RESOURCE_NOT_FOUND`, 관리자가 아닌 Member는 `FORBIDDEN`이다.
