@@ -104,10 +104,13 @@ class DrawingPublicationServiceIntegrationTest {
         insertSnapshot();
         insertDrawing(DrawingVisibility.PRIVATE);
 
-        Drawing first = service.publish(DRAWING_ID, ADMIN_ID);
+        service.publish(DRAWING_ID, ADMIN_ID);
+        java.time.Instant firstPublishedAt = drawingRepository.findById(DRAWING_ID).orElseThrow().getPublishedAt();
+
         Drawing replay = service.publish(DRAWING_ID, ADMIN_ID);
 
-        assertThat(replay.getPublishedAt()).isEqualTo(first.getPublishedAt());
+        // DB 컬럼은 DATETIME(6)라 나노초 이하가 잘리므로, 두 값 모두 DB에서 다시 읽어 비교한다.
+        assertThat(replay.getPublishedAt()).isEqualTo(firstPublishedAt);
         assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name())
                 .isEqualTo("PUBLISHED");
     }
