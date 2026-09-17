@@ -1,6 +1,5 @@
 package kr.co.cking.ticket.application;
 
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -210,12 +209,13 @@ class TicketEarnServiceImplTest {
     }
 
     // System 2(EARN) 책임: periodKey가 zero-padding된 yyyy-MM-dd가 아니면 Lua 호출
-    // 전에 거부해야 한다("2026-9-16" 같은 값, 2026-09-17 팀 결정).
+    // 전에 거부해야 한다("2026-9-16" 같은 값, 취합v1.5.4 §4.5). IllegalArgumentException으로
+    // 던져야 호출측이 공통 VALIDATION_FAILED(400)로 변환할 수 있다.
     @Test
-    void periodKey_형식이_올바르지_않으면_예외를_던진다() {
+    void periodKey_형식이_올바르지_않으면_IllegalArgumentException을_던진다() {
         EarnCommand command = new EarnCommand(
                 UUID.randomUUID(), USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, "2026-9-16", MISSION_KEY, 1L);
 
-        assertThatThrownBy(() -> earn(command)).isInstanceOf(DateTimeParseException.class);
+        assertThatThrownBy(() -> earn(command)).isInstanceOf(IllegalArgumentException.class);
     }
 }

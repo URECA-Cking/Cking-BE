@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -93,12 +94,18 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         return parse(result, command);
     }
 
-    // periodKey 형식 검증과 가드 키 변환은 System 2(EARN) 책임이다(T1은 KST 기준
+    // periodKey 형식 검증과 가드 키 변환은 System 2(EARN) 책임이다(T1은 UTC 기준
     // LocalDate.now()로 생성하지만, "2026-9-16"처럼 padding 없는 값은 여기서
-    // strict하게 걸러 EARN Contract 경계에서 거부한다 - 2026-09-17 팀 결정).
+    // strict하게 걸러 EARN Contract 경계에서 거부한다, 취합v1.5.4 §4.5). periodKey는
+    // 서버가 만드므로 형식 오류는 사실상 버그일 때만 발생한다 - IllegalArgumentException으로
+    // 던져 호출측(T1)이 공통 VALIDATION_FAILED(400)로 변환할 수 있게 한다.
     private String toGuardPeriodKey(String periodKey) {
-        LocalDate date = LocalDate.parse(periodKey, DateTimeFormatter.ISO_LOCAL_DATE);
-        return date.format(DateTimeFormatter.BASIC_ISO_DATE);
+        try {
+            LocalDate date = LocalDate.parse(periodKey, DateTimeFormatter.ISO_LOCAL_DATE);
+            return date.format(DateTimeFormatter.BASIC_ISO_DATE);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("periodKey는 yyyy-MM-dd 형식이어야 합니다: " + periodKey, e);
+        }
     }
 
     // requestId를 제외한 요청 내용을 해시로 요약해 REQUEST_ID_CONFLICT 판정에 사용한다.
