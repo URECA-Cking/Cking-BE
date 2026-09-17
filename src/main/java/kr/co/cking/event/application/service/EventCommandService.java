@@ -2,10 +2,10 @@ package kr.co.cking.event.application.service;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
-import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.repository.EventRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,7 +18,7 @@ import java.util.function.Function;
 public class EventCommandService {
 
     private final EventRepository eventRepository;
-    private final EventQueryService eventQueryService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** DRAFT Event를 승인 대기 상태로 전이한다. */
     public void requestApproval(Long eventId) {
@@ -54,7 +54,7 @@ public class EventCommandService {
             event.open();
             return null;
         });
-        eventQueryService.invalidate(eventId);
+        eventPublisher.publishEvent(new EventOpenedEvent(eventId));
     }
 
     /** 승인 대기 Event를 거절 상태로 전이한다. */

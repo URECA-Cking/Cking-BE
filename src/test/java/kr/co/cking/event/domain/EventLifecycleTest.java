@@ -1,10 +1,11 @@
 package kr.co.cking.event.domain;
 
 import kr.co.cking.common.exception.BusinessException;
-import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.event.application.service.EventCommandService;
+import kr.co.cking.event.application.service.EventOpenedEvent;
 import kr.co.cking.event.repository.EventRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 
@@ -104,7 +105,7 @@ class EventLifecycleTest {
         );
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(EventQueryService.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
 
         eventCommandService.requestApproval(1L);
 
@@ -151,7 +152,7 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(EventQueryService.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
 
         eventCommandService.approve(1L);
 
@@ -162,24 +163,24 @@ class EventLifecycleTest {
     void commandServiceOpensScheduledEvent() {
         Event event = scheduledEvent();
         EventRepository eventRepository = mock(EventRepository.class);
-        EventQueryService eventQueryService = mock(EventQueryService.class);
+        ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventQueryService);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher);
 
         eventCommandService.open(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
         verify(eventRepository).findByEventId(1L);
-        verify(eventQueryService).invalidate(1L);
+        verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
     }
 
     @Test
-    void alreadyOpenEventDoesNotInvalidateCacheAgain() {
+    void alreadyOpenEventDoesNotPublishCacheInvalidationEventAgain() {
         Event event = scheduledEvent();
         EventRepository eventRepository = mock(EventRepository.class);
-        EventQueryService eventQueryService = mock(EventQueryService.class);
+        ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventQueryService);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher);
 
         eventCommandService.open(1L);
 
@@ -188,7 +189,7 @@ class EventLifecycleTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(EventErrorCode.INVALID_STATE);
-        verify(eventQueryService).invalidate(1L);
+        verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
     }
 
     @Test
@@ -207,7 +208,7 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(EventQueryService.class));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
 
         eventCommandService.reject(1L, "일정 확인 필요");
         eventCommandService.changeToDraft(1L);
