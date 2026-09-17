@@ -8,6 +8,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
 import lombok.RequiredArgsConstructor;
@@ -128,14 +129,18 @@ public class EventCommandService {
         });
     }
 
-    /** Gate 차단·cutoff 확정(barrier) 이후 호출. 이미 OPEN이 아니면 멱등하게 그냥 반환한다. */
-    public void startClosing(Long eventId, String cutoffStreamId) {
+    /** Gate 차단·cutoff 확정(barrier) 이후 호출해 실제 마감 상태를 반환한다. */
+    public EventStatus startClosing(Long eventId, String cutoffStreamId) {
         Event event = findEvent(eventId);
-        if (event.getStatus() != EventStatus.OPEN) {
-            return;
+        if (event.getStatus() == EventStatus.OPEN) {
+            event.startClosing(cutoffStreamId);
+            eventQueryService.invalidate(eventId);
+            return EventStatus.CLOSING;
         }
-        event.startClosing(cutoffStreamId);
-        eventQueryService.invalidate(eventId);
+        if (event.getStatus() == EventStatus.CLOSING || event.getStatus() == EventStatus.CLOSED) {
+            return event.getStatus();
+        }
+        throw new BusinessException(EventErrorCode.INVALID_STATE);
     }
 
     /** Drain 완료 확인 이후 호출. 이미 CLOSING이 아니면(이미 CLOSED 등) 멱등하게 그냥 반환한다. */

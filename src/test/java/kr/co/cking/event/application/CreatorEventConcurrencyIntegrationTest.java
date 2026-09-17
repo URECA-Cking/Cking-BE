@@ -4,6 +4,7 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.event.application.dto.CreateEventCommand;
 import kr.co.cking.event.application.service.EventCommandService;
+import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequestStatus;
@@ -32,6 +33,7 @@ class CreatorEventConcurrencyIntegrationTest {
     @Autowired private EventApprovalRequestRepository approvalRequestRepository;
     @Autowired private EventReviewService eventReviewService;
     @Autowired private EventCommandService eventCommandService;
+    @Autowired private EventClosingService eventClosingService;
     @Autowired private EventQueryService eventQueryService;
     @Autowired private EventCache eventCache;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -131,6 +133,39 @@ class CreatorEventConcurrencyIntegrationTest {
         }
     }
 
+    /** 자동·수동 마감이 동시에 시작돼도 OPEN→CLOSING 전이는 한 번으로 수렴한다. */
+    @Test
+    void concurrentAutomaticAndManualClosingReturnCurrentClosingStatus() throws Exception {
+        Event event = persistOpenEvent("550e8400-e29b-41d4-a716-446655440019");
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<EventStatus> automatic = executor.submit(() -> runStartClosing(start, event.getEventId()));
+            Future<EventStatus> manual = executor.submit(() -> runStartClosing(start, event.getEventId()));
+            start.countDown();
+
+            assertThat(java.util.List.of(automatic.get(), manual.get()))
+                    .containsOnly(EventStatus.CLOSING);
+            Event closedEvent = eventRepository.findById(event.getEventId()).orElseThrow();
+            assertThat(closedEvent.getStatus()).isEqualTo(EventStatus.CLOSING);
+            assertThat(closedEvent.getCutoffStreamId()).isNotBlank();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    /** 다른 마감 흐름이 완료한 뒤의 요청도 CLOSING으로 고정하지 않고 실제 상태를 반환한다. */
+    @Test
+    void closingAlreadyClosedEventReturnsClosedStatus() {
+        Event event = persistClosedEvent("550e8400-e29b-41d4-a716-446655440020");
+
+        EventStatus status = eventClosingService.startClosing(event.getEventId()).status();
+
+        assertThat(status).isEqualTo(EventStatus.CLOSED);
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus())
+                .isEqualTo(EventStatus.CLOSED);
+    }
+
     /** 병렬 INITIAL Drawing 완료 호출에서도 Event 행 잠금으로 DRAW_COMPLETED 전이는 한 번만 성공한다. */
     @Test
     void concurrentDrawingCompletionTransitionsClosedEventExactlyOnce() throws Exception {
@@ -216,6 +251,11 @@ class CreatorEventConcurrencyIntegrationTest {
         }
     }
 
+    private EventStatus runStartClosing(CountDownLatch start, Long eventId) throws InterruptedException {
+        start.await();
+        return eventClosingService.startClosing(eventId).status();
+    }
+
     /** 병렬 INITIAL Drawing 완료 호출의 결과를 상태 또는 오류 코드로 변환한다. */
     private String runCompleteDrawing(CountDownLatch start, Long eventId) throws InterruptedException {
         start.await();
@@ -250,6 +290,23 @@ class CreatorEventConcurrencyIntegrationTest {
                 .winnerCount(1)
                 .drawMethod(DrawMethod.WEIGHTED.name())
                 .status(EventStatus.SCHEDULED)
+                .createdBy(creator.getMemberId())
+                .createdAt(Instant.now())
+                .build());
+    }
+
+    private Event persistOpenEvent(String requestId) {
+        Member creator = memberRepository.saveAndFlush(new Member("동시 마감 크리에이터", null, null, MemberRole.USER));
+        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        return eventRepository.saveAndFlush(Event.builder()
+                .creatorId(savedCreator.getCreatorId())
+                .requestId(requestId)
+                .title("동시 마감 이벤트")
+                .startAt(Instant.now().minusSeconds(1))
+                .endAt(Instant.now().plus(java.time.Duration.ofDays(1)))
+                .winnerCount(1)
+                .drawMethod(DrawMethod.WEIGHTED.name())
+                .status(EventStatus.OPEN)
                 .createdBy(creator.getMemberId())
                 .createdAt(Instant.now())
                 .build());

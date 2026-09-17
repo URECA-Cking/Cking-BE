@@ -15,8 +15,8 @@ public class EventClosingService {
     /** Gate를 닫고 cutoff를 확정한 뒤 Event를 CLOSING으로 전이한다. */
     public ClosingResult startClosing(Long eventId) {
         String cutoffStreamId = eventCutoffBarrier.close(eventId);
-        eventCommandService.startClosing(eventId, cutoffStreamId);
-        return new ClosingResult(eventId, EventStatus.CLOSING);
+        EventStatus status = eventCommandService.startClosing(eventId, cutoffStreamId);
+        return new ClosingResult(eventId, status);
     }
 
     /** 마감 시작 요청의 외부 전달용 결과다. */

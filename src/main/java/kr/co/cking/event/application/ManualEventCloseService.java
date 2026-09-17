@@ -31,7 +31,7 @@ public class ManualEventCloseService {
     private final EventRepository eventRepository;
     private final EventClosingService eventClosingService;
 
-    /** ADMIN 또는 Event 소유 Creator의 OPEN Event 마감 요청만 시스템2로 위임한다. */
+    /** ADMIN 또는 Event 소유 Creator의 마감 가능 Event 요청만 시스템2로 위임한다. */
     public EventClosingService.ClosingResult close(Long userId, Long eventId) {
         Member member = memberRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
@@ -40,7 +40,9 @@ public class ManualEventCloseService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
         authorize(member, event);
-        if (event.getStatus() != EventStatus.OPEN) {
+        if (event.getStatus() != EventStatus.OPEN
+                && event.getStatus() != EventStatus.CLOSING
+                && event.getStatus() != EventStatus.CLOSED) {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
         return eventClosingService.startClosing(eventId);

@@ -128,6 +128,25 @@ class ManualEventCloseServiceTest {
         verify(eventClosingService, never()).startClosing(10L);
     }
 
+    @Test
+    void closingOrClosedEventCanBeClosedIdempotently() {
+        for (EventStatus status : new EventStatus[]{EventStatus.CLOSING, EventStatus.CLOSED}) {
+            MemberRepository memberRepository = mock(MemberRepository.class);
+            EventRepository eventRepository = mock(EventRepository.class);
+            EventClosingService eventClosingService = mock(EventClosingService.class);
+            given(memberRepository.findById(1L)).willReturn(Optional.of(member(1L, MemberRole.ADMIN)));
+            given(eventRepository.findById(10L)).willReturn(Optional.of(event(10L, 20L, status)));
+            given(eventClosingService.startClosing(10L))
+                    .willReturn(new EventClosingService.ClosingResult(10L, status));
+
+            EventClosingService.ClosingResult result = service(memberRepository, mock(CreatorRepository.class),
+                    eventRepository, eventClosingService).close(1L, 10L);
+
+            assertThat(result.status()).isEqualTo(status);
+            verify(eventClosingService).startClosing(10L);
+        }
+    }
+
     private ManualEventCloseService service(MemberRepository memberRepository, CreatorRepository creatorRepository,
             EventRepository eventRepository, EventClosingService eventClosingService) {
         return new ManualEventCloseService(memberRepository, creatorRepository, eventRepository, eventClosingService);

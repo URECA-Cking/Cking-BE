@@ -16,6 +16,7 @@ class EventClosingServiceTest {
         EventCutoffBarrier eventCutoffBarrier = mock(EventCutoffBarrier.class);
         EventCommandService eventCommandService = mock(EventCommandService.class);
         given(eventCutoffBarrier.close(10L)).willReturn("1-0");
+        given(eventCommandService.startClosing(10L, "1-0")).willReturn(EventStatus.CLOSING);
 
         EventClosingService.ClosingResult result = new EventClosingService(eventCutoffBarrier, eventCommandService)
                 .startClosing(10L);
@@ -24,5 +25,18 @@ class EventClosingServiceTest {
         InOrder inOrder = inOrder(eventCutoffBarrier, eventCommandService);
         inOrder.verify(eventCutoffBarrier).close(10L);
         inOrder.verify(eventCommandService).startClosing(10L, "1-0");
+    }
+
+    @Test
+    void startClosing은_이미_마감된_실제_상태를_반환한다() {
+        EventCutoffBarrier eventCutoffBarrier = mock(EventCutoffBarrier.class);
+        EventCommandService eventCommandService = mock(EventCommandService.class);
+        given(eventCutoffBarrier.close(10L)).willReturn("1-0");
+        given(eventCommandService.startClosing(10L, "1-0")).willReturn(EventStatus.CLOSED);
+
+        EventClosingService.ClosingResult result = new EventClosingService(eventCutoffBarrier, eventCommandService)
+                .startClosing(10L);
+
+        assertThat(result).isEqualTo(new EventClosingService.ClosingResult(10L, EventStatus.CLOSED));
     }
 }

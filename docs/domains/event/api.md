@@ -157,11 +157,14 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 `userId`는 양수 Long이며, 요청 Member와 삭제되지 않은 Event가 존재해야 한다. ADMIN은 모든 Event,
 Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요청할 수 있다. Creator가 타인의 Event를
 요청하면 `FORBIDDEN`이고, 존재하지 않는 Member 또는 존재하지 않거나 삭제된 Event는
-`RESOURCE_NOT_FOUND`다. `OPEN` 상태에서만 요청할 수 있고 그 외 상태는 `INVALID_STATE`다.
+`RESOURCE_NOT_FOUND`다. `OPEN`이면 마감을 시작하고, 이미 `CLOSING` 또는 `CLOSED`인 요청은
+오류 없이 현재 상태를 반환하는 멱등 명령이다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`,
+`SCHEDULED`, `DRAW_COMPLETED`, `PUBLISHED` 상태는 `INVALID_STATE`다.
 
 성공 시 시스템2 `EventClosingService.startClosing(eventId)`가 Gate 차단·cutoff 확정·`OPEN → CLOSING`
 전이를 처리한다. 시스템4는 Redis Gate나 Stream을 직접 조작하지 않는다. Drain 완료는 비동기로 이어지며,
-성공 응답은 202이고 공통 응답 봉투의 `data`는 다음과 같다.
+성공 응답은 202이고 공통 응답 봉투의 `data.status`는 실제 현재 상태인 `CLOSING` 또는 `CLOSED`다.
+처음 마감을 시작한 경우는 `CLOSING`을 반환한다.
 
 ```json
 { "eventId": 1, "status": "CLOSING" }
