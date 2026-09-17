@@ -47,6 +47,8 @@ public class TicketBalanceReconciliationScheduler {
                 check(key, balance.getBalance());
             } catch (RedisConnectionFailureException e) {
                 // Redis 연결 자체가 끊긴 경우 - key마다 반복 경고하지 않고 이번 주기를 중단한다.
+                // 이번 주기는 비교 자체를 못 했으므로 모든 key의 연속 불일치 스트릭도 초기화한다.
+                mismatchStreaks.clear();
                 log.warn("Redis 연결 실패로 이번 주기 정합성 검사를 중단합니다.", e);
                 return;
             } catch (Exception e) {

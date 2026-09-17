@@ -153,6 +153,29 @@ class TicketBalanceReconciliationSchedulerTest {
         verify(valueOperations, never()).get(TicketRedisKeys.balance(10L, 2L));
     }
 
+    @Test
+    void Redis_연결_실패로_한_주기를_건너뛰면_전체_스트릭이_초기화돼_다시_INFO부터_시작한다() {
+        givenBalance(1L, 10L, 5L);
+        givenRedisValue(1L, 10L, "3");
+        scheduler.reconcile();
+
+        when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
+                UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build()));
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L)))
+                .thenThrow(new RedisConnectionFailureException("connection refused"));
+        scheduler.reconcile();
+        logAppender.list.clear();
+
+        givenBalance(1L, 10L, 5L);
+        // 이전 스텁이 thenThrow였으므로 when(...).thenReturn(...)으로 재스텁하면 재스텁 과정에서
+        // 옛 스텁(예외)이 먼저 실행된다 - doReturn().when(...)으로 안전하게 교체한다.
+        org.mockito.Mockito.doReturn("3").when(valueOperations).get(TicketRedisKeys.balance(10L, 1L));
+        scheduler.reconcile();
+
+        assertThat(logAppender.list).noneMatch(event -> event.getLevel() == Level.WARN);
+        assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.INFO);
+    }
+
     private void givenBalance(Long memberId, Long creatorId, Long balance) {
         when(userTicketBalanceRepository.findAll()).thenReturn(List.of(
                 UserTicketBalance.builder().memberId(memberId).creatorId(creatorId).balance(balance).build()));
