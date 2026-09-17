@@ -18,7 +18,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.common.exception.BusinessException;
-import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.event.domain.EventErrorCode;
@@ -113,20 +112,20 @@ class DrawingPublicationServiceIntegrationTest {
         CountDownLatch start = new CountDownLatch(1);
 
         try (var executor = Executors.newFixedThreadPool(2)) {
-            Callable<Drawing> task = () -> {
+            Callable<DrawingPublicationResult> task = () -> {
                 ready.countDown();
                 start.await();
                 return service.publish(DRAWING_ID, ADMIN_ID);
             };
-            Future<Drawing> first = executor.submit(task);
-            Future<Drawing> second = executor.submit(task);
+            Future<DrawingPublicationResult> first = executor.submit(task);
+            Future<DrawingPublicationResult> second = executor.submit(task);
 
             ready.await();
             start.countDown();
 
             // 두 요청 모두 예외 없이 PUBLIC을 반환해야 한다(하나는 최초 전이, 하나는 멱등 성공).
-            assertThat(first.get().getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
-            assertThat(second.get().getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
+            assertThat(first.get().visibility()).isEqualTo(DrawingVisibility.PUBLIC);
+            assertThat(second.get().visibility()).isEqualTo(DrawingVisibility.PUBLIC);
         }
 
         assertThat(drawingRepository.findById(DRAWING_ID).orElseThrow().getVisibility())
@@ -144,10 +143,10 @@ class DrawingPublicationServiceIntegrationTest {
         service.publish(DRAWING_ID, ADMIN_ID);
         Instant firstPublishedAt = drawingRepository.findById(DRAWING_ID).orElseThrow().getPublishedAt();
 
-        Drawing replay = service.publish(DRAWING_ID, ADMIN_ID);
+        DrawingPublicationResult replay = service.publish(DRAWING_ID, ADMIN_ID);
 
         // DB 컬럼은 DATETIME(6)라 나노초 이하가 잘리므로, 두 값 모두 DB에서 다시 읽어 비교한다.
-        assertThat(replay.getPublishedAt()).isEqualTo(firstPublishedAt);
+        assertThat(replay.publishedAt()).isEqualTo(firstPublishedAt);
         assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name())
                 .isEqualTo("PUBLISHED");
     }

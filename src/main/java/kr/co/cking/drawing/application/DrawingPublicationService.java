@@ -21,13 +21,20 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 검증된 INITIAL Drawing 공개를 처리하는 내부 Service 계약이다(FR-P2-044, 취합v1.5.4 §12).
- * 외부 HTTP API로 노출하지 않는다 — 관리자 권한 검증·외부 엔드포인트·당첨자 Notification
- * 생성(FR-P4-114)은 호출자(시스템4의 PublicationService)가 자신의 Transaction 경계 안에서
- * 담당한다({@code docs/domains/drawing/README.md}의 "책임 경계" 절 참고). 공개는 Event.status가
- * {@code DRAW_COMPLETED}이고 공식 INITIAL Drawing이 {@code COMPLETED}+{@code PRIVATE}인
- * 경우에만 허용하며, Drawing 공개와 Event {@code DRAW_COMPLETED→PUBLISHED} 전이를 한 Tx로
- * 묶어 둘 다 반영되거나 둘 다 반영되지 않도록 한다. REDRAW 공개(FR-P4-115, Event가 이미
- * PUBLISHED인 경우)는 이번 구현 범위에서 제외한다.
+ * 외부 HTTP API로 노출하지 않는다 — 외부 엔드포인트와 당첨자 Notification 생성(FR-P4-114)은
+ * 호출자(시스템4의 PublicationService)가 자신의 Transaction 경계 안에서 담당한다
+ * ({@code docs/domains/drawing/README.md}의 "책임 경계" 절 참고). 이 메서드가
+ * {@code EventCommandService.publish()}까지 이미 호출하므로, 호출자는 이 메서드가 반환된
+ * 뒤 Event 전이를 별도로 다시 호출하면 안 된다(재호출 시 두 번째 호출이 이미 PUBLISHED인
+ * Event에 대해 {@code INVALID_STATE}로 실패해 호출자의 Transaction 전체가 Rollback된다).
+ * 관리자 권한(adminId)은 호출자가 1차 검증하는 것을 전제로 하되, 도메인 경계를 넘는 호출이므로
+ * 이 메서드도 {@link MemberQueryService#validateAdmin}으로 방어적으로 재검증한다.
+ *
+ * <p>공개는 Event.status가 {@code DRAW_COMPLETED}이고 공식 INITIAL Drawing이
+ * {@code COMPLETED}+{@code PRIVATE}인 경우에만 허용하며, Drawing 공개와 Event
+ * {@code DRAW_COMPLETED→PUBLISHED} 전이를 한 Tx로 묶어 둘 다 반영되거나 둘 다 반영되지
+ * 않도록 한다. REDRAW 공개(FR-P4-115, Event가 이미 PUBLISHED인 경우)는 이번 구현 범위에서
+ * 제외한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,7 +58,7 @@ public class DrawingPublicationService {
      * 스냅샷(PUBLISHED로 바뀌기 전)을 보는 불일치가 생겨 멱등 성공 대신 INVALID_STATE로 실패할
      * 수 있다.
      */
-    public Drawing publish(Long drawingId, Long adminId) {
+    public DrawingPublicationResult publish(Long drawingId, Long adminId) {
         memberQueryService.validateAdmin(adminId);
 
         Drawing drawing = drawingRepository.findByIdForPublish(drawingId)
@@ -66,7 +73,7 @@ public class DrawingPublicationService {
             if (event.status() != EventStatus.PUBLISHED) {
                 throw new BusinessException(EventErrorCode.INVALID_STATE);
             }
-            return drawing;
+            return toResult(drawing);
         }
 
         if (event.status() != EventStatus.DRAW_COMPLETED) {
@@ -75,6 +82,15 @@ public class DrawingPublicationService {
 
         drawing.publish(clock.instant());
         eventCommandService.publish(drawing.getEventId());
-        return drawing;
+        return toResult(drawing);
+    }
+
+    private DrawingPublicationResult toResult(Drawing drawing) {
+        return new DrawingPublicationResult(
+                drawing.getId(),
+                drawing.getEventId(),
+                drawing.getVisibility(),
+                drawing.getPublishedAt()
+        );
     }
 }

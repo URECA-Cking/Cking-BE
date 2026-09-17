@@ -62,9 +62,9 @@ class DrawingPublicationServiceTest {
         ReflectionTestUtils.setField(drawingPublicationService, "clock",
                 Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC));
 
-        Drawing result = drawingPublicationService.publish(1L, 99L);
+        DrawingPublicationResult result = drawingPublicationService.publish(1L, 99L);
 
-        assertThat(result.getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(result.visibility()).isEqualTo(DrawingVisibility.PUBLIC);
         verify(memberQueryService).validateAdmin(99L);
         verify(eventCommandService).publish(10L);
     }
@@ -75,9 +75,9 @@ class DrawingPublicationServiceTest {
         when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
         when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.PUBLISHED));
 
-        Drawing result = drawingPublicationService.publish(1L, 99L);
+        DrawingPublicationResult result = drawingPublicationService.publish(1L, 99L);
 
-        assertThat(result.getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(result.visibility()).isEqualTo(DrawingVisibility.PUBLIC);
         verify(memberQueryService).validateAdmin(99L);
         verifyNoInteractions(eventCommandService);
     }

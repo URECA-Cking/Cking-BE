@@ -40,9 +40,17 @@ FR-P2-044·통합 API 명세 v2.5 No.35(내부 Service 호출로 정정, 아래 
 안에서 호출되는 내부 계약이다(아래 "책임 경계" 참고). 이번 구현 범위는 INITIAL 공개만이며,
 REDRAW Drawing 공개(FR-P4-115, Event가 이미 `PUBLISHED`인 경우)는 제외한다.
 
-- 입력: `drawingId`(`Long`, 양수), `adminId`(`Long`, 양수 — 호출자가 이미 ADMIN임을 검증했다는
-  전제가 아니라, 이 메서드가 직접 `MemberQueryService.validateAdmin(adminId)`로 재검증한다).
-- 반환: 공개 처리 후의 `Drawing`(`visibility`, `publishedAt` 포함).
+- 입력: `drawingId`(`Long`, 양수), `adminId`(`Long`, 양수). 관리자 권한은 호출자(시스템4)가
+  1차 검증하는 것을 전제로 하되, 도메인 경계를 넘는 호출이므로 이 메서드도
+  `MemberQueryService.validateAdmin(adminId)`로 방어적으로 재검증한다.
+- 반환: 불변 결과 `DrawingPublicationResult(drawingId, eventId, visibility, publishedAt)`.
+  영속 상태의 `Drawing` Entity를 그대로 반환하지 않는다 — 도메인 간 참조는 Entity가 아닌
+  ID·DTO를 쓴다는 원칙(README "9. 코드 구조")에 따라, 호출자가 이 도메인의 Entity에 직접
+  의존하거나 같은 Transaction에서 상태를 바꿀 여지를 없앤다.
+- **중요**: 이 메서드가 `EventCommandService.publish(eventId)`까지 이미 호출해 Event
+  전이를 완료한다. 호출자는 이 메서드가 반환된 뒤 Event 전이를 별도로 다시 호출하면 안
+  된다 — 재호출하면 두 번째 호출이 이미 `PUBLISHED`인 Event에 대해 `INVALID_STATE`로
+  실패해 호출자의 Transaction 전체가 Rollback된다.
 - 공개 조건: 대상 Drawing이 `drawType = INITIAL`, `status = COMPLETED`, `visibility = PRIVATE`이고
   Event.status가 `DRAW_COMPLETED`여야 한다.
 - Drawing `PRIVATE → PUBLIC` 전이와 `EventCommandService.publish(eventId)`를 한 DB Tx로
@@ -59,10 +67,13 @@ REDRAW Drawing 공개(FR-P4-115, Event가 이미 `PUBLISHED`인 경우)는 제�
   PublicationService)가 이 메서드와 Notification 생성을 자신의 Transaction 경계 안에서
   함께 처리해야 FR-P4-114의 원자성 요구를 만족한다.
 
-**책임 경계(2026-09-17 코드리뷰에서 확정).** 원래 RTM에는 이 기능의 Transaction 소유자가
-FR-P2-044(시스템3/이 도메인)와 FR-P4-114(시스템4)에서 다르게 서술돼 있었다. 외부 API·관리자
-검증·Notification 생성까지 포함한 전체 Transaction은 **시스템4의 PublicationService가
-소유**하는 것으로 정리했고, 이 도메인은 "검증된 INITIAL Drawing을 공개하고 Event를 전이하는"
+**책임 경계(2026-09-17 코드리뷰에서 확정, `docs/management/rtm.csv`의 FR-P4-114에도 반영됨).**
+원래 RTM에는 이 기능의 Transaction 소유자가 FR-P2-044(시스템3/이 도메인)와 FR-P4-114(시스템4)에서
+다르게 서술돼 있었고, FR-P4-114 원문은 시스템4가 `EventCommandService.publish()`를 직접
+호출한다고 돼 있어 이 메서드를 호출한 뒤 그대로 구현하면 Event 전이가 중복 호출돼 Rollback되는
+문제가 있었다. 외부 API·관리자 1차 검증·Notification 생성까지 포함한 전체 Transaction은
+**시스템4의 PublicationService가 소유**하고, 이 메서드 호출 하나로 Drawing 공개와 Event 전이가
+모두 끝나는 것으로 정리했다. 이 도메인은 "검증된 INITIAL Drawing을 공개하고 Event를 전이하는"
 내부 Service 메서드만 제공한다. 시스템4 쪽 구현·외부 엔드포인트·Notification 원자성 통합은
 후속 작업이다.
 
