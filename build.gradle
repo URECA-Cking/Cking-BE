@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.1.1'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'me.champeau.jmh' version '0.7.3'
 }
 
 group = 'kr.co.cking'
@@ -41,4 +42,55 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+jmh {
+	jmhVersion = '1.37'
+	includes = ['kr\\.co\\.cking\\.drawing\\.benchmark\\.DrawingEngineBenchmark.*']
+	warmupIterations = 3
+	warmup = '1s'
+	iterations = 5
+	timeOnIteration = '1s'
+	fork = 2
+	threads = 1
+	profilers = ['gc']
+	failOnError = true
+	resultFormat = 'JSON'
+	resultsFile = layout.buildDirectory.file('reports/jmh/results.json').get().asFile
+	humanOutputFile = layout.buildDirectory.file('reports/jmh/human.txt').get().asFile
+	jvmArgsAppend = ['-Xms1g', '-Xmx1g']
+}
+
+def jmhJarTask = tasks.named('jmhJar')
+
+tasks.register('jmhSmoke', JavaExec) {
+	group = 'verification'
+	description = '최소 파라미터로 DrawingEngine JMH 구성을 빠르게 검증합니다.'
+	dependsOn jmhJarTask
+	classpath = files(jmhJarTask.flatMap { it.archiveFile })
+	mainClass = 'org.openjdk.jmh.Main'
+	jvmArgs = ['-Xms512m', '-Xmx512m']
+
+	def smokeReportDirectory = layout.buildDirectory.dir('reports/jmh').get().asFile
+	def smokeResultFile = new File(smokeReportDirectory, 'smoke-results.json')
+	def smokeHumanFile = new File(smokeReportDirectory, 'smoke-human.txt')
+
+	args = [
+			'kr.co.cking.drawing.benchmark.DrawingEngineBenchmark.*',
+			'-wi', '1',
+			'-i', '1',
+			'-f', '1',
+			'-w', '200ms',
+			'-r', '200ms',
+			'-p', 'candidateCount=1000',
+			'-p', 'winnerCount=1',
+			'-prof', 'gc',
+			'-rf', 'json',
+			'-rff', smokeResultFile.absolutePath,
+			'-o', smokeHumanFile.absolutePath
+	]
+
+	doFirst {
+		smokeReportDirectory.mkdirs()
+	}
 }
