@@ -2,8 +2,10 @@ package kr.co.cking.event.domain;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.event.application.service.EventCommandService;
+import kr.co.cking.event.application.service.EventOpenedEvent;
 import kr.co.cking.event.repository.EventRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 
@@ -103,7 +105,7 @@ class EventLifecycleTest {
         );
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
 
         eventCommandService.requestApproval(1L);
 
@@ -150,11 +152,44 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
 
         eventCommandService.approve(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.SCHEDULED);
+    }
+
+    @Test
+    void commandServiceOpensScheduledEvent() {
+        Event event = scheduledEvent();
+        EventRepository eventRepository = mock(EventRepository.class);
+        ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher);
+
+        eventCommandService.open(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
+        verify(eventRepository).findByEventId(1L);
+        verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
+    }
+
+    @Test
+    void alreadyOpenEventDoesNotPublishCacheInvalidationEventAgain() {
+        Event event = scheduledEvent();
+        EventRepository eventRepository = mock(EventRepository.class);
+        ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+        given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, eventPublisher);
+
+        eventCommandService.open(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
+        assertThatThrownBy(() -> eventCommandService.open(1L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(EventErrorCode.INVALID_STATE);
+        verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
     }
 
     @Test
@@ -173,11 +208,28 @@ class EventLifecycleTest {
         event.requestApproval();
         EventRepository eventRepository = mock(EventRepository.class);
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
-        EventCommandService eventCommandService = new EventCommandService(eventRepository);
+        EventCommandService eventCommandService = new EventCommandService(eventRepository, mock(ApplicationEventPublisher.class));
 
         eventCommandService.reject(1L, "일정 확인 필요");
         eventCommandService.changeToDraft(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    private Event scheduledEvent() {
+        Event event = new Event(
+                1L,
+                "팬미팅",
+                "설명",
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)),
+                3,
+                DrawMethod.WEIGHTED,
+                1L,
+                "550e8400-e29b-41d4-a716-446655440000"
+        );
+        event.requestApproval();
+        event.approve();
+        return event;
     }
 }
