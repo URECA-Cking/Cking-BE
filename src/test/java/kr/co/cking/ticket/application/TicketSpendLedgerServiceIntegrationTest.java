@@ -178,6 +178,17 @@ class TicketSpendLedgerServiceIntegrationTest {
     }
 
     @Test
+    void 같은_requestId에_creatorId만_달라도_반영하지_않는다() {
+        String requestId = UUID.randomUUID().toString();
+        ticketSpendLedgerService.apply(command(requestId, 4L));
+
+        SpendCommand conflicting = new SpendCommand(eventId, MEMBER_ID, OTHER_CREATOR_ID, requestId, 4L);
+
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void creatorId가_Event의_creatorId와_다르면_반영하지_않는다() {
         SpendCommand command = new SpendCommand(
                 otherCreatorEventId, MEMBER_ID, CREATOR_ID, UUID.randomUUID().toString(), 3L);

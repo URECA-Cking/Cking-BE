@@ -38,15 +38,12 @@ public class TicketSpendLedgerService {
     public void apply(SpendCommand command) {
         String requestId = command.requestId();
 
-        Optional<EventEntry> existing = eventEntryRepository.findByRequestId(requestId);
-        if (existing.isPresent()) {
-            verifySameRequest(existing.get(), command);
-            log.info("이미 반영된 SPEND 요청이라 재차감하지 않습니다. requestId={}", requestId);
-            return;
-        }
-
         // 교차 정합성(CLAUDE.md §11): SPEND Ledger.creator_id는 Event.creator_id와
-        // 같아야 한다 — 타 Creator 응모권 오용 방지 핵심.
+        // 같아야 한다 — 타 Creator 응모권 오용 방지 핵심. event_entry가 creatorId를
+        // 저장하지 않아 재전달 분기(멱등 확인)에서는 비교할 데이터가 없으므로, 이
+        // 검증은 신규/재전달 여부와 무관하게 모든 요청에 대해 먼저 수행한다(PR #87
+        // 리뷰 반영 — 이전에는 재전달 분기가 eventId/userId/ticketCount만 비교해서
+        // 동일 requestId에 creatorId만 다른 페이로드를 검증 없이 통과시켰다).
         Event event = eventRepository.findById(command.eventId())
                 .orElseThrow(() -> new IllegalStateException(
                         "eventId가 존재하지 않습니다. eventId=%d, requestId=%s"
@@ -55,6 +52,13 @@ public class TicketSpendLedgerService {
             throw new IllegalStateException(
                     "creatorId가 Event.creatorId와 다릅니다. eventId=%d, streamCreatorId=%d, eventCreatorId=%d, requestId=%s"
                             .formatted(command.eventId(), command.creatorId(), event.getCreatorId(), requestId));
+        }
+
+        Optional<EventEntry> existing = eventEntryRepository.findByRequestId(requestId);
+        if (existing.isPresent()) {
+            verifySameRequest(existing.get(), command);
+            log.info("이미 반영된 SPEND 요청이라 재차감하지 않습니다. requestId={}", requestId);
+            return;
         }
 
         Instant now = Instant.now();
