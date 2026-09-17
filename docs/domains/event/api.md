@@ -147,3 +147,17 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 - Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.
 - Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
 - `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
+
+## POST /api/events/{eventId}/close
+
+```json
+{ "userId": 1 }
+```
+
+ADMIN은 모든 Event, Creator는 자신이 소유한 Event에 수동 마감을 요청할 수 있다. 요청 Member와
+삭제되지 않은 Event가 존재해야 하며, Creator가 타인의 Event를 요청하면 `FORBIDDEN`이다. `OPEN` 상태에서만
+요청할 수 있고 그 외 상태는 `INVALID_STATE`다.
+
+성공 시 시스템2 `EventClosingService.startClosing(eventId)`가 Gate 차단·cutoff 확정·`OPEN → CLOSING`
+전이를 처리한다. 시스템4는 Redis Gate나 Stream을 직접 조작하지 않는다. Drain 완료는 비동기로 이어지며,
+성공 응답은 202이고 `{ "eventId": 1, "status": "CLOSING" }`다.
