@@ -9,15 +9,19 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import kr.co.cking.drawing.domain.Drawing;
+import kr.co.cking.drawing.domain.DrawingSnapshotContract;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
+import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
 import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -82,12 +86,8 @@ class DrawingWinnerRepositoryJpaTest {
         long secondSeedId = insertSeed();
 
         Drawing duplicate = Drawing.createInitial(
-                fixture.eventId(),
-                fixture.snapshotId(),
+                snapshotContract(fixture),
                 secondSeedId,
-                "WEIGHTED",
-                "WEIGHTED_V1",
-                2,
                 fixture.requestedBy()
         );
 
@@ -102,12 +102,8 @@ class DrawingWinnerRepositoryJpaTest {
         drawingRepository.saveAndFlush(initialDrawing(firstFixture));
 
         Drawing duplicate = Drawing.createInitial(
-                secondFixture.eventId(),
-                secondFixture.snapshotId(),
+                snapshotContract(secondFixture),
                 firstFixture.seedId(),
-                "WEIGHTED",
-                "WEIGHTED_V1",
-                2,
                 secondFixture.requestedBy()
         );
 
@@ -125,6 +121,42 @@ class DrawingWinnerRepositoryJpaTest {
         Drawing duplicate = redrawDrawing(fixture, 2, insertSeed(), original.getId(), redrawRequestId);
 
         assertThatThrownBy(() -> drawingRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void Drawing의_Event와_Snapshot의_Event가_다르면_저장할_수_없다() {
+        Fixture eventFixture = fixture();
+        Fixture snapshotFixture = fixture();
+        Drawing mismatch = Drawing.createInitial(
+                snapshotContract(snapshotFixture),
+                eventFixture.seedId(),
+                eventFixture.requestedBy()
+        );
+        ReflectionTestUtils.setField(mismatch, "eventId", eventFixture.eventId());
+
+        assertThatThrownBy(() -> drawingRepository.saveAndFlush(mismatch))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "drawMethod, UNIFORM",
+            "algorithmVersion, WEIGHTED_V2"
+    })
+    void Drawing의_확정_입력이_Snapshot과_다르면_저장할_수_없다(
+            String field,
+            String mismatchedValue
+    ) {
+        Fixture fixture = fixture();
+        Drawing mismatch = Drawing.createInitial(
+                snapshotContract(fixture),
+                fixture.seedId(),
+                fixture.requestedBy()
+        );
+        ReflectionTestUtils.setField(mismatch, field, mismatchedValue);
+
+        assertThatThrownBy(() -> drawingRepository.saveAndFlush(mismatch))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -189,6 +221,19 @@ class DrawingWinnerRepositoryJpaTest {
     }
 
     @Test
+    void Winner의_Event와_Drawing의_Event가_다르면_저장할_수_없다() {
+        Fixture drawingFixture = fixture();
+        Fixture winnerFixture = fixture();
+        Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(drawingFixture));
+        long memberId = insertMember("후보", "USER");
+        Winner mismatch = Winner.create(
+                winnerFixture.eventId(), drawing.getId(), memberId, 1, 3L);
+
+        assertThatThrownBy(() -> winnerRepository.saveAndFlush(mismatch))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void Winner에는_하나의_WinnerManagement만_연결할_수_있다() {
         Fixture fixture = fixture();
         Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
@@ -205,14 +250,24 @@ class DrawingWinnerRepositoryJpaTest {
 
     private Drawing initialDrawing(Fixture fixture) {
         return Drawing.createInitial(
-                fixture.eventId(),
-                fixture.snapshotId(),
+                snapshotContract(fixture),
                 fixture.seedId(),
-                "WEIGHTED",
-                "WEIGHTED_V1",
-                2,
                 fixture.requestedBy()
         );
+    }
+
+    private DrawingSnapshotContract snapshotContract(Fixture fixture) {
+        return DrawingSnapshotContract.from(new VerifiedSnapshot(
+                fixture.snapshotId(),
+                fixture.eventId(),
+                0,
+                0L,
+                2,
+                "WEIGHTED",
+                "WEIGHTED_V1",
+                "0".repeat(64),
+                List.of()
+        ));
     }
 
     private Drawing redrawDrawing(
@@ -223,12 +278,8 @@ class DrawingWinnerRepositoryJpaTest {
             long redrawRequestId
     ) {
         Drawing drawing = Drawing.createInitial(
-                fixture.eventId(),
-                fixture.snapshotId(),
+                snapshotContract(fixture),
                 seedId,
-                "WEIGHTED",
-                "WEIGHTED_V1",
-                1,
                 fixture.requestedBy()
         );
         ReflectionTestUtils.setField(drawing, "drawNo", drawNo);

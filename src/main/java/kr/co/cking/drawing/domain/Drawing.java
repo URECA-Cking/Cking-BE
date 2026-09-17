@@ -25,7 +25,8 @@ import org.hibernate.annotations.CreationTimestamp;
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_drawing_event_no", columnNames = {"event_id", "draw_no"}),
                 @UniqueConstraint(name = "uk_drawing_seed", columnNames = "seed_id"),
-                @UniqueConstraint(name = "uk_drawing_redraw_req", columnNames = "redraw_request_id")
+                @UniqueConstraint(name = "uk_drawing_redraw_req", columnNames = "redraw_request_id"),
+                @UniqueConstraint(name = "uk_drawing_id_event", columnNames = {"id", "event_id"})
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -110,43 +111,29 @@ public class Drawing {
     private long version;
 
     public static Drawing createInitial(
-            Long eventId,
-            Long snapshotId,
+            DrawingSnapshotContract snapshot,
             Long seedId,
-            String drawMethod,
-            String algorithmVersion,
-            int winnerCount,
             Long requestedBy
     ) {
-        requirePositive(eventId, "eventId");
-        requirePositive(snapshotId, "snapshotId");
+        if (snapshot == null) {
+            throw new IllegalArgumentException("검증된 Snapshot 계약은 필수입니다.");
+        }
         requirePositive(seedId, "seedId");
         requirePositive(requestedBy, "requestedBy");
-        requireText(drawMethod, "drawMethod");
-        requireText(algorithmVersion, "algorithmVersion");
-        if (winnerCount <= 0) {
-            throw new IllegalArgumentException("winnerCount는 양수여야 합니다.");
-        }
 
         Drawing drawing = new Drawing();
-        drawing.eventId = eventId;
+        drawing.eventId = snapshot.eventId();
         drawing.drawNo = 0;
         drawing.drawType = DrawingType.INITIAL;
-        drawing.snapshotId = snapshotId;
+        drawing.snapshotId = snapshot.snapshotId();
         drawing.seedId = seedId;
-        drawing.drawMethod = drawMethod;
-        drawing.algorithmVersion = algorithmVersion;
-        drawing.winnerCount = winnerCount;
+        drawing.drawMethod = snapshot.drawMethod();
+        drawing.algorithmVersion = snapshot.algorithmVersion();
+        drawing.winnerCount = snapshot.winnerCount();
         drawing.status = DrawingStatus.READY;
         drawing.visibility = DrawingVisibility.PRIVATE;
         drawing.requestedBy = requestedBy;
         drawing.attemptCount = 0;
         return drawing;
-    }
-
-    private static void requireText(String value, String name) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(name + "는 필수입니다.");
-        }
     }
 }
