@@ -3,11 +3,54 @@ package kr.co.cking.drawing.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
+
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class DrawingTest {
+
+    @Test
+    void 완료되고_비공개인_Drawing은_공개하면_PUBLIC이_되고_공개시각이_기록된다() {
+        Drawing drawing = completedDrawing();
+        Instant publishedAt = Instant.parse("2026-09-20T00:00:00Z");
+
+        drawing.publish(publishedAt);
+
+        assertThat(drawing.getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(drawing.getPublishedAt()).isEqualTo(publishedAt);
+    }
+
+    @Test
+    void 이미_공개된_Drawing을_다시_공개해도_공개시각이_바뀌지_않는다() {
+        Drawing drawing = completedDrawing();
+        Instant firstPublishedAt = Instant.parse("2026-09-20T00:00:00Z");
+        drawing.publish(firstPublishedAt);
+
+        drawing.publish(Instant.parse("2026-09-21T00:00:00Z"));
+
+        assertThat(drawing.getVisibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(drawing.getPublishedAt()).isEqualTo(firstPublishedAt);
+    }
+
+    @Test
+    void 완료되지_않은_Drawing은_공개할_수_없다() {
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+
+        assertThatThrownBy(() -> drawing.publish(Instant.now()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.DRAWING_NOT_COMPLETED);
+        assertThat(drawing.getVisibility()).isEqualTo(DrawingVisibility.PRIVATE);
+    }
+
+    private Drawing completedDrawing() {
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+        ReflectionTestUtils.setField(drawing, "status", DrawingStatus.COMPLETED);
+        return drawing;
+    }
 
     @Test
     void INITIAL_Drawing은_READY_PRIVATE_상태로_생성된다() {
