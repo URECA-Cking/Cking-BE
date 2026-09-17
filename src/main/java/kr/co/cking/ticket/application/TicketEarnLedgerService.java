@@ -1,6 +1,5 @@
 package kr.co.cking.ticket.application;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,28 +52,23 @@ public class TicketEarnLedgerService {
         }
 
         Instant now = Instant.now();
-        MissionCompletion completion;
 
-        try {
-            completion = missionCompletionRepository.save(
-                    MissionCompletion.builder()
-                            .memberId(command.userId())
-                            .creatorId(command.creatorId())
-                            .missionId(command.missionId())
-                            .periodKey(command.periodKey())
-                            .requestId(requestId)
-                            .completedAt(now)
-                            .build()
-            );
-        } catch (DataIntegrityViolationException e) {
-            // uk_completion_request/uk_completion_business 충돌. 같은 requestId로 이미
-            // 반영된 요청인지, 그리고 내용까지 같은지 확인한 뒤에만 정상 재전달로
-            // 판단한다 — 존재만으로 무조건 삼키지 않는다.
-            MissionCompletion raced = missionCompletionRepository.findByRequestId(requestId).orElseThrow(() -> e);
-            verifySameRequest(raced, command);
-            log.info("경합 끝에 이미 반영된 EARN 요청으로 확인했습니다. requestId={}", requestId);
-            return;
-        }
+        // uk_completion_request 충돌(진짜 동시 재전달 경합)이 나면 여기서 복구를 시도하지
+        // 않고 그대로 던져서 트랜잭션을 롤백한다 — INSERT 실패로 flush된 세션은 이미
+        // 오염된 상태라 같은 트랜잭션 안에서 재조회하면 Hibernate가
+        // AssertionFailure(null identifier)를 던진다. 호출자(Consumer)가 XACK하지 않고
+        // 재전달하면, 그때는 새 트랜잭션·새 세션에서 위 findByRequestId 확인이 그 사이
+        // 커밋된 행을 정상적으로 찾아 멱등 처리한다.
+        MissionCompletion completion = missionCompletionRepository.save(
+                MissionCompletion.builder()
+                        .memberId(command.userId())
+                        .creatorId(command.creatorId())
+                        .missionId(command.missionId())
+                        .periodKey(command.periodKey())
+                        .requestId(requestId)
+                        .completedAt(now)
+                        .build()
+        );
 
         UserTicketBalance balance = userTicketBalanceRepository
                 .findByMemberIdAndCreatorIdForUpdate(command.userId(), command.creatorId())

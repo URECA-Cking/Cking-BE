@@ -3,13 +3,21 @@ package kr.co.cking.ticket.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.mission.MissionCompletion;
@@ -136,6 +144,65 @@ class TicketEarnLedgerServiceIntegrationTest {
 
         ticketEarnLedgerService.apply(command);
         ticketEarnLedgerService.apply(command); // at-least-once 재전달 시뮬레이션
+
+        Integer completionCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM mission_completion WHERE member_id = ?", Integer.class, MEMBER_ID);
+        Integer ledgerCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM ticket_ledger WHERE member_id = ?", Integer.class, MEMBER_ID);
+        UserTicketBalance balance = userTicketBalanceRepository
+                .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)
+                .orElseThrow();
+
+        assertThat(completionCount).isEqualTo(1);
+        assertThat(ledgerCount).isEqualTo(1);
+        assertThat(balance.getBalance()).isEqualTo(4L);
+    }
+
+    // PR #54 리뷰 반영: PEL 재수신·다중 Consumer 환경처럼 같은 requestId가 동시에
+    // 재전달돼도 findByRequestId 확인과 INSERT 사이 경쟁 상황에서 최종적으로
+    // mission_completion·ticket_ledger가 각각 1건만 생성되고 balance도 한 번만
+    // 증가해야 한다. 경합에서 진 스레드는 uk_completion_request 위반으로 트랜잭션이
+    // 롤백되고 예외를 던진다 — 같은 트랜잭션 안에서 즉시 복구를 시도하면 이미
+    // 오염된 Hibernate 세션 때문에 AssertionFailure가 나므로(재현 확인됨), 복구는
+    // 재시도(재전달)에 맡기고 여기서는 "1건만 성공하고 나머지는 멱등 위반으로
+    // 실패한다"까지만 검증한다.
+    @Test
+    void 동시에_같은_requestId가_재전달돼도_한_번만_반영된다() throws InterruptedException {
+        UUID requestId = UUID.randomUUID();
+        EarnCommand command = command(requestId, "2026-09-16", 4L);
+
+        int threadCount = 20;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        List<Future<Boolean>> futures = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < threadCount; i++) {
+                futures.add(executor.submit(() -> {
+                    startLatch.await();
+                    try {
+                        ticketEarnLedgerService.apply(command);
+                        return true;
+                    } catch (DataAccessException e) {
+                        return false;
+                    }
+                }));
+            }
+
+            startLatch.countDown();
+
+            long succeeded = 0;
+            for (Future<Boolean> future : futures) {
+                if (future.get()) {
+                    succeeded++;
+                }
+            }
+            assertThat(succeeded).isGreaterThanOrEqualTo(1L);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException(e);
+        } finally {
+            executor.shutdown();
+        }
 
         Integer completionCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM mission_completion WHERE member_id = ?", Integer.class, MEMBER_ID);
