@@ -6,7 +6,6 @@ import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.application.MissionCompletionRecorder;
 import kr.co.cking.mission.application.MissionCompletionService;
-import kr.co.cking.mission.application.MissionEarnGuard;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.Mission;
@@ -48,12 +47,11 @@ class MissionCompletionServiceTest {
     private final MissionRepository missionRepository = mock(MissionRepository.class);
     private final MissionCompletionRepository missionCompletionRepository = mock(MissionCompletionRepository.class);
     private final MissionCompletionRecorder missionCompletionRecorder = mock(MissionCompletionRecorder.class);
-    private final MissionEarnGuard missionEarnGuard = mock(MissionEarnGuard.class);
     private final TicketEarnService ticketEarnService = mock(TicketEarnService.class);
 
     private final MissionCompletionService service = new MissionCompletionService(
             memberRepository, missionRepository, missionCompletionRepository, missionCompletionRecorder,
-            missionEarnGuard, ticketEarnService, clock);
+            ticketEarnService, clock);
 
     private static final Long USER_ID = 1L;
     private static final Long CREATOR_ID = 10L;
@@ -94,7 +92,7 @@ class MissionCompletionServiceTest {
         Clock lateClock = Clock.fixed(lateUtc, ZoneOffset.UTC);
         MissionCompletionService lateService = new MissionCompletionService(
                 memberRepository, missionRepository, missionCompletionRepository, missionCompletionRecorder,
-                missionEarnGuard, ticketEarnService, lateClock);
+                ticketEarnService, lateClock);
         stubMemberAndMission(attendanceMission());
         when(missionCompletionRepository.findByRequestId(any())).thenReturn(Optional.empty());
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));

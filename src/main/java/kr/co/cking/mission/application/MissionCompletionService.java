@@ -29,10 +29,14 @@ import java.util.UUID;
 /**
  * 미션 완료 처리 + EARN 연동(FR-P1-005~008, 014~016).
  *
- * <p>중복 방지의 최종 방어선은 {@code mission_completion}의 DB UNIQUE 제약
- * ({@code uk_completion_business}, {@code uk_completion_request})이다. {@link MissionEarnGuard}
- * (Redis SETNX, TTL 25시간)는 그 앞단의 관측·최적화용 가드로, 실패해도 판정 로직은
- * 바뀌지 않고 그대로 DB 기반 검증을 탄다 — Redis가 죽어도 정합성엔 영향이 없다.
+ * <p>중복 방지는 두 레이어로 나뉜다 — 이 클래스는 {@code mission_completion}의 DB UNIQUE
+ * 제약({@code uk_completion_business}, {@code uk_completion_request})까지만 책임진다.
+ * Redis 쪽 가드(《mission:earn-guard:...》, requestId/fingerprint 비교 포함)는
+ * {@code ticket-earn.lua}(이슈 #30, PR #63)가 이미 원자적으로 처리하므로 이 클래스가
+ * 같은 키를 다시 건드리지 않는다 — 예전에 관측용으로 {@code MissionEarnGuard}를 여기서
+ * 같은 키에 SETNX 했다가, Lua의 자체 판정과 충돌해 정상 요청까지 DUPLICATE_MISSION으로
+ * 오판되는 버그가 있었다(제거됨, PR #78 리뷰).
+ *
  *
  * <p><b>알려진 제약(미해결)</b>: {@code earn()}이 이슈 #30(Business Key 가드) 완료 전까지
  * 멱등하지 않아서(같은 커맨드를 두 번 부르면 잔액이 두 번 오른다 — {@code TicketEarnServiceImplTest}의
@@ -55,7 +59,6 @@ public class MissionCompletionService {
     private final MissionRepository missionRepository;
     private final MissionCompletionRepository missionCompletionRepository;
     private final MissionCompletionRecorder missionCompletionRecorder;
-    private final MissionEarnGuard missionEarnGuard;
     private final TicketEarnService ticketEarnService;
     private final Clock clock;
 
@@ -79,13 +82,6 @@ public class MissionCompletionService {
 
         String requestId = command.requestId().toString();
         String periodKey = periodKeyOf(now);
-
-        boolean firstAttempt = missionEarnGuard.tryAcquire(command.userId(), mission.getType(), creatorId, now.toLocalDate());
-        if (!firstAttempt) {
-            // 가드는 관측·최적화 목적일 뿐 판정을 바꾸지 않는다 — 아래 DB 기반 로직을 그대로 탄다.
-            log.info("mission earn guard already held, falling through to DB dedup: userId={}, missionId={}",
-                    command.userId(), missionId);
-        }
 
         // 1) 동일 requestId 재전송 — 기존 결과 반환(네트워크 재시도 멱등성, FR-P1-016~017)
         //    단, 같은 requestId에 다른 내용(userId/creatorId/missionId)이 들어오면
