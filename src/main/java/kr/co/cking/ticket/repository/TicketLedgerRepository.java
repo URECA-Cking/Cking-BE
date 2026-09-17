@@ -7,10 +7,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import kr.co.cking.ticket.domain.TicketLedger;
 
 public interface TicketLedgerRepository extends JpaRepository<TicketLedger, Long> {
+
+    Optional<TicketLedger> findByRequestId(String requestId);
 
     @Query(value = """
             select l.ledger_id as ledgerId, l.delta_amount as deltaAmount, l.type as type,

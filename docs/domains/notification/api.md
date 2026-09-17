@@ -1,44 +1,48 @@
 # Notification API
 
+모든 성공·실패 응답은 [공통 API 규약](../../common/api.md)의 응답 봉투를 사용한다. 아래 예시는 `data` 값이다.
+
+## GET /api/me/notifications
+
+Query: `userId`(필수), `page`(기본 0), `size`(기본 20, 최대 100).
+
+요청 Member가 존재해야 하며, 해당 Member의 Notification만 반환한다. 정렬은 `createdAt DESC, notificationId DESC`다. `readAt`이 `null`이면 읽지 않음이며, 값이 있으면 읽음이다.
+
+```json
+{
+  "items": [{
+    "notificationId": 1,
+    "event": { "eventId": 10, "title": "팬미팅 이벤트" },
+    "drawing": { "drawingId": 20, "drawNo": 0, "drawType": "INITIAL" },
+    "type": "INITIAL_WINNER",
+    "title": "당첨 안내",
+    "body": "축하합니다.",
+    "createdAt": "2026-09-17T00:00:00Z",
+    "readAt": null
+  }],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasNext": false
+}
+```
+
+- `type`은 최초 추첨 당첨 알림인 `INITIAL_WINNER` 또는 재추첨 당첨 알림인 `REDRAW_WINNER`다.
+- 존재하지 않는 Member는 `RESOURCE_NOT_FOUND`를 반환한다.
+
 ## PATCH /api/me/notifications/{notificationId}/read
 
-사용자가 자신의 인앱 알림을 읽음 처리한다.
-
-### 요청
+사용자가 자신의 인앱 알림을 읽음 처리한다. 요청 본문은 `{"userId": 1}`이다.
 
 ```json
 {
-  "userId": 1
+  "notificationId": 10,
+  "readAt": "2026-09-17T01:00:00Z"
 }
 ```
 
-### 성공 응답
-
-```json
-{
-  "code": "SUCCESS",
-  "data": {
-    "notificationId": 10,
-    "readAt": "2026-09-17T01:00:00Z"
-  },
-  "message": null
-}
-```
-
-### 처리 규칙
-
-- `userId`에 해당하는 Member가 없으면 `RESOURCE_NOT_FOUND`를 반환한다.
-- Notification이 없으면 `NOTIFICATION_NOT_FOUND`를 반환한다.
-- 요청 사용자가 Notification의 소유자가 아니면 `FORBIDDEN`을 반환한다.
-- 최초 요청만 `readAt`에 UTC 시각을 저장한다.
-- 이미 읽은 Notification은 기존 `readAt`을 그대로 반환한다.
-- Notification 행을 비관적 쓰기 잠금으로 조회해 동시 요청도 하나의 `readAt`으로 일관되게 처리한다.
-
-### 오류 코드
-
-| HTTP | code | 조건 |
-| --- | --- | --- |
-| 400 | `VALIDATION_FAILED` | `userId` 누락 |
-| 403 | `FORBIDDEN` | 타 사용자의 Notification |
-| 404 | `RESOURCE_NOT_FOUND` | 존재하지 않는 Member |
-| 404 | `NOTIFICATION_NOT_FOUND` | 존재하지 않는 Notification |
+- 존재하지 않는 Member는 `RESOURCE_NOT_FOUND`, 알림은 `NOTIFICATION_NOT_FOUND`를 반환한다.
+- 타 사용자의 알림은 `FORBIDDEN`을 반환한다.
+- 최초 요청만 UTC `readAt`을 저장하며, 이후 요청은 기존 값을 반환한다.
+- 알림 행을 비관적 쓰기 잠금으로 조회해 동시 요청에도 하나의 `readAt`을 보장한다.

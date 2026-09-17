@@ -31,7 +31,7 @@ public class NotificationReadService {
         }
 
         notification.markAsRead(Instant.now());
-        return new NotificationReadResult(notification.getId(), notification.getReadAt());
+        return new NotificationReadResult(notification.getNotificationId(), notification.getReadAt());
     }
 
     /** 요청 사용자 존재 여부를 검증한다. */

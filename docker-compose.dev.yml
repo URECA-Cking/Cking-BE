@@ -1,15 +1,17 @@
 # 개발 서버(EC2)용. DB는 RDS를 사용하므로 mysql 서비스를 두지 않는다.
-# 환경변수는 같은 디렉터리의 .env에서 읽는다. .env는 커밋하지 않는다.
+# 환경변수는 deploy/deploy.sh가 Parameter Store에서 읽어 넘긴다. 서버에 .env를 두지 않는다.
 
 services:
   redis:
     image: redis:7.2-alpine
     container_name: cking-redis
     restart: unless-stopped
+    # maxmemory: 인프라 명세 3.4의 초기 배분값. noeviction은 한도가 있어야 동작한다.
     # noeviction: 응모권 잔액 키가 축출되면 명세 2.4의 BALANCE_NOT_LOADED 복구가 상시 유발된다.
     # appendonly: 컨테이너 재시작 시 잔액을 잃지 않도록 AOF를 사용한다.
     command: >
       redis-server
+      --maxmemory 256mb
       --maxmemory-policy noeviction
       --appendonly yes
       --appendfsync everysec
@@ -22,7 +24,8 @@ services:
         max-file: "5"
 
   app:
-    image: ghcr.io/ureca-cking/cking-be:latest
+    # 태그는 배포 시점에 deploy.sh가 지정한다. latest는 동시 빌드 시 과거 이미지로 덮어써질 수 있다.
+    image: ghcr.io/ureca-cking/cking-be:${IMAGE_TAG:?배포 태그가 지정되지 않았습니다}
     container_name: cking-app
     restart: unless-stopped
     depends_on:

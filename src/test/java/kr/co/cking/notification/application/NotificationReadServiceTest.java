@@ -106,7 +106,7 @@ class NotificationReadServiceTest {
     private Notification notificationOf(Long memberId, Instant readAt) {
         Notification notification = new Notification(memberId, 2L, 3L, 4L,
                 NotificationType.INITIAL_WINNER, "당첨 안내", "축하합니다.", Instant.now());
-        ReflectionTestUtils.setField(notification, "id", 10L);
+        ReflectionTestUtils.setField(notification, "notificationId", 10L);
         if (readAt != null) {
             notification.markAsRead(readAt);
         }
