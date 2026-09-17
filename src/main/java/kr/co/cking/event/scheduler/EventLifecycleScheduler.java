@@ -42,6 +42,7 @@ public class EventLifecycleScheduler {
     private final OfficialSnapshotService officialSnapshotService;
     private final Clock clock;
 
+    /** 예약 시작, 마감 시작, Drain 완료 처리를 순서대로 한 번 실행한다. */
     @Scheduled(fixedDelayString = "${cking.event.lifecycle-interval-ms:10000}")
     public void run() {
         openScheduledEvents();
@@ -49,6 +50,7 @@ public class EventLifecycleScheduler {
         completeDrainedEvents();
     }
 
+    /** 시작 시각에 도달한 예약 Event를 OPEN 상태로 전이한다. */
     private void openScheduledEvents() {
         Instant now = clock.instant();
         for (Event event : eventRepository.findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
@@ -65,6 +67,7 @@ public class EventLifecycleScheduler {
         }
     }
 
+    /** 종료 시각이 지난 OPEN Event의 마감 시작을 시스템2 서비스에 요청한다. */
     private void startClosingOverdueEvents() {
         Instant now = clock.instant();
         for (Event event : eventRepository.findByStatusAndEndAtLessThanEqual(EventStatus.OPEN, now)) {
@@ -77,6 +80,7 @@ public class EventLifecycleScheduler {
         }
     }
 
+    /** cutoff까지 Drain된 CLOSING Event를 CLOSED로 확정하고 공식 Snapshot 생성을 요청한다. */
     private void completeDrainedEvents() {
         for (Event event : eventRepository.findByStatus(EventStatus.CLOSING)) {
             Long eventId = event.getEventId();

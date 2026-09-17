@@ -48,6 +48,7 @@ public class ManualEventCloseService {
         return eventClosingService.startClosing(eventId);
     }
 
+    /** 관리자 전체 권한 또는 Creator의 Event 소유권을 검증한다. */
     private void authorize(Member member, Event event) {
         if (member.getRole() == MemberRole.ADMIN) {
             return;

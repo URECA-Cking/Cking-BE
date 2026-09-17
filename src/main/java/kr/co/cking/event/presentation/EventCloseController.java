@@ -20,6 +20,7 @@ public class EventCloseController {
 
     private final ManualEventCloseService manualEventCloseService;
 
+    /** 검증된 수동 마감 요청을 처리하고 현재 마감 상태만 202 응답으로 반환한다. */
     @PostMapping("/api/events/{eventId}/close")
     public ResponseEntity<ApiResponse<EventCloseResponse>> close(
             @PathVariable Long eventId,
