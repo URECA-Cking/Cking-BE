@@ -90,11 +90,15 @@ public class DummyDataSeeder implements CommandLineRunner {
         return creators;
     }
 
+    // Redis는 항상 이 DB 값(UserTicketBalance.balance) 기준으로 맞춘다 - INITIAL_BALANCE를
+    // 그대로 SET하면 시딩 후 실제 응모권 사용으로 DB만 변한 상태(예: DB=3)에서 재실행 시
+    // Redis가 5로 되돌아가 정합성 배치가 잡아야 할 불일치를 시더 스스로 만들어낸다(PR #83 리뷰).
     private void seedBalances(List<Member> users, List<Creator> creators) {
         Instant now = Instant.now();
         for (Member user : users) {
             for (Creator creator : creators) {
-                balanceRepository.findByMemberIdAndCreatorId(user.getMemberId(), creator.getCreatorId())
+                UserTicketBalance balance = balanceRepository
+                        .findByMemberIdAndCreatorId(user.getMemberId(), creator.getCreatorId())
                         .orElseGet(() -> balanceRepository.save(UserTicketBalance.builder()
                                 .memberId(user.getMemberId())
                                 .creatorId(creator.getCreatorId())
@@ -103,7 +107,7 @@ public class DummyDataSeeder implements CommandLineRunner {
                                 .build()));
                 redisTemplate.opsForValue().set(
                         TicketRedisKeys.balance(creator.getCreatorId(), user.getMemberId()),
-                        String.valueOf(INITIAL_BALANCE));
+                        String.valueOf(balance.getBalance()));
             }
         }
     }

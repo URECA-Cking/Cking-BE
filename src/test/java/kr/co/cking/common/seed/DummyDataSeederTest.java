@@ -98,23 +98,53 @@ class DummyDataSeederTest {
     }
 
     // Redis만 유실된 상황(DB는 온전)을 시뮬레이션한다. SET은 멱등이라 재실행하면
-    // DB 재생성 없이도 Redis 값만 다시 채워져야 한다.
+    // DB 재생성 없이도 Redis 값만 다시 채워져야 한다. 이때도 INITIAL_BALANCE가 아니라
+    // "그 시점의 실제 DB 값"으로 복구돼야 하므로, DB를 응모권 사용 상황(3)으로 바꿔둔
+    // 뒤 검증한다.
     @Test
-    void Redis_잔액만_유실된_상태에서_재실행하면_Redis만_복구한다() {
+    void Redis_잔액만_유실된_상태에서_재실행하면_DB_값_기준으로_Redis를_복구한다() {
         seeder.run();
         List<Long> userIds = dummyMemberIds("dummy-user-%@cking.test");
         List<Long> creatorIds = jdbcTemplate.queryForList(
                 "SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
                         + "WHERE m.email LIKE 'dummy-creator-%@cking.test'",
                 Long.class);
-        String key = TicketRedisKeys.balance(creatorIds.get(0), userIds.get(0));
+        Long userId = userIds.get(0);
+        Long creatorId = creatorIds.get(0);
+        String key = TicketRedisKeys.balance(creatorId, userId);
+        jdbcTemplate.update(
+                "UPDATE user_ticket_balance SET balance = 3 WHERE member_id = ? AND creator_id = ?", userId, creatorId);
         redisTemplate.delete(key);
         long memberCountBeforeRepair = memberRepository.count();
 
         seeder.run();
 
-        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("5");
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("3");
         assertThat(memberRepository.count()).isEqualTo(memberCountBeforeRepair);
+    }
+
+    // PR #83 리뷰의 핵심 재현: 시딩 후 실제 응모권 사용으로 DB=3, Redis="3"이 된 상태에서
+    // (Redis 키가 지워진 게 아니라 이미 정상 존재) 시더를 재실행해도 Redis가 5로
+    // 되돌아가면 안 된다 - 예전 코드는 INITIAL_BALANCE를 조건 없이 SET해서 이 경우
+    // 시더 스스로 DB/Redis 불일치를 만들어냈다.
+    @Test
+    void 사용으로_잔액이_바뀐_뒤_재실행해도_Redis가_초기값으로_되돌아가지_않는다() {
+        seeder.run();
+        List<Long> userIds = dummyMemberIds("dummy-user-%@cking.test");
+        List<Long> creatorIds = jdbcTemplate.queryForList(
+                "SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                        + "WHERE m.email LIKE 'dummy-creator-%@cking.test'",
+                Long.class);
+        Long userId = userIds.get(0);
+        Long creatorId = creatorIds.get(0);
+        String key = TicketRedisKeys.balance(creatorId, userId);
+        jdbcTemplate.update(
+                "UPDATE user_ticket_balance SET balance = 3 WHERE member_id = ? AND creator_id = ?", userId, creatorId);
+        redisTemplate.opsForValue().set(key, "3");
+
+        seeder.run();
+
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("3");
     }
 
     private List<Long> dummyMemberIds(String emailLike) {
