@@ -38,7 +38,7 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 
 ### `DrawingPublicationService.publish(Long drawingId, Long adminId)`
 
-FR-P2-044·통합 API 명세 v2.5 No.35. INITIAL Drawing의 결과를 공개하고 Event를
+FR-P2-044·API 인덱스 내부 No.57. INITIAL Drawing의 결과를 공개하고 Event를
 `DRAW_COMPLETED → PUBLISHED`로 전이한다. 관리자 공개 API는
 `docs/domains/drawing/api.md`에 정의하며, Controller는 이 메서드를 호출해 상태 전이를
 위임한다. 이번 구현 범위는 INITIAL 공개만이며, REDRAW Drawing 공개(FR-P4-115, Event가 이미
