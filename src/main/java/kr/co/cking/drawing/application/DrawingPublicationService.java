@@ -22,13 +22,15 @@ import kr.co.cking.member.application.MemberQueryService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 검증된 INITIAL Drawing을 공개하고 연결 Event를 {@code DRAW_COMPLETED → PUBLISHED}로
- * 전이하는 Service다(FR-P2-044, 취합v1.5.4 §12). 관리자 공개 API Controller는 시스템4
+ * 검증된 Drawing을 공개하는 시스템3 Service다(FR-P2-044·FR-P4-115, 취합v1.5.4 §12). INITIAL은
+ * 연결 Event를 {@code DRAW_COMPLETED → PUBLISHED}로 전이하고, REDRAW는 이미 공개된 Event를
+ * {@code PUBLISHED}로 유지한다. 관리자 공개 API Controller는 시스템4
  * {@code PublicationService}에 {@code drawingId}, {@code userId}를 전달하고,
  * {@code PublicationService}가 이 Service를 호출한다. 이 Service는 관리자 권한과 공개 조건을
  * 검증한다.
- * 이 메서드가 {@code EventCommandService.publish()}까지 이미 호출하므로, 호출자는 반환 후 Event
- * 전이를 별도로 다시 호출하면 안 된다. 재호출하면 이미 {@code PUBLISHED}인 Event가
+ * INITIAL 처리에서 이 메서드가 {@code EventCommandService.publish()}까지 이미 호출하므로, 호출자는 반환 후 Event
+ * 전이를 별도로 다시 호출하면 안 된다. REDRAW 처리에서는 이 메서드도 Event 전이 메서드를 호출하지 않는다.
+ * INITIAL 처리 후 재호출하면 이미 {@code PUBLISHED}인 Event가
  * {@code INVALID_STATE}로 실패할 수 있다. 반환값의
  * {@link DrawingPublicationResult#outcome}이 {@code PUBLISHED}일 때만 이번 호출에서 실제
  * 전이가 일어났다는 뜻이다 — 호출자는 이 값이 {@code PUBLISHED}일 때만 신규 Winner
@@ -36,11 +38,10 @@ import lombok.RequiredArgsConstructor;
  * 재요청)에서도 매번 Notification 생성을 시도하면 DB unique 제약 위반으로 멱등 성공이어야
  * 할 호출이 예외로 실패할 수 있다.
  *
- * <p>공개는 Event.status가 {@code DRAW_COMPLETED}이고 공식 INITIAL Drawing이
+ * <p>INITIAL 공개는 Event.status가 {@code DRAW_COMPLETED}이고 Drawing이
  * {@code COMPLETED}+{@code PRIVATE}인 경우에만 허용하며, Drawing 공개와 Event
- * {@code DRAW_COMPLETED→PUBLISHED} 전이를 한 Tx로 묶어 둘 다 반영되거나 둘 다 반영되지
- * 않도록 한다. REDRAW 공개(FR-P4-115, Event가 이미 PUBLISHED인 경우)는 이번 구현 범위에서
- * 제외한다.
+ * {@code DRAW_COMPLETED→PUBLISHED} 전이를 한 Tx로 묶는다. REDRAW 공개는 Event가 이미
+ * {@code PUBLISHED}이고 Drawing이 {@code COMPLETED}인 경우에만 허용하며 Drawing만 공개한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -70,29 +71,47 @@ public class DrawingPublicationService {
 
         Drawing drawing = drawingRepository.findByIdForPublish(drawingId)
                 .orElseThrow(() -> new BusinessException(DrawingErrorCode.DRAWING_NOT_FOUND));
-        if (drawing.getDrawType() != DrawingType.INITIAL) {
-            throw new BusinessException(DrawingErrorCode.DRAWING_TYPE_NOT_SUPPORTED);
-        }
         if (drawing.getStatus() != DrawingStatus.COMPLETED) {
             throw new BusinessException(DrawingErrorCode.DRAWING_NOT_COMPLETED);
         }
 
         EventDrawingSource event = eventDrawingQueryService.getDrawingSourceForUpdate(drawing.getEventId());
 
+        return switch (drawing.getDrawType()) {
+            case INITIAL -> publishInitial(drawing, event.status());
+            case REDRAW -> publishRedraw(drawing, event.status());
+        };
+    }
+
+    /** INITIAL Drawing을 공개하고 연결 Event를 PUBLISHED로 전이한다. */
+    private DrawingPublicationResult publishInitial(Drawing drawing, EventStatus eventStatus) {
         if (drawing.getVisibility() == DrawingVisibility.PUBLIC) {
-            if (event.status() != EventStatus.PUBLISHED) {
-                throw new BusinessException(EventErrorCode.INVALID_STATE);
-            }
+            validatePublishedEvent(eventStatus);
             return toResult(drawing, PublicationOutcome.ALREADY_PUBLISHED);
         }
-
-        if (event.status() != EventStatus.DRAW_COMPLETED) {
+        if (eventStatus != EventStatus.DRAW_COMPLETED) {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
-
         drawing.publish(clock.instant());
         eventCommandService.publish(drawing.getEventId());
         return toResult(drawing, PublicationOutcome.PUBLISHED);
+    }
+
+    /** REDRAW Drawing을 공개하되 이미 PUBLISHED인 Event 상태는 변경하지 않는다. */
+    private DrawingPublicationResult publishRedraw(Drawing drawing, EventStatus eventStatus) {
+        validatePublishedEvent(eventStatus);
+        if (drawing.getVisibility() == DrawingVisibility.PUBLIC) {
+            return toResult(drawing, PublicationOutcome.ALREADY_PUBLISHED);
+        }
+        drawing.publish(clock.instant());
+        return toResult(drawing, PublicationOutcome.PUBLISHED);
+    }
+
+    /** 공개 완료 또는 REDRAW 공개의 전제인 Event PUBLISHED 상태를 검증한다. */
+    private void validatePublishedEvent(EventStatus eventStatus) {
+        if (eventStatus != EventStatus.PUBLISHED) {
+            throw new BusinessException(EventErrorCode.INVALID_STATE);
+        }
     }
 
     /** 공개 처리 후 영속 Entity 대신 호출 경계를 위한 불변 결과를 만든다. */
@@ -100,6 +119,7 @@ public class DrawingPublicationService {
         return new DrawingPublicationResult(
                 drawing.getId(),
                 drawing.getEventId(),
+                drawing.getDrawType(),
                 drawing.getVisibility(),
                 drawing.getPublishedAt(),
                 outcome

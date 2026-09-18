@@ -44,4 +44,18 @@ class WinnerNotificationServiceTest {
                 org.assertj.core.groups.Tuple.tuple(20L, 10L, 101L, 3L, NotificationType.INITIAL_WINNER)
         );
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void REDRAW_Drawing의_Winner별로_재추첨_당첨_알림을_저장한다() {
+        winnerNotificationService.createRedrawWinnerNotifications(20L, 10L, List.of(
+                new WinnerNotificationTarget(100L, 2L),
+                new WinnerNotificationTarget(101L, 3L)
+        ));
+
+        ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
+        verify(notificationRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).extracting(Notification::getType)
+                .containsOnly(NotificationType.REDRAW_WINNER);
+    }
 }

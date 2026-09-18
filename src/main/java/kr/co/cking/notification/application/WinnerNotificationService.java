@@ -14,6 +14,8 @@ public class WinnerNotificationService {
 
     private static final String INITIAL_WINNER_TITLE = "당첨 안내";
     private static final String INITIAL_WINNER_BODY = "이벤트 당첨자로 선정되었습니다.";
+    private static final String REDRAW_WINNER_TITLE = "재추첨 당첨 안내";
+    private static final String REDRAW_WINNER_BODY = "이벤트 재추첨 당첨자로 선정되었습니다.";
 
     private final NotificationRepository notificationRepository;
 
@@ -27,6 +29,21 @@ public class WinnerNotificationService {
                 .map(target -> new Notification(
                         target.memberId(), eventId, drawingId, target.winnerId(),
                         NotificationType.INITIAL_WINNER, INITIAL_WINNER_TITLE, INITIAL_WINNER_BODY
+                ))
+                .toList();
+        notificationRepository.saveAll(notifications);
+    }
+
+    /** REDRAW Drawing의 Winner마다 재추첨 당첨 Notification을 저장한다. */
+    public void createRedrawWinnerNotifications(
+            Long eventId,
+            Long drawingId,
+            List<WinnerNotificationTarget> targets
+    ) {
+        List<Notification> notifications = targets.stream()
+                .map(target -> new Notification(
+                        target.memberId(), eventId, drawingId, target.winnerId(),
+                        NotificationType.REDRAW_WINNER, REDRAW_WINNER_TITLE, REDRAW_WINNER_BODY
                 ))
                 .toList();
         notificationRepository.saveAll(notifications);
