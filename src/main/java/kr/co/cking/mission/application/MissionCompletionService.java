@@ -10,6 +10,7 @@ import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.MissionErrorCode;
 import kr.co.cking.ticket.application.TicketEarnService;
 import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,12 @@ import java.util.Locale;
  * 트랜잭션에 반영한다(취합v1.5.4 §4.5). 이 API가 {@code mission_completion}을 먼저
  * 써버리면 Consumer가 재전달로 오판해 Ledger·Balance 반영을 건너뛰므로, 이 클래스는
  * Redis/Stream 계층(EARN 결과코드) 밖의 어떤 영속 상태도 직접 만들지 않는다.
+ *
+ * <p><b>기존 requestId 조회를 미션 활성 검증보다 먼저 한다(Issue #125)</b>: 미션이
+ * 종료된 뒤 이미 성공했던 requestId가 재전송되면, {@link TicketEarnService#findExisting}로
+ * 먼저 확인해 {@code MISSION_INACTIVE}가 아니라 기존 성공 결과를 반환해야 한다
+ * (FR-P1-018). 활성 검증은 {@code findExisting()}이 {@code NOT_FOUND}(진짜 신규 요청)를
+ * 반환했을 때만 수행한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,10 +58,6 @@ public class MissionCompletionService {
                 .orElseThrow(() -> new BusinessException(MissionErrorCode.MISSION_NOT_FOUND));
 
         Instant now = clock.instant();
-        if (!mission.isActiveAt(now)) {
-            throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
-        }
-
         String periodKey = periodKeyOf(now);
         EarnCommand earnCommand = new EarnCommand(
                 command.requestId(),
@@ -67,11 +70,38 @@ public class MissionCompletionService {
                 mission.getRewardAmount().longValue()
         );
 
+        EarnLookupStatus lookupStatus = ticketEarnService.findExisting(earnCommand).status();
+        if (lookupStatus == EarnLookupStatus.ALREADY_PROCESSED) {
+            return outcomeOf(EarnResultCode.ALREADY_PROCESSED, missionId, mission, now);
+        }
+        if (lookupStatus != EarnLookupStatus.NOT_FOUND) {
+            // NOT_FOUND(신규 요청)만 활성 검증으로 진행한다. 그 외 값은
+            // MissionErrorCode.from()의 컴파일타임 전수 switch에 위임한다 — 이렇게 하면
+            // EarnLookupStatus에 값이 추가됐을 때 여기가 아니라 from()이 컴파일 실패로
+            // 즉시 알려준다(런타임 방어 분기보다 안전하다).
+            throw new BusinessException(MissionErrorCode.from(lookupStatus));
+        }
+
+        if (!mission.isActiveAt(now)) {
+            throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
+        }
+
         EarnResult result = ticketEarnService.earn(earnCommand);
         if (result.code() == EarnResultCode.EARN_ACCEPTED || result.code() == EarnResultCode.ALREADY_PROCESSED) {
-            return new MissionCompleteOutcome(result.code(), missionId, mission.getRewardAmount(), now);
+            return outcomeOf(result.code(), missionId, mission, now);
         }
         throw new BusinessException(MissionErrorCode.from(result.code()));
+    }
+
+    /**
+     * {@code completedAt}은 이 응답을 만든 시각({@code now})이다 — {@code ALREADY_PROCESSED}
+     * replay 경로에서는 최초로 실제 완료된 시각이 아니다. {@code EarnLookupResult}/{@code EarnResult}가
+     * 원본 완료 시각을 담고 있지 않기 때문이다(System2 EARN Replay Contract §5, "resultCode만으로
+     * 충분하며 향후 필요해지면 replay 값을 확장한다"). 원본 시각이 필요해지면 EARN 쪽에 그 값을
+     * replay 레코드에 실어달라고 별도로 요청해야 한다.
+     */
+    private MissionCompleteOutcome outcomeOf(EarnResultCode code, Long missionId, Mission mission, Instant now) {
+        return new MissionCompleteOutcome(code, missionId, mission.getRewardAmount(), now);
     }
 
     /**

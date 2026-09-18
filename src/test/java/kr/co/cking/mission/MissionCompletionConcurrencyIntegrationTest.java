@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -70,6 +71,32 @@ class MissionCompletionConcurrencyIntegrationTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void 미션_종료_후_동일_requestId로_재시도하면_MISSION_INACTIVE_대신_기존_성공_결과를_반환한다() throws Exception {
+        // Issue #125 재현: activeTo를 짧게 잡아 실시간으로 활성 -> 비활성 전환을 겪게 한다.
+        Member member = memberRepository.saveAndFlush(new Member("만료재시도테스트", null, null, MemberRole.USER));
+        Member creatorOwner = memberRepository.saveAndFlush(new Member("만료재시도크리에이터", null, null, MemberRole.USER));
+        Creator creator = creatorRepository.saveAndFlush(new Creator(creatorOwner.getMemberId(), creatorOwner.getName()));
+        Instant activeTo = Instant.now().plusMillis(1500);
+        Mission mission = missionRepository.saveAndFlush(
+                new Mission(creator.getCreatorId(), MissionType.ATTENDANCE, 1, null, activeTo));
+
+        UUID requestId = UUID.randomUUID();
+        MissionCompleteCommand command = new MissionCompleteCommand(member.getMemberId(), requestId);
+
+        // 1) 활성 상태에서 최초 성공
+        var firstOutcome = service.complete(creator.getCreatorId(), mission.getMissionId(), command);
+        assertThat(firstOutcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        // 2) 미션이 실제로 종료될 때까지 대기
+        Thread.sleep(1700);
+
+        // 3) 동일 requestId로 재시도 — findExisting()이 활성 검증보다 먼저 확인하므로
+        //    MISSION_INACTIVE가 아니라 ALREADY_PROCESSED가 나와야 한다.
+        var retryOutcome = service.complete(creator.getCreatorId(), mission.getMissionId(), command);
+        assertThat(retryOutcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
     }
 
     private String runComplete(CountDownLatch start, Long userId, Long creatorId, Long missionId)
