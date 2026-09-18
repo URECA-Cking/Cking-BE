@@ -136,15 +136,47 @@ class DrawingPublicationServiceTest {
     }
 
     @Test
-    void REDRAW_Drawing은_이_API로_공개할_수_없다() {
+    void PUBLISHED_Event의_REDRAW_Drawing을_공개하고_Event를_다시_전이하지_않는다() {
         Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
         ReflectionTestUtils.setField(drawing, "drawType", DrawingType.REDRAW);
         when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.PUBLISHED));
+        ReflectionTestUtils.setField(drawingPublicationService, "clock",
+                Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC));
+
+        DrawingPublicationResult result = drawingPublicationService.publish(1L, 99L);
+
+        assertThat(result.drawingType()).isEqualTo(DrawingType.REDRAW);
+        assertThat(result.visibility()).isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(result.outcome()).isEqualTo(DrawingPublicationResult.PublicationOutcome.PUBLISHED);
+        verify(eventCommandService, never()).publish(10L);
+    }
+
+    @Test
+    void 이미_공개된_REDRAW_Drawing은_PUBLISHED_Event에서_멱등하게_성공한다() {
+        Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PUBLIC);
+        ReflectionTestUtils.setField(drawing, "drawType", DrawingType.REDRAW);
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.PUBLISHED));
+
+        DrawingPublicationResult result = drawingPublicationService.publish(1L, 99L);
+
+        assertThat(result.outcome()).isEqualTo(DrawingPublicationResult.PublicationOutcome.ALREADY_PUBLISHED);
+        verifyNoInteractions(eventCommandService);
+    }
+
+    @Test
+    void REDRAW_Drawing은_Event가_PUBLISHED가_아니면_공개할_수_없다() {
+        Drawing drawing = completedDrawing(1L, 10L, DrawingVisibility.PRIVATE);
+        ReflectionTestUtils.setField(drawing, "drawType", DrawingType.REDRAW);
+        when(drawingRepository.findByIdForPublish(1L)).thenReturn(Optional.of(drawing));
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L)).thenReturn(sourceOf(10L, EventStatus.DRAW_COMPLETED));
 
         assertThatThrownBy(() -> drawingPublicationService.publish(1L, 99L))
                 .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.DRAWING_TYPE_NOT_SUPPORTED);
-        verifyNoInteractions(eventDrawingQueryService, eventCommandService);
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+        assertThat(drawing.getVisibility()).isEqualTo(DrawingVisibility.PRIVATE);
+        verifyNoInteractions(eventCommandService);
     }
 
     @Test

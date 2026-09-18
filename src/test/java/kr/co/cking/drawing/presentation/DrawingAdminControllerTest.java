@@ -301,15 +301,18 @@ class DrawingAdminControllerTest {
     }
 
     @Test
-    void INITIAL이_아닌_Drawing_공개_요청은_DRAWING_TYPE_NOT_SUPPORTED를_반환한다() throws Exception {
-        when(publicationService.publish(10L, 1L))
-                .thenThrow(new BusinessException(DrawingErrorCode.DRAWING_TYPE_NOT_SUPPORTED));
+    void REDRAW_Drawing_공개_요청도_현재_공개_상태를_성공_응답으로_반환한다() throws Exception {
+        Instant publishedAt = Instant.parse("2026-09-18T12:00:00Z");
+        when(publicationService.publish(10L, 1L)).thenReturn(new DrawingPublicationResult(
+                10L, 20L, DrawingType.REDRAW, DrawingVisibility.PUBLIC, publishedAt, PublicationOutcome.PUBLISHED));
 
         mockMvc.perform(post("/api/admin/drawings/10/publish")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":1}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("DRAWING_TYPE_NOT_SUPPORTED"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.visibility").value("PUBLIC"))
+                .andExpect(jsonPath("$.data.publishedAt").value("2026-09-18T12:00:00Z"));
     }
 
     @Test

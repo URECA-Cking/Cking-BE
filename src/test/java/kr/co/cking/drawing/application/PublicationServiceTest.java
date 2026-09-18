@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 
 import kr.co.cking.drawing.application.DrawingPublicationResult.PublicationOutcome;
+import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.notification.application.WinnerNotificationService;
 import kr.co.cking.notification.application.WinnerNotificationTarget;
@@ -69,6 +70,30 @@ class PublicationServiceTest {
 
         assertThat(actual).isSameAs(expected);
         verify(winnerRepository, never()).findAllByDrawingIdOrderByRankInDrawingAsc(10L);
+        verify(winnerNotificationService, never()).createInitialWinnerNotifications(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyList()
+        );
+    }
+
+    @Test
+    void REDRAW_최초_공개에는_재추첨_당첨_알림_생성을_위임한다() {
+        DrawingPublicationResult expected = new DrawingPublicationResult(
+                10L, 20L, DrawingType.REDRAW, DrawingVisibility.PUBLIC,
+                Instant.parse("2026-09-18T12:00:00Z"), PublicationOutcome.PUBLISHED
+        );
+        when(drawingPublicationService.publish(10L, 1L)).thenReturn(expected);
+        Winner winner = mock(Winner.class);
+        when(winner.getId()).thenReturn(100L);
+        when(winner.getMemberId()).thenReturn(2L);
+        when(winnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(10L)).thenReturn(List.of(winner));
+
+        publicationService.publish(10L, 1L);
+
+        verify(winnerNotificationService).createRedrawWinnerNotifications(
+                20L, 10L, List.of(new WinnerNotificationTarget(100L, 2L))
+        );
         verify(winnerNotificationService, never()).createInitialWinnerNotifications(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),

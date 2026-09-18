@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @Validated
-@Tag(name = "Drawing 관리자", description = "초기 추첨 실행·결과 조회·공개를 관리합니다.")
+@Tag(name = "Drawing 관리자", description = "초기 추첨 실행·결과 조회·INITIAL·REDRAW 결과 공개를 관리합니다.")
 public class DrawingAdminController {
 
     private final PublicationService publicationService;
@@ -44,11 +44,11 @@ public class DrawingAdminController {
         ));
     }
 
-    /** 관리자의 요청으로 완료된 INITIAL Drawing을 공개하고 현재 공개 상태를 반환한다. */
+    /** 관리자의 요청으로 완료된 INITIAL 또는 REDRAW Drawing을 공개하고 현재 공개 상태를 반환한다. */
     @Operation(
-            summary = "INITIAL 추첨 결과 공개",
-            description = "COMPLETED·PRIVATE INITIAL Drawing을 공개하고 Event를 PUBLISHED로 함께 전이합니다. "
-                    + "이미 공개된 Drawing은 Event도 PUBLISHED인 경우 현재 상태를 반환합니다."
+            summary = "추첨 결과 공개",
+            description = "COMPLETED INITIAL Drawing은 Event를 PUBLISHED로 함께 전이하고, REDRAW Drawing은 "
+                    + "이미 PUBLISHED인 Event를 유지한 채 공개합니다. 이미 공개된 Drawing은 현재 상태를 반환합니다."
     )
     @PostMapping("/api/admin/drawings/{drawingId}/publish")
     public ApiResponse<DrawingPublicationResponse> publishDrawing(
