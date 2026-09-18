@@ -149,6 +149,28 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 - Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
 - `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
 
+## GET /api/events/{eventId}/entries/me
+
+USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`, 선택 `cursor`, `size`를 사용한다.
+`size` 기본값은 20이고 허용 범위는 1~100이다. 응모 내역은 `appliedAt DESC, entryId DESC`로 정렬하며,
+다음 페이지 커서는 마지막 항목의 `(appliedAt, entryId)`를 URL-safe Base64로 인코딩한다.
+
+```json
+{
+  "items": [{
+    "entryId": 10,
+    "usedTicketCount": 3,
+    "appliedAt": "2026-09-18T02:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+조회 조건은 `event_entry.member_id = userId`와 `event_entry.event_id = eventId`를 모두 사용한다. 없는 Member 또는
+존재하지 않거나 삭제된 Event는 `RESOURCE_NOT_FOUND`, 식별자·size 범위·cursor 형식 오류는
+`VALIDATION_FAILED`다.
+
 ## POST /api/events/{eventId}/close
 
 ```json
