@@ -25,13 +25,10 @@ public class WinnerNotificationService {
             Long drawingId,
             List<WinnerNotificationTarget> targets
     ) {
-        List<Notification> notifications = targets.stream()
-                .map(target -> new Notification(
-                        target.memberId(), eventId, drawingId, target.winnerId(),
-                        NotificationType.INITIAL_WINNER, INITIAL_WINNER_TITLE, INITIAL_WINNER_BODY
-                ))
-                .toList();
-        notificationRepository.saveAll(notifications);
+        saveWinnerNotifications(
+                eventId, drawingId, targets,
+                NotificationType.INITIAL_WINNER, INITIAL_WINNER_TITLE, INITIAL_WINNER_BODY
+        );
     }
 
     /** REDRAW Drawing의 Winner마다 재추첨 당첨 Notification을 저장한다. */
@@ -40,10 +37,25 @@ public class WinnerNotificationService {
             Long drawingId,
             List<WinnerNotificationTarget> targets
     ) {
+        saveWinnerNotifications(
+                eventId, drawingId, targets,
+                NotificationType.REDRAW_WINNER, REDRAW_WINNER_TITLE, REDRAW_WINNER_BODY
+        );
+    }
+
+    /** 지정한 알림 유형·문구로 대상 Winner별 Notification을 만들고 일괄 저장한다. */
+    private void saveWinnerNotifications(
+            Long eventId,
+            Long drawingId,
+            List<WinnerNotificationTarget> targets,
+            NotificationType notificationType,
+            String title,
+            String body
+    ) {
         List<Notification> notifications = targets.stream()
                 .map(target -> new Notification(
                         target.memberId(), eventId, drawingId, target.winnerId(),
-                        NotificationType.REDRAW_WINNER, REDRAW_WINNER_TITLE, REDRAW_WINNER_BODY
+                        notificationType, title, body
                 ))
                 .toList();
         notificationRepository.saveAll(notifications);

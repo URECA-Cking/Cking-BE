@@ -45,11 +45,10 @@ public class PublicationService {
                 .stream()
                 .map(winner -> new WinnerNotificationTarget(winner.getId(), winner.getMemberId()))
                 .toList();
-        if (result.drawingType() == DrawingType.INITIAL) {
-            createInitialWinnerNotifications(result, targets);
-            return;
+        switch (result.drawingType()) {
+            case INITIAL -> createInitialWinnerNotifications(result, targets);
+            case REDRAW -> createRedrawWinnerNotifications(result, targets);
         }
-        createRedrawWinnerNotifications(result, targets);
     }
 
     /** INITIAL Drawing의 당첨자에게 최초 당첨 알림 생성을 위임한다. */
