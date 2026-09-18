@@ -17,14 +17,18 @@ public final class EntryRedisKeys {
         return "event:endat:" + eventId;
     }
 
-    // ticket:balance 포맷은 TicketRedisKeys가 정의를 소유한다 - 여기서 별도로
-    // 다시 조합하면 한쪽만 바뀔 때 조용히 어긋날 수 있다(PR #63 리뷰).
+    // ticket:balance 포맷은 TicketRedisKeys가 단일하게 관리한다.
     public static String balance(Long creatorId, Long userId) {
         return TicketRedisKeys.balance(creatorId, userId);
     }
 
     public static String idem(String requestId) {
         return "idem:" + requestId;
+    }
+
+    // 차감 전에 fingerprint를 기록해, idem 저장 실패 시에도 재차감을 막는다.
+    public static String spendGuard(String requestId) {
+        return "entry:spend-guard:" + requestId;
     }
 
     public static String cutoff(Long eventId) {
