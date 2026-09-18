@@ -38,13 +38,15 @@ public class SpendStreamConfig {
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> spendStreamListenerContainer(
             RedisConnectionFactory connectionFactory,
             StringRedisTemplate redisTemplate,
-            SpendStreamListener spendStreamListener
+            SpendStreamListener spendStreamListener,
+            ApplicationShutdownState shutdownState
     ) {
         ensureConsumerGroup(redisTemplate);
 
         StreamMessageListenerContainerOptions<String, MapRecord<String, String, String>> options =
                 StreamMessageListenerContainerOptions.builder()
                         .pollTimeout(Duration.ofSeconds(2))
+                        .errorHandler(new StreamListenerErrorHandler(shutdownState))
                         .build();
 
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> container =
