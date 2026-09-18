@@ -2,6 +2,13 @@
 
 크리에이터와 팬을 잇는 이벤트 응모·추첨 플랫폼 **Cking**의 백엔드입니다.
 
+**API 문서 (Swagger UI)**
+
+| 환경 | 주소 |
+|---|---|
+| 로컬 | http://localhost:8080/swagger-ui/index.html |
+| 개발 서버 | http://{개발 서버 주소}:8080/swagger-ui/index.html |
+
 ## 목차
 
 * [기술 스택](#기술-스택)
@@ -14,7 +21,6 @@
 * [7. Docker 종료](#7-docker-종료)
 * [8. 작업 흐름](#8-작업-흐름)
 * [9. 코드 구조](#9-코드-구조)
-* [10. 협업 규칙](#10-협업-규칙)
 
 ---
 
@@ -42,7 +48,7 @@
 
 ### Windows
 
-```powershell id="scx6jw"
+```powershell
 git --version
 java -version
 docker --version
@@ -51,7 +57,7 @@ docker compose version
 
 ### macOS
 
-```bash id="0s5k7q"
+```bash
 git --version
 java -version
 docker --version
@@ -66,7 +72,7 @@ Java 버전은 **21**이어야 합니다.
 
 ## Windows
 
-```powershell id="8jyo0h"
+```powershell
 git clone https://github.com/URECA-Cking/Cking-BE.git
 cd Cking-BE
 
@@ -79,7 +85,7 @@ docker compose up -d
 
 ## macOS
 
-```bash id="0ncntr"
+```bash
 git clone https://github.com/URECA-Cking/Cking-BE.git
 cd Cking-BE
 
@@ -110,20 +116,20 @@ Docker Compose 실행 시 아래 환경이 자동으로 생성됩니다.
 
 작업 시작 전에 최신 `develop`을 반영합니다.
 
-```bash id="pt06md"
+```bash
 git switch develop
 git pull origin develop
 ```
 
 이후 작업 브랜치를 생성합니다.
 
-```bash id="n8gfgq"
+```bash
 git switch -c feat/이슈번호-작업내용
 ```
 
 예:
 
-```bash id="fag8ra"
+```bash
 git switch -c feat/12-event-create
 ```
 
@@ -137,25 +143,25 @@ MySQL과 Redis를 실행합니다.
 
 ### Windows / macOS 공통
 
-```bash id="xl456v"
+```bash
 docker compose up -d
 ```
 
 실행 상태 확인:
 
-```bash id="y7e1yz"
+```bash
 docker compose ps
 ```
 
 또는:
 
-```bash id="fi3vpr"
+```bash
 docker ps
 ```
 
 정상적으로 실행되면 다음 컨테이너가 표시됩니다.
 
-```text id="w9x67y"
+```text
 cking-mysql
 cking-redis
 ```
@@ -170,19 +176,19 @@ MySQL은 `3306`, Redis는 `6379` 포트를 사용합니다.
 
 ## Windows
 
-```powershell id="k8dfx2"
+```powershell
 .\gradlew.bat bootRun
 ```
 
 ## macOS
 
-```bash id="0ylcdl"
+```bash
 ./gradlew bootRun
 ```
 
 실행을 종료하려면:
 
-```text id="9m0vw8"
+```text
 Ctrl + C
 ```
 
@@ -194,13 +200,13 @@ MySQL과 Redis Container가 실행 중이어야 합니다.
 
 ## Windows
 
-```powershell id="skov10"
+```powershell
 .\gradlew.bat test
 ```
 
 ## macOS
 
-```bash id="pgrtcx"
+```bash
 ./gradlew test
 ```
 
@@ -210,13 +216,13 @@ MySQL과 Redis Container가 실행 중이어야 합니다.
 
 Container만 종료:
 
-```bash id="cfmrc8"
+```bash
 docker compose down
 ```
 
 DB 데이터까지 완전히 삭제:
 
-```bash id="6dr7xu"
+```bash
 docker compose down -v
 ```
 
@@ -228,7 +234,7 @@ docker compose down -v
 
 기본 개발 흐름은 다음과 같습니다.
 
-```text id="ehapnu"
+```text
 Issue 생성
 ↓
 develop 최신화
@@ -250,7 +256,7 @@ Squash and Merge
 
 작업 완료 후:
 
-```bash id="71v6ou"
+```bash
 git add .
 git commit -m "feat: 작업 내용"
 git push -u origin 현재브랜치명
@@ -268,7 +274,7 @@ PR의 Base Branch는 `develop`으로 지정합니다.
 
 최상위 패키지는 도메인 단위로 나눕니다.
 
-```text id="e19jwk"
+```text
 kr.co.cking
 ├── common/         공통 응답·예외·설정
 ├── member/         가상 사용자
@@ -287,7 +293,7 @@ kr.co.cking
 
 각 도메인 내부는 기본적으로 다음 구조를 사용합니다.
 
-```text id="1k143o"
+```text
 presentation
 application
 domain
@@ -310,8 +316,3 @@ repository
 
 도메인별 ErrorCode는 공통 `ErrorCode` 인터페이스를 구현한 enum으로 정의합니다.
 
----
-
-# 10. 협업 규칙
-
-브랜치·커밋·PR 규칙은 [CONTRIBUTING.md](https://github.com/URECA-Cking/.github/blob/main/CONTRIBUTING.md)를 참고하세요.
