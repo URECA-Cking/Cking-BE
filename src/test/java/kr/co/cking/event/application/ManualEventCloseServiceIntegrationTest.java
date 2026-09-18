@@ -2,6 +2,7 @@ package kr.co.cking.event.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -12,6 +13,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Range;
@@ -170,7 +172,9 @@ class ManualEventCloseServiceIntegrationTest {
         Event persisted = eventRepository.findById(event.getEventId()).orElseThrow();
         assertThat(persisted.getStatus()).isEqualTo(EventStatus.CLOSED);
         assertThat(persisted.getClosedAt()).isNotNull();
-        verify(eventCommandService).completeClosing(event.getEventId());
+        InOrder inOrder = inOrder(eventCommandService, officialSnapshotService);
+        inOrder.verify(eventCommandService).completeClosing(event.getEventId());
+        inOrder.verify(officialSnapshotService).createIfAbsent(event.getEventId());
     }
 
     /** 테스트가 만든 DB 행과 Redis 키만 역순으로 제거해 다른 통합 테스트에 영향을 주지 않는다. */
