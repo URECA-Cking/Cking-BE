@@ -60,9 +60,10 @@
 | 54 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.completeClosing(eventId)` | Drain 완료 CLOSING Event를 CLOSED로 전이 | Event 행 잠금 |
 | 55 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.completeDrawing(eventId)` | 초기 추첨 완료 Event를 DRAW_COMPLETED로 전이 | Event 행 잠금 |
 | 56 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.publish(eventId)` | 추첨 완료 Event를 PUBLISHED로 전이 | Event 행 잠금 |
-| 57 | 내부 | Drawing | INTERNAL | CALL | `DrawingPublicationService.publish(drawingId, adminId)` | INITIAL Drawing 공개와 Event `DRAW_COMPLETED→PUBLISHED` 전이 | 상태 기반 |
-| 58 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.createForInitial()` | INITIAL Seed 생성·저장 | Drawing 생성 Transaction |
-| 59 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.reuseForRetry(seedId)` | 동일 Drawing Seed 조회·재사용 | Seed 기준 |
-| 60 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.createForRedraw(previousSeedId)` | 이전과 다른 REDRAW Seed 생성·저장 | Drawing 생성 Transaction |
+| 57 | 내부 | 공개 | INTERNAL | CALL | `PublicationService.publish(drawingId, adminId)` | INITIAL Drawing 공개와 Winner Notification 생성을 하나의 Transaction으로 처리 | 상태 기반 |
+| 58 | 내부 | Drawing | INTERNAL | CALL | `DrawingPublicationService.publish(drawingId, adminId)` | INITIAL Drawing 공개와 Event `DRAW_COMPLETED→PUBLISHED` 전이 | 상태 기반 |
+| 59 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.createForInitial()` | INITIAL Seed 생성·저장 | Drawing 생성 Transaction |
+| 60 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.reuseForRetry(seedId)` | 동일 Drawing Seed 조회·재사용 | Seed 기준 |
+| 61 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.createForRedraw(previousSeedId)` | 이전과 다른 REDRAW Seed 생성·저장 | Drawing 생성 Transaction |
 
-No. 9, No. 50~60은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

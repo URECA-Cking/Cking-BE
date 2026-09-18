@@ -23,8 +23,10 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 검증된 INITIAL Drawing을 공개하고 연결 Event를 {@code DRAW_COMPLETED → PUBLISHED}로
- * 전이하는 Service다(FR-P2-044, 취합v1.5.4 §12). 관리자 공개 API Controller는 이 Service에
- * {@code drawingId}, {@code userId}를 전달하며, 이 Service가 관리자 권한과 공개 조건을 검증한다.
+ * 전이하는 Service다(FR-P2-044, 취합v1.5.4 §12). 관리자 공개 API Controller는 시스템4
+ * {@code PublicationService}에 {@code drawingId}, {@code userId}를 전달하고,
+ * {@code PublicationService}가 이 Service를 호출한다. 이 Service는 관리자 권한과 공개 조건을
+ * 검증한다.
  * 이 메서드가 {@code EventCommandService.publish()}까지 이미 호출하므로, 호출자는 반환 후 Event
  * 전이를 별도로 다시 호출하면 안 된다. 재호출하면 이미 {@code PUBLISHED}인 Event가
  * {@code INVALID_STATE}로 실패할 수 있다. 반환값의

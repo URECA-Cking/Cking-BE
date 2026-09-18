@@ -38,14 +38,16 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 
 ### `DrawingPublicationService.publish(Long drawingId, Long adminId)`
 
-FR-P2-044·API 인덱스 내부 No.57. INITIAL Drawing의 결과를 공개하고 Event를
+FR-P2-044·API 인덱스 내부 No.58. INITIAL Drawing의 결과를 공개하고 Event를
 `DRAW_COMPLETED → PUBLISHED`로 전이한다. 관리자 공개 API는
-`docs/domains/drawing/api.md`에 정의하며, Controller는 이 메서드를 호출해 상태 전이를
-위임한다. 이번 구현 범위는 INITIAL 공개만이며, REDRAW Drawing 공개(FR-P4-115, Event가 이미
+`docs/domains/drawing/api.md`에 정의하며, Controller는 시스템4 `PublicationService`에 공개
+유스케이스를 위임하고, `PublicationService`가 이 메서드를 호출한다. 이번 구현 범위는 INITIAL
+공개만이며, REDRAW Drawing 공개(FR-P4-115, Event가 이미
 `PUBLISHED`인 경우)는 제외한다.
 
 - 입력: `drawingId`(`Long`, 양수), `adminId`(`Long`, 양수). 외부 호출을 받은 Controller가
-  전달하며, 이 메서드는 `MemberQueryService.validateAdmin(adminId)`로 관리자 권한을 검증한다.
+  `PublicationService`에 전달하며, 이 메서드는 `MemberQueryService.validateAdmin(adminId)`로
+  관리자 권한을 검증한다.
 - 반환: 불변 결과 `DrawingPublicationResult(drawingId, eventId, visibility, publishedAt, outcome)`.
   영속 상태의 `Drawing` Entity를 그대로 반환하지 않는다 — 도메인 간 참조는 Entity가 아닌
   ID·DTO를 쓴다는 원칙(README "9. 코드 구조")에 따라, 호출자가 이 도메인의 Entity에 직접
@@ -80,9 +82,9 @@ FR-P2-044·API 인덱스 내부 No.57. INITIAL Drawing의 결과를 공개하고
   PublicationService)가 이 메서드와 Notification 생성을 자신의 Transaction 경계 안에서
   함께 처리해야 FR-P4-114의 원자성 요구를 만족한다.
 
-`DrawingPublicationService`가 Drawing 공개와 Event 전이를 모두 완료하므로, Controller 또는
-호출자는 반환 후 `EventCommandService.publish()`를 다시 호출하면 안 된다. 당첨자 Notification
-생성은 이 API 범위가 아니며 별도 호출자가 `PublicationOutcome.PUBLISHED`일 때만 처리한다.
+`DrawingPublicationService`가 Drawing 공개와 Event 전이를 모두 완료하므로, `PublicationService`는
+반환 후 `EventCommandService.publish()`를 다시 호출하면 안 된다. 당첨자 Notification 생성은
+`PublicationService`가 `PublicationOutcome.PUBLISHED`일 때만 처리한다.
 
 | 코드 | 조건 |
 | --- | --- |
