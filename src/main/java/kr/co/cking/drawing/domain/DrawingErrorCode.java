@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 public enum DrawingErrorCode implements ErrorCode {
 
     DRAWING_NOT_FOUND(HttpStatus.NOT_FOUND, "추첨을 찾을 수 없습니다."),
+    DRAWING_SEED_NOT_FOUND(HttpStatus.NOT_FOUND, "추첨 Seed를 찾을 수 없습니다."),
     DRAWING_NOT_COMPLETED(HttpStatus.CONFLICT, "완료된 추첨만 결과를 조회할 수 있습니다."),
     DRAWING_TYPE_NOT_SUPPORTED(HttpStatus.CONFLICT, "이 API는 INITIAL Drawing 공개만 지원합니다.");
 
