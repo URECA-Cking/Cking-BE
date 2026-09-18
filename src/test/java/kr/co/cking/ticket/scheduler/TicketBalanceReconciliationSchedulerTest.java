@@ -6,17 +6,22 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -24,6 +29,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import io.lettuce.core.RedisCommandExecutionException;
 import io.lettuce.core.RedisException;
+import kr.co.cking.common.config.SchedulingConfig;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
@@ -55,6 +61,21 @@ class TicketBalanceReconciliationSchedulerTest {
     @AfterEach
     void tearDown() {
         ((Logger) LoggerFactory.getLogger(TicketBalanceReconciliationScheduler.class)).detachAppender(logAppender);
+    }
+
+    @Test
+    void 기본_5분_주기의_스케줄러가_활성화돼_있다() throws NoSuchMethodException {
+        Method reconcile = TicketBalanceReconciliationScheduler.class.getMethod("reconcile");
+        Scheduled scheduled = reconcile.getAnnotation(Scheduled.class);
+        ConditionalOnProperty enabled = SchedulingConfig.class.getAnnotation(ConditionalOnProperty.class);
+
+        assertThat(SchedulingConfig.class.isAnnotationPresent(EnableScheduling.class)).isTrue();
+        assertThat(enabled).isNotNull();
+        assertThat(enabled.matchIfMissing()).isTrue();
+        assertThat(scheduled).isNotNull();
+        assertThat(scheduled.fixedDelayString())
+                .isEqualTo("${cking.ticket.reconciliation-interval-ms:300000}");
+        assertThat(scheduled.timeUnit()).isEqualTo(TimeUnit.MILLISECONDS);
     }
 
     @Test
