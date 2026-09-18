@@ -59,6 +59,19 @@ class PublicWinnerControllerTest {
     }
 
     @Test
+    void 공개_Winner가_없어도_빈_목록을_성공_응답으로_반환한다() throws Exception {
+        when(publicWinnerQueryService.getPublicWinners(10L))
+                .thenReturn(new PublicWinnerQueryResult(10L, List.of()));
+
+        mockMvc.perform(get("/api/events/10/winners"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.eventId").value(10))
+                .andExpect(jsonPath("$.data.winners").isArray())
+                .andExpect(jsonPath("$.data.winners").isEmpty());
+    }
+
+    @Test
     void Winner가_참조하는_회원이_없으면_내부_정보_없이_시스템_오류를_반환한다() throws Exception {
         when(publicWinnerQueryService.getPublicWinners(10L))
                 .thenThrow(new BusinessException(CommonErrorCode.SYSTEM_ERROR));

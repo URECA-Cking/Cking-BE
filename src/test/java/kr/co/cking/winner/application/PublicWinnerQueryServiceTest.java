@@ -78,6 +78,18 @@ class PublicWinnerQueryServiceTest {
     }
 
     @Test
+    void 공개된_Winner가_없으면_빈_목록을_정상_반환한다() {
+        when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID)).thenReturn(List.of());
+        when(memberQueryService.findMemberInfosByIds(List.of())).thenReturn(Map.of());
+
+        PublicWinnerQueryResult result = service.getPublicWinners(EVENT_ID);
+
+        assertThat(result.eventId()).isEqualTo(EVENT_ID);
+        assertThat(result.winners()).isEmpty();
+        verify(memberQueryService).findMemberInfosByIds(List.of());
+    }
+
+    @Test
     void Winner의_회원정보가_없으면_내부_데이터_정합성_오류로_처리한다() {
         PublicWinnerProjection winner = winner(100L, 20L, 0, DrawingType.INITIAL, 2L, 1);
         when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID)).thenReturn(List.of(winner));
