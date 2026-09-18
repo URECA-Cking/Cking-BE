@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -108,6 +109,22 @@ class EventLifecycleSchedulerTest {
 
         assertThatCode(scheduler::run).doesNotThrowAnyException();
 
+        verify(eventCommandService).completeClosing(1L);
+        verify(officialSnapshotService).createIfAbsent(1L);
+    }
+
+    @Test
+    void 지정한_Event만_조회해_Drain_완료를_처리한다() {
+        Event event = org.mockito.Mockito.mock(Event.class);
+        when(event.getEventId()).thenReturn(1L);
+        when(event.getStatus()).thenReturn(EventStatus.CLOSING);
+        when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
+
+        scheduler.run(1L);
+
+        verify(eventRepository).findById(1L);
         verify(eventCommandService).completeClosing(1L);
         verify(officialSnapshotService).createIfAbsent(1L);
     }
