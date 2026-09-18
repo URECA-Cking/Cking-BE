@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -47,6 +48,22 @@ public class JdbcSnapshotSourceQueryRepository implements SnapshotSourceQueryRep
                         resultSet.getLong("member_id"),
                         resultSet.getLong("ticket_count")
                 ))
+                .list();
+    }
+
+    @Override
+    public List<PrizeValue> findPrizes(Long eventId) {
+        return jdbcClient.sql("""
+                        SELECT prize_key, display_name, priority, probability_weight, quantity
+                        FROM event_prize
+                        WHERE event_id = :eventId
+                        ORDER BY priority ASC, prize_key ASC
+                        """)
+                .param("eventId", eventId)
+                .query((resultSet, rowNumber) -> new PrizeValue(
+                        resultSet.getString("prize_key"), resultSet.getString("display_name"),
+                        resultSet.getInt("priority"), resultSet.getLong("probability_weight"),
+                        resultSet.getInt("quantity")))
                 .list();
     }
 }

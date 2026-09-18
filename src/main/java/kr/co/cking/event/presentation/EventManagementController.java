@@ -61,7 +61,7 @@ public class EventManagementController {
             @Valid @RequestBody EventManagementRequest.Update request) {
         Event event = creatorEventService.update(new kr.co.cking.event.application.dto.UpdateEventCommand(
                 request.userId(), eventId, request.title(), request.description(), request.startAt(), request.endAt(),
-                request.winnerCount(), request.drawMethod()));
+                request.winnerCount(), request.drawMethod(), request.prizeConfigs()));
         return ApiResponse.success(EventManagementResponse.Result.from(event));
     }
 
@@ -79,7 +79,7 @@ public class EventManagementController {
     ) {
         Event event = creatorEventService.create(new CreateEventCommand(
                 request.userId(), request.requestId(), request.title(), request.description(), request.startAt(),
-                request.endAt(), request.winnerCount(), request.drawMethod()));
+                request.endAt(), request.winnerCount(), request.drawMethod(), request.prizeConfigs()));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(EventManagementResponse.Result.from(event)));
     }

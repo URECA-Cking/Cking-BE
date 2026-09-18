@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
 import kr.co.cking.snapshot.repository.DrawSnapshotRepository;
 import kr.co.cking.snapshot.repository.SnapshotEventSource;
@@ -14,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class OfficialSnapshotService {
 
     static final String ALGORITHM_VERSION = "WEIGHTED_V1";
@@ -22,6 +23,12 @@ public class OfficialSnapshotService {
     private final DrawSnapshotRepository snapshotRepository;
     private final SnapshotSourceQueryRepository sourceQueryRepository;
     private final SnapshotHashGenerator hashGenerator;
+    private final SnapshotHashV2Generator hashV2Generator;
+
+    public OfficialSnapshotService(DrawSnapshotRepository snapshotRepository,
+            SnapshotSourceQueryRepository sourceQueryRepository, SnapshotHashGenerator hashGenerator) {
+        this(snapshotRepository, sourceQueryRepository, hashGenerator, new SnapshotHashV2Generator());
+    }
 
     @Transactional
     public OfficialSnapshotResult createIfAbsent(Long eventId) {
@@ -46,22 +53,23 @@ public class OfficialSnapshotService {
         }
 
         List<CandidateValue> candidates = sourceQueryRepository.findCandidates(eventId);
-        SnapshotHashInput hashInput = new SnapshotHashInput(
-                event.eventId(),
-                event.winnerCount(),
-                event.drawMethod(),
-                ALGORITHM_VERSION,
-                candidates
-        );
-        SnapshotHash hash = hashGenerator.generate(hashInput);
+        List<PrizeValue> prizes = java.util.Optional.ofNullable(sourceQueryRepository.findPrizes(eventId))
+                .orElse(List.of());
+        SnapshotHash hash = prizes.isEmpty()
+                ? hashGenerator.generate(new SnapshotHashInput(event.eventId(), event.winnerCount(),
+                        event.drawMethod(), ALGORITHM_VERSION, candidates))
+                : hashV2Generator.generate(new SnapshotHashV2Input(event.eventId(), event.winnerCount(),
+                        event.drawMethod(), ALGORITHM_VERSION, "PRIZE_WEIGHTED_V1", candidates, prizes));
 
         DrawSnapshot snapshot = DrawSnapshot.create(
                 event.eventId(),
                 event.winnerCount(),
                 event.drawMethod(),
                 ALGORITHM_VERSION,
+                "PRIZE_WEIGHTED_V1",
                 hash.value(),
-                hashInput.candidates()
+                candidates.stream().sorted(CandidateValue.BY_MEMBER_ID).toList(),
+                prizes
         );
         return OfficialSnapshotResult.from(snapshotRepository.saveAndFlush(snapshot));
     }

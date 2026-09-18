@@ -3,6 +3,7 @@ package kr.co.cking.snapshot.application;
 import java.util.List;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
+import kr.co.cking.snapshot.domain.PrizeValue;
 
 /** SnapshotIntegrityService의 검증을 통과한 공식 Snapshot 결과다. */
 public final class VerifiedSnapshot {
@@ -16,6 +17,8 @@ public final class VerifiedSnapshot {
     private final String algorithmVersion;
     private final String snapshotHash;
     private final List<CandidateValue> candidates;
+    private final String prizeAlgorithmVersion;
+    private final List<PrizeValue> prizes;
 
     private VerifiedSnapshot(
             Long snapshotId,
@@ -26,7 +29,9 @@ public final class VerifiedSnapshot {
             String drawMethod,
             String algorithmVersion,
             String snapshotHash,
-            List<CandidateValue> candidates
+            List<CandidateValue> candidates,
+            String prizeAlgorithmVersion,
+            List<PrizeValue> prizes
     ) {
         this.snapshotId = snapshotId;
         this.eventId = eventId;
@@ -37,6 +42,8 @@ public final class VerifiedSnapshot {
         this.algorithmVersion = algorithmVersion;
         this.snapshotHash = snapshotHash;
         this.candidates = List.copyOf(candidates);
+        this.prizeAlgorithmVersion = prizeAlgorithmVersion;
+        this.prizes = List.copyOf(prizes);
     }
 
     static VerifiedSnapshot from(DrawSnapshot snapshot, List<CandidateValue> candidates) {
@@ -49,8 +56,17 @@ public final class VerifiedSnapshot {
                 snapshot.getDrawMethod(),
                 snapshot.getAlgorithmVersion(),
                 snapshot.getSnapshotHash(),
-                candidates
+                candidates,
+                snapshot.getPrizeAlgorithmVersion(),
+                snapshot.getPrizes().stream().map(prize -> prize.toValue()).toList()
         );
+    }
+
+    static VerifiedSnapshot from(DrawSnapshot snapshot, List<CandidateValue> candidates, List<PrizeValue> prizes) {
+        return new VerifiedSnapshot(snapshot.getId(), snapshot.getEventId(), snapshot.getCandidateCount(),
+                snapshot.getTotalTicketCount(), snapshot.getWinnerCount(), snapshot.getDrawMethod(),
+                snapshot.getAlgorithmVersion(), snapshot.getSnapshotHash(), candidates,
+                snapshot.getPrizeAlgorithmVersion(), prizes);
     }
 
     public Long snapshotId() {
@@ -87,5 +103,13 @@ public final class VerifiedSnapshot {
 
     public List<CandidateValue> candidates() {
         return candidates;
+    }
+
+    public String prizeAlgorithmVersion() {
+        return prizeAlgorithmVersion;
+    }
+
+    public List<PrizeValue> prizes() {
+        return prizes;
     }
 }
