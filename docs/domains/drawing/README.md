@@ -243,3 +243,7 @@ winners
 
 정규화와 Hash 생성은 외부 저장소나 현재 시각에 의존하지 않는다. `drawing.input_hash`,
 `drawing.result_hash`, Winner와 상태 전이를 저장하는 트랜잭션은 추첨 실행 오케스트레이션의 책임이다.
+
+## 관리자 Drawing 조회 API
+
+상세 요청·응답과 오류 계약은 [관리자 Drawing 조회 API](admin-query-api.md)를 참고한다.
