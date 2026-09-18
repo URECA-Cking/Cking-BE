@@ -2,7 +2,6 @@ package kr.co.cking.winner.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -14,7 +13,8 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.EventExistenceQueryService;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
-import kr.co.cking.winner.domain.Winner;
+import kr.co.cking.drawing.domain.DrawingType;
+import kr.co.cking.winner.repository.PublicWinnerProjection;
 import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,8 +45,8 @@ class PublicWinnerQueryServiceTest {
 
     @Test
     void 공개된_INITIAL과_REDRAW_Winner를_원본_수정_없이_마스킹해_반환한다() {
-        Winner initialWinner = winner(100L, 20L, 2L, 1);
-        Winner redrawWinner = winner(101L, 21L, 3L, 1);
+        PublicWinnerProjection initialWinner = winner(100L, 20L, 0, DrawingType.INITIAL, 2L, 1);
+        PublicWinnerProjection redrawWinner = winner(101L, 21L, 1, DrawingType.REDRAW, 3L, 1);
         when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID))
                 .thenReturn(List.of(initialWinner, redrawWinner));
         when(memberQueryService.findMemberInfosByIds(List.of(2L, 3L))).thenReturn(Map.of(
@@ -62,6 +62,9 @@ class PublicWinnerQueryServiceTest {
         assertThat(result.winners()).extracting(PublicWinnerResult::phone)
                 .containsExactly("010-****-5678", "010-****-5432");
         assertThat(result.winners()).extracting(PublicWinnerResult::drawingId).containsExactly(20L, 21L);
+        assertThat(result.winners()).extracting(PublicWinnerResult::drawNo).containsExactly(0, 1);
+        assertThat(result.winners()).extracting(PublicWinnerResult::drawType)
+                .containsExactly(DrawingType.INITIAL, DrawingType.REDRAW);
     }
 
     @Test
@@ -76,8 +79,7 @@ class PublicWinnerQueryServiceTest {
 
     @Test
     void Winner의_회원정보가_없으면_공개_결과를_반환하지_않는다() {
-        Winner winner = mock(Winner.class);
-        when(winner.getMemberId()).thenReturn(2L);
+        PublicWinnerProjection winner = winner(100L, 20L, 0, DrawingType.INITIAL, 2L, 1);
         when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID)).thenReturn(List.of(winner));
         when(memberQueryService.findMemberInfosByIds(List.of(2L))).thenReturn(Map.of());
 
@@ -87,12 +89,14 @@ class PublicWinnerQueryServiceTest {
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
     }
 
-    private Winner winner(Long winnerId, Long drawingId, Long memberId, int rankInDrawing) {
-        Winner winner = mock(Winner.class);
-        when(winner.getId()).thenReturn(winnerId);
-        when(winner.getDrawingId()).thenReturn(drawingId);
-        when(winner.getMemberId()).thenReturn(memberId);
-        when(winner.getRankInDrawing()).thenReturn(rankInDrawing);
-        return winner;
+    private PublicWinnerProjection winner(
+            Long winnerId,
+            Long drawingId,
+            int drawNo,
+            DrawingType drawType,
+            Long memberId,
+            int rankInDrawing
+    ) {
+        return new PublicWinnerProjection(winnerId, drawingId, drawNo, drawType, memberId, rankInDrawing);
     }
 }

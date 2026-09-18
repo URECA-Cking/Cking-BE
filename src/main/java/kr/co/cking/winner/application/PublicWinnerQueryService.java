@@ -7,7 +7,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.EventExistenceQueryService;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
-import kr.co.cking.winner.domain.Winner;
+import kr.co.cking.winner.repository.PublicWinnerProjection;
 import kr.co.cking.winner.repository.WinnerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,12 +27,12 @@ public class PublicWinnerQueryService {
     public PublicWinnerQueryResult getPublicWinners(Long eventId) {
         eventExistenceQueryService.validateExists(eventId);
 
-        List<Winner> winners = winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(eventId);
+        List<PublicWinnerProjection> winners = winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(eventId);
         Map<Long, MemberInfo> members = memberQueryService.findMemberInfosByIds(
-                winners.stream().map(Winner::getMemberId).toList()
+                winners.stream().map(PublicWinnerProjection::memberId).toList()
         );
         List<PublicWinnerResult> results = winners.stream()
-                .map(winner -> PublicWinnerResult.from(winner, findMember(members, winner.getMemberId())))
+                .map(winner -> PublicWinnerResult.from(winner, findMember(members, winner.memberId())))
                 .toList();
         return new PublicWinnerQueryResult(eventId, results);
     }

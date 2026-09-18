@@ -19,6 +19,7 @@ import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
+import kr.co.cking.winner.repository.PublicWinnerProjection;
 import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -221,9 +222,13 @@ class DrawingWinnerRepositoryJpaTest {
         winnerRepository.flush();
         entityManager.clear();
 
-        List<Winner> winners = winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(fixture.eventId());
+        List<PublicWinnerProjection> winners = winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(fixture.eventId());
 
-        assertThat(winners).extracting(Winner::getId).containsExactly(initialWinner.getId(), redrawWinner.getId());
+        assertThat(winners).extracting(PublicWinnerProjection::winnerId)
+                .containsExactly(initialWinner.getId(), redrawWinner.getId());
+        assertThat(winners).extracting(PublicWinnerProjection::drawNo).containsExactly(0, 2);
+        assertThat(winners).extracting(PublicWinnerProjection::drawType)
+                .containsExactly(DrawingType.INITIAL, DrawingType.REDRAW);
     }
 
     @Test

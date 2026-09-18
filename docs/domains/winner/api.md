@@ -9,6 +9,7 @@
 - Event 존재를 먼저 확인한 뒤 해당 Event의 `PUBLIC`·`COMPLETED` Drawing에 속한 Winner만
   `drawNo ASC`, `rankInDrawing ASC` 순으로 반환한다. 따라서 공개된 INITIAL과 공개된 REDRAW
   결과를 함께 조회하고, PRIVATE Drawing의 결과는 포함하지 않는다.
+- 각 Winner는 `drawNo`와 `drawType`으로 INITIAL·REDRAW 이력을 구분한다. 운영 상태는 공개하지 않는다.
 - 응답을 만들 때만 이름과 전화번호를 마스킹한다. Winner와 Member의 원본 데이터는 바꾸지 않으며,
   관리자 결과 조회 및 당첨자 본인 조회의 원본 개인정보 정책과 분리한다.
 
@@ -21,6 +22,8 @@
       {
         "winnerId": 100,
         "drawingId": 20,
+        "drawNo": 0,
+        "drawType": "INITIAL",
         "name": "권*준",
         "phone": "010-****-5678",
         "rankInDrawing": 1

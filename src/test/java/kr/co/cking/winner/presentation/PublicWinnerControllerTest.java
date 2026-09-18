@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.List;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.winner.application.PublicWinnerQueryResult;
 import kr.co.cking.winner.application.PublicWinnerQueryService;
 import kr.co.cking.winner.application.PublicWinnerResult;
@@ -29,8 +30,8 @@ class PublicWinnerControllerTest {
     @Test
     void 공개_Winner를_공통_성공_응답으로_반환한다() throws Exception {
         when(publicWinnerQueryService.getPublicWinners(10L)).thenReturn(new PublicWinnerQueryResult(10L, List.of(
-                new PublicWinnerResult(100L, 20L, "권*준", "010-****-5678", 1),
-                new PublicWinnerResult(101L, 21L, "김*지", "010-****-5432", 1)
+                new PublicWinnerResult(100L, 20L, 0, DrawingType.INITIAL, "권*준", "010-****-5678", 1),
+                new PublicWinnerResult(101L, 21L, 1, DrawingType.REDRAW, "김*지", "010-****-5432", 1)
         )));
 
         mockMvc.perform(get("/api/events/10/winners"))
@@ -38,9 +39,13 @@ class PublicWinnerControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(10))
                 .andExpect(jsonPath("$.data.winners[0].winnerId").value(100))
+                .andExpect(jsonPath("$.data.winners[0].drawNo").value(0))
+                .andExpect(jsonPath("$.data.winners[0].drawType").value("INITIAL"))
                 .andExpect(jsonPath("$.data.winners[0].name").value("권*준"))
                 .andExpect(jsonPath("$.data.winners[0].phone").value("010-****-5678"))
-                .andExpect(jsonPath("$.data.winners[1].drawingId").value(21));
+                .andExpect(jsonPath("$.data.winners[1].drawingId").value(21))
+                .andExpect(jsonPath("$.data.winners[1].drawNo").value(1))
+                .andExpect(jsonPath("$.data.winners[1].drawType").value("REDRAW"));
     }
 
     @Test
