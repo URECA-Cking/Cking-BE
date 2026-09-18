@@ -11,7 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
@@ -38,5 +41,15 @@ public class MemberQueryService {
         if (member.getRole() != MemberRole.ADMIN) {
             throw new BusinessException(CommonErrorCode.FORBIDDEN);
         }
+    }
+
+    public Map<Long, MemberInfo> findMemberInfosByIds(Collection<Long> memberIds) {
+        if (memberIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return memberRepository.findByMemberIdIn(memberIds).stream()
+                .map(MemberInfo::from)
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(MemberInfo::memberId, Function.identity()));
     }
 }
