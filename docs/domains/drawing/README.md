@@ -12,14 +12,17 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 
 ### `POST /api/admin/events/{eventId}/drawings`
 
-현재 이 API는 INITIAL Drawing 실행 전의 관리자 권한·Event·Snapshot 조건을 검증한다. 실제
-`Drawing` 생성, Seed 연결, 엔진 실행, Winner 저장은 실행 오케스트레이션에서 수행한다.
+관리자 권한과 Event·Snapshot 조건을 검증한 뒤 INITIAL Drawing을 끝까지 실행한다. Seed 생성,
+엔진 호출, Winner·WinnerManagement 저장, Drawing 완료, Event 상태 전이를 하나의 Transaction으로
+처리한다.
 
 - Request Body: `{ "userId": 1 }` (`Long`, 양수, 필수)
-- 성공: `200 OK`, 공통 `ApiResponse`의 `data`에 `eventId`, `snapshotId`, `winnerCount`,
-  `drawMethod`, `algorithmVersion`, `candidateCount`를 반환한다.
+- 성공: `200 OK`, 공통 `ApiResponse`의 `data`에 `drawingId`, `eventId`, `status`,
+  `winnerCount`를 반환한다.
 - 요청자는 존재하는 `ADMIN` Member여야 한다.
 - Event는 삭제되지 않은 `CLOSED` 상태여야 하며, 공식 Snapshot Hash 검증을 통과해야 한다.
+- 완료된 INITIAL Drawing 재요청은 기존 결과를 반환한다. `READY` 또는 `RUNNING`이면 동시 명령으로
+  거부하고, `FAILED`는 별도 Retry 계약을 사용한다.
 
 | 코드 | 조건 |
 | --- | --- |
@@ -27,6 +30,7 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 | `RESOURCE_NOT_FOUND` | 요청한 Member 또는 Event가 존재하지 않음 |
 | `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
 | `INVALID_STATE` | Event가 삭제됐거나 CLOSED 상태가 아님 |
+| `CONCURRENT_COMMAND` | 동일 Event의 INITIAL Drawing이 READY 또는 RUNNING임 |
 | `SNAPSHOT_NOT_FOUND` | 공식 Snapshot이 없음 |
 | `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot의 Hash 또는 집계값이 일치하지 않음 |
 
@@ -158,7 +162,7 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 - `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion` 일치는 DB 복합 FK로도 강제한다. REDRAW의 `winnerCount`는 결원 수이므로 Snapshot 원본 당첨자 수와 다를 수 있다.
 - 동시 명령 감지를 위해 `version`을 낙관적 락 필드로 사용한다.
 
-상태는 `READY`, `RUNNING`, `FAILED`, `COMPLETED`를 사용하고 공개 상태는 `PRIVATE`, `PUBLIC`을 사용한다. 상태 전이 메서드는 실행 오케스트레이션 작업에서 추가한다.
+상태는 `READY`, `RUNNING`, `FAILED`, `COMPLETED`를 사용하고 공개 상태는 `PRIVATE`, `PUBLIC`을 사용한다. INITIAL 실행은 `READY → RUNNING → COMPLETED`로 전이한다.
 
 ### Winner
 
@@ -177,6 +181,7 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 ## Repository 계약
 
 - `DrawingRepository.findByEventIdAndDrawNo(eventId, drawNo)`: Event의 특정 차수 Drawing 조회
+- `DrawingRepository.findByEventIdAndDrawNoForUpdate(eventId, drawNo)`: 실행 명령에서 최신 Drawing을 잠금 조회
 - `DrawingRepository.existsByEventIdAndDrawNo(eventId, drawNo)`: 중복 생성 사전 확인
 - `WinnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(drawingId)`: 추첨 결과 순위 조회
 - `WinnerRepository.existsByEventIdAndMemberId(eventId, memberId)`: Event 내 중복 당첨 확인

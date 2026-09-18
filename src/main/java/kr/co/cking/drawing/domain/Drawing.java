@@ -139,6 +139,41 @@ public class Drawing {
         return drawing;
     }
 
+    /** 확정 입력과 함께 최초 실행을 시작한다. */
+    public void start(String canonicalInput, String inputHash, Instant startedAt) {
+        if (status != DrawingStatus.READY) {
+            throw new BusinessException(DrawingErrorCode.INVALID_STATE);
+        }
+        requireText(canonicalInput, "canonicalInput");
+        requireSha256(inputHash, "inputHash");
+        if (startedAt == null) {
+            throw new IllegalArgumentException("startedAt은 필수입니다.");
+        }
+
+        this.inputPayload = canonicalInput;
+        this.inputHash = inputHash;
+        this.status = DrawingStatus.RUNNING;
+        this.firstStartedAt = startedAt;
+        this.attemptCount++;
+    }
+
+    /** 추첨 결과 Hash와 Payload를 저장하고 실행을 완료한다. */
+    public void complete(String canonicalOutput, String resultHash, Instant completedAt) {
+        if (status != DrawingStatus.RUNNING) {
+            throw new BusinessException(DrawingErrorCode.INVALID_STATE);
+        }
+        requireText(canonicalOutput, "canonicalOutput");
+        requireSha256(resultHash, "resultHash");
+        if (completedAt == null) {
+            throw new IllegalArgumentException("completedAt은 필수입니다.");
+        }
+
+        this.outputPayload = canonicalOutput;
+        this.resultHash = resultHash;
+        this.status = DrawingStatus.COMPLETED;
+        this.completedAt = completedAt;
+    }
+
     /**
      * 완료된 추첨의 결과를 공개한다. 이미 공개된 경우 상태를 바꾸지 않고 조용히 반환한다(취합v1.5.4
      * §12: 동일 공개 요청 중복 실행 시 알림 중복 생성 0건 — 호출부가 이 멱등성을 근거로 삼는다).
@@ -152,5 +187,17 @@ public class Drawing {
         }
         visibility = DrawingVisibility.PUBLIC;
         publishedAt = now;
+    }
+
+    private static void requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + "는 필수입니다.");
+        }
+    }
+
+    private static void requireSha256(String value, String field) {
+        if (value == null || !value.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException(field + "는 SHA-256 lowercase hex여야 합니다.");
+        }
     }
 }
