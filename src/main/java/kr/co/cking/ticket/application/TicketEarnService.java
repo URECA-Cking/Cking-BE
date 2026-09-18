@@ -1,6 +1,7 @@
 package kr.co.cking.ticket.application;
 
 import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnResult;
 
 /**
@@ -15,4 +16,10 @@ import kr.co.cking.ticket.application.dto.EarnResult;
 public interface TicketEarnService {
 
     EarnResult earn(EarnCommand command);
+
+    /**
+     * {@code earn()}을 실행하지 않는 replay 조회다. 호출 측은 활성 상태 검증보다 먼저
+     * 조회하며, 최종 판정은 {@code earn()}의 원자적 Lua 처리에 맡긴다.
+     */
+    EarnLookupResult findExisting(EarnCommand command);
 }

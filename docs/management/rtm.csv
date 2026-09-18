@@ -15,7 +15,7 @@ FR-P1-013,1조,좋아요 취소 후 다시 좋아요를 해도 같은 날 추가
 FR-P1-014,1조,미션 완료 시각은 서버 시각 기준으로 기록한다,문구,미션수행,클라이언트가 전달한 시각은 신뢰하지 않음,1차 확정,시작 전,No
 FR-P1-015,1조,동일 사용자·크리에이터·미션·periodKey의 미션 완료는 한 번만 인정한다(Business Key),문구,미션 멱등성,"출석/좋아요 판정 키는 userId+creatorId+periodKey, EARN API Business Key는 userId+creatorId+missionId+periodKey로 레이어가 다름(임의 통합 금지)",1차 확정,시작 전,No
 FR-P1-016,1조,버튼 연타·새로고침·동시 요청으로 동일 미션이 중복 적립되지 않아야 한다,문구,미션 멱등성,Redis SETNX 가드로 원자적으로 차단,1차 확정,시작 전,No
-FR-P1-017,1조,동일 requestId 재전송은 한 번만 처리한다(네트워크 재시도 멱등성),태연,미션 멱등성,"Redis 멱등키 idem:mission:{requestId}, TTL 24시간(성능용 캐시, 최종 안전망은 DB request_id UNIQUE)",1차 확정,시작 전,No
+FR-P1-017,1조,동일 requestId 재전송은 한 번만 처리한다(네트워크 재시도 멱등성),태연,미션 멱등성,"Redis 멱등키 idem:mission:{requestId}, TTL 25시간(일일 Guard와 통일; 성능용 캐시, 최종 안전망은 DB request_id UNIQUE)",1차 확정,시작 전,No
 FR-P1-018,1조,이미 처리된 requestId가 재요청되면 추가 지급 없이 기존 처리 결과를 반환한다,태연,미션 멱등성,응답 status=ALREADY_PROCESSED(HTTP 200),1차 확정,시작 전,No
 FR-P1-019,1조,새로운 requestId로 동일 미션이 요청되면 Business Key로 중복 여부를 확인한다,태연,미션 멱등성,status=DUPLICATE_MISSION(HTTP 409),1차 확정,시작 전,No
 FR-P1-020,1조,동일 requestId로 다른 요청 내용이 들어오면 오류 처리한다,태연,미션 멱등성,status=REQUEST_ID_CONFLICT/IDEMPOTENCY_CONFLICT(HTTP 409),1차 확정,시작 전,No
