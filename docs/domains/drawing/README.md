@@ -30,76 +30,71 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 | `SNAPSHOT_NOT_FOUND` | 공식 Snapshot이 없음 |
 | `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot의 Hash 또는 집계값이 일치하지 않음 |
 
-## 관리자 Drawing 조회 API
+## Drawing 공개 내부 Service 계약
 
-### `GET /api/admin/drawings/{drawingId}`
+### `DrawingPublicationService.publish(Long drawingId, Long adminId)`
 
-- 권한: `ADMIN`
-- 사용자 식별: 필수 query parameter `userId` (`Long`)
-- 처리 순서: 요청 Member의 존재와 `ADMIN` 권한을 확인한 뒤 Drawing을 조회한다.
-- 조회는 read-only이며 Drawing, Winner, Event 상태를 변경하지 않는다.
+FR-P2-044·통합 API 명세 v2.5 No.35(내부 Service 호출로 정정, 아래 참고). INITIAL Drawing의
+결과를 공개하고 Event를 `DRAW_COMPLETED → PUBLISHED`로 전이한다. **외부 HTTP API로 노출하지
+않는다** — 관리자 권한·요청 검증과 외부 엔드포인트는 시스템4가 소유하며, 이 메서드는 그 경계
+안에서 호출되는 내부 계약이다(아래 "책임 경계" 참고). 이번 구현 범위는 INITIAL 공개만이며,
+REDRAW Drawing 공개(FR-P4-115, Event가 이미 `PUBLISHED`인 경우)는 제외한다.
 
-응답 `data`는 다음 필드를 포함한다.
+- 입력: `drawingId`(`Long`, 양수), `adminId`(`Long`, 양수). 관리자 권한은 호출자(시스템4)가
+  1차 검증하는 것을 전제로 하되, 도메인 경계를 넘는 호출이므로 이 메서드도
+  `MemberQueryService.validateAdmin(adminId)`로 방어적으로 재검증한다.
+- 반환: 불변 결과 `DrawingPublicationResult(drawingId, eventId, visibility, publishedAt, outcome)`.
+  영속 상태의 `Drawing` Entity를 그대로 반환하지 않는다 — 도메인 간 참조는 Entity가 아닌
+  ID·DTO를 쓴다는 원칙(README "9. 코드 구조")에 따라, 호출자가 이 도메인의 Entity에 직접
+  의존하거나 같은 Transaction에서 상태를 바꿀 여지를 없앤다. `outcome`(`PublicationOutcome`)은
+  이번 호출에서 실제 `PRIVATE → PUBLIC` 전이가 일어났는지(`PUBLISHED`) 아니면 이미 공개된
+  상태의 멱등 재요청인지(`ALREADY_PUBLISHED`)를 구분한다. `visibility`만으로는 최초 공개와
+  멱등 재요청을 구분할 수 없다(둘 다 `PUBLIC` + 기존 `publishedAt`을 반환). 호출자(시스템4)는
+  **`outcome == PUBLISHED`일 때만** 신규 Winner Notification을 생성해야 한다(FR-P4-132·
+  FR-P4-133) — `ALREADY_PUBLISHED`에서도 매번 Notification 생성을 시도하면, DB unique
+  제약(`uk_notification_winner_type`)이 최종 중복 저장은 막아도 그 제약 위반 예외가 멱등
+  성공이어야 할 호출 전체를 실패시킬 수 있다.
+- **중요**: 이 메서드가 `EventCommandService.publish(eventId)`까지 이미 호출해 Event
+  전이를 완료한다. 호출자는 이 메서드가 반환된 뒤 Event 전이를 별도로 다시 호출하면 안
+  된다 — 재호출하면 두 번째 호출이 이미 `PUBLISHED`인 Event에 대해 `INVALID_STATE`로
+  실패해 호출자의 Transaction 전체가 Rollback된다.
+- 공개 조건: 대상 Drawing이 `drawType = INITIAL`, `status = COMPLETED`여야 한다(`visibility`는
+  `PRIVATE`이면 새로 공개, `PUBLIC`이면 멱등 재요청). `status != COMPLETED`는 `visibility`와
+  무관하게 항상 `DRAWING_NOT_COMPLETED`로 거부한다 — `status`가 `COMPLETED`가 아닌데
+  `visibility`만 `PUBLIC`인 데이터 불일치를 멱등 성공으로 위장하지 않기 위해서다. 새로 공개하는
+  경우 Event.status가 `DRAW_COMPLETED`여야 한다.
+- Drawing `PRIVATE → PUBLIC` 전이와 `EventCommandService.publish(eventId)`를 한 DB Tx로
+  묶어, 하나라도 실패하면 전체 Rollback한다(부분 반영 금지). 동시 공개 요청은 Drawing·Event
+  행을 모두 잠근 뒤 조회해 직렬화하며, 뒤에 도착한 요청은 잠금 해제 후 갱신된 Drawing·Event
+  상태를 다시 읽어 멱등 성공으로 처리한다. Drawing만 잠그고 Event를 일반 조회로 읽으면
+  MySQL REPEATABLE READ의 트랜잭션 스냅샷 때문에 Drawing은 최신인데 Event는 낡은 값을
+  보는 불일치가 생길 수 있어, Event도 같은 방식(행 잠금)으로 조회한다.
+- 멱등 재요청: Drawing이 이미 `PUBLIC`이고 Event가 이미 `PUBLISHED`면 상태를 바꾸지 않고
+  기존 결과를 그대로 반환한다. Drawing만 `PUBLIC`이고 Event가 `PUBLISHED`가 아니면(정상
+  흐름에서는 발생하지 않아야 하는 불일치) `INVALID_STATE`로 실패해, 이 불일치를 성공으로
+  위장하지 않는다.
+- 당첨자 Notification 생성(FR-P4-114)은 이 메서드의 책임이 아니다. 호출자(시스템4의
+  PublicationService)가 이 메서드와 Notification 생성을 자신의 Transaction 경계 안에서
+  함께 처리해야 FR-P4-114의 원자성 요구를 만족한다.
 
-```json
-{
-  "drawingId": 20,
-  "eventId": 10,
-  "snapshotId": 30,
-  "drawNo": 0,
-  "drawType": "INITIAL",
-  "status": "COMPLETED",
-  "visibility": "PRIVATE",
-  "drawMethod": "WEIGHTED",
-  "algorithmVersion": "WEIGHTED_V1",
-  "winnerCount": 2,
-  "requestedBy": 1,
-  "createdAt": "2026-09-17T00:00:00Z",
-  "firstStartedAt": "2026-09-17T00:01:00Z",
-  "completedAt": "2026-09-17T00:02:00Z",
-  "publishedAt": null
-}
-```
-
-### `GET /api/admin/drawings/{drawingId}/result`
-
-- 권한: `ADMIN`
-- 사용자 식별: 필수 query parameter `userId` (`Long`)
-- 처리 순서: 요청 Member의 존재와 `ADMIN` 권한을 확인하고, `COMPLETED` Drawing의 결과만 조회한다.
-- Winner는 `rankInDrawing ASC` 순서로 반환한다.
-- Winner의 사용자 정보는 Member 도메인 조회 계약을 통해 일괄 조회하며, Drawing 도메인은 Member Entity나 Repository를 직접 참조하지 않는다.
-
-응답 `data`는 다음 필드를 포함한다.
-
-```json
-{
-  "drawingId": 20,
-  "winners": [
-    {
-      "winnerId": 100,
-      "eventId": 10,
-      "drawingId": 20,
-      "userId": 2,
-      "name": "홍길동",
-      "phone": "010-0000-0002",
-      "email": "hong@example.com",
-      "rankInDrawing": 1,
-      "appliedTicketCount": 7,
-      "createdAt": "2026-09-17T00:02:00Z"
-    }
-  ]
-}
-```
-
-두 API의 오류 코드는 다음과 같다.
+**책임 경계(2026-09-17 코드리뷰에서 확정, `docs/management/rtm.csv`의 FR-P4-114에도 반영됨).**
+원래 RTM에는 이 기능의 Transaction 소유자가 FR-P2-044(시스템3/이 도메인)와 FR-P4-114(시스템4)에서
+다르게 서술돼 있었고, FR-P4-114 원문은 시스템4가 `EventCommandService.publish()`를 직접
+호출한다고 돼 있어 이 메서드를 호출한 뒤 그대로 구현하면 Event 전이가 중복 호출돼 Rollback되는
+문제가 있었다. 외부 API·관리자 1차 검증·Notification 생성까지 포함한 전체 Transaction은
+**시스템4의 PublicationService가 소유**하고, 이 메서드 호출 하나로 Drawing 공개와 Event 전이가
+모두 끝나는 것으로 정리했다. 이 도메인은 "검증된 INITIAL Drawing을 공개하고 Event를 전이하는"
+내부 Service 메서드만 제공한다. 시스템4 쪽 구현·외부 엔드포인트·Notification 원자성 통합은
+후속 작업이다.
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | `drawingId` 또는 `userId`가 누락·0 이하이거나 형식이 올바르지 않음 |
-| `RESOURCE_NOT_FOUND` | 요청한 Member가 존재하지 않음 |
-| `FORBIDDEN` | 요청한 Member가 `ADMIN`이 아님 |
-| `DRAWING_NOT_FOUND` | 요청한 Drawing이 존재하지 않음 |
-| `DRAWING_NOT_COMPLETED` | 결과 조회 대상 Drawing의 상태가 `COMPLETED`가 아님 |
+| `RESOURCE_NOT_FOUND` | 요청한 Member 또는 Event가 존재하지 않음 |
+| `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
+| `DRAWING_NOT_FOUND` | Drawing이 존재하지 않음 |
+| `DRAWING_NOT_COMPLETED` | Drawing.status가 COMPLETED가 아님 |
+| `DRAWING_TYPE_NOT_SUPPORTED` | Drawing.drawType이 INITIAL이 아님(REDRAW는 이번 구현 범위 제외) |
+| `INVALID_STATE` | Event.status가 기대 상태(DRAW_COMPLETED 또는 멱등 재요청 시 PUBLISHED)가 아님 |
 
 ## 추첨 엔진 계약
 
@@ -248,3 +243,7 @@ winners
 
 정규화와 Hash 생성은 외부 저장소나 현재 시각에 의존하지 않는다. `drawing.input_hash`,
 `drawing.result_hash`, Winner와 상태 전이를 저장하는 트랜잭션은 추첨 실행 오케스트레이션의 책임이다.
+
+## 관리자 Drawing 조회 API
+
+상세 요청·응답과 오류 계약은 [관리자 Drawing 조회 API](admin-query-api.md)를 참고한다.
