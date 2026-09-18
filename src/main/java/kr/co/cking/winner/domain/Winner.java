@@ -14,6 +14,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import kr.co.cking.snapshot.domain.PrizeValue;
 
 @Getter
 @Entity
@@ -46,6 +47,18 @@ public class Winner {
     @Column(name = "applied_ticket_count", nullable = false, updatable = false)
     private long appliedTicketCount;
 
+    @Column(name = "snapshot_prize_id", updatable = false)
+    private Long snapshotPrizeId;
+
+    @Column(name = "prize_key", updatable = false, length = 100)
+    private String prizeKey;
+
+    @Column(name = "prize_display_name", updatable = false, length = 200)
+    private String prizeDisplayName;
+
+    @Column(name = "prize_priority", updatable = false)
+    private Integer prizePriority;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -56,6 +69,17 @@ public class Winner {
             Long memberId,
             int rankInDrawing,
             long appliedTicketCount
+    ) {
+        return create(eventId, drawingId, memberId, rankInDrawing, appliedTicketCount, null);
+    }
+
+    public static Winner create(
+            Long eventId,
+            Long drawingId,
+            Long memberId,
+            int rankInDrawing,
+            long appliedTicketCount,
+            PrizeValue prize
     ) {
         requirePositive(eventId, "eventId");
         requirePositive(drawingId, "drawingId");
@@ -73,6 +97,13 @@ public class Winner {
         winner.memberId = memberId;
         winner.rankInDrawing = rankInDrawing;
         winner.appliedTicketCount = appliedTicketCount;
+        if (prize != null) {
+            requirePositive(prize.snapshotPrizeId(), "snapshotPrizeId");
+            winner.snapshotPrizeId = prize.snapshotPrizeId();
+            winner.prizeKey = prize.prizeKey();
+            winner.prizeDisplayName = prize.displayName();
+            winner.prizePriority = prize.priority();
+        }
         return winner;
     }
 

@@ -66,6 +66,9 @@ public class Drawing {
     @Column(name = "algorithm_version", nullable = false, updatable = false, length = 30)
     private String algorithmVersion;
 
+    @Column(name = "prize_algorithm_version", nullable = false, updatable = false, length = 30)
+    private String prizeAlgorithmVersion;
+
     @Column(name = "winner_count", nullable = false, updatable = false)
     private int winnerCount;
 
@@ -131,6 +134,7 @@ public class Drawing {
         drawing.seedId = seedId;
         drawing.drawMethod = snapshot.drawMethod();
         drawing.algorithmVersion = snapshot.algorithmVersion();
+        drawing.prizeAlgorithmVersion = snapshot.prizeAlgorithmVersion();
         drawing.winnerCount = snapshot.winnerCount();
         drawing.status = DrawingStatus.READY;
         drawing.visibility = DrawingVisibility.PRIVATE;

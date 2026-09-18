@@ -14,6 +14,9 @@ import kr.co.cking.drawing.application.DrawingResultQuery;
 import kr.co.cking.drawing.application.DrawingWinnerResult;
 import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import kr.co.cking.drawing.application.InitialDrawingResult;
+import kr.co.cking.drawing.application.DrawingPublicQueryService;
+import kr.co.cking.drawing.application.PublicDrawingResult;
+import kr.co.cking.drawing.application.PublicWinnerResult;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
@@ -41,6 +44,21 @@ class DrawingAdminControllerTest {
 
     @MockitoBean
     private DrawingAdminQueryService drawingAdminQueryService;
+
+    @MockitoBean
+    private DrawingPublicQueryService drawingPublicQueryService;
+
+    @Test
+    void 공개된_Winner와_배정_상품을_조회한다() throws Exception {
+        when(drawingPublicQueryService.getPublishedWinners(10L)).thenReturn(new PublicDrawingResult(
+                10L, 20L, List.of(new PublicWinnerResult(100L, 2L, 1, "FIRST", "1등 상품", 1))));
+
+        mockMvc.perform(get("/api/events/10/winners"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.drawingId").value(20))
+                .andExpect(jsonPath("$.data.winners[0].prizeKey").value("FIRST"))
+                .andExpect(jsonPath("$.data.winners[0].prizeDisplayName").value("1등 상품"));
+    }
 
     @Test
     void 관리자는_공통_성공_응답으로_INITIAL_Drawing_실행_결과를_받는다() throws Exception {
