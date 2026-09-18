@@ -2,10 +2,10 @@ package kr.co.cking.event.application.dto;
 
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
 
-// entry-spend.lua 실행 결과. streamId/balance는 code에 따라 없을 수 있다.
-// - SUCCESS, DUPLICATE_REPLAY: streamId, balance 모두 있음
+// entry-spend.lua 실행 결과.
+// - SUCCESS: streamId, balance 모두 있음
+// - DUPLICATE_REPLAY: idem 경로면 둘 다 있고, guard 경로면 둘 다 없음
 // - INSUFFICIENT_BALANCE: balance만 있음
-// - 그 외: 둘 다 null
 public record EntrySpendResult(
         EntrySpendResultCode code,
         String streamId,
