@@ -96,6 +96,7 @@ public class DrawingPublicationService {
         return toResult(drawing, PublicationOutcome.PUBLISHED);
     }
 
+    /** 공개 처리 후 영속 Entity 대신 호출 경계를 위한 불변 결과를 만든다. */
     private DrawingPublicationResult toResult(Drawing drawing, PublicationOutcome outcome) {
         return new DrawingPublicationResult(
                 drawing.getId(),

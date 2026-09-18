@@ -11,6 +11,7 @@ public record InitialDrawingResponse(
         int candidateCount
 ) {
 
+    /** INITIAL Drawing 준비 결과를 관리자 API 응답 형식으로 변환한다. */
     public static InitialDrawingResponse from(InitialDrawingPreparation preparation) {
         return new InitialDrawingResponse(
                 preparation.eventId(),
