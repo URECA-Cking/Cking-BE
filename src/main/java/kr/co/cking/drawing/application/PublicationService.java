@@ -24,6 +24,10 @@ public class PublicationService {
     private final WinnerRepository winnerRepository;
     private final WinnerNotificationService winnerNotificationService;
 
+    /**
+     * INITIAL Drawing 공개, Event 공개 상태 전이, 최초 공개 당첨자 알림 생성을 하나의 트랜잭션으로 처리한다.
+     * 이미 공개된 Drawing의 재요청은 알림을 추가 생성하지 않고 현재 상태만 반환한다.
+     */
     @Transactional
     public DrawingPublicationResult publish(Long drawingId, Long adminId) {
         DrawingPublicationResult result = drawingPublicationService.publish(drawingId, adminId);
@@ -33,6 +37,7 @@ public class PublicationService {
         return result;
     }
 
+    /** 최초 공개된 Drawing의 당첨자마다 INITIAL_WINNER 알림 생성 대상을 만들고 알림 생성을 위임한다. */
     private void createWinnerNotifications(DrawingPublicationResult result) {
         List<WinnerNotificationTarget> targets = winnerRepository
                 .findAllByDrawingIdOrderByRankInDrawingAsc(result.drawingId())
