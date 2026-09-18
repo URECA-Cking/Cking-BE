@@ -59,6 +59,17 @@ class PublicWinnerControllerTest {
     }
 
     @Test
+    void Winner가_참조하는_회원이_없으면_내부_정보_없이_시스템_오류를_반환한다() throws Exception {
+        when(publicWinnerQueryService.getPublicWinners(10L))
+                .thenThrow(new BusinessException(CommonErrorCode.SYSTEM_ERROR));
+
+        mockMvc.perform(get("/api/events/10/winners"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("SYSTEM_ERROR"))
+                .andExpect(jsonPath("$.message").value("서버 오류가 발생했습니다."));
+    }
+
+    @Test
     void eventId가_양수가_아니면_입력_검증_오류를_반환한다() throws Exception {
         mockMvc.perform(get("/api/events/0/winners"))
                 .andExpect(status().isBadRequest())

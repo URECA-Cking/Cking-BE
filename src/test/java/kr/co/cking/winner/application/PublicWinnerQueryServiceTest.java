@@ -78,7 +78,7 @@ class PublicWinnerQueryServiceTest {
     }
 
     @Test
-    void Winner의_회원정보가_없으면_공개_결과를_반환하지_않는다() {
+    void Winner의_회원정보가_없으면_내부_데이터_정합성_오류로_처리한다() {
         PublicWinnerProjection winner = winner(100L, 20L, 0, DrawingType.INITIAL, 2L, 1);
         when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID)).thenReturn(List.of(winner));
         when(memberQueryService.findMemberInfosByIds(List.of(2L))).thenReturn(Map.of());
@@ -86,7 +86,7 @@ class PublicWinnerQueryServiceTest {
         assertThatThrownBy(() -> service.getPublicWinners(EVENT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+                .isEqualTo(CommonErrorCode.SYSTEM_ERROR);
     }
 
     private PublicWinnerProjection winner(

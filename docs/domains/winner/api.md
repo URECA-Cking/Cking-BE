@@ -37,4 +37,5 @@
 | 코드 | 조건 |
 | --- | --- |
 | `VALIDATION_FAILED` | eventId가 누락·0 이하이거나 형식이 올바르지 않음 |
-| `RESOURCE_NOT_FOUND` | 요청한 Event 또는 Winner가 가리키는 Member가 존재하지 않음 |
+| `RESOURCE_NOT_FOUND` | 요청한 Event가 존재하지 않음 |
+| `SYSTEM_ERROR` | Winner가 가리키는 Member가 없는 내부 데이터 정합성 오류. 상세는 외부에 노출하지 않음 |

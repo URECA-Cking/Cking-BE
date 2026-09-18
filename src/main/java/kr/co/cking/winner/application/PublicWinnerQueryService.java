@@ -10,11 +10,13 @@ import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.winner.repository.PublicWinnerProjection;
 import kr.co.cking.winner.repository.WinnerRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 공개된 Drawing의 Winner만 개인정보를 마스킹해 조회하는 유스케이스다. */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PublicWinnerQueryService {
@@ -37,11 +39,12 @@ public class PublicWinnerQueryService {
         return new PublicWinnerQueryResult(eventId, results);
     }
 
-    /** Winner가 가리키는 회원 원본 정보를 찾아 데이터 불일치를 공통 오류로 변환한다. */
+    /** Winner가 가리키는 회원 원본 정보를 찾고, 누락된 내부 참조는 시스템 오류로 기록한다. */
     private MemberInfo findMember(Map<Long, MemberInfo> members, Long memberId) {
         MemberInfo member = members.get(memberId);
         if (member == null) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+            log.error("공개 Winner 조회 데이터 정합성 오류: memberId={}인 Winner의 Member가 없습니다.", memberId);
+            throw new BusinessException(CommonErrorCode.SYSTEM_ERROR);
         }
         return member;
     }
