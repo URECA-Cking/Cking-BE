@@ -22,15 +22,12 @@ import kr.co.cking.member.application.MemberQueryService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 검증된 INITIAL Drawing 공개를 처리하는 내부 Service 계약이다(FR-P2-044, 취합v1.5.4 §12).
- * 외부 HTTP API로 노출하지 않는다 — 외부 엔드포인트와 당첨자 Notification 생성(FR-P4-114)은
- * 호출자(시스템4의 PublicationService)가 자신의 Transaction 경계 안에서 담당한다
- * ({@code docs/domains/drawing/README.md}의 "책임 경계" 절 참고). 이 메서드가
- * {@code EventCommandService.publish()}까지 이미 호출하므로, 호출자는 이 메서드가 반환된
- * 뒤 Event 전이를 별도로 다시 호출하면 안 된다(재호출 시 두 번째 호출이 이미 PUBLISHED인
- * Event에 대해 {@code INVALID_STATE}로 실패해 호출자의 Transaction 전체가 Rollback된다).
- * 관리자 권한(adminId)은 호출자가 1차 검증하는 것을 전제로 하되, 도메인 경계를 넘는 호출이므로
- * 이 메서드도 {@link MemberQueryService#validateAdmin}으로 방어적으로 재검증한다. 반환값의
+ * 검증된 INITIAL Drawing을 공개하고 연결 Event를 {@code DRAW_COMPLETED → PUBLISHED}로
+ * 전이하는 Service다(FR-P2-044, 취합v1.5.4 §12). 관리자 공개 API Controller는 이 Service에
+ * {@code drawingId}, {@code userId}를 전달하며, 이 Service가 관리자 권한과 공개 조건을 검증한다.
+ * 이 메서드가 {@code EventCommandService.publish()}까지 이미 호출하므로, 호출자는 반환 후 Event
+ * 전이를 별도로 다시 호출하면 안 된다. 재호출하면 이미 {@code PUBLISHED}인 Event가
+ * {@code INVALID_STATE}로 실패할 수 있다. 반환값의
  * {@link DrawingPublicationResult#outcome}이 {@code PUBLISHED}일 때만 이번 호출에서 실제
  * 전이가 일어났다는 뜻이다 — 호출자는 이 값이 {@code PUBLISHED}일 때만 신규 Winner
  * Notification을 생성해야 한다(FR-P4-132·FR-P4-133). {@code ALREADY_PUBLISHED}(멱등

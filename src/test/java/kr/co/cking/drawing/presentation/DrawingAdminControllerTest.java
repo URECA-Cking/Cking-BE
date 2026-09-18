@@ -199,6 +199,18 @@ class DrawingAdminControllerTest {
     }
 
     @Test
+    void INITIAL이_아닌_Drawing_공개_요청은_DRAWING_TYPE_NOT_SUPPORTED를_반환한다() throws Exception {
+        when(drawingPublicationService.publish(10L, 1L))
+                .thenThrow(new BusinessException(DrawingErrorCode.DRAWING_TYPE_NOT_SUPPORTED));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DRAWING_TYPE_NOT_SUPPORTED"));
+    }
+
+    @Test
     void 잘못된_공개_상태는_INVALID_STATE를_반환한다() throws Exception {
         when(drawingPublicationService.publish(10L, 1L))
                 .thenThrow(new BusinessException(EventErrorCode.INVALID_STATE));
@@ -208,6 +220,25 @@ class DrawingAdminControllerTest {
                         .content("{\"userId\":1}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
+    @Test
+    void 이미_공개된_Drawing_재요청도_현재_공개_상태를_성공_응답으로_반환한다() throws Exception {
+        Instant publishedAt = Instant.parse("2026-09-18T12:00:00Z");
+        when(drawingPublicationService.publish(10L, 1L)).thenReturn(new DrawingPublicationResult(
+                10L, 20L, DrawingVisibility.PUBLIC, publishedAt, PublicationOutcome.ALREADY_PUBLISHED));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.drawingId").value(10))
+                .andExpect(jsonPath("$.data.eventId").value(20))
+                .andExpect(jsonPath("$.data.visibility").value("PUBLIC"))
+                .andExpect(jsonPath("$.data.publishedAt").value("2026-09-18T12:00:00Z"));
+
+        verify(drawingPublicationService).publish(10L, 1L);
     }
 
     @Test
