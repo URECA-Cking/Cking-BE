@@ -46,7 +46,9 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 - 입력: `drawingId`(`Long`, 양수), `adminId`(`Long`, 양수). 외부 호출을 받은 Controller가
   `PublicationService`에 전달하며, 이 메서드는 `MemberQueryService.validateAdmin(adminId)`로
   관리자 권한을 검증한다.
-- 반환: 불변 결과 `DrawingPublicationResult(drawingId, eventId, visibility, publishedAt, outcome)`.
+- 반환: 불변 결과 `DrawingPublicationResult(drawingId, eventId, drawingType, visibility, publishedAt, outcome)`.
+  `drawingType`은 호출자(시스템4)가 최초 공개된 Drawing의 Winner에게 `INITIAL_WINNER` 또는
+  `REDRAW_WINNER` Notification을 생성할 때 사용하는 내부 계약 값이다. 외부 REST 응답에는 노출하지 않는다.
   영속 상태의 `Drawing` Entity를 그대로 반환하지 않는다 — 도메인 간 참조는 Entity가 아닌
   ID·DTO를 쓴다는 원칙(README "9. 코드 구조")에 따라, 호출자가 이 도메인의 Entity에 직접
   의존하거나 같은 Transaction에서 상태를 바꿀 여지를 없앤다. `outcome`(`PublicationOutcome`)은
