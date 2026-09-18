@@ -10,11 +10,10 @@ import org.springframework.http.HttpStatus;
  * 실패가 아니므로(각각 202/200 정상 응답) 이 enum에 포함하지 않는다 — 통합 API
  * 명세 v2.5 §4.2 매핑표 기준.
  *
- * <p>{@code DUPLICATE_MISSION}/{@code REQUEST_ID_CONFLICT}는 {@code mission_completion}의
- * business key/request_id UNIQUE 제약을 우리 쪽에서 직접 판정해 발생시킨다.
- * {@link kr.co.cking.ticket.application.TicketEarnService#earn}이 같은 이름의
- * 코드를 반환하는 경로는 이슈 #30(자비님, Business Key 가드) 완료 후에만 실제로
- * 도달한다 — {@link #from}은 그 두 경로를 동일하게 매핑하기 위한 것이다.
+ * <p>{@code DUPLICATE_MISSION}/{@code REQUEST_ID_CONFLICT}는 이제 이 API가 직접
+ * 판정하지 않는다 — {@code ticket-earn.lua}가 멱등키·중복 적립 가드를 원자적으로
+ * 처리한 뒤 {@link kr.co.cking.ticket.application.TicketEarnService#earn}이 반환하는
+ * {@link EarnResultCode}를 {@link #from}으로 그대로 변환할 뿐이다.
  */
 @RequiredArgsConstructor
 public enum MissionErrorCode implements ErrorCode {

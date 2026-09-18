@@ -8,9 +8,9 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.application.MissionCompletionService;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
-import kr.co.cking.mission.domain.Mission;
+import kr.co.cking.mission.domain.MissionErrorCode;
 import kr.co.cking.mission.domain.MissionType;
-import kr.co.cking.mission.repository.MissionRepository;
+import kr.co.cking.ticket.application.dto.EarnResultCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -25,9 +25,11 @@ import java.util.concurrent.Future;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * DB UNIQUE 제약({@code uk_completion_business})이 실제 MySQL에서 동시 삽입을
- * 정확히 하나만 통과시키는지 검증한다. 로컬 MySQL·Redis가 떠 있어야 한다
- * ({@link kr.co.cking.event.application.CreatorEventConcurrencyIntegrationTest}와 동일한 전제).
+ * 동일 Business Key(userId+creatorId+missionId+periodKey)로 동시에 서로 다른
+ * requestId가 들어와도, 저장 주체는 이제 이 API가 아니라 {@code ticket-earn.lua}의
+ * 멱등키·중복 적립 가드다. 그래서 이 테스트는 DB UNIQUE 경쟁이 아니라 Lua 가드가
+ * 실제 Redis에서 정확히 하나만 EARN_ACCEPTED로 통과시키는지를 검증한다. 로컬
+ * MySQL·Redis가 떠 있어야 한다.
  */
 @SpringBootTest
 class MissionCompletionConcurrencyIntegrationTest {
@@ -41,9 +43,8 @@ class MissionCompletionConcurrencyIntegrationTest {
     @Autowired
     private MissionRepository missionRepository;
 
-    /** 같은 Business Key(같은 유저·크리에이터·미션·기간)로 동시에 완료 요청이 들어오면 하나만 성공한다. */
     @Test
-    void 동일_business_key로_동시_요청해도_정확히_하나만_성공한다() throws Exception {
+    void 동일_business_key로_동시_요청해도_EARN_ACCEPTED와_DUPLICATE_MISSION이_정확히_하나씩_나온다() throws Exception {
         Member member = memberRepository.saveAndFlush(new Member("동시완료테스트", null, null, MemberRole.USER));
         Member creatorOwner = memberRepository.saveAndFlush(new Member("동시완료크리에이터", null, null, MemberRole.USER));
         Creator creator = creatorRepository.saveAndFlush(new Creator(creatorOwner.getMemberId(), creatorOwner.getName()));
@@ -62,15 +63,15 @@ class MissionCompletionConcurrencyIntegrationTest {
             List<String> results = List.of(first.get(), second.get());
 
             assertThat(results).withFailMessage("동시 완료 결과: %s", results)
-                    .allMatch(result -> result.equals("EARN_ACCEPTED") || result.equals("DUPLICATE_MISSION"));
-            assertThat(results).contains("EARN_ACCEPTED");
-            assertThat(results.stream().filter("EARN_ACCEPTED"::equals).count()).isEqualTo(1);
+                    .allMatch(result -> result.equals(EarnResultCode.EARN_ACCEPTED.name())
+                            || result.equals(MissionErrorCode.DUPLICATE_MISSION.code()));
+            assertThat(results).filteredOn(EarnResultCode.EARN_ACCEPTED.name()::equals).hasSize(1);
+            assertThat(results).filteredOn(MissionErrorCode.DUPLICATE_MISSION.code()::equals).hasSize(1);
         } finally {
             executor.shutdownNow();
         }
     }
 
-    /** 병렬 완료 요청 결과를 성공 코드 또는 도메인 오류 코드 문자열로 변환한다. */
     private String runComplete(CountDownLatch start, Long userId, Long creatorId, Long missionId)
             throws InterruptedException {
         start.await();

@@ -2,7 +2,7 @@ package kr.co.cking.mission.application.dto;
 
 import kr.co.cking.ticket.application.dto.EarnResultCode;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * 미션 완료 성공 계열(EARN_ACCEPTED/ALREADY_PROCESSED) 결과. 실패 코드는
@@ -13,6 +13,6 @@ public record MissionCompleteOutcome(
         EarnResultCode code,
         Long missionId,
         Integer rewardAmount,
-        LocalDateTime completedAt
+        Instant completedAt
 ) {
 }
