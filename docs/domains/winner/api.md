@@ -13,6 +13,12 @@
 - 응답을 만들 때만 이름과 전화번호를 마스킹한다. Winner와 Member의 원본 데이터는 바꾸지 않으며,
   관리자 결과 조회 및 당첨자 본인 조회의 원본 개인정보 정책과 분리한다.
 
+#### 조회 경계
+
+공개 범위(`PUBLIC`·`COMPLETED`)와 회차·순위 정렬을 한 번의 DB 조회에서 보장하기 위해 Winner
+Repository가 Drawing을 읽기 전용으로 join한다. 이 경로는 Entity가 아닌 Projection만 반환하고
+Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도메인의 Service만 수행한다.
+
 ```json
 {
   "code": "SUCCESS",
