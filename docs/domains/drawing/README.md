@@ -131,6 +131,23 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 
 ## 영속성 모델
 
+### Seed
+
+- `DrawSeed`는 `draw_seed.seed_value`를 32byte 바이너리로 저장하고 `DrawingSeed` 값 객체로 복원한다.
+- `DrawingSeedService.createForInitial()`은 신규 Seed를 저장하고 `seedId`와 `DrawingSeed`를 함께 반환한다.
+- `DrawingSeedService.reuseForRetry(seedId)`는 기존 행을 조회해 재사용하며 신규 Seed 행을 만들지 않는다.
+- `DrawingSeedService.createForRedraw(previousSeedId)`는 이전 Drawing의 Seed와 다른 값을 생성해 신규 행으로 저장한다.
+- REDRAW 자체의 Retry는 `createForRedraw`가 아니라 `reuseForRetry`를 사용한다.
+- Seed 저장은 Drawing 생성 트랜잭션에 참여한다. Drawing 저장 실패 시 고아 Seed가 남지 않도록 별도 `REQUIRES_NEW` 트랜잭션을 사용하지 않는다.
+- 애플리케이션 서비스는 반환된 `seedId`를 `Drawing`에, `DrawingSeed`를 `DrawInput`에 전달한다.
+
+### 엔진 조립
+
+`WeightedV1DrawingEngine`은 Spring에 의존하지 않는 순수 도메인 구현체로 유지한다.
+`DrawingEngineConfig`가 현재 지원 버전인 `WEIGHTED_V1` 구현체를 `DrawingEngine` Bean으로 등록하며,
+애플리케이션 서비스는 인터페이스를 생성자 주입받는다. 알고리즘이 추가되면 application 계층에서
+`algorithmVersion`별 Resolver 또는 Registry로 확장한다.
+
 ### Drawing
 
 - Event당 INITIAL Drawing은 `drawNo = 0`, `drawType = INITIAL`이다.
