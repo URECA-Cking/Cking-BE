@@ -9,9 +9,28 @@ Creator의 Event 관리와 관리자 심사 API 계약이다. 모든 성공·실
 - Event 상태는 Repository로 직접 변경하지 않는다. 아래 전이는 `EventCommandService`를 사용한다.
 
 ```text
-DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED
+DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPEN
                                       └--reject--> REJECTED --changeToDraft--> DRAFT
+
+CLOSED --completeDrawing--> DRAW_COMPLETED --publish--> PUBLISHED
 ```
+
+## 내부 Lifecycle 계약
+
+시스템2 `EventLifecycleScheduler`는 시작 대상(`status = SCHEDULED`, `startAt <= now < endAt`)마다
+`EventCommandService.open(eventId)`를 호출한다. 이 메서드는 Event 행의 비관적 잠금 안에서
+`SCHEDULED → OPEN`만 허용한다. 같은 Event에 대한 병렬 호출은 한 건만 성공하고, 잠금 대기 후
+이미 `OPEN`을 확인한 호출은 `INVALID_STATE`로 실패한다. 존재하지 않는 Event는 `RESOURCE_NOT_FOUND`다.
+
+시스템3의 INITIAL Drawing 완료 Transaction은 `EventCommandService.completeDrawing(eventId)`를 호출한다.
+이 메서드는 Event 행의 비관적 잠금 안에서 `CLOSED → DRAW_COMPLETED`만 허용한다. 병렬 호출은 한 건만
+성공하고, 후행 호출과 다른 상태는 `INVALID_STATE`로 실패한다. Snapshot 생성·검증과 DrawingEngine 실행은
+이 계약의 책임이 아니며 호출자가 동일 Transaction에서 조합한다.
+
+시스템4의 결과 공개 Transaction은 `EventCommandService.publish(eventId)`를 호출한다. 이 메서드는 Event 행의
+비관적 잠금 안에서 `DRAW_COMPLETED → PUBLISHED`만 허용한다. 병렬 공개 요청은 한 건만 성공하고, 후행 호출과
+다른 상태는 `INVALID_STATE`로 실패한다. Drawing 공개 상태 변경과 Winner 알림 생성은 이 계약의 책임이 아니며
+호출자가 동일 Transaction에서 조합한다. 전이 성공 시 `publishedAt`을 기록한다.
 
 ## GET /api/creator/events
 
@@ -124,6 +143,52 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 - 없는 Member 또는 Event는 `RESOURCE_NOT_FOUND`, 권한·소유권 위반은 `FORBIDDEN`이다.
 - 허용되지 않은 상태의 수정·삭제·심사·승인 요청은 `INVALID_STATE`다.
 - 승인·거절처럼 Event 행 잠금으로 직렬화되는 상충 명령은 `EventCommandService`가 잠금을 획득하며, 선행 명령이 상태를 바꾼 뒤 후행 명령이 `INVALID_STATE`가 된다.
+- Event 상태 변경은 `EventCommandService`만 수행한다. 이 서비스에는 Redis Drain, Snapshot 생성, DrawingEngine 호출을 포함하지 않는다.
 - Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.
 - Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
 - `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
+
+## POST /api/events/{eventId}/close
+
+```json
+{ "userId": 1 }
+```
+
+`userId`는 양수 Long이며, 요청 Member와 삭제되지 않은 Event가 존재해야 한다. ADMIN은 모든 Event,
+Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요청할 수 있다. Creator가 타인의 Event를
+요청하면 `FORBIDDEN`이고, 존재하지 않는 Member 또는 존재하지 않거나 삭제된 Event는
+`RESOURCE_NOT_FOUND`다. `OPEN`이면 마감을 시작하고, 이미 `CLOSING` 또는 `CLOSED`인 요청은
+오류 없이 현재 상태를 반환하는 멱등 명령이다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`,
+`SCHEDULED`, `DRAW_COMPLETED`, `PUBLISHED` 상태는 `INVALID_STATE`다.
+
+성공 시 시스템2 `EventClosingService.startClosing(eventId)`가 Gate 차단·cutoff 확정·`OPEN → CLOSING`
+전이를 처리한다. 시스템4는 Redis Gate나 Stream을 직접 조작하지 않는다. Drain 완료는 비동기로 이어지며,
+성공 응답은 202이고 공통 응답 봉투의 `data.status`는 실제 현재 상태인 `CLOSING` 또는 `CLOSED`다.
+처음 마감을 시작한 경우는 `CLOSING`을 반환한다.
+
+```json
+{ "eventId": 1, "status": "CLOSING" }
+```
+
+이미 완료된 Event를 재요청한 경우의 응답은 다음과 같다.
+
+```json
+{ "eventId": 1, "status": "CLOSED" }
+```
+
+## GET /api/admin/events/{eventId}/closing-status
+
+`eventId`와 `userId`는 양수 Long이어야 하며, `userId`는 필수 쿼리 파라미터다. 요청 Member가 존재하고
+역할이 `ADMIN`이어야 한다. 대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를
+확인한다. `CLOSING`이면 마감 진행 중, `CLOSED`이면 마감 완료를 의미한다. 그 외 Event 상태는
+`INVALID_STATE`다.
+
+성공은 200이며, 응답에는 상태만 포함한다. 진행률, Pending 수, cutoff Stream ID를 비롯한 Stream 내부
+정보는 반환하지 않는다.
+
+```json
+{ "status": "CLOSING" }
+```
+
+식별자가 누락·0 이하이거나 형식이 올바르지 않으면 `VALIDATION_FAILED`, 없는 Member 또는 Event는
+`RESOURCE_NOT_FOUND`, 관리자가 아닌 Member는 `FORBIDDEN`이다.

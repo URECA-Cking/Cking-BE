@@ -26,7 +26,7 @@
 | 20 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/approve` | Event 승인 | 상태 기반 |
 | 21 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/reject` | Event 거절 | 상태 기반 |
 | 22 | 외부 | Close | CREATOR/ADMIN | POST | `/api/events/{eventId}/close` | 수동 마감 요청 | 상태 기반 |
-| 23 | 외부 | Close | ADMIN | GET | `/api/admin/events/{eventId}/closing-status` | 마감 상태 조회 | - |
+| 23 | 외부 | Close | ADMIN | GET | `/api/admin/events/{eventId}/closing-status` | 마감 상태만 조회(진행률·Pending·Stream 정보 제외) | - |
 | 24 | 외부 | Snapshot | ADMIN | GET | `/api/admin/events/{eventId}/snapshot` | Snapshot 조회 | - |
 | 25 | 외부 | Drawing | ADMIN | POST | `/api/admin/events/{eventId}/drawings` | INITIAL Drawing | 상태 기반 |
 | 26 | 외부 | Drawing | ADMIN | GET | `/api/admin/drawings/{drawingId}` | Drawing 조회 | - |
@@ -38,7 +38,7 @@
 | 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 신청 목록 | - |
 | 33 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/approve` | 승인 | 상태 기반 |
 | 34 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/reject` | 거절 | 상태 기반 |
-| 35 | 외부 | 공개 | ADMIN | POST | `/api/admin/drawings/{drawingId}/publish` | 결과 공개 | 상태 기반 |
+| 35 | 내부 | 공개 | INTERNAL | CALL | `DrawingPublicationService.publish(drawingId, adminId)` | 결과 공개(Drawing PRIVATE→PUBLIC + Event DRAW_COMPLETED→PUBLISHED) | 상태 기반 |
 | 36 | 외부 | Winner | USER | GET | `/api/me/winners` | 내 당첨 조회 | - |
 | 37 | 외부 | Winner | USER | POST | `/api/me/winners/{winnerId}/decline` | 당첨 포기 | 상태 기반 |
 | 38 | 외부 | Winner | ADMIN | POST | `/api/admin/winners/{winnerId}/receive` | 수령 완료 | 상태 기반 |
@@ -55,5 +55,10 @@
 | 49 | 외부 | Verification | ADMIN | GET | `/api/admin/drawings/{drawingId}/verification-history` | 검증 이력 조회 | - |
 | 50 | 내부 | Snapshot | INTERNAL | CALL | `OfficialSnapshotService.createIfAbsent(eventId)` | 공식 Snapshot 생성 | Event 기준 |
 | 51 | 내부 | Snapshot | INTERNAL | CALL | `SnapshotIntegrityService.verifyForDrawing(eventId)` | 추첨 전 Snapshot 무결성 검증 | - |
+| 52 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.open(eventId)` | 예약 Event를 OPEN으로 전이 | Event 행 잠금 |
+| 53 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventClosingService.startClosing(eventId)` | Gate 차단·cutoff 확정 후 OPEN Event 마감 시작 | 상태 기반 |
+| 54 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.completeClosing(eventId)` | Drain 완료 CLOSING Event를 CLOSED로 전이 | Event 행 잠금 |
+| 55 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.completeDrawing(eventId)` | 초기 추첨 완료 Event를 DRAW_COMPLETED로 전이 | Event 행 잠금 |
+| 56 | 내부 | Event Lifecycle | INTERNAL | CALL | `EventCommandService.publish(eventId)` | 추첨 완료 Event를 PUBLISHED로 전이 | Event 행 잠금 |
 
-No. 9, No. 50, No. 51은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+No. 9, No. 50~56은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

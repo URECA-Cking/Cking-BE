@@ -110,6 +110,24 @@ public class Event {
         status = EventStatus.SCHEDULED;
     }
 
+    public void open() {
+        requireStatus(EventStatus.SCHEDULED);
+        status = EventStatus.OPEN;
+    }
+
+    /** 마감된 Event를 초기 추첨 완료 상태로 전이한다. */
+    public void completeDrawing() {
+        requireStatus(EventStatus.CLOSED);
+        status = EventStatus.DRAW_COMPLETED;
+    }
+
+    /** 추첨이 완료된 Event를 결과 공개 상태로 전이한다. */
+    public void publish() {
+        requireStatus(EventStatus.DRAW_COMPLETED);
+        status = EventStatus.PUBLISHED;
+        publishedAt = Instant.now();
+    }
+
     public void reject() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.REJECTED;
@@ -153,6 +171,20 @@ public class Event {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
+    }
+
+    /** Gate 차단·cutoff 확정 이후 호출. OPEN인 이벤트만 CLOSING으로 전이한다. */
+    public void startClosing(String cutoffStreamId) {
+        requireStatus(EventStatus.OPEN);
+        this.cutoffStreamId = cutoffStreamId;
+        this.status = EventStatus.CLOSING;
+    }
+
+    /** Drain(미처리 응모 반영) 완료 확인 후 호출. CLOSING인 이벤트만 CLOSED로 전이한다. */
+    public void completeClosing(Instant closedAt) {
+        requireStatus(EventStatus.CLOSING);
+        this.status = EventStatus.CLOSED;
+        this.closedAt = closedAt;
     }
 
     private void requireStatus(EventStatus expected) {

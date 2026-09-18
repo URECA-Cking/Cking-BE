@@ -9,12 +9,18 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 
 | 키 | 타입 | 용도 |
 | --- | --- | --- |
-| `event:status:{eventId}` | STRING | `OPEN`/`CLOSED`. 자동배치 또는 백오피스 수동마감 API가 갱신 |
+| `event:status:{eventId}` | STRING | `OPEN`이면 응모 허용, 그 외 값이면 차단. 시스템2 `EventCutoffBarrier`가 마감 시작 시 `CLOSED`로 갱신 |
 | `event:endat:{eventId}` | STRING | 마감 시각(epoch millis). 이벤트 생성 시 1회 세팅, 불변 |
+| `event:cutoff:{eventId}` | STRING | 시스템2가 확정한 마감 barrier Stream ID. 재시도 시 같은 값을 재사용 |
 | `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 응모권 잔액 |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 
 Gate 키 구조는 `데이터 구조.md` §2 확정 스키마를 따른다(Hash가 아니라 String 2개로 분리).
+
+`event:status`는 Redis Gate 값이고 DB Event 상태가 아니다. DB는 시스템2가
+`OPEN → CLOSING → CLOSED`로 전이하며, 외부 수동 마감 API는 시스템4의 권한·요청 상태 검증 뒤
+`EventClosingService.startClosing(eventId)`만 호출한다. cutoff와 Stream·PEL·Drain 정보는 외부 응답에
+포함하지 않는다.
 
 ## 처리 순서
 

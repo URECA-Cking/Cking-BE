@@ -19,4 +19,14 @@ public class EntryLuaConfig {
 
         return script;
     }
+
+    @Bean
+    public DefaultRedisScript<String> eventCloseBarrierLuaScript() {
+        DefaultRedisScript<String> script = new DefaultRedisScript<>();
+
+        script.setLocation(new ClassPathResource("scripts/event-close-barrier.lua"));
+        script.setResultType(String.class);
+
+        return script;
+    }
 }

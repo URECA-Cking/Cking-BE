@@ -14,10 +14,9 @@ import java.time.Instant;
 import kr.co.cking.ticket.application.TicketBalanceQueryService;
 
 /**
- * 지금은 {@link TicketBalanceQueryService}의 읽기 전용 조회에만 쓰인다. EARN/SPEND
- * Consumer(T2-04)가 이 Entity로 갱신하게 되면 {@code updated_at}의 저장 방식(자동 채움
- * 등)을 그때 다시 봐야 한다 — DB에 {@code ON UPDATE CURRENT_TIMESTAMP}가 있어 지금
- * 매핑만 해둬도 조회 결과는 정확하다.
+ * {@link TicketBalanceQueryService}의 조회와 EARN/SPEND Consumer의 갱신에 쓰인다.
+ * {@code updated_at}은 {@link #applyDelta}가 명시적으로 채운다 — JPA UPDATE가 항상
+ * 그 컬럼을 SET 절에 포함하므로 DB {@code ON UPDATE CURRENT_TIMESTAMP}는 무시된다.
  */
 @Entity
 @Table(name = "user_ticket_balance")
@@ -46,5 +45,10 @@ public class UserTicketBalance {
 
     public Long getCreatorId() {
         return id.getCreatorId();
+    }
+
+    public void applyDelta(long delta, Instant updatedAt) {
+        this.balance += delta;
+        this.updatedAt = updatedAt;
     }
 }
