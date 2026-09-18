@@ -10,7 +10,7 @@ public final class TicketRedisKeys {
         return "ticket:balance:" + creatorId + ":" + userId;
     }
 
-    // FR-P1-017 확정 포맷. SPEND의 idem:{requestId}와 네임스페이스가 다르다(TTL도 24h로 별개).
+    // SPEND의 idem:{requestId}와 분리된 미션 적립 replay 키다.
     public static String idemMission(String requestId) {
         return "idem:mission:" + requestId;
     }

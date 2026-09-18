@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class EntrySpendServiceImpl implements EntrySpendService {
 
-    // FR-P2-033 확정값 (1시간)
+    // FR-P2-033: idem TTL은 1시간이다.
     private static final long IDEM_TTL_SECONDS = 3600L;
 
     private final StringRedisTemplate redisTemplate;
@@ -60,7 +60,8 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                             EntryRedisKeys.status(eventId),
                             EntryRedisKeys.endAt(eventId),
                             EntryRedisKeys.balance(creatorId, userId),
-                            EntryRedisKeys.idem(requestId)
+                            EntryRedisKeys.idem(requestId),
+                            EntryRedisKeys.spendGuard(requestId)
                     ),
                     String.valueOf(ticketCount),
                     fingerprint,
@@ -72,8 +73,7 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                     requestId
             );
         } catch (DataAccessException e) {
-            // entry-spend.lua는 XADD 실패 시 잔액을 보상한 뒤 error reply를 반환하므로,
-            // 이 경로로 들어오는 실패는 이미 Redis 쪽 상태가 정리된 뒤다.
+            // Lua는 DECRBY/XADD 실패 시 잔액과 guard를 정리한 뒤 오류를 반환한다.
             log.error(
                     "응모 Lua 실행 중 Redis 접근에 실패했습니다. eventId={}, userId={}, requestId={}",
                     eventId, userId, requestId, e
@@ -122,11 +122,19 @@ public class EntrySpendServiceImpl implements EntrySpendService {
         }
 
         return switch (code) {
-            case SUCCESS, DUPLICATE_REPLAY -> EntrySpendResult.ofSuccess(
+            case SUCCESS -> EntrySpendResult.ofSuccess(
                     code,
                     String.valueOf(luaResult.get(1)),
                     Long.valueOf(String.valueOf(luaResult.get(2)))
             );
+            // idem 경로는 상세 결과를 포함하고, guard 경로는 코드만 반환한다.
+            case DUPLICATE_REPLAY -> luaResult.size() >= 3
+                    ? EntrySpendResult.ofSuccess(
+                            code,
+                            String.valueOf(luaResult.get(1)),
+                            Long.valueOf(String.valueOf(luaResult.get(2)))
+                    )
+                    : EntrySpendResult.of(code);
             case INSUFFICIENT_BALANCE -> EntrySpendResult.ofBalance(
                     code,
                     Long.valueOf(String.valueOf(luaResult.get(1)))

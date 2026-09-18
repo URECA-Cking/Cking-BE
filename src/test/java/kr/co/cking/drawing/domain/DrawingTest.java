@@ -14,6 +14,48 @@ import org.springframework.test.util.ReflectionTestUtils;
 class DrawingTest {
 
     @Test
+    void READY_Drawing은_확정입력과_함께_RUNNING으로_전이한다() {
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+        Instant startedAt = Instant.parse("2026-09-20T00:00:00Z");
+
+        drawing.start("input\n", "a".repeat(64), startedAt);
+
+        assertThat(drawing.getStatus()).isEqualTo(DrawingStatus.RUNNING);
+        assertThat(drawing.getInputPayload()).isEqualTo("input\n");
+        assertThat(drawing.getInputHash()).isEqualTo("a".repeat(64));
+        assertThat(drawing.getFirstStartedAt()).isEqualTo(startedAt);
+        assertThat(drawing.getAttemptCount()).isEqualTo(1);
+    }
+
+    @Test
+    void RUNNING_Drawing은_결과와_함께_COMPLETED로_전이한다() {
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+        drawing.start("input\n", "a".repeat(64), Instant.parse("2026-09-20T00:00:00Z"));
+        Instant completedAt = Instant.parse("2026-09-20T00:01:00Z");
+
+        drawing.complete("output\n", "b".repeat(64), completedAt);
+
+        assertThat(drawing.getStatus()).isEqualTo(DrawingStatus.COMPLETED);
+        assertThat(drawing.getOutputPayload()).isEqualTo("output\n");
+        assertThat(drawing.getResultHash()).isEqualTo("b".repeat(64));
+        assertThat(drawing.getCompletedAt()).isEqualTo(completedAt);
+    }
+
+    @Test
+    void 허용되지_않은_Drawing_상태전이는_거부한다() {
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+
+        assertThatThrownBy(() -> drawing.complete("output\n", "b".repeat(64), Instant.now()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.INVALID_STATE);
+
+        drawing.start("input\n", "a".repeat(64), Instant.now());
+        assertThatThrownBy(() -> drawing.start("input\n", "a".repeat(64), Instant.now()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", DrawingErrorCode.INVALID_STATE);
+    }
+
+    @Test
     void 완료되고_비공개인_Drawing은_공개하면_PUBLIC이_되고_공개시각이_기록된다() {
         Drawing drawing = completedDrawing();
         Instant publishedAt = Instant.parse("2026-09-20T00:00:00Z");
