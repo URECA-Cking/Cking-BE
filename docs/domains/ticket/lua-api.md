@@ -39,6 +39,8 @@ idem:mission:{requestId} 조회
 
 Guard(2단계)는 여전히 이번 호출의 periodKey로 주소 지정된다. **이게 안전하려면 idem이 실제로 존재해야 한다** — idem이 있으면 동일 requestId 재시도는 항상 1단계에서 끝나 Guard까지 도달하지 않으므로 문제가 없다. 하지만 idem이 애초에 없는 상태(아래 "Guard-only" 참고)에서 자정을 넘겨 재시도가 오면, Java가 그 호출 시점의(오늘) periodKey로 Guard 키를 새로 구성하기 때문에 원래 요청이 쓰던(어제) Guard 키와는 **완전히 다른 키**가 되어 원래 기록을 전혀 보지 못한다. 이 경우는 새 요청처럼 처리되어 이중 지급으로 이어질 수 있다 — 아래 "Legacy idem 호환과 배포 시 유의사항"에서 이 시나리오와 필요한 배포 전제조건을 다룬다.
 
+**검토했지만 채택하지 않은 대안: 최초 periodKey를 replay 레코드에 저장하고 재시도 시 재사용.** 이 방식은 Guard-only 문제를 해결하지 못한다 - Guard-only 상태는 정의상 idem 자체가 없어서(구버전에서 idem 저장이 실패했기 때문에) 애초에 복원할 최초 periodKey가 없다. 설령 idem에 periodKey를 저장해도, Java가 `earn()` Lua를 호출하기 *전에* Guard 키(`KEYS[]`)를 이미 확정해버리는 현재 구조상 그 값을 이번 호출의 Guard 키 계산에 반영할 방법이 없다(Java가 매 호출 전에 idem을 먼저 읽는 사전 조회를 추가해야 하는데, 이는 앞서 §자정 경계 절에서 채택하지 않기로 한 왕복·TOCTOU 비용을 다시 끌어들인다). 그래서 이 대안은 idem이 정상적으로 존재하는 케이스에는 아무 이득이 없고(이미 1단계에서 끝남), idem이 없는 케이스(Guard-only)는 애초에 못 고친다.
+
 ## PROCESSING → COMPLETED 2단계와 실패 시 정리
 
 idem은 실제 지급 전에 `PROCESSING`으로 먼저 선점되고, `INCRBY`+`XADD` 성공 후 `COMPLETED`로 확정된다. 실패 시점에 따라 처리가 다르다:
@@ -52,7 +54,8 @@ idem은 실제 지급 전에 `PROCESSING`으로 먼저 선점되고, `INCRBY`+`X
 
 이 2단계 구조 도입 전(`status` 필드 없이 `{fingerprint, result}`만 있던 시절)에 저장된 idem 레코드가 배포 시점에 아직 살아있을 수 있다. 그 legacy `fingerprint`는 옛 공식(periodKey 포함)으로 계산돼 있어 새 공식과 비교하면 항상 불일치한다 — 그래서 **`status` 필드가 아예 없는 레코드는 fingerprint를 비교하지 않고 존재 자체를 완료된 성공으로 신뢰**한다(`ticket-earn.lua`, `TicketEarnServiceImpl.findExisting()` 동일 분기).
 
-- 이 완화의 트레이드오프: 그 legacy idem의 남은 TTL 동안 같은 requestId가 실제로 다른 내용으로 재사용되면 그 다른 내용은 무시되고 예전 결과가 재현된다. 잔액을 건드리지 않는 replay이므로 **이중 지급 위험은 없다** — FR-P1-017이 이 Redis 멱등키를 "성능용 캐시"로, DB `request_id` UNIQUE를 "최종 안전망"으로 명시한 것과 일치하는 선택이다.
+- **적용 기간: 최대 24시간(구 idem TTL)부터 배포 시점까지.** 배포 직전에 생성된 legacy idem이 가장 오래 남아 있고, 그 뒤로는 legacy 레코드가 하나도 없으므로 이 호환 분기 자체가 죽은 코드가 된다 - 별도로 걷어낼 필요는 없지만 배포 후 24시간이 지나면 실질적 의미가 없어진다는 뜻이다.
+- 이 완화의 트레이드오프: 그 기간 동안 같은 requestId가 실제로 다른 내용으로 재사용되면 그 다른 내용은 무시되고 예전 결과가 재현된다(FR-P1-020이 요구하는 `REQUEST_ID_CONFLICT` 판정을 이 legacy 경로에서만 건너뛴다). 잔액을 건드리지 않는 replay이므로 **이중 지급 위험은 없다** — FR-P1-017이 이 Redis 멱등키를 "성능용 캐시"로, DB `request_id` UNIQUE를 "최종 안전망"으로 명시한 것과 일치하는 선택이다.
 
 ### ⚠️ Guard-only 상태(구버전에서 idem 저장이 실패한 경우) — 실제 이중 지급 위험, 배포 전제조건 필수
 
