@@ -29,4 +29,24 @@ public final class VerifiedSnapshotTestFactory {
         ReflectionTestUtils.setField(snapshot, "id", snapshotId);
         return VerifiedSnapshot.from(snapshot, List.of());
     }
+
+    public static VerifiedSnapshot create(
+            Long snapshotId,
+            Long eventId,
+            int winnerCount,
+            String drawMethod,
+            String algorithmVersion,
+            List<CandidateValue> candidates
+    ) {
+        DrawSnapshot snapshot = DrawSnapshot.create(
+                eventId,
+                winnerCount,
+                drawMethod,
+                algorithmVersion,
+                "0".repeat(64),
+                candidates
+        );
+        ReflectionTestUtils.setField(snapshot, "id", snapshotId);
+        return VerifiedSnapshot.from(snapshot, candidates);
+    }
 }
