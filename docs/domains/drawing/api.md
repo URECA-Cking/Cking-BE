@@ -4,8 +4,9 @@
 
 ### `POST /api/admin/drawings/{drawingId}/publish`
 
-완료된 INITIAL Drawing 결과를 공개한다. Controller는 요청 형식만 처리하고, 관리자 검증과
-공개 상태 전이·동시성 제어는 시스템3 `DrawingPublicationService`에 위임한다.
+완료된 INITIAL Drawing 결과를 공개한다. Controller는 요청 형식만 처리하고 시스템4
+`PublicationService`에 공개 유스케이스를 위임한다. 관리자 검증과 공개 상태 전이·동시성 제어는
+`PublicationService`가 호출하는 시스템3 `DrawingPublicationService`가 담당한다.
 
 #### 요청
 
@@ -41,7 +42,7 @@
 - `PRIVATE` Drawing은 `PUBLIC`으로 전이하고 연결 Event를 `DRAW_COMPLETED → PUBLISHED`로 전이한다.
 - 이미 `PUBLIC`인 Drawing은 연결 Event도 `PUBLISHED`인 경우에만 상태 변경 없이 성공한다.
 - Drawing과 Event 행을 모두 비관적으로 잠가 동시 요청을 직렬화한다.
-- Controller는 시스템3 `DrawingPublicationService.publish(drawingId, userId)`를 한 번만 호출한다.
+- Controller는 시스템4 `PublicationService.publish(drawingId, userId)`를 한 번만 호출한다.
 
 | 코드 | 조건 |
 | --- | --- |

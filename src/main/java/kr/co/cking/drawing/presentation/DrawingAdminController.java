@@ -4,10 +4,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.drawing.application.DrawingAdminQueryService;
-import kr.co.cking.drawing.application.DrawingPublicationService;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
 import kr.co.cking.drawing.application.InitialDrawingExecutionService;
+import kr.co.cking.drawing.application.PublicationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class DrawingAdminController {
 
-    private final DrawingPublicationService drawingPublicationService;
+    private final PublicationService publicationService;
     private final InitialDrawingExecutionService initialDrawingExecutionService;
     private final DrawingAdminQueryService drawingAdminQueryService;
 
@@ -44,7 +44,7 @@ public class DrawingAdminController {
             @Valid @RequestBody DrawingPublishRequest request
     ) {
         return ApiResponse.success(DrawingPublicationResponse.from(
-                drawingPublicationService.publish(drawingId, request.userId())
+                publicationService.publish(drawingId, request.userId())
         ));
     }
 
