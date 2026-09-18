@@ -19,14 +19,13 @@ import kr.co.cking.drawing.application.DrawingPublicationService;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
 import kr.co.cking.drawing.application.DrawingWinnerResult;
-import kr.co.cking.drawing.application.InitialDrawingPreparation;
-import kr.co.cking.drawing.application.InitialDrawingPreparationService;
+import kr.co.cking.drawing.application.InitialDrawingExecutionService;
+import kr.co.cking.drawing.application.InitialDrawingResult;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.event.domain.EventErrorCode;
-import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +41,7 @@ class DrawingAdminControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private InitialDrawingPreparationService initialDrawingPreparationService;
+    private InitialDrawingExecutionService initialDrawingExecutionService;
 
     @MockitoBean
     private DrawingPublicationService drawingPublicationService;
@@ -51,26 +50,25 @@ class DrawingAdminControllerTest {
     private DrawingAdminQueryService drawingAdminQueryService;
 
     @Test
-    void 관리자는_공통_성공_응답으로_INITIAL_Drawing_준비_정보를_받는다() throws Exception {
-        when(initialDrawingPreparationService.prepare(1L, 10L)).thenReturn(new InitialDrawingPreparation(
-                VerifiedSnapshotTestFactory.create(20L, 10L, 2, "WEIGHTED", "WEIGHTED_V1")));
+    void 관리자는_공통_성공_응답으로_INITIAL_Drawing_실행_결과를_받는다() throws Exception {
+        when(initialDrawingExecutionService.execute(1L, 10L)).thenReturn(
+                new InitialDrawingResult(20L, 10L, DrawingStatus.COMPLETED, 2));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":1}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.drawingId").value(20))
                 .andExpect(jsonPath("$.data.eventId").value(10))
-                .andExpect(jsonPath("$.data.snapshotId").value(20))
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.winnerCount").value(2))
-                .andExpect(jsonPath("$.data.drawMethod").value("WEIGHTED"))
-                .andExpect(jsonPath("$.data.algorithmVersion").value("WEIGHTED_V1"))
-                .andExpect(jsonPath("$.data.candidateCount").value(0));
+                .andExpect(jsonPath("$.data.snapshotId").doesNotExist());
     }
 
     @Test
     void 존재하지_않는_관리자는_RESOURCE_NOT_FOUND를_반환한다() throws Exception {
-        when(initialDrawingPreparationService.prepare(999L, 10L))
+        when(initialDrawingExecutionService.execute(999L, 10L))
                 .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")
@@ -82,7 +80,7 @@ class DrawingAdminControllerTest {
 
     @Test
     void ADMIN이_아닌_사용자는_FORBIDDEN을_반환한다() throws Exception {
-        when(initialDrawingPreparationService.prepare(2L, 10L))
+        when(initialDrawingExecutionService.execute(2L, 10L))
                 .thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")
@@ -94,7 +92,7 @@ class DrawingAdminControllerTest {
 
     @Test
     void 잘못된_Event_상태는_INVALID_STATE를_반환한다() throws Exception {
-        when(initialDrawingPreparationService.prepare(1L, 10L))
+        when(initialDrawingExecutionService.execute(1L, 10L))
                 .thenThrow(new BusinessException(EventErrorCode.INVALID_STATE));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")
@@ -105,8 +103,20 @@ class DrawingAdminControllerTest {
     }
 
     @Test
+    void 진행중인_INITIAL_Drawing이_있으면_CONCURRENT_COMMAND를_반환한다() throws Exception {
+        when(initialDrawingExecutionService.execute(1L, 10L))
+                .thenThrow(new BusinessException(DrawingErrorCode.CONCURRENT_COMMAND));
+
+        mockMvc.perform(post("/api/admin/events/10/drawings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONCURRENT_COMMAND"));
+    }
+
+    @Test
     void 공식_Snapshot이_없으면_SNAPSHOT_NOT_FOUND를_반환한다() throws Exception {
-        when(initialDrawingPreparationService.prepare(1L, 10L))
+        when(initialDrawingExecutionService.execute(1L, 10L))
                 .thenThrow(new BusinessException(SnapshotErrorCode.SNAPSHOT_NOT_FOUND));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")
@@ -118,7 +128,7 @@ class DrawingAdminControllerTest {
 
     @Test
     void Snapshot_Hash가_일치하지_않으면_SNAPSHOT_HASH_MISMATCH를_반환한다() throws Exception {
-        when(initialDrawingPreparationService.prepare(1L, 10L))
+        when(initialDrawingExecutionService.execute(1L, 10L))
                 .thenThrow(new BusinessException(SnapshotErrorCode.SNAPSHOT_HASH_MISMATCH));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")

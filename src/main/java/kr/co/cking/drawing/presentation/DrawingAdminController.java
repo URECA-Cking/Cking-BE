@@ -7,7 +7,7 @@ import kr.co.cking.drawing.application.DrawingAdminQueryService;
 import kr.co.cking.drawing.application.DrawingPublicationService;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
-import kr.co.cking.drawing.application.InitialDrawingPreparationService;
+import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,18 +22,18 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class DrawingAdminController {
 
-    private final InitialDrawingPreparationService initialDrawingPreparationService;
     private final DrawingPublicationService drawingPublicationService;
+    private final InitialDrawingExecutionService initialDrawingExecutionService;
     private final DrawingAdminQueryService drawingAdminQueryService;
 
-    /** INITIAL Drawing 실행 전에 관리자·Event·Snapshot 조건을 검증해 준비 정보를 반환한다. */
+    /** 관리자 요청으로 INITIAL Drawing을 실행하고 완료된 추첨 결과 요약을 반환한다. */
     @PostMapping("/api/admin/events/{eventId}/drawings")
-    public ApiResponse<InitialDrawingResponse> prepareInitialDrawing(
+    public ApiResponse<InitialDrawingResponse> executeInitialDrawing(
             @PathVariable @Positive Long eventId,
             @Valid @RequestBody InitialDrawingRequest request
     ) {
         return ApiResponse.success(InitialDrawingResponse.from(
-                initialDrawingPreparationService.prepare(request.userId(), eventId)
+                initialDrawingExecutionService.execute(request.userId(), eventId)
         ));
     }
 
