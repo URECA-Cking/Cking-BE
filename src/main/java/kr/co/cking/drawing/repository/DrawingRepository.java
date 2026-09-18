@@ -11,6 +11,11 @@ public interface DrawingRepository extends JpaRepository<Drawing, Long> {
 
     Optional<Drawing> findByEventIdAndDrawNo(Long eventId, int drawNo);
 
+    /** Event 행 잠금 뒤 최신 INITIAL Drawing을 확인해야 하는 실행 명령 전용 조회. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select d from Drawing d where d.eventId = :eventId and d.drawNo = :drawNo")
+    Optional<Drawing> findByEventIdAndDrawNoForUpdate(Long eventId, int drawNo);
+
     boolean existsByEventIdAndDrawNo(Long eventId, int drawNo);
 
     /** 동시 공개 요청을 직렬화해야 하는 명령 경로(공개) 전용 조회. */

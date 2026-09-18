@@ -6,7 +6,7 @@ import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.drawing.application.DrawingAdminQueryService;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
-import kr.co.cking.drawing.application.InitialDrawingPreparationService;
+import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,16 +21,16 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class DrawingAdminController {
 
-    private final InitialDrawingPreparationService initialDrawingPreparationService;
+    private final InitialDrawingExecutionService initialDrawingExecutionService;
     private final DrawingAdminQueryService drawingAdminQueryService;
 
     @PostMapping("/api/admin/events/{eventId}/drawings")
-    public ApiResponse<InitialDrawingResponse> prepareInitialDrawing(
+    public ApiResponse<InitialDrawingResponse> executeInitialDrawing(
             @PathVariable @Positive Long eventId,
             @Valid @RequestBody InitialDrawingRequest request
     ) {
         return ApiResponse.success(InitialDrawingResponse.from(
-                initialDrawingPreparationService.prepare(request.userId(), eventId)
+                initialDrawingExecutionService.execute(request.userId(), eventId)
         ));
     }
 
