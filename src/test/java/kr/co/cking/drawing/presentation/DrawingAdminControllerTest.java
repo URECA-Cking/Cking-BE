@@ -8,16 +8,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.drawing.application.DrawingAdminQueryService;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
 import kr.co.cking.drawing.application.DrawingWinnerResult;
+import kr.co.cking.drawing.application.DrawingVerificationResult;
+import kr.co.cking.drawing.application.DrawingVerificationService;
 import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import kr.co.cking.drawing.application.InitialDrawingResult;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
+import kr.co.cking.drawing.domain.DrawingVerificationMode;
+import kr.co.cking.drawing.domain.DrawingVerificationStatus;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
 import org.junit.jupiter.api.Test;
@@ -41,6 +46,9 @@ class DrawingAdminControllerTest {
 
     @MockitoBean
     private DrawingAdminQueryService drawingAdminQueryService;
+
+    @MockitoBean
+    private DrawingVerificationService drawingVerificationService;
 
     @Test
     void 관리자는_공통_성공_응답으로_INITIAL_Drawing_실행_결과를_받는다() throws Exception {
@@ -224,5 +232,75 @@ class DrawingAdminControllerTest {
         mockMvc.perform(get("/api/admin/drawings/20/result").param("userId", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 관리자는_독립_재실행의_당첨_인원_수_검증_결과를_받는다() throws Exception {
+        when(drawingVerificationService.verify(20L, 1L)).thenReturn(verificationResult(100L));
+
+        mockMvc.perform(post("/api/admin/drawings/20/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.verificationId").value(100))
+                .andExpect(jsonPath("$.data.status").value("VERIFIED"))
+                .andExpect(jsonPath("$.data.verificationMode").value("CARDINALITY_REPLAY"))
+                .andExpect(jsonPath("$.data.expectedWinnerCount").value(10))
+                .andExpect(jsonPath("$.data.actualWinnerCount").value(10))
+                .andExpect(jsonPath("$.data.winnerCountMatched").value(true));
+    }
+
+    @Test
+    void 관리자는_검증_이력을_최신순_Page로_조회한다() throws Exception {
+        when(drawingVerificationService.getHistory(20L, 1L, 0, 20)).thenReturn(
+                new PageResponse<>(List.of(verificationResult(100L)), 0, 20, 1, 1, false));
+
+        mockMvc.perform(get("/api/admin/drawings/20/verification-history")
+                        .param("userId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].verificationId").value(100))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+    }
+
+    @Test
+    void 검증_API의_식별자와_Page_범위가_잘못되면_VALIDATION_FAILED다() throws Exception {
+        mockMvc.perform(post("/api/admin/drawings/0/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/admin/drawings/20/verification-history")
+                        .param("userId", "1")
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    private DrawingVerificationResult verificationResult(Long verificationId) {
+        return new DrawingVerificationResult(
+                verificationId,
+                20L,
+                DrawingVerificationStatus.VERIFIED,
+                DrawingVerificationMode.CARDINALITY_REPLAY,
+                10,
+                10,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                null,
+                null,
+                1L,
+                Instant.parse("2026-09-18T00:00:00Z")
+        );
     }
 }

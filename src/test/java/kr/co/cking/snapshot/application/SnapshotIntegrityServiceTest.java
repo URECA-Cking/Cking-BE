@@ -65,6 +65,24 @@ class SnapshotIntegrityServiceTest {
     }
 
     @Test
+    void 재실행_검증은_현재_Event_조회가_아니라_Drawing이_참조한_Snapshot을_검증한다() {
+        List<CandidateValue> values = List.of(
+                new CandidateValue(1L, 3L),
+                new CandidateValue(2L, 7L)
+        );
+        DrawSnapshot snapshot = snapshot(values, hash(values));
+        List<DrawSnapshotCandidate> candidateEntities = candidateEntities(values);
+        when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
+        when(candidateRepository.findAllBySnapshot_IdOrderByMemberIdAsc(SNAPSHOT_ID))
+                .thenReturn(candidateEntities);
+
+        VerifiedSnapshot verified = service.verifyForReplay(SNAPSHOT_ID);
+
+        assertThat(verified.snapshotId()).isEqualTo(SNAPSHOT_ID);
+        assertThat(verified.candidates()).containsExactlyElementsOf(values);
+    }
+
+    @Test
     void VerifiedSnapshot은_외부에서_생성하거나_확장할_수_없다() {
         assertThat(Modifier.isFinal(VerifiedSnapshot.class.getModifiers())).isTrue();
         assertThat(VerifiedSnapshot.class.getConstructors()).isEmpty();

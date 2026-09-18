@@ -28,6 +28,22 @@ public class SnapshotIntegrityService {
 
         DrawSnapshot snapshot = snapshotRepository.findByEventId(eventId)
                 .orElseThrow(() -> new BusinessException(SnapshotErrorCode.SNAPSHOT_NOT_FOUND));
+        return verify(snapshot);
+    }
+
+    /** 현재 Event가 아니라 완료된 Drawing이 참조한 당시 Snapshot 자체를 검증한다. */
+    @Transactional(readOnly = true)
+    public VerifiedSnapshot verifyForReplay(Long snapshotId) {
+        if (snapshotId == null || snapshotId <= 0) {
+            throw new IllegalArgumentException("snapshotId는 양수여야 합니다.");
+        }
+
+        DrawSnapshot snapshot = snapshotRepository.findById(snapshotId)
+                .orElseThrow(() -> new BusinessException(SnapshotErrorCode.SNAPSHOT_NOT_FOUND));
+        return verify(snapshot);
+    }
+
+    private VerifiedSnapshot verify(DrawSnapshot snapshot) {
         List<CandidateValue> candidates = candidateRepository
                 .findAllBySnapshot_IdOrderByMemberIdAsc(snapshot.getId())
                 .stream()
