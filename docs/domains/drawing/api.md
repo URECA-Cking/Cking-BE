@@ -40,6 +40,9 @@
 - 요청자는 존재하는 `ADMIN` Member여야 한다.
 - Drawing은 `INITIAL`, `COMPLETED` 상태여야 한다.
 - `PRIVATE` Drawing은 `PUBLIC`으로 전이하고 연결 Event를 `DRAW_COMPLETED → PUBLISHED`로 전이한다.
+- 최초 공개에서는 해당 Drawing의 Winner별 `INITIAL_WINNER` Notification을 생성한다. Drawing 공개,
+  Event 전이, Notification 생성은 `PublicationService`의 하나의 DB Transaction으로 처리하므로 어느
+  단계든 실패하면 모두 Rollback한다.
 - 이미 `PUBLIC`인 Drawing은 연결 Event도 `PUBLISHED`인 경우에만 상태 변경 없이 성공한다.
 - Drawing과 Event 행을 모두 비관적으로 잠가 동시 요청을 직렬화한다.
 - Controller는 시스템4 `PublicationService.publish(drawingId, userId)`를 한 번만 호출한다.

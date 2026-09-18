@@ -3,6 +3,8 @@
 ## 책임
 
 - 결과 공개로 생성된 사용자별 인앱 알림을 보관한다.
+- `WinnerNotificationService`는 공개 유스케이스 Transaction에 참여해 최초 추첨 Winner의
+  `INITIAL_WINNER` Notification을 생성한다.
 - 사용자는 자신의 알림만 최신순으로 조회한다.
 - Event·Drawing의 상태를 변경하지 않고, 조회 시 ID로 관련 정보를 조합한다.
 

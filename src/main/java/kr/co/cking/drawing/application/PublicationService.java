@@ -1,5 +1,10 @@
 package kr.co.cking.drawing.application;
 
+import java.util.List;
+import kr.co.cking.drawing.application.DrawingPublicationResult.PublicationOutcome;
+import kr.co.cking.notification.application.WinnerNotificationService;
+import kr.co.cking.notification.application.WinnerNotificationTarget;
+import kr.co.cking.winner.repository.WinnerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,9 +21,26 @@ import lombok.RequiredArgsConstructor;
 public class PublicationService {
 
     private final DrawingPublicationService drawingPublicationService;
+    private final WinnerRepository winnerRepository;
+    private final WinnerNotificationService winnerNotificationService;
 
     @Transactional
     public DrawingPublicationResult publish(Long drawingId, Long adminId) {
-        return drawingPublicationService.publish(drawingId, adminId);
+        DrawingPublicationResult result = drawingPublicationService.publish(drawingId, adminId);
+        if (result.outcome() == PublicationOutcome.PUBLISHED) {
+            createWinnerNotifications(result);
+        }
+        return result;
+    }
+
+    private void createWinnerNotifications(DrawingPublicationResult result) {
+        List<WinnerNotificationTarget> targets = winnerRepository
+                .findAllByDrawingIdOrderByRankInDrawingAsc(result.drawingId())
+                .stream()
+                .map(winner -> new WinnerNotificationTarget(winner.getId(), winner.getMemberId()))
+                .toList();
+        winnerNotificationService.createInitialWinnerNotifications(
+                result.eventId(), result.drawingId(), targets
+        );
     }
 }
