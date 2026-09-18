@@ -191,6 +191,42 @@ class DrawingWinnerRepositoryJpaTest {
     }
 
     @Test
+    void 공개되고_완료된_INITIAL과_REDRAW_Drawing의_Winner만_회차순으로_조회한다() {
+        Fixture fixture = fixture();
+        Drawing initial = initialDrawing(fixture);
+        ReflectionTestUtils.setField(initial, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(initial, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedInitial = drawingRepository.saveAndFlush(initial);
+
+        Drawing privateRedraw = redrawDrawing(
+                fixture, 1, insertSeed(), savedInitial.getId(), insertRedrawRequest(fixture, savedInitial.getId()));
+        ReflectionTestUtils.setField(privateRedraw, "status", DrawingStatus.COMPLETED);
+        Drawing savedPrivateRedraw = drawingRepository.saveAndFlush(privateRedraw);
+
+        Drawing publicRedraw = redrawDrawing(
+                fixture, 2, insertSeed(), savedInitial.getId(), insertRedrawRequest(fixture, savedInitial.getId()));
+        ReflectionTestUtils.setField(publicRedraw, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(publicRedraw, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedPublicRedraw = drawingRepository.saveAndFlush(publicRedraw);
+
+        long initialMemberId = insertMember("초기당첨자", "USER");
+        long privateMemberId = insertMember("비공개당첨자", "USER");
+        long redrawMemberId = insertMember("재추첨당첨자", "USER");
+        Winner initialWinner = winnerRepository.save(Winner.create(
+                fixture.eventId(), savedInitial.getId(), initialMemberId, 1, 3L));
+        winnerRepository.save(Winner.create(
+                fixture.eventId(), savedPrivateRedraw.getId(), privateMemberId, 1, 3L));
+        Winner redrawWinner = winnerRepository.save(Winner.create(
+                fixture.eventId(), savedPublicRedraw.getId(), redrawMemberId, 1, 3L));
+        winnerRepository.flush();
+        entityManager.clear();
+
+        List<Winner> winners = winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(fixture.eventId());
+
+        assertThat(winners).extracting(Winner::getId).containsExactly(initialWinner.getId(), redrawWinner.getId());
+    }
+
+    @Test
     void 동일_Drawing에서_Winner_순위는_중복될_수_없다() {
         Fixture fixture = fixture();
         Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
