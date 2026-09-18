@@ -65,12 +65,14 @@ public class Mission {
     }
 
     /**
-     * {@code activeFrom}/{@code activeTo}가 비어 있으면 상시 활성으로 간주한다.
+     * {@code activeFrom}/{@code activeTo}가 비어 있으면 상시 활성으로 간주한다. 구간은
+     * {@code Event}의 {@code startAt <= now < endAt}(취합v1.5.4 §2.5)와 동일하게
+     * {@code activeTo}를 배제(exclusive)한다 — {@code now == activeTo}는 비활성이다.
      */
     public boolean isActiveAt(Instant now) {
         if (activeFrom != null && now.isBefore(activeFrom)) {
             return false;
         }
-        return activeTo == null || !now.isAfter(activeTo);
+        return activeTo == null || now.isBefore(activeTo);
     }
 }

@@ -70,10 +70,11 @@ class MissionCompletionServiceTest {
     }
 
     @Test
-    void periodKey는_KST_기준_날짜를_사용한다() {
-        // UTC 2026-09-15T15:30:00Z = KST 2026-09-16T00:30(자정 30분 지남).
-        // UTC 날짜로는 아직 9/15이지만 업무일(KST)은 9/16이어야 한다.
-        Clock clock = Clock.fixed(Instant.parse("2026-09-15T15:30:00Z"), ZoneOffset.UTC);
+    void periodKey는_UTC_날짜를_그대로_사용한다() {
+        // now=2026-09-16T23:30:00Z: KST로 환산하면 다음날 08:30(9/17)이지만,
+        // RTM FR-P1-006/FR-P1-021/FR-P2-006(UTC 확정, PR #63 리뷰)에 따라
+        // periodKey는 변환 없이 UTC 날짜인 2026-09-16이어야 한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T23:30:00Z"), ZoneOffset.UTC);
         stubMemberAndMission(attendanceMission());
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
@@ -125,6 +126,40 @@ class MissionCompletionServiceTest {
                 .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
 
         verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void activeTo와_정확히_같은_시각은_비활성이다() {
+        // 계약: activeFrom <= now < activeTo (Event의 startAt<=now<endAt과 동일 원칙).
+        // now == activeTo인 경계는 활성이 아니어야 한다.
+        Instant activeTo = Instant.parse("2026-09-16T00:00:00Z");
+        Clock clock = Clock.fixed(activeTo, ZoneOffset.UTC);
+        Mission mission = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+                Instant.parse("2026-09-01T00:00:00Z"), activeTo);
+        stubMemberAndMission(mission);
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void activeTo_직전_시각은_활성이다() {
+        Instant activeTo = Instant.parse("2026-09-16T00:00:00Z");
+        Clock clock = Clock.fixed(activeTo.minusMillis(1), ZoneOffset.UTC);
+        Mission mission = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+                Instant.parse("2026-09-01T00:00:00Z"), activeTo);
+        stubMemberAndMission(mission);
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
     }
 
     @Test

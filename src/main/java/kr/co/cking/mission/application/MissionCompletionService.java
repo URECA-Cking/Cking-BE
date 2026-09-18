@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
@@ -36,7 +36,6 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class MissionCompletionService {
 
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter PERIOD_KEY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT);
 
     private final MemberRepository memberRepository;
@@ -76,13 +75,13 @@ public class MissionCompletionService {
     }
 
     /**
-     * 업무일 경계는 KST(Asia/Seoul) 기준이다(이슈 #41, RTM FR-P1-006/FR-P2-006). 저장
-     * 시각 자체는 {@code now}(UTC {@link Instant})를 그대로 쓰고, "하루"를 나누는
-     * 기준만 KST로 변환한다. {@link TicketEarnService}는 이 값을 {@code yyyy-MM-dd}로
-     * strict parse한 뒤 Redis 가드 키용 {@code yyyyMMdd}로 다시 변환한다.
+     * 업무일 경계는 서버 UTC 기준이다(RTM FR-P1-006/FR-P1-021/FR-P2-006, 취합v1.5.4
+     * §4.2 — PR #63 리뷰에서 UTC로 최종 확정). {@link TicketEarnService}는 이 값을
+     * {@code yyyy-MM-dd}로 strict parse한 뒤 Redis 가드 키용 {@code yyyyMMdd}로
+     * 다시 변환한다.
      */
     private String periodKeyOf(Instant now) {
-        return now.atZone(BUSINESS_ZONE).toLocalDate().format(PERIOD_KEY_FORMAT);
+        return now.atZone(ZoneOffset.UTC).toLocalDate().format(PERIOD_KEY_FORMAT);
     }
 
     private String missionKeyOf(Mission mission, Long creatorId, String periodKey) {

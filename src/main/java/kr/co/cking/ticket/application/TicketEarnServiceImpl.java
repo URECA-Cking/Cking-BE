@@ -94,9 +94,10 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         return parse(result, command);
     }
 
-    // periodKey 형식 검증과 가드 키 변환은 System 2(EARN) 책임이다(T1은 KST(Asia/Seoul)
-    // 기준 업무일로 생성하지만, "2026-9-16"처럼 padding 없는 값은 여기서
-    // strict하게 걸러 EARN Contract 경계에서 거부한다, 이슈 #41/RTM FR-P1-006). periodKey는
+    // periodKey 형식 검증과 가드 키 변환은 System 2(EARN) 책임이다(T1은 서버 UTC
+    // 기준 업무일로 생성한다, RTM FR-P1-006/FR-P1-021/FR-P2-006 — PR #63 리뷰에서
+    // UTC로 최종 확정. "2026-9-16"처럼 padding 없는 값은 여기서
+    // strict하게 걸러 EARN Contract 경계에서 거부한다). periodKey는
     // 서버가 만드므로 형식 오류는 사실상 버그일 때만 발생한다 - IllegalArgumentException으로
     // 던져 호출측(T1)이 공통 VALIDATION_FAILED(400)로 변환할 수 있게 한다.
     private String toGuardPeriodKey(String periodKey) {
