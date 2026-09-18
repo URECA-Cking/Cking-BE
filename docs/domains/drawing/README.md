@@ -138,7 +138,7 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 - `DrawingSeedService.reuseForRetry(seedId)`는 기존 행을 조회해 재사용하며 신규 Seed 행을 만들지 않는다.
 - `DrawingSeedService.createForRedraw(previousSeedId)`는 이전 Drawing의 Seed와 다른 값을 생성해 신규 행으로 저장한다.
 - REDRAW 자체의 Retry는 `createForRedraw`가 아니라 `reuseForRetry`를 사용한다.
-- Seed 저장은 Drawing 생성 트랜잭션에 참여한다. Drawing 저장 실패 시 고아 Seed가 남지 않도록 별도 `REQUIRES_NEW` 트랜잭션을 사용하지 않는다.
+- Seed 생성·저장은 `MANDATORY` 전파 속성으로 Drawing 실행 트랜잭션에만 참여한다. 호출자 트랜잭션이 없으면 실행을 거부하며, Drawing·Engine·Winner·Event 전이 실패 시 함께 Rollback한다.
 - 애플리케이션 서비스는 반환된 `seedId`를 `Drawing`에, `DrawingSeed`를 `DrawInput`에 전달한다.
 
 ### 엔진 조립

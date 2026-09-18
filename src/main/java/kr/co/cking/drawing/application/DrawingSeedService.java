@@ -7,6 +7,7 @@ import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawSeedRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Drawing 생명주기에 따른 Seed 생성, 저장, 재사용의 단일 진입점. */
@@ -17,7 +18,8 @@ public class DrawingSeedService {
     private final DrawSeedRepository drawSeedRepository;
     private final DrawingSeedPolicy drawingSeedPolicy;
 
-    @Transactional
+    // Drawing 실행 Transaction이 없을 때 고아 Seed 저장을 차단하기 위한 호출자 Transaction 강제.
+    @Transactional(propagation = Propagation.MANDATORY)
     public PersistedDrawingSeed createForInitial() {
         return persist(drawingSeedPolicy.createForInitial());
     }
@@ -27,7 +29,8 @@ public class DrawingSeedService {
         return load(seedId);
     }
 
-    @Transactional
+    // REDRAW 생성과 신규 Seed 저장의 단일 Transaction 보장.
+    @Transactional(propagation = Propagation.MANDATORY)
     public PersistedDrawingSeed createForRedraw(Long previousSeedId) {
         PersistedDrawingSeed previous = load(previousSeedId);
         DrawingSeed redrawSeed = drawingSeedPolicy.createForRedraw(previous.seed());

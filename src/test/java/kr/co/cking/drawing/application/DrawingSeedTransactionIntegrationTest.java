@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -31,6 +32,9 @@ class DrawingSeedTransactionIntegrationTest {
 
     @Autowired
     private SeedDrawingRollbackProbe rollbackProbe;
+
+    @Autowired
+    private DrawingSeedService drawingSeedService;
 
     @Autowired
     private DrawSeedRepository drawSeedRepository;
@@ -86,6 +90,26 @@ class DrawingSeedTransactionIntegrationTest {
                 .isInstanceOf(ForcedRollbackException.class);
 
         assertThat(drawingRepository.existsByEventIdAndDrawNo(EVENT_ID, 0)).isFalse();
+        assertThat(drawSeedRepository.count()).isEqualTo(seedCountBefore);
+    }
+
+    @Test
+    void 호출자_Transaction이_없으면_INITIAL_Seed를_저장하지_않는다() {
+        long seedCountBefore = drawSeedRepository.count();
+
+        assertThatThrownBy(drawingSeedService::createForInitial)
+                .isInstanceOf(IllegalTransactionStateException.class);
+
+        assertThat(drawSeedRepository.count()).isEqualTo(seedCountBefore);
+    }
+
+    @Test
+    void 호출자_Transaction이_없으면_REDRAW_Seed를_저장하지_않는다() {
+        long seedCountBefore = drawSeedRepository.count();
+
+        assertThatThrownBy(() -> drawingSeedService.createForRedraw(1L))
+                .isInstanceOf(IllegalTransactionStateException.class);
+
         assertThat(drawSeedRepository.count()).isEqualTo(seedCountBefore);
     }
 
