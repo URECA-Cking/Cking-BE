@@ -21,6 +21,7 @@
 
 - [Snapshot](domains/snapshot/README.md): 공식 후보 확정, 멱등 생성, Snapshot Hash 정규화 계약
 - [Drawing](domains/drawing/README.md): 추첨 엔진 알고리즘과 당첨 결과 영속성 경계
+- [Drawing 재현 검증 API](domains/drawing/verification-api.md): 저장 결과 무결성과 독립 재실행 당첨 인원 수 검증
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
 
 빈 도메인 문서나 디렉터리는 미리 만들지 않는다. 문서는 원칙적으로 300줄 이하로 유지하며, 이를 넘으면 관심사별 파일로 분리한다.

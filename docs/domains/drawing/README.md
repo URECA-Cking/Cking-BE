@@ -269,3 +269,8 @@ winners
 ## 관리자 Drawing 조회 API
 
 상세 요청·응답과 오류 계약은 [관리자 Drawing 조회 API](admin-query-api.md)를 참고한다.
+
+## Drawing 재현 검증 API
+
+저장 결과 무결성 검증과 새 Seed 기반 독립 재실행의 당첨 인원 수 검증 계약은
+[Drawing 재현 검증 API](verification-api.md)를 참고한다.
