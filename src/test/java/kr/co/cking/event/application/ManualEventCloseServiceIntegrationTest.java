@@ -5,14 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -92,12 +90,6 @@ class ManualEventCloseServiceIntegrationTest {
     private final List<Long> creatorIds = new ArrayList<>();
     private final List<Long> eventIds = new ArrayList<>();
 
-    /** 이전 실행의 Stream·Consumer Group을 제거해 cutoff와 Drain 판정을 독립시킨다. */
-    @BeforeEach
-    void cleanRedisBeforeTest() {
-        redisTemplate.delete(STREAM_KEY);
-    }
-
     /** Creator 본인 요청이 202 응답과 시스템2 서비스 호출로 이어져 CLOSING과 cutoff를 확정하는지 검증한다. */
     @Test
     void creatorCanCloseOwnOpenEventAndReuseSameCutoff() {
@@ -175,7 +167,7 @@ class ManualEventCloseServiceIntegrationTest {
     /** 테스트가 만든 DB 행과 Redis 키만 역순으로 제거해 다른 통합 테스트에 영향을 주지 않는다. */
     @AfterEach
     void cleanUp() {
-        redisTemplate.delete(STREAM_KEY);
+        eventIds.forEach(this::deleteEventRedisData);
         eventIds.forEach(eventRepository::deleteById);
         creatorIds.forEach(creatorRepository::deleteById);
         memberIds.forEach(memberRepository::deleteById);
@@ -217,7 +209,6 @@ class ManualEventCloseServiceIntegrationTest {
     /** cutoff barrier 메시지를 Consumer Group이 읽고 ACK해 Drain 완료 조건을 만든다. */
     private void acknowledgeCutoff(Long eventId) {
         String cutoffStreamId = eventRepository.findById(eventId).orElseThrow().getCutoffStreamId();
-        createConsumerGroup();
         redisTemplate.opsForStream().read(
                 Consumer.from(CONSUMER_GROUP, CONSUMER),
                 StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
@@ -225,16 +216,13 @@ class ManualEventCloseServiceIntegrationTest {
         redisTemplate.opsForStream().acknowledge(STREAM_KEY, CONSUMER_GROUP, RecordId.of(cutoffStreamId));
     }
 
-    /** barrier 메시지부터 읽을 수 있도록 전용 Consumer Group을 Stream 시작점에 생성한다. */
-    private void createConsumerGroup() {
-        redisTemplate.execute((org.springframework.data.redis.core.RedisCallback<String>) connection ->
-                connection.streamCommands().xGroupCreate(
-                        STREAM_KEY.getBytes(StandardCharsets.UTF_8),
-                        CONSUMER_GROUP,
-                        ReadOffset.from("0"),
-                        true
-                )
-        );
+    private void deleteEventRedisData(Long eventId) {
+        eventRepository.findById(eventId)
+                .map(Event::getCutoffStreamId)
+                .ifPresent(cutoffStreamId -> redisTemplate.opsForStream()
+                        .delete(STREAM_KEY, RecordId.of(cutoffStreamId)));
+        redisTemplate.delete(EntryRedisKeys.status(eventId));
+        redisTemplate.delete(EntryRedisKeys.cutoff(eventId));
     }
 
     /** Member와 Creator의 소유 관계를 함께 보관한다. */

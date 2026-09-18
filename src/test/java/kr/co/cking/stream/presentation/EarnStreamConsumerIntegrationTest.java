@@ -67,9 +67,7 @@ class EarnStreamConsumerIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        // 스트림 키 자체를 지우면 그 안의 Consumer Group도 함께 사라져 이후 테스트가
-        // NOGROUP으로 깨진다(그룹은 컨텍스트 기동 시 한 번만 생성됨) — 키는 남기고
-        // DB 행만 정리한다.
+        redisTemplate.delete(STREAM_KEY);
         cleanUp();
     }
 
