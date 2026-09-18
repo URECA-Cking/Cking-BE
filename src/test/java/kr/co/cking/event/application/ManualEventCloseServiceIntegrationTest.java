@@ -14,7 +14,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamOffset;
@@ -48,7 +50,7 @@ import kr.co.cking.snapshot.application.OfficialSnapshotService;
 @SpringBootTest(properties = {
         "cking.entry.stream-key=stream:ticket-deducted:manual-close-integration-test",
         "cking.entry.history-consumer-group=cg:ticket-history:manual-close-integration-test",
-        "cking.event.lifecycle-interval-ms=86400000"
+        "cking.scheduling.enabled=false"
 })
 class ManualEventCloseServiceIntegrationTest {
 
@@ -114,7 +116,14 @@ class ManualEventCloseServiceIntegrationTest {
         assertThat(persisted.getCutoffStreamId()).isEqualTo(firstCutoff).isNotBlank();
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(event.getEventId()))).isEqualTo("CLOSED");
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.cutoff(event.getEventId()))).isEqualTo(firstCutoff);
-        assertThat(redisTemplate.opsForStream().size(STREAM_KEY)).isEqualTo(1L);
+        List<MapRecord<String, Object, Object>> cutoffRecords = redisTemplate.opsForStream()
+                .range(STREAM_KEY, Range.just(firstCutoff));
+        assertThat(cutoffRecords).singleElement().satisfies(record -> {
+            assertThat(record.getId().getValue()).isEqualTo(firstCutoff);
+            assertThat(record.getValue())
+                    .containsEntry("type", "EVENT_ENTRY_CLOSED")
+                    .containsEntry("eventId", String.valueOf(event.getEventId()));
+        });
         verify(eventClosingService, times(2)).startClosing(event.getEventId());
     }
 
@@ -156,7 +165,7 @@ class ManualEventCloseServiceIntegrationTest {
         manualEventCloseService.close(owner.memberId(), event.getEventId());
         acknowledgeCutoff(event.getEventId());
 
-        eventLifecycleScheduler.run();
+        eventLifecycleScheduler.run(event.getEventId());
 
         Event persisted = eventRepository.findById(event.getEventId()).orElseThrow();
         assertThat(persisted.getStatus()).isEqualTo(EventStatus.CLOSED);

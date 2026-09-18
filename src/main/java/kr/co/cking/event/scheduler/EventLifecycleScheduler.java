@@ -50,6 +50,11 @@ public class EventLifecycleScheduler {
         completeDrainedEvents();
     }
 
+    /** 지정 Event만 생명주기 조건에 따라 한 번 처리한다. */
+    public void run(Long eventId) {
+        eventRepository.findById(eventId).ifPresent(this::processEvent);
+    }
+
     /** 시작 시각에 도달한 예약 Event를 OPEN 상태로 전이한다. */
     private void openScheduledEvents() {
         Instant now = clock.instant();
@@ -83,20 +88,41 @@ public class EventLifecycleScheduler {
     /** cutoff까지 Drain된 CLOSING Event를 CLOSED로 확정하고 공식 Snapshot 생성을 요청한다. */
     private void completeDrainedEvents() {
         for (Event event : eventRepository.findByStatus(EventStatus.CLOSING)) {
-            Long eventId = event.getEventId();
-            String cutoffStreamId = event.getCutoffStreamId();
-            if (cutoffStreamId == null) {
-                log.error("CLOSING 이벤트에 cutoffStreamId가 없습니다. eventId={}", eventId);
-                continue;
+            completeDrainedEvent(event);
+        }
+    }
+
+    private void processEvent(Event event) {
+        Instant now = clock.instant();
+        if (event.getStatus() == EventStatus.SCHEDULED
+                && !event.getStartAt().isAfter(now)
+                && event.getEndAt().isAfter(now)) {
+            eventCommandService.open(event.getEventId());
+            return;
+        }
+        if (event.getStatus() == EventStatus.OPEN && !event.getEndAt().isAfter(now)) {
+            eventClosingService.startClosing(event.getEventId());
+            return;
+        }
+        if (event.getStatus() == EventStatus.CLOSING) {
+            completeDrainedEvent(event);
+        }
+    }
+
+    private void completeDrainedEvent(Event event) {
+        Long eventId = event.getEventId();
+        String cutoffStreamId = event.getCutoffStreamId();
+        if (cutoffStreamId == null) {
+            log.error("CLOSING 이벤트에 cutoffStreamId가 없습니다. eventId={}", eventId);
+            return;
+        }
+        try {
+            if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
+                eventCommandService.completeClosing(eventId);
+                officialSnapshotService.createIfAbsent(eventId);
             }
-            try {
-                if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
-                    eventCommandService.completeClosing(eventId);
-                    officialSnapshotService.createIfAbsent(eventId);
-                }
-            } catch (RuntimeException e) {
-                log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);
-            }
+        } catch (RuntimeException e) {
+            log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);
         }
     }
 }
