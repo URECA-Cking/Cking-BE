@@ -133,6 +133,22 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 반복한다. 정적 분포에서 유리한 누적합 이분 탐색, Hopscotch, Alias 방식은 당첨자 제거 후 분포가 매번
 변하는 복원 없는 추첨에서 갱신 또는 재구성이 필요하므로 사용하지 않는다.
 
+## 상품 배정 엔진 계약
+
+사람 선정과 상품 배정은 서로 다른 순수 엔진과 알고리즘 버전을 사용한다.
+
+- `DrawingEngine`의 `WEIGHTED_V1`은 `CandidateValue.ticketCount`만 사용해 당첨자를 선정한다.
+- `PrizeAllocationEngine`의 `PRIZE_WEIGHTED_V1`은 선정 완료된 당첨자와 공식 Snapshot 상품 설정만 입력받는다.
+- 상품 가중치를 Candidate 가중치로 변환하거나 사람 선정 엔진에 전달하지 않는다.
+- 상품 배정은 `priority ASC, prizeKey ASC`, 당첨자는 `rank ASC`로 정규화한다.
+- 남은 수량이 1개 이상인 상품만 누적 정수 가중치 구간에 포함하고, 배정 직후 수량을 1개 차감한다.
+- 총 상품 수량이 당첨자 수보다 작거나, 상품 식별자가 중복되거나, 가중치 합이 `long` 범위를 넘으면 배정 전에 거부한다.
+
+상품 배정용 난수는 Drawing Seed에서 `CKING_PRIZE_ALLOCATION_V1` 도메인 값을 더해 SHA-256으로
+파생한다. 따라서 사람 선정의 난수 소비 횟수와 상품 배정을 분리하면서도 같은 Drawing Retry는 보존된
+Snapshot, Seed, `PRIZE_WEIGHTED_V1`으로 동일한 상품 배정을 재현한다. 별도 Drawing은 새 Seed를 쓸 수
+있지만 공식 Snapshot에 보존된 상품 가중치 자체는 바뀌지 않는다.
+
 ## 영속성 모델
 
 ### Seed
@@ -160,6 +176,7 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 - `(eventId, drawNo)`와 `seedId`는 각각 유일하다.
 - INITIAL Drawing의 `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion`, `winnerCount`는 `VerifiedSnapshot`으로만 생성할 수 있는 하나의 `DrawingSnapshotContract`에서 가져온다. `VerifiedSnapshot`은 public 생성자를 제공하지 않으며 Snapshot 무결성 검증 경로에서만 생성한다.
 - `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion` 일치는 DB 복합 FK로도 강제한다. REDRAW의 `winnerCount`는 결원 수이므로 Snapshot 원본 당첨자 수와 다를 수 있다.
+- `prizeAlgorithmVersion`도 Snapshot에서 Drawing으로 복제하고 DB 복합 FK로 일치를 강제한다.
 - 동시 명령 감지를 위해 `version`을 낙관적 락 필드로 사용한다.
 
 상태는 `READY`, `RUNNING`, `FAILED`, `COMPLETED`를 사용하고 공개 상태는 `PRIVATE`, `PUBLIC`을 사용한다. INITIAL 실행은 `READY → RUNNING → COMPLETED`로 전이한다.
@@ -169,6 +186,7 @@ Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 
 - Event, Drawing, Member를 각각 ID로 참조한다.
 - Winner의 `eventId`는 연결된 Drawing의 `eventId`와 일치해야 하며 DB 복합 FK로도 강제한다.
 - Drawing 안에서 `rankInDrawing`은 중복될 수 없다.
+- 상품이 설정된 V2 추첨의 Winner는 `snapshotPrizeId`, `prizeKey`, `prizeDisplayName`, `prizePriority`를 함께 저장한다.
 - 동일 Event에서 같은 Member가 다시 Winner가 될 수 없다.
 - Drawing 결과 조회는 `rankInDrawing ASC`를 사용한다.
 
@@ -265,6 +283,17 @@ winners
 
 정규화와 Hash 생성은 외부 저장소나 현재 시각에 의존하지 않는다. `drawing.input_hash`,
 `drawing.result_hash`, Winner와 상태 전이를 저장하는 트랜잭션은 추첨 실행 오케스트레이션의 책임이다.
+
+## 상품 포함 Hash V2 계약
+
+기존 `CKING_DRAW_INPUT_V1`과 `CKING_DRAW_RESULT_V1`은 변경하지 않는다. 상품 Snapshot이 있는 추첨은
+`CKING_DRAW_INPUT_V2`와 `CKING_DRAW_RESULT_V2`를 사용한다.
+
+- Input V2는 V1 입력에 `prizeAlgorithmVersion`과 상품별 `prizeKey`, 표시명, priority, weight, quantity를 추가한다.
+- Result V2는 Winner의 rank, memberId, appliedTicketCount에 배정 `prizeKey`를 추가한다.
+- 문자열 필드는 UTF-8 bytes를 URL-safe Base64 without padding으로 정규화하고, 상품은 `priority ASC, prizeKey ASC`로 정렬한다.
+- 상품 설정 변경은 Input Hash를, 당첨자별 상품 변경은 Result Hash를 반드시 변경한다.
+- Candidate 추첨, 상품 배정, Winner·WinnerManagement 저장, Drawing 완료, Event 전이는 하나의 Transaction이다. 어느 단계든 실패하면 상품이 일부 Winner에만 저장되는 상태를 남기지 않는다.
 
 ## 관리자 Drawing 조회 API
 

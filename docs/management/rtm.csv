@@ -174,6 +174,15 @@ FR-P3-086,3조,Gate 차단 이후 승인되는 신규 응모는 0건이어야 �
 FR-P3-087,3조,CLOSED 이전 승인 응모의 Snapshot 누락은 0건이어야 한다.,윤희,이벤트 마감,마감/추첨 연결 정합성,1차 확정,시작 전,No
 FR-P3-088,3조,동일 Drawing에서 동일 사용자의 중복 당첨은 0건이어야 한다.,성원,이벤트 마감,알고리즘 검증,1차 확정,시작 전,No
 FR-P3-089,3조,기존 Winner가 재추첨에서 다시 당첨되는 경우는 0건이어야 한다.,윤희/성원,이벤트 마감,후보 필터 + 엔진 검증,1차 확정,시작 전,No
+FR-P3-090,3조,Event의 상품 등급별 식별자·표시명·우선순위·양의 정수 가중치·수량을 DRAFT에서 설정할 수 있어야 한다.,성원,상품 가중치 추첨,event_prize와 생성·수정·조회 API,2차 확정,완료,No
+FR-P3-091,3조,상품 가중치는 응모자 선정 확률과 CandidateValue.ticketCount에 반영하지 않아야 한다.,성원,상품 가중치 추첨,DrawingEngine과 PrizeAllocationEngine 책임 분리,2차 확정,완료,No
+FR-P3-092,3조,공식 Snapshot은 상품 구성·가중치·수량·상품 알고리즘 버전을 변경 불가능한 입력으로 보존해야 한다.,성원,상품 가중치 추첨,draw_snapshot_prize와 CKING_SNAPSHOT_V2,2차 확정,완료,No
+FR-P3-093,3조,상품 배정은 남은 재고가 있는 상품만 정수 누적 가중치 구간에 포함하고 배정 후 수량을 차감해야 한다.,성원,상품 가중치 추첨,PRIZE_WEIGHTED_V1,2차 확정,완료,No
+FR-P3-094,3조,상품 수량 부족·0 이하 가중치·중복 상품 식별자·가중치 합 overflow를 배정 전에 거부해야 한다.,성원,상품 가중치 추첨,Event·Snapshot·PrizeAllocationInput 검증,2차 확정,완료,No
+FR-P3-095,3조,동일 Drawing Retry는 보존된 상품 설정·Seed·상품 알고리즘 버전으로 동일한 상품 배정을 재현해야 한다.,성원,상품 가중치 추첨,Seed 도메인 분리와 고정 Seed fixture,2차 확정,완료,No
+FR-P3-096,3조,상품 설정은 Input Hash에 당첨자별 상품 배정은 Result Hash에 포함하되 기존 V1 계약은 변경하지 않아야 한다.,성원,상품 가중치 추첨,CKING_DRAW_INPUT_V2·CKING_DRAW_RESULT_V2,2차 확정,완료,No
+FR-P3-097,3조,당첨자별 배정 상품과 Winner·WinnerManagement·Drawing·Event 상태는 하나의 Transaction으로 확정해야 한다.,성원,상품 가중치 추첨,부분 상품 저장 금지와 Rollback 통합 테스트,2차 확정,완료,No
+FR-P3-098,3조,Event·Snapshot·관리자 결과·PUBLIC 결과 조회에서 상품 정보를 반환해야 한다.,성원,상품 가중치 추첨,상품 조회 응답 확장,2차 확정,완료,No
 FR-P4-090,4조,일반 사용자는 크리에이터 권한을 신청할 수 있다,혁준,Creator 승인,"신청 직후 creator_application.status=PENDING으로 생성한다. Creator 여부는 Member.role이 아니라 해당 Member의 Creator 존재 여부로 판단하며, 이미 Creator가 존재하는 Member는 신청할 수 없다.",1차 확정,시작 전,No
 FR-P4-091,4조,사용자는 자신의 크리에이터 신청 상태를 조회할 수 있다,혁준,Creator 승인,본인의 Creator 신청 상태 및 심사 결과를 조회한다.,1차 확정,시작 전,No
 FR-P4-092,4조,관리자는 크리에이터 신청 목록을 조회할 수 있다,혁준,Creator 승인,"관리자 권한을 검증하고 Creator 신청 목록을 조회한다. page/size 방식 사용. page=0 시작, size 기본 20, 최대 100.",1차 확정,시작 전,No
