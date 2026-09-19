@@ -233,12 +233,25 @@ class DrawingWinnerRepositoryJpaTest {
     }
 
     @Test
-    void 내_Winner_조회는_공개되고_완료된_Drawing만_반환한다() {
-        Fixture publicFixture = fixture();
-        Drawing publicDrawing = initialDrawing(publicFixture);
-        ReflectionTestUtils.setField(publicDrawing, "status", DrawingStatus.COMPLETED);
-        ReflectionTestUtils.setField(publicDrawing, "visibility", DrawingVisibility.PUBLIC);
-        Drawing savedPublicDrawing = drawingRepository.saveAndFlush(publicDrawing);
+    void 내_Winner_조회는_공개된_INITIAL_REDRAW와_Management만_회차와_순위순으로_반환한다() {
+        Fixture initialFixture = fixture();
+        Drawing initialDrawing = initialDrawing(initialFixture);
+        ReflectionTestUtils.setField(initialDrawing, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(initialDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedInitialDrawing = drawingRepository.saveAndFlush(initialDrawing);
+
+        Fixture redrawFixture = fixture();
+        Drawing originalDrawing = drawingRepository.saveAndFlush(initialDrawing(redrawFixture));
+        Drawing redrawDrawing = redrawDrawing(
+                redrawFixture,
+                1,
+                insertSeed(),
+                originalDrawing.getId(),
+                insertRedrawRequest(redrawFixture, originalDrawing.getId())
+        );
+        ReflectionTestUtils.setField(redrawDrawing, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(redrawDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedRedrawDrawing = drawingRepository.saveAndFlush(redrawDrawing);
 
         Fixture privateFixture = fixture();
         Drawing privateDrawing = initialDrawing(privateFixture);
@@ -246,21 +259,33 @@ class DrawingWinnerRepositoryJpaTest {
         Drawing savedPrivateDrawing = drawingRepository.saveAndFlush(privateDrawing);
 
         long memberId = insertMember("당첨자", "USER");
-        Winner publicWinner = winnerRepository.save(Winner.create(
-                publicFixture.eventId(), savedPublicDrawing.getId(), memberId, 1, 3L));
+        long otherMemberId = insertMember("다른당첨자", "USER");
+        Winner initialWinner = winnerRepository.save(Winner.create(
+                initialFixture.eventId(), savedInitialDrawing.getId(), memberId, 2, 3L));
+        Winner redrawWinner = winnerRepository.save(Winner.create(
+                redrawFixture.eventId(), savedRedrawDrawing.getId(), memberId, 1, 1L));
         Winner privateWinner = winnerRepository.save(Winner.create(
                 privateFixture.eventId(), savedPrivateDrawing.getId(), memberId, 1, 3L));
+        Winner otherMemberWinner = winnerRepository.save(Winner.create(
+                initialFixture.eventId(), savedInitialDrawing.getId(), otherMemberId, 1, 5L));
         winnerRepository.flush();
-        winnerManagementRepository.save(WinnerManagement.selected(publicWinner.getId()));
+        winnerManagementRepository.save(WinnerManagement.selected(initialWinner.getId()));
+        winnerManagementRepository.save(WinnerManagement.selected(redrawWinner.getId()));
         winnerManagementRepository.saveAndFlush(WinnerManagement.selected(privateWinner.getId()));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(otherMemberWinner.getId()));
         entityManager.clear();
 
         List<MyWinnerProjection> winners = winnerRepository
                 .findAllWithManagementByMemberIdOrderByDrawNoAndRank(memberId);
 
-        assertThat(winners).extracting(MyWinnerProjection::winnerId).containsExactly(publicWinner.getId());
+        assertThat(winners).extracting(MyWinnerProjection::winnerId)
+                .containsExactly(initialWinner.getId(), redrawWinner.getId());
+        assertThat(winners).extracting(MyWinnerProjection::drawType)
+                .containsExactly(DrawingType.INITIAL, DrawingType.REDRAW);
+        assertThat(winners).extracting(MyWinnerProjection::drawNo).containsExactly(0, 1);
+        assertThat(winners).extracting(MyWinnerProjection::rankInDrawing).containsExactly(2, 1);
         assertThat(winners).extracting(MyWinnerProjection::winnerManagementStatus)
-                .containsExactly(WinnerManagementStatus.SELECTED);
+                .containsExactly(WinnerManagementStatus.SELECTED, WinnerManagementStatus.SELECTED);
     }
 
     @Test
