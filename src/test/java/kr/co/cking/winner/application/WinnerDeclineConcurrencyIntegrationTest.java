@@ -10,6 +10,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
@@ -55,7 +56,10 @@ class WinnerDeclineConcurrencyIntegrationTest {
             Future<String> second = executor.submit(() -> executeDecline(start, fixture));
             start.countDown();
 
-            List<String> results = List.of(first.get(), second.get());
+            List<String> results = List.of(
+                    first.get(5, TimeUnit.SECONDS),
+                    second.get(5, TimeUnit.SECONDS)
+            );
 
             assertThat(results).containsExactlyInAnyOrder("SUCCESS", "INVALID_STATE");
             assertThat(winnerManagementRepository.findByWinnerId(fixture.winnerId()).orElseThrow().getStatus())
