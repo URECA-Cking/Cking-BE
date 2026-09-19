@@ -2,6 +2,7 @@ package kr.co.cking.winner.presentation;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,6 +13,8 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.winner.application.MyWinnerQueryService;
 import kr.co.cking.winner.application.MyWinnerResult;
+import kr.co.cking.winner.application.WinnerDeclineService;
+import kr.co.cking.winner.domain.WinnerErrorCode;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +30,9 @@ class MyWinnerControllerTest {
 
     @MockitoBean
     private MyWinnerQueryService myWinnerQueryService;
+
+    @MockitoBean
+    private WinnerDeclineService winnerDeclineService;
 
     @Test
     void 내_INITIAL과_REDRAW_Winner를_공통_성공_응답으로_반환한다() throws Exception {
@@ -69,6 +75,37 @@ class MyWinnerControllerTest {
         mockMvc.perform(get("/api/me/winners").param("userId", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 본인_Winner의_당첨_포기를_성공_응답으로_반환한다() throws Exception {
+        mockMvc.perform(post("/api/me/winners/100/decline")
+                        .contentType("application/json")
+                        .content("{\"userId\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void 당첨_포기_요청의_userId가_누락되면_입력_검증_오류를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/me/winners/100/decline")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 당첨_포기_대상_Winner가_없으면_도메인_오류를_반환한다() throws Exception {
+        org.mockito.Mockito.doThrow(new BusinessException(WinnerErrorCode.WINNER_NOT_FOUND))
+                .when(winnerDeclineService).decline(999L, 2L);
+
+        mockMvc.perform(post("/api/me/winners/999/decline")
+                        .contentType("application/json")
+                        .content("{\"userId\":2}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("WINNER_NOT_FOUND"));
     }
 
     /** Controller 응답 검증에 필요한 당첨 결과를 만든다. */
