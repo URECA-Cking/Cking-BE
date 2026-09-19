@@ -19,6 +19,7 @@ import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
+import kr.co.cking.winner.repository.MyWinnerProjection;
 import kr.co.cking.winner.repository.PublicWinnerProjection;
 import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
@@ -229,6 +230,37 @@ class DrawingWinnerRepositoryJpaTest {
         assertThat(winners).extracting(PublicWinnerProjection::drawNo).containsExactly(0, 2);
         assertThat(winners).extracting(PublicWinnerProjection::drawType)
                 .containsExactly(DrawingType.INITIAL, DrawingType.REDRAW);
+    }
+
+    @Test
+    void 내_Winner_조회는_공개되고_완료된_Drawing만_반환한다() {
+        Fixture publicFixture = fixture();
+        Drawing publicDrawing = initialDrawing(publicFixture);
+        ReflectionTestUtils.setField(publicDrawing, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(publicDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedPublicDrawing = drawingRepository.saveAndFlush(publicDrawing);
+
+        Fixture privateFixture = fixture();
+        Drawing privateDrawing = initialDrawing(privateFixture);
+        ReflectionTestUtils.setField(privateDrawing, "status", DrawingStatus.COMPLETED);
+        Drawing savedPrivateDrawing = drawingRepository.saveAndFlush(privateDrawing);
+
+        long memberId = insertMember("당첨자", "USER");
+        Winner publicWinner = winnerRepository.save(Winner.create(
+                publicFixture.eventId(), savedPublicDrawing.getId(), memberId, 1, 3L));
+        Winner privateWinner = winnerRepository.save(Winner.create(
+                privateFixture.eventId(), savedPrivateDrawing.getId(), memberId, 1, 3L));
+        winnerRepository.flush();
+        winnerManagementRepository.save(WinnerManagement.selected(publicWinner.getId()));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(privateWinner.getId()));
+        entityManager.clear();
+
+        List<MyWinnerProjection> winners = winnerRepository
+                .findAllWithManagementByMemberIdOrderByDrawNoAndRank(memberId);
+
+        assertThat(winners).extracting(MyWinnerProjection::winnerId).containsExactly(publicWinner.getId());
+        assertThat(winners).extracting(MyWinnerProjection::winnerManagementStatus)
+                .containsExactly(WinnerManagementStatus.SELECTED);
     }
 
     @Test

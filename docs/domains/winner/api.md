@@ -54,8 +54,9 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 - Query Parameter: `userId` (`Long`, 양수, 필수). 인증 미도입 단계의 호출자 식별자다.
 - 먼저 Member 존재를 검증한 뒤, `memberId = userId`인 Winner만 반환한다. 따라서 다른 사용자의
   Winner는 조회 결과에 포함되지 않는다.
-- Winner의 불변 데이터와 1:1 WinnerManagement의 현재 상태를 함께 반환한다. INITIAL·REDRAW
-  Winner를 모두 `drawNo ASC`, `rankInDrawing ASC` 순으로 반환한다.
+- `PUBLIC`·`COMPLETED` Drawing에 속한 Winner의 불변 데이터와 1:1 WinnerManagement의 현재 상태를
+  함께 반환한다. PRIVATE 또는 미완료 Drawing 결과는 당첨자 본인에게도 노출하지 않는다. 공개된
+  INITIAL·REDRAW Winner를 `drawNo ASC`, `rankInDrawing ASC` 순으로 반환한다.
 - 목록이 비어 있으면 빈 배열을 정상 반환한다.
 
 ```json
