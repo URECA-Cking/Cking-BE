@@ -73,6 +73,7 @@ class WinnerDeclineServiceTest {
         WinnerStatusHistory history = historyCaptor.getValue();
         assertThat(history.getWinnerManagementId()).isEqualTo(300L);
         assertThat(history.getStatus()).isEqualTo(WinnerManagementStatus.DECLINED);
+        assertThat(history.getReason()).isNull();
         assertThat(history.getChangedBy()).isEqualTo(USER_ID);
     }
 
