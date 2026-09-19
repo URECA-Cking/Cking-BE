@@ -258,6 +258,11 @@ class DrawingWinnerRepositoryJpaTest {
         ReflectionTestUtils.setField(privateDrawing, "status", DrawingStatus.COMPLETED);
         Drawing savedPrivateDrawing = drawingRepository.saveAndFlush(privateDrawing);
 
+        Fixture readyFixture = fixture();
+        Drawing readyPublicDrawing = initialDrawing(readyFixture);
+        ReflectionTestUtils.setField(readyPublicDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedReadyPublicDrawing = drawingRepository.saveAndFlush(readyPublicDrawing);
+
         long memberId = insertMember("당첨자", "USER");
         long otherMemberId = insertMember("다른당첨자", "USER");
         Winner initialWinner = winnerRepository.save(Winner.create(
@@ -266,12 +271,15 @@ class DrawingWinnerRepositoryJpaTest {
                 redrawFixture.eventId(), savedRedrawDrawing.getId(), memberId, 1, 1L));
         Winner privateWinner = winnerRepository.save(Winner.create(
                 privateFixture.eventId(), savedPrivateDrawing.getId(), memberId, 1, 3L));
+        Winner readyPublicWinner = winnerRepository.save(Winner.create(
+                readyFixture.eventId(), savedReadyPublicDrawing.getId(), memberId, 1, 3L));
         Winner otherMemberWinner = winnerRepository.save(Winner.create(
                 initialFixture.eventId(), savedInitialDrawing.getId(), otherMemberId, 1, 5L));
         winnerRepository.flush();
         winnerManagementRepository.save(WinnerManagement.selected(initialWinner.getId()));
         winnerManagementRepository.save(WinnerManagement.selected(redrawWinner.getId()));
         winnerManagementRepository.saveAndFlush(WinnerManagement.selected(privateWinner.getId()));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(readyPublicWinner.getId()));
         winnerManagementRepository.saveAndFlush(WinnerManagement.selected(otherMemberWinner.getId()));
         entityManager.clear();
 
