@@ -96,6 +96,49 @@ class MyWinnerControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
+    /** 당첨 포기 대상 winnerId가 0이면 Controller 경계에서 입력 검증 오류로 처리한다. */
+    @Test
+    void 당첨_포기_대상_winnerId가_0이면_입력_검증_오류를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/me/winners/0/decline")
+                        .contentType("application/json")
+                        .content("{\"userId\":2}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 당첨 포기 요청의 userId가 0이면 본문 입력 검증 오류로 처리한다. */
+    @Test
+    void 당첨_포기_요청의_userId가_0이면_입력_검증_오류를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/me/winners/100/decline")
+                        .contentType("application/json")
+                        .content("{\"userId\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 당첨 포기 요청의 userId가 음수이면 본문 입력 검증 오류로 처리한다. */
+    @Test
+    void 당첨_포기_요청의_userId가_음수이면_입력_검증_오류를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/me/winners/100/decline")
+                        .contentType("application/json")
+                        .content("{\"userId\":-1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 이미 종결된 Winner의 포기는 상태 충돌 오류로 변환한다. */
+    @Test
+    void 종결_상태_Winner의_당첨_포기는_CONFLICT_응답을_반환한다() throws Exception {
+        org.mockito.Mockito.doThrow(new BusinessException(WinnerErrorCode.INVALID_STATE))
+                .when(winnerDeclineService).decline(100L, 2L);
+
+        mockMvc.perform(post("/api/me/winners/100/decline")
+                        .contentType("application/json")
+                        .content("{\"userId\":2}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
     @Test
     void 당첨_포기_대상_Winner가_없으면_도메인_오류를_반환한다() throws Exception {
         org.mockito.Mockito.doThrow(new BusinessException(WinnerErrorCode.WINNER_NOT_FOUND))
