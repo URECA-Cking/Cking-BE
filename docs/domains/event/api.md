@@ -46,7 +46,8 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 ## GET /api/events/{eventId}
 
 Query `userId`는 필수다. 공개 Event 정보와 해당 Event의 Creator 기준 요청 사용자의 보유 응모권 수를
-함께 반환한다. 존재하지 않는 사용자 또는 공개 대상이 아닌 Event는 `RESOURCE_NOT_FOUND`다.
+함께 반환한다. 존재하지 않는 사용자는 공통 `RESOURCE_NOT_FOUND`, 존재하지 않거나 삭제·비공개 상태인
+Event는 Event 전용 `EVENT_NOT_FOUND`다.
 
 ## POST /api/events/{eventId}/entries
 
