@@ -29,5 +29,7 @@
 - [Stream](domains/stream/README.md): EARN·SPEND Consumer, PEL 회수, Dead Stream replay 계약
 - [Winner API](domains/winner/api.md): 공개 Winner 조회 API 계약
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
+- [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계
+- [Mission API](domains/mission/api.md): 미션 완료 API 계약
 
 빈 도메인 문서나 디렉터리는 미리 만들지 않는다. 문서는 원칙적으로 300줄 이하로 유지하며, 이를 넘으면 관심사별 파일로 분리한다.
