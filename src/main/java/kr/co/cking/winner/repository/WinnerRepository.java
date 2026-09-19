@@ -30,5 +30,21 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
             """)
     List<PublicWinnerProjection> findAllPublicByEventIdOrderByDrawNoAndRank(@Param("eventId") Long eventId);
 
+    /** 특정 Member가 당첨된 Winner와 현재 운영 상태를 추첨 회차 순으로 읽기 전용 조회한다. */
+    @Query("""
+            select new kr.co.cking.winner.repository.MyWinnerProjection(
+                w.id, w.eventId, w.drawingId, d.drawNo, d.drawType, w.rankInDrawing,
+                w.appliedTicketCount, w.createdAt, wm.id, wm.status, wm.createdAt, wm.updatedAt
+            )
+            from Winner w
+            join kr.co.cking.drawing.domain.Drawing d on d.id = w.drawingId
+            join kr.co.cking.winner.domain.WinnerManagement wm on wm.winnerId = w.id
+            where w.memberId = :memberId
+            order by d.drawNo asc, w.rankInDrawing asc
+            """)
+    List<MyWinnerProjection> findAllWithManagementByMemberIdOrderByDrawNoAndRank(
+            @Param("memberId") Long memberId
+    );
+
     boolean existsByEventIdAndMemberId(Long eventId, Long memberId);
 }
