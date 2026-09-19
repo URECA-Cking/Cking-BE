@@ -1,6 +1,6 @@
-# Creator Event 운영 API
+# Event API
 
-Creator의 Event 관리와 관리자 심사 API 계약이다. 모든 성공·실패 응답은 [공통 API 규약](../../common/api.md)의 응답 봉투를 사용하며, 아래 Response 예시는 `data` 값이다.
+공개 이벤트 조회·응모, Creator Event 운영, 관리자 심사·마감 API 계약이다. 모든 성공·실패 응답은 [공통 API 규약](../../common/api.md)의 응답 봉투를 사용하며, 아래 Response 예시는 `data` 값이다.
 
 ## 권한과 상태 전이
 
@@ -32,6 +32,40 @@ CLOSED --completeDrawing--> DRAW_COMPLETED --publish--> PUBLISHED
 다른 상태는 `INVALID_STATE`로 실패한다. Drawing 공개 상태 변경과 Winner 알림 생성은 이 계약의 책임이 아니며
 호출자가 동일 Transaction에서 조합한다. 전이 성공 시 `publishedAt`을 기록한다. REDRAW 결과 공개는 Event가 이미
 `PUBLISHED`여야 하며 이 메서드를 재호출하지 않고 해당 상태를 유지한다.
+
+## GET /api/events
+
+Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API 표시 상태
+`UPCOMING`, `IN_PROGRESS`, `CLOSED` 중 하나다. `page`는 0부터 시작하고, `size` 기본값은 20,
+허용 범위는 1~100이다.
+
+삭제되지 않은 공개 Event만 `createdAt DESC, eventId DESC`로 반환한다. DB 상태 `SCHEDULED`는
+`UPCOMING`, `OPEN`은 현재 시각이 `endAt` 전이면 `IN_PROGRESS`, 이후와 `CLOSING` 이후 상태는
+`CLOSED`로 표시한다.
+
+## GET /api/events/{eventId}
+
+Query `userId`는 필수다. 공개 Event 정보와 해당 Event의 Creator 기준 요청 사용자의 보유 응모권 수를
+함께 반환한다. 존재하지 않는 사용자는 공통 `RESOURCE_NOT_FOUND`, 존재하지 않거나 삭제·비공개 상태인
+Event는 Event 전용 `EVENT_NOT_FOUND`다.
+
+## POST /api/events/{eventId}/entries
+
+```json
+{
+  "userId": 1,
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "ticketCount": 3
+}
+```
+
+`userId`, UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. Controller는 형식과
+범위만 검증하고, Event 개방 여부·잔액·멱등성·차감·Stream 발행은 `entry-spend.lua`가 원자적으로
+처리한다. 자세한 Redis 계약은 [응모 Lua API](lua-api.md)를 따른다.
+
+같은 `requestId`와 동일한 요청은 기존 성공 결과를 재현한다. 같은 `requestId`에 다른 요청 본문을
+보내면 `IDEMPOTENCY_CONFLICT`다. 성공 응답 `data`는 `requestId`, `eventId`, `accepted: true`를
+포함한다. Lua 결과의 실패 코드는 HTTP 상태와 함께 공통 응답 봉투로 반환한다.
 
 ## GET /api/creator/events
 
@@ -148,6 +182,28 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 - Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.
 - Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
 - `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
+
+## GET /api/events/{eventId}/entries/me
+
+USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`, 선택 `cursor`, `size`를 사용한다.
+`size` 기본값은 20이고 허용 범위는 1~100이다. 응모 내역은 `appliedAt DESC, entryId DESC`로 정렬하며,
+다음 페이지 커서는 마지막 항목의 `(appliedAt, entryId)`를 URL-safe Base64로 인코딩한다.
+
+```json
+{
+  "items": [{
+    "entryId": 10,
+    "usedTicketCount": 3,
+    "appliedAt": "2026-09-18T02:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+조회 조건은 `event_entry.member_id = userId`와 `event_entry.event_id = eventId`를 모두 사용한다. 없는 Member 또는
+존재하지 않거나 삭제된 Event는 `RESOURCE_NOT_FOUND`, 식별자·size 범위·cursor 형식 오류는
+`VALIDATION_FAILED`다.
 
 ## POST /api/events/{eventId}/close
 
