@@ -35,17 +35,17 @@ class NotificationRepositoryJpaTest {
     void Member별_알림을_생성시각과_알림_ID_내림차순으로_조회한다() {
         Fixture fixture = fixture();
         Notification first = saveNotification(
-                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.firstWinnerId(),
-                "먼저 생성된 알림", Instant.parse("2026-09-17T00:00:00Z"), null
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.INITIAL_WINNER, "먼저 생성된 알림", Instant.parse("2026-09-17T00:00:00Z"), null
         );
         Notification second = saveNotification(
-                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.secondWinnerId(),
-                "나중에 생성된 알림", Instant.parse("2026-09-17T00:00:00Z"),
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.REDRAW_WINNER, "나중에 생성된 알림", Instant.parse("2026-09-17T00:00:00Z"),
                 Instant.parse("2026-09-17T01:00:00Z")
         );
         saveNotification(
-                fixture.otherMemberId(), fixture.eventId(), fixture.drawingId(), fixture.thirdWinnerId(),
-                "다른 사용자의 알림", Instant.parse("2026-09-18T00:00:00Z"), null
+                fixture.otherMemberId(), fixture.eventId(), fixture.drawingId(), fixture.otherMemberWinnerId(),
+                NotificationType.INITIAL_WINNER, "다른 사용자의 알림", Instant.parse("2026-09-18T00:00:00Z"), null
         );
         entityManager.clear();
 
@@ -60,17 +60,19 @@ class NotificationRepositoryJpaTest {
         assertThat(result.getFirst().getReadAt()).isEqualTo(Instant.parse("2026-09-17T01:00:00Z"));
     }
 
+    /** Winner의 실제 계보와 일치하는 Notification을 지정한 시각으로 저장한다. */
     private Notification saveNotification(
             long memberId,
             long eventId,
             long drawingId,
             long winnerId,
+            NotificationType type,
             String title,
             Instant createdAt,
             Instant readAt
     ) {
         Notification notification = new Notification(
-                memberId, eventId, drawingId, winnerId, NotificationType.INITIAL_WINNER, title, "알림 본문"
+                memberId, eventId, drawingId, winnerId, type, title, "알림 본문"
         );
         ReflectionTestUtils.setField(notification, "createdAt", createdAt);
         ReflectionTestUtils.setField(notification, "readAt", readAt);
@@ -80,7 +82,6 @@ class NotificationRepositoryJpaTest {
     private Fixture fixture() {
         long memberId = insertMember("회원1");
         long otherMemberId = insertMember("회원2");
-        long thirdMemberId = insertMember("회원3");
         long creatorId = insertCreator(memberId);
         long eventId = insertEvent(creatorId, memberId);
         long snapshotId = insertSnapshot(eventId);
@@ -91,8 +92,7 @@ class NotificationRepositoryJpaTest {
                 eventId,
                 drawingId,
                 insertWinner(eventId, drawingId, memberId, 1),
-                insertWinner(eventId, drawingId, otherMemberId, 2),
-                insertWinner(eventId, drawingId, thirdMemberId, 3)
+                insertWinner(eventId, drawingId, otherMemberId, 2)
         );
     }
 
@@ -191,9 +191,8 @@ class NotificationRepositoryJpaTest {
             long otherMemberId,
             long eventId,
             long drawingId,
-            long firstWinnerId,
-            long secondWinnerId,
-            long thirdWinnerId
+            long memberWinnerId,
+            long otherMemberWinnerId
     ) {
     }
 }
