@@ -19,6 +19,7 @@ import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
+import kr.co.cking.winner.repository.MyWinnerProjection;
 import kr.co.cking.winner.repository.PublicWinnerProjection;
 import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
@@ -229,6 +230,104 @@ class DrawingWinnerRepositoryJpaTest {
         assertThat(winners).extracting(PublicWinnerProjection::drawNo).containsExactly(0, 2);
         assertThat(winners).extracting(PublicWinnerProjection::drawType)
                 .containsExactly(DrawingType.INITIAL, DrawingType.REDRAW);
+    }
+
+    @Test
+    void 내_Winner_조회는_공개된_INITIAL_REDRAW와_Management만_회차와_순위순으로_반환한다() {
+        Fixture initialFixture = fixture();
+        Drawing initialDrawing = initialDrawing(initialFixture);
+        ReflectionTestUtils.setField(initialDrawing, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(initialDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedInitialDrawing = drawingRepository.saveAndFlush(initialDrawing);
+
+        Fixture redrawFixture = fixture();
+        Drawing originalDrawing = drawingRepository.saveAndFlush(initialDrawing(redrawFixture));
+        Drawing redrawDrawing = redrawDrawing(
+                redrawFixture,
+                1,
+                insertSeed(),
+                originalDrawing.getId(),
+                insertRedrawRequest(redrawFixture, originalDrawing.getId())
+        );
+        ReflectionTestUtils.setField(redrawDrawing, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(redrawDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedRedrawDrawing = drawingRepository.saveAndFlush(redrawDrawing);
+
+        Fixture privateFixture = fixture();
+        Drawing privateDrawing = initialDrawing(privateFixture);
+        ReflectionTestUtils.setField(privateDrawing, "status", DrawingStatus.COMPLETED);
+        Drawing savedPrivateDrawing = drawingRepository.saveAndFlush(privateDrawing);
+
+        Fixture readyFixture = fixture();
+        Drawing readyPublicDrawing = initialDrawing(readyFixture);
+        ReflectionTestUtils.setField(readyPublicDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedReadyPublicDrawing = drawingRepository.saveAndFlush(readyPublicDrawing);
+
+        long memberId = insertMember("당첨자", "USER");
+        long otherMemberId = insertMember("다른당첨자", "USER");
+        Winner initialWinner = winnerRepository.save(Winner.create(
+                initialFixture.eventId(), savedInitialDrawing.getId(), memberId, 2, 3L));
+        Winner redrawWinner = winnerRepository.save(Winner.create(
+                redrawFixture.eventId(), savedRedrawDrawing.getId(), memberId, 1, 1L));
+        Winner privateWinner = winnerRepository.save(Winner.create(
+                privateFixture.eventId(), savedPrivateDrawing.getId(), memberId, 1, 3L));
+        Winner readyPublicWinner = winnerRepository.save(Winner.create(
+                readyFixture.eventId(), savedReadyPublicDrawing.getId(), memberId, 1, 3L));
+        Winner otherMemberWinner = winnerRepository.save(Winner.create(
+                initialFixture.eventId(), savedInitialDrawing.getId(), otherMemberId, 1, 5L));
+        winnerRepository.flush();
+        winnerManagementRepository.save(WinnerManagement.selected(initialWinner.getId()));
+        winnerManagementRepository.save(WinnerManagement.selected(redrawWinner.getId()));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(privateWinner.getId()));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(readyPublicWinner.getId()));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(otherMemberWinner.getId()));
+        entityManager.clear();
+
+        List<MyWinnerProjection> winners = winnerRepository
+                .findAllWithManagementByMemberIdOrderByDrawNoRankAndEventId(memberId);
+
+        assertThat(winners).extracting(MyWinnerProjection::winnerId)
+                .containsExactly(initialWinner.getId(), redrawWinner.getId());
+        assertThat(winners).extracting(MyWinnerProjection::drawType)
+                .containsExactly(DrawingType.INITIAL, DrawingType.REDRAW);
+        assertThat(winners).extracting(MyWinnerProjection::drawNo).containsExactly(0, 1);
+        assertThat(winners).extracting(MyWinnerProjection::rankInDrawing).containsExactly(2, 1);
+        assertThat(winners).extracting(MyWinnerProjection::winnerManagementStatus)
+                .containsExactly(WinnerManagementStatus.SELECTED, WinnerManagementStatus.SELECTED);
+    }
+
+    @Test
+    void 내_Winner_조회는_서로_다른_Event의_같은_회차와_순위도_Event순으로_반환한다() {
+        Fixture firstFixture = fixture();
+        Drawing firstDrawing = initialDrawing(firstFixture);
+        ReflectionTestUtils.setField(firstDrawing, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(firstDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedFirstDrawing = drawingRepository.saveAndFlush(firstDrawing);
+
+        Fixture secondFixture = fixture();
+        Drawing secondDrawing = initialDrawing(secondFixture);
+        ReflectionTestUtils.setField(secondDrawing, "status", DrawingStatus.COMPLETED);
+        ReflectionTestUtils.setField(secondDrawing, "visibility", DrawingVisibility.PUBLIC);
+        Drawing savedSecondDrawing = drawingRepository.saveAndFlush(secondDrawing);
+
+        long memberId = insertMember("당첨자", "USER");
+        Winner secondEventWinner = winnerRepository.save(Winner.create(
+                secondFixture.eventId(), savedSecondDrawing.getId(), memberId, 1, 3L));
+        Winner firstEventWinner = winnerRepository.saveAndFlush(Winner.create(
+                firstFixture.eventId(), savedFirstDrawing.getId(), memberId, 1, 3L));
+        winnerManagementRepository.save(WinnerManagement.selected(secondEventWinner.getId()));
+        winnerManagementRepository.saveAndFlush(WinnerManagement.selected(firstEventWinner.getId()));
+        entityManager.clear();
+
+        List<MyWinnerProjection> winners = winnerRepository
+                .findAllWithManagementByMemberIdOrderByDrawNoRankAndEventId(memberId);
+
+        assertThat(winners).extracting(MyWinnerProjection::winnerId)
+                .containsExactly(firstEventWinner.getId(), secondEventWinner.getId());
+        assertThat(winners).extracting(MyWinnerProjection::eventId)
+                .containsExactly(firstFixture.eventId(), secondFixture.eventId());
+        assertThat(winners).extracting(MyWinnerProjection::drawNo).containsExactly(0, 0);
+        assertThat(winners).extracting(MyWinnerProjection::rankInDrawing).containsExactly(1, 1);
     }
 
     @Test

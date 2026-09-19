@@ -35,6 +35,14 @@ public class MemberQueryService {
         return UserSelectionResponse.from(member);
     }
 
+    /** 호출자 식별에 사용한 Member가 실제로 존재하는지 검증한다. */
+    public void validateExists(Long userId) {
+        if (!memberRepository.existsById(userId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+    }
+
+    /** 요청한 사용자가 관리자 역할을 보유했는지 검증한다. */
     public void validateAdmin(Long userId) {
         Member member = memberRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));

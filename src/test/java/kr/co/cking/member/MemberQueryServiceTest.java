@@ -18,6 +18,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MemberQueryServiceTest {
@@ -54,6 +55,25 @@ class MemberQueryServiceTest {
         when(repository.findById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.selectUser(999L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void 존재하는_사용자는_존재_검증을_통과한다() {
+        when(repository.existsById(1L)).thenReturn(true);
+
+        service.validateExists(1L);
+
+        verify(repository).existsById(1L);
+    }
+
+    @Test
+    void 존재하지_않는_사용자_존재_검증은_RESOURCE_NOT_FOUND다() {
+        when(repository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.validateExists(999L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
