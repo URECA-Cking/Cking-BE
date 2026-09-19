@@ -1,6 +1,7 @@
 package kr.co.cking.drawing.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** 공개 결과와 당첨 Notification의 최초 생성·멱등성·동시성 처리를 실제 DB로 검증한다. */
@@ -136,6 +138,20 @@ class PublicationServiceIntegrationTest {
         assertThat(drawingRepository.findById(DRAWING_ID).orElseThrow().getVisibility())
                 .isEqualTo(DrawingVisibility.PUBLIC);
         assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name()).isEqualTo("PUBLISHED");
+    }
+
+    /** Winner와 다른 Member를 조합한 Notification은 계보 복합 FK로 저장하지 못한다. */
+    @Test
+    void Notification은_Winner의_Member_Event_Drawing_계보와_같아야_한다() {
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                INSERT INTO notification (member_id, event_id, drawing_id, winner_id, type, title, body)
+                SELECT ?, event_id, drawing_id, id, ?, ?, ?
+                FROM winner
+                WHERE drawing_id = ?
+                ORDER BY rank_in_drawing ASC
+                LIMIT 1
+                """, CREATOR_OWNER_ID, NotificationType.INITIAL_WINNER.name(), "당첨 안내", "잘못된 계보", DRAWING_ID))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private int notificationCount() {
