@@ -32,7 +32,7 @@
 | 26 | 외부 | Drawing | ADMIN | GET | `/api/admin/drawings/{drawingId}` | Drawing 조회 | - |
 | 27 | 외부 | Drawing | ADMIN | POST | `/api/admin/drawings/{drawingId}/retry` | Retry | 상태 기반 |
 | 28 | 외부 | Drawing | ADMIN | GET | `/api/admin/drawings/{drawingId}/result` | 결과 조회 | - |
-| 29 | 외부 | 결과 | PUBLIC | GET | `/api/events/{eventId}/winners` | 공개 Winner | - |
+| 29 | 외부 | Winner | PUBLIC | GET | `/api/events/{eventId}/winners` | 공개 Winner 조회 | - |
 | 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | Creator 신청 | 기존 PENDING 재사용 |
 | 31 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/me` | 내 신청 조회 | - |
 | 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 신청 목록 | - |
