@@ -56,7 +56,8 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
   Winner는 조회 결과에 포함되지 않는다.
 - `PUBLIC`·`COMPLETED` Drawing에 속한 Winner의 불변 데이터와 1:1 WinnerManagement의 현재 상태를
   함께 반환한다. PRIVATE 또는 미완료 Drawing 결과는 당첨자 본인에게도 노출하지 않는다. 공개된
-  INITIAL·REDRAW Winner를 `drawNo ASC`, `rankInDrawing ASC` 순으로 반환한다.
+  INITIAL·REDRAW Winner를 `drawNo ASC`, `rankInDrawing ASC`, `eventId ASC` 순으로 반환한다.
+  서로 다른 Event에서 회차와 순위가 같아도 `eventId`로 순서를 고정한다.
 - 목록이 비어 있으면 빈 배열을 정상 반환한다.
 
 ```json

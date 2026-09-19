@@ -20,7 +20,7 @@ public class MyWinnerQueryService {
     public List<MyWinnerResult> getMyWinners(Long userId) {
         memberQueryService.validateExists(userId);
 
-        return winnerRepository.findAllWithManagementByMemberIdOrderByDrawNoAndRank(userId).stream()
+        return winnerRepository.findAllWithManagementByMemberIdOrderByDrawNoRankAndEventId(userId).stream()
                 .map(MyWinnerResult::from)
                 .toList();
     }

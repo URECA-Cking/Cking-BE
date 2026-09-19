@@ -48,7 +48,7 @@ class MyWinnerQueryServiceTest {
                 3L, 300L, WinnerManagementStatus.SELECTED);
         MyWinnerProjection redraw = winner(101L, 10L, 21L, 1, DrawingType.REDRAW, 1,
                 1L, 301L, WinnerManagementStatus.RECEIVED);
-        when(winnerRepository.findAllWithManagementByMemberIdOrderByDrawNoAndRank(USER_ID))
+        when(winnerRepository.findAllWithManagementByMemberIdOrderByDrawNoRankAndEventId(USER_ID))
                 .thenReturn(List.of(initial, redraw));
 
         List<MyWinnerResult> results = service.getMyWinners(USER_ID);
@@ -76,12 +76,12 @@ class MyWinnerQueryServiceTest {
 
     @Test
     void 다른_사용자의_Winner는_조회_조건에_포함되지_않아_빈_목록을_반환한다() {
-        when(winnerRepository.findAllWithManagementByMemberIdOrderByDrawNoAndRank(USER_ID))
+        when(winnerRepository.findAllWithManagementByMemberIdOrderByDrawNoRankAndEventId(USER_ID))
                 .thenReturn(List.of());
 
         List<MyWinnerResult> results = service.getMyWinners(USER_ID);
 
-        verify(winnerRepository).findAllWithManagementByMemberIdOrderByDrawNoAndRank(USER_ID);
+        verify(winnerRepository).findAllWithManagementByMemberIdOrderByDrawNoRankAndEventId(USER_ID);
         assertThat(results).isEmpty();
     }
 

@@ -42,9 +42,9 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
             where w.memberId = :memberId
               and d.visibility = kr.co.cking.drawing.domain.DrawingVisibility.PUBLIC
               and d.status = kr.co.cking.drawing.domain.DrawingStatus.COMPLETED
-            order by d.drawNo asc, w.rankInDrawing asc
+            order by d.drawNo asc, w.rankInDrawing asc, w.eventId asc
             """)
-    List<MyWinnerProjection> findAllWithManagementByMemberIdOrderByDrawNoAndRank(
+    List<MyWinnerProjection> findAllWithManagementByMemberIdOrderByDrawNoRankAndEventId(
             @Param("memberId") Long memberId
     );
 
