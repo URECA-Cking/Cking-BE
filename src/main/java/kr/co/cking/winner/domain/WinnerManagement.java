@@ -2,6 +2,7 @@ package kr.co.cking.winner.domain;
 
 import static kr.co.cking.common.validation.DomainValidator.requirePositive;
 
+import kr.co.cking.common.exception.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -53,5 +54,13 @@ public class WinnerManagement {
         management.winnerId = winnerId;
         management.status = WinnerManagementStatus.SELECTED;
         return management;
+    }
+
+    /** SELECTED 상태의 Winner를 당첨 포기 종결 상태로 변경한다. */
+    public void decline() {
+        if (status != WinnerManagementStatus.SELECTED) {
+            throw new BusinessException(WinnerErrorCode.INVALID_STATE);
+        }
+        status = WinnerManagementStatus.DECLINED;
     }
 }
