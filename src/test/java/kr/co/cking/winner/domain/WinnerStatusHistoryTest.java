@@ -35,4 +35,24 @@ class WinnerStatusHistoryTest {
                 () -> WinnerStatusHistory.create(1L, WinnerManagementStatus.DECLINED, "사유", 0L)
         ).withMessage("changedBy는 양수여야 합니다.");
     }
+
+    /** DB reason 컬럼 최대 길이인 500자는 상태 이력 사유로 저장할 수 있다. */
+    @Test
+    void 사유가_500자이면_상태_이력을_만들_수_있다() {
+        String reason = "가".repeat(500);
+
+        WinnerStatusHistory history = WinnerStatusHistory.create(
+                1L, WinnerManagementStatus.DECLINED, reason, 1L
+        );
+
+        assertThat(history.getReason()).isEqualTo(reason);
+    }
+
+    /** DB reason 컬럼 길이를 넘는 사유는 저장 전에 거절한다. */
+    @Test
+    void 사유가_501자이면_상태_이력을_만들_수_없다() {
+        assertThatIllegalArgumentException().isThrownBy(
+                () -> WinnerStatusHistory.create(1L, WinnerManagementStatus.DECLINED, "가".repeat(501), 1L)
+        ).withMessage("reason은 500자 이하여야 합니다.");
+    }
 }

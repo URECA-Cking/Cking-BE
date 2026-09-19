@@ -24,6 +24,8 @@ import org.hibernate.annotations.CreationTimestamp;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class WinnerStatusHistory {
 
+    private static final int MAX_REASON_LENGTH = 500;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -63,6 +65,7 @@ public class WinnerStatusHistory {
     ) {
         requirePositive(winnerManagementId, "winnerManagementId");
         Objects.requireNonNull(status, "status");
+        requireReasonLength(reason);
         if (changedBy != null) {
             requirePositive(changedBy, "changedBy");
         }
@@ -73,5 +76,12 @@ public class WinnerStatusHistory {
         history.reason = reason;
         history.changedBy = changedBy;
         return history;
+    }
+
+    /** DB 컬럼 길이를 넘는 사유는 저장 전에 차단한다. */
+    private static void requireReasonLength(String reason) {
+        if (reason != null && reason.length() > MAX_REASON_LENGTH) {
+            throw new IllegalArgumentException("reason은 " + MAX_REASON_LENGTH + "자 이하여야 합니다.");
+        }
     }
 }
