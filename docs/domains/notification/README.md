@@ -11,6 +11,8 @@
 ## 영속성 모델
 
 - Notification은 Member, Event, Drawing, Winner를 ID로 참조한다.
+- Notification의 `(winner_id, member_id, event_id, drawing_id)`는 Winner의 같은 계보를 복합 FK로
+  참조한다. 따라서 개별 ID가 존재하더라도 서로 다른 Winner·Member·Event·Drawing을 섞어 저장할 수 없다.
 - `type`은 `INITIAL_WINNER` 또는 `REDRAW_WINNER`다.
 - `(winner_id, type)`은 유일하므로 같은 당첨 결과에 같은 종류의 알림이 중복 생성되지 않는다.
 - 목록 정렬은 `created_at DESC, id DESC`다.
