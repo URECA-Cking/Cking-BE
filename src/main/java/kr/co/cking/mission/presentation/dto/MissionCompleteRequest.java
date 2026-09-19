@@ -1,11 +1,12 @@
 package kr.co.cking.mission.presentation.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.util.UUID;
 
 public record MissionCompleteRequest(
-        @NotNull Long userId,
+        @NotNull @Positive Long userId,
         @NotNull UUID requestId
 ) {
 }
