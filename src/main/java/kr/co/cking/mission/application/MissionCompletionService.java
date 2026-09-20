@@ -66,7 +66,7 @@ public class MissionCompletionService {
                 mission.getType().name(),
                 missionId,
                 periodKey,
-                missionKeyOf(mission, creatorId, periodKey),
+                missionKeyOf(mission, creatorId),
                 mission.getRewardAmount().longValue()
         );
 
@@ -114,7 +114,13 @@ public class MissionCompletionService {
         return now.atZone(ZoneOffset.UTC).toLocalDate().format(PERIOD_KEY_FORMAT);
     }
 
-    private String missionKeyOf(Mission mission, Long creatorId, String periodKey) {
-        return "%s:%d:%s".formatted(mission.getType().name().toLowerCase(Locale.ROOT), creatorId, periodKey);
+    /**
+     * {@code periodKey}를 포함하지 않는다 — {@link TicketEarnService}의 fingerprint
+     * 계산이 이 값을 담으므로, 여기에 날짜가 들어가면 자정 이후 동일 requestId 재시도가
+     * 다른 fingerprint로 판정돼 {@code ALREADY_PROCESSED} 대신 {@code REQUEST_ID_CONFLICT}가
+     * 반환된다(periodKey는 이미 별도 필드로 Guard 키·Stream에 전달된다).
+     */
+    private String missionKeyOf(Mission mission, Long creatorId) {
+        return "%s:%d".formatted(mission.getType().name().toLowerCase(Locale.ROOT), creatorId);
     }
 }

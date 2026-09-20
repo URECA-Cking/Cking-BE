@@ -95,6 +95,33 @@ class MissionCompletionServiceTest {
     }
 
     @Test
+    void missionKey는_periodKey와_달리_날짜에_독립적이다() {
+        // TicketEarnService의 fingerprint 계산은 periodKey를 명시적으로 제외하지만
+        // missionKey는 포함한다. missionKey에 날짜가 섞여 있으면 자정을 넘겨 동일
+        // requestId를 재시도할 때 fingerprint가 달라져 ALREADY_PROCESSED 대신
+        // REQUEST_ID_CONFLICT가 반환된다 — 그래서 missionKey는 periodKey가 바뀌어도
+        // 항상 같아야 한다.
+        stubMemberAndMission(attendanceMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        Clock beforeMidnight = Clock.fixed(Instant.parse("2026-09-16T23:59:59Z"), ZoneOffset.UTC);
+        serviceWith(beforeMidnight).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        Clock afterMidnight = Clock.fixed(Instant.parse("2026-09-17T00:00:01Z"), ZoneOffset.UTC);
+        serviceWith(afterMidnight).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(0).periodKey()).isEqualTo("2026-09-16");
+        assertThat(commands.get(1).periodKey()).isEqualTo("2026-09-17");
+        assertThat(commands.get(0).missionKey()).isEqualTo(commands.get(1).missionKey());
+    }
+
+    @Test
     void 존재하지_않는_사용자는_RESOURCE_NOT_FOUND다() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
         when(memberRepository.findById(USER_ID)).thenReturn(Optional.empty());
