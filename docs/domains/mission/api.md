@@ -1,6 +1,33 @@
-# Mission 완료 API
+# Mission API
 
 모든 응답은 [공통 API 규약](../../common/api.md)의 봉투를 사용하며, 아래 Response 예시는 `data` 값이다.
+
+## GET /api/creators/{creatorId}/missions
+
+`userId`는 필수 양수 Long query parameter다. 존재하지 않는 사용자나 Creator는 공통 `RESOURCE_NOT_FOUND`로 응답한다.
+
+해당 Creator의 활성 ATTENDANCE/LIKE 미션만 반환한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
+
+각 항목은 `missionId`, `type`, `rewardAmount`, `activeFrom`, `activeTo`, `completedToday`를 포함한다. `activeFrom`과 `activeTo`는 UTC Instant이며 nullable이다.
+
+`completedToday`는 요청 사용자·Creator·미션과 서버 UTC 오늘의 `periodKey`(`yyyy-MM-dd`)가 일치하는 MissionCompletion이 있는지 나타낸다. 이 API는 완료 기록을 생성하거나 변경하지 않는다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": [
+    {
+      "missionId": 100,
+      "type": "ATTENDANCE",
+      "rewardAmount": 1,
+      "activeFrom": null,
+      "activeTo": null,
+      "completedToday": false
+    }
+  ],
+  "message": null
+}
+```
 
 ## POST /api/creators/{creatorId}/missions/{missionId}/complete
 
