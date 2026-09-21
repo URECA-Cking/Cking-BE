@@ -103,6 +103,13 @@ public class TicketBalanceReconciliationScheduler {
         if (redisValue == null) {
             // Redis Key 미존재는 별개 이상 상태(BALANCE_NOT_LOADED)다 - 정합성 불일치로 다루지 않는다.
             mismatchStreaks.remove(key);
+            // DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로, 잔액이 있는데 키가 없으면 유실이다.
+            // 이 유저는 SPEND에서 계속 BALANCE_NOT_LOADED(503)를 받는다.
+            if (dbBalance > 0) {
+                log.warn("Redis Balance 키가 없습니다(BALANCE_NOT_LOADED로 응모 불가). memberId={}, creatorId={}, "
+                                + "dbBalance={} - TicketCompensationService.resyncRedisToDb로 복구가 필요합니다.",
+                        key.memberId(), key.creatorId(), dbBalance);
+            }
             return;
         }
 
