@@ -156,6 +156,53 @@ class EventLifecycleSchedulerTest {
     }
 
     @Test
+    void Drain_경고는_30틱마다_반복된다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        runTicks(60);
+
+        assertThat(countWarnings(output)).isEqualTo(2);
+        assertThat(output.getAll()).contains("연속 미완료 틱=60");
+    }
+
+    @Test
+    void Drain이_완료되면_카운터를_비워_이후_미완료는_다시_30틱부터_센다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+        runTicks(20);
+
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
+        scheduler.run();
+
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+        runTicks(29);
+        assertThat(countWarnings(output)).isZero();
+
+        scheduler.run();
+        assertThat(countWarnings(output)).isEqualTo(1);
+        assertThat(output.getAll()).contains("연속 미완료 틱=30");
+    }
+
+    private void givenClosingEvent() {
+        Event event = org.mockito.Mockito.mock(Event.class);
+        when(event.getEventId()).thenReturn(1L);
+        when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
+    }
+
+    private void runTicks(int count) {
+        for (int i = 0; i < count; i++) {
+            scheduler.run();
+        }
+    }
+
+    private static int countWarnings(CapturedOutput output) {
+        return output.getAll().split("Drain을 끝내지 못하고", -1).length - 1;
+    }
+
+    @Test
     void Snapshot_생성_실패가_이미_완료된_CLOSED_전이를_되돌리지_않는다() {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
