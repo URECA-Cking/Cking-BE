@@ -21,6 +21,7 @@ public enum EntryErrorCode implements ErrorCode {
     IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT, "동일 requestId에 다른 요청 내용이 전달되었습니다."),
     GATE_NOT_LOADED(HttpStatus.SERVICE_UNAVAILABLE, "응모 처리 준비 중입니다. 잠시 후 다시 시도해주세요."),
     BALANCE_NOT_LOADED(HttpStatus.SERVICE_UNAVAILABLE, "잔액 정보 준비 중입니다. 잠시 후 다시 시도해주세요."),
+    BALANCE_MAINTENANCE(HttpStatus.SERVICE_UNAVAILABLE, "잔액 보정 처리 중입니다. 잠시 후 동일 요청으로 다시 시도해주세요."),
     SYSTEM_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 
     private final HttpStatus status;
@@ -35,6 +36,7 @@ public enum EntryErrorCode implements ErrorCode {
             case IDEMPOTENCY_CONFLICT -> IDEMPOTENCY_CONFLICT;
             case GATE_NOT_LOADED -> GATE_NOT_LOADED;
             case BALANCE_NOT_LOADED -> BALANCE_NOT_LOADED;
+            case BALANCE_MAINTENANCE -> BALANCE_MAINTENANCE;
             case SYSTEM_ERROR -> SYSTEM_ERROR;
             case SUCCESS, DUPLICATE_REPLAY ->
                     throw new IllegalArgumentException(code + "는 실패 코드가 아니라 에러로 변환할 수 없습니다.");

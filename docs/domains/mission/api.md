@@ -92,3 +92,4 @@
 | `REQUEST_ID_CONFLICT` | 409 | 동일 `requestId`로 다른 요청 내용이 전달됨 |
 | `EARN_PROCESSING_FAILED` | 503 | 응모권 적립 처리 실패(재시도 필요) |
 | `EARN_STATUS_UNKNOWN` | 504 | 적립 처리 결과 확인 불가(동일 요청으로 재시도 필요) |
+| `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(잠시 후 동일 요청으로 재시도, issue #172) |

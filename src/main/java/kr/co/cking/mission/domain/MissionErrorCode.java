@@ -29,7 +29,8 @@ public enum MissionErrorCode implements ErrorCode {
     DUPLICATE_MISSION(HttpStatus.CONFLICT, "해당 기간에 이미 완료한 미션입니다."),
     REQUEST_ID_CONFLICT(HttpStatus.CONFLICT, "동일 requestId로 다른 요청 내용이 전달되었습니다."),
     EARN_PROCESSING_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "응모권 적립 처리에 실패했습니다. 잠시 후 다시 시도해주세요."),
-    EARN_STATUS_UNKNOWN(HttpStatus.GATEWAY_TIMEOUT, "응모권 적립 처리 결과를 확인할 수 없습니다. 동일 요청으로 재시도해주세요.");
+    EARN_STATUS_UNKNOWN(HttpStatus.GATEWAY_TIMEOUT, "응모권 적립 처리 결과를 확인할 수 없습니다. 동일 요청으로 재시도해주세요."),
+    BALANCE_MAINTENANCE(HttpStatus.SERVICE_UNAVAILABLE, "잔액 보정 처리 중입니다. 잠시 후 동일 요청으로 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String message;
@@ -44,6 +45,7 @@ public enum MissionErrorCode implements ErrorCode {
             case REQUEST_ID_CONFLICT -> REQUEST_ID_CONFLICT;
             case EARN_PROCESSING_FAILED -> EARN_PROCESSING_FAILED;
             case EARN_STATUS_UNKNOWN -> EARN_STATUS_UNKNOWN;
+            case BALANCE_MAINTENANCE -> BALANCE_MAINTENANCE;
             case EARN_ACCEPTED, ALREADY_PROCESSED ->
                     throw new IllegalArgumentException(code + "는 실패 코드가 아니라 에러로 변환할 수 없습니다.");
         };

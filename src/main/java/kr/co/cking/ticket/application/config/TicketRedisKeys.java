@@ -20,4 +20,11 @@ public final class TicketRedisKeys {
     public static String earnGuard(Long userId, String missionType, Long creatorId, String periodKeyYyyyMmDd) {
         return "mission:earn-guard:" + userId + ":" + missionType + ":" + creatorId + ":" + periodKeyYyyyMmDd;
     }
+
+    // 수동 보정 중 SPEND·EARN을 막는 maintenance lock. Balance 키와 같은 (creatorId, userId) 순서다.
+    // TicketMaintenanceLock(issue #174/PR #176)이 SET/DEL하고, entry-spend.lua/ticket-earn.lua는
+    // EXISTS만 본다(issue #172). 메서드명은 두 PR이 같은 키를 가리키도록 #176 쪽과 통일했다.
+    public static String maintenance(Long creatorId, Long userId) {
+        return "ticket:maint:" + creatorId + ":" + userId;
+    }
 }

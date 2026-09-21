@@ -10,6 +10,7 @@
 -- KEYS[3] = ticket:balance:{creatorId}:{userId}      String(integer)
 -- KEYS[4] = idem:{requestId}                         String(JSON: {fingerprint, result})
 -- KEYS[5] = entry:spend-guard:{requestId}            String(JSON: {fingerprint})
+-- KEYS[6] = ticket:maint:{creatorId}:{userId}        존재 여부만 확인(issue #172)
 --
 -- ARGV[1] = ticketCount
 -- ARGV[2] = fingerprint      (EntrySpendService가 eventId+userId+ticketCount로 계산)
@@ -20,7 +21,7 @@
 -- ARGV[7] = creatorId
 -- ARGV[8] = requestId
 --
--- 반환: { resultCode, ...옵션 필드 } (FR-P2-036, 10종 결과코드 계약)
+-- 반환: { resultCode, ...옵션 필드 } (FR-P2-036, 기존 10종 + BALANCE_MAINTENANCE)
 --   GATE_NOT_LOADED        -- Gate 키 자체가 없음(2.4절: 없음=OPEN으로 간주 금지)
 --   INVALID_TICKET_COUNT   -- ticketCount가 1 미만이거나 100 초과 (방어용, 주 검증은 상위 레이어. §5.3 방어용 최대값 100)
 --   EVENT_NOT_OPEN         -- status != OPEN
@@ -29,6 +30,7 @@
 --   DUPLICATE_REPLAY       -- 동일 requestId, 동일 fingerprint. guard 경로는 code만 반환
 --   BALANCE_NOT_LOADED     -- Balance 키 자체가 없음(없음=0 취급 금지)
 --   INSUFFICIENT_BALANCE   -- 보유 응모권 < ticketCount
+--   BALANCE_MAINTENANCE    -- 수동 보정 락(ticket:maint:{creatorId}:{userId})이 걸려 있음(issue #172, HTTP 503)
 --   SUCCESS                -- { 'SUCCESS', streamId, 차감후잔액 }
 -- (SYSTEM_ERROR는 스크립트가 반환하는 코드가 아니라, 스크립트 실행 자체가
 --  예외를 던졌을 때 호출측 Java 코드가 매핑하는 코드다.)
@@ -38,6 +40,7 @@ local endAtKey   = KEYS[2]
 local balanceKey = KEYS[3]
 local idemKey    = KEYS[4]
 local guardKey   = KEYS[5]
+local maintenanceLockKey = KEYS[6]
 
 local ticketCount = tonumber(ARGV[1])
 local fingerprint = ARGV[2]
@@ -75,6 +78,13 @@ if storedGuard then
     else
         return { 'IDEMPOTENCY_CONFLICT' }
     end
+end
+
+-- 1-2) 수동 보정 락 확인 (idem·guard 재현 이후, 신규 차감 전에만 적용 - issue #172)
+-- TicketCompensationService.resyncRedisToDb()가 이 (creatorId, userId) 조합을
+-- 보정하는 동안에는 새 차감을 진행하지 않고 BALANCE_MAINTENANCE로 종료한다.
+if redis.call('EXISTS', maintenanceLockKey) == 1 then
+    return { 'BALANCE_MAINTENANCE' }
 end
 
 -- 2) Gate 확인 (여기부터는 idem·guard 모두 없는 신규 요청만 도달한다)
