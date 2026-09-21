@@ -23,8 +23,8 @@ public final class EntryRedisKeys {
     }
 
     // ticket:maint 포맷도 TicketRedisKeys가 단일하게 관리한다(issue #172).
-    public static String maintenanceLock(Long creatorId, Long userId) {
-        return TicketRedisKeys.maintenanceLock(creatorId, userId);
+    public static String maintenance(Long creatorId, Long userId) {
+        return TicketRedisKeys.maintenance(creatorId, userId);
     }
 
     public static String idem(String requestId) {
