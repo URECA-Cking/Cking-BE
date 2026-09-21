@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -93,5 +95,40 @@ class DeadStreamMessageRepositoryTest {
         DeadStreamMessage reloaded = deadStreamMessageRepository.findById(saved.getId()).orElseThrow();
         assertThat(reloaded.isUnresolved()).isFalse();
         assertThat(reloaded.getResolvedBy()).isEqualTo(operator.getMemberId());
+    }
+
+    @Test
+    void 상태별로_오래된_순서로_조회하고_같은_시각이면_id_순이다() {
+        DeadStreamMessage later = save("admin-list-1", "2026-09-16T00:00:20Z", DeadStreamResolutionStatus.UNRESOLVED);
+        DeadStreamMessage earlier = save("admin-list-2", "2026-09-16T00:00:10Z", DeadStreamResolutionStatus.UNRESOLVED);
+        DeadStreamMessage sameTimeFirst = save("admin-list-3", "2026-09-16T00:00:30Z", DeadStreamResolutionStatus.UNRESOLVED);
+        DeadStreamMessage sameTimeSecond = save("admin-list-4", "2026-09-16T00:00:30Z", DeadStreamResolutionStatus.UNRESOLVED);
+        save("admin-list-5", "2026-09-16T00:00:05Z", DeadStreamResolutionStatus.RESOLVED);
+
+        // 공유 로컬 DB에 다른 행이 있을 수 있어 이 테스트가 만든 행만 걸러 순서를 확인한다.
+        var unresolved = deadStreamMessageRepository.findByResolutionStatus(
+                DeadStreamResolutionStatus.UNRESOLVED, PageRequest.of(0, 1_000, Sort.by("createdAt", "id")))
+                .getContent().stream().filter(m -> m.getSourceStreamId().startsWith("admin-list-")).toList();
+
+        assertThat(unresolved).extracting(DeadStreamMessage::getSourceStreamId)
+                .containsExactly("admin-list-2", "admin-list-1", "admin-list-3", "admin-list-4");
+        assertThat(unresolved.get(2).getId()).isLessThan(unresolved.get(3).getId());
+    }
+
+    private DeadStreamMessage save(String sourceStreamId, String createdAt, DeadStreamResolutionStatus status) {
+        DeadStreamMessage message = DeadStreamMessage.builder()
+                .sourceStreamId(sourceStreamId)
+                .streamType(DeadStreamType.SPEND)
+                .payload("{}")
+                .failureReason("테스트")
+                .retryCount(6)
+                .lastFailedAt(Instant.parse(createdAt))
+                .resolutionStatus(DeadStreamResolutionStatus.UNRESOLVED)
+                .createdAt(Instant.parse(createdAt))
+                .build();
+        if (status == DeadStreamResolutionStatus.RESOLVED) {
+            message.resolve(null, Instant.parse(createdAt));
+        }
+        return deadStreamMessageRepository.save(message);
     }
 }

@@ -65,5 +65,7 @@
 | 59 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.createForInitial()` | INITIAL Seed 생성·저장 | Drawing 생성 Transaction |
 | 60 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.reuseForRetry(seedId)` | 동일 Drawing Seed 조회·재사용 | Seed 기준 |
 | 61 | 내부 | Drawing Seed | INTERNAL | CALL | `DrawingSeedService.createForRedraw(previousSeedId)` | 이전과 다른 REDRAW Seed 생성·저장 | Drawing 생성 Transaction |
+| 62 | 외부 | Stream | ADMIN | GET | `/api/admin/dead-streams` | Dead Stream 목록 조회 | - |
+| 63 | 외부 | Stream | ADMIN | POST | `/api/admin/dead-streams/{id}/replay` | Dead Stream 수동 replay | 상태 기반 |
 
 No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

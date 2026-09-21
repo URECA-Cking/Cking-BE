@@ -2,8 +2,15 @@ package kr.co.cking.stream.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Future;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.CountDownLatch;
 import java.util.Map;
 import java.util.UUID;
 
@@ -18,6 +25,8 @@ import tools.jackson.databind.ObjectMapper;
 
 import kr.co.cking.event.repository.EventEntryRepository;
 import kr.co.cking.mission.MissionCompletionRepository;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.domain.DeadStreamResolutionStatus;
 import kr.co.cking.stream.domain.DeadStreamType;
@@ -168,8 +177,96 @@ class DeadStreamReplayServiceIntegrationTest {
     }
 
     @Test
-    void 존재하지_않는_메시지_ID면_예외를_던진다() {
+    void 같은_메시지를_동시에_replay해도_한_번만_적용하고_처음_처리자를_유지한다() throws Exception {
+        String requestId = UUID.randomUUID().toString();
+        Map<String, String> fields = Map.of(
+                "eventId", String.valueOf(eventId),
+                "userId", String.valueOf(MEMBER_ID),
+                "creatorId", String.valueOf(CREATOR_ID),
+                "requestId", requestId,
+                "ticketCount", "3"
+        );
+        DeadStreamMessage saved = deadStreamMessageRepository.save(DeadStreamMessage.builder()
+                .sourceStreamId("1236-0")
+                .streamType(DeadStreamType.SPEND)
+                .payload(objectMapper.writeValueAsString(fields))
+                .requestId(requestId)
+                .eventId(eventId)
+                .memberId(MEMBER_ID)
+                .failureReason("테스트 유도 실패")
+                .retryCount(6)
+                .lastFailedAt(Instant.now())
+                .resolutionStatus(DeadStreamResolutionStatus.UNRESOLVED)
+                .createdAt(Instant.now())
+                .build());
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<DeadStreamMessage> first = pool.submit(() -> {
+                start.await();
+                return deadStreamReplayService.replay(saved.getId(), RESOLVED_BY);
+            });
+            Future<DeadStreamMessage> second = pool.submit(() -> {
+                start.await();
+                return deadStreamReplayService.replay(saved.getId(), OWNER_MEMBER_ID);
+            });
+            start.countDown();
+
+            DeadStreamMessage firstResult = first.get(30, TimeUnit.SECONDS);
+            DeadStreamMessage secondResult = second.get(30, TimeUnit.SECONDS);
+
+            // 둘 다 예외 없이 끝나고, 나중에 들어온 요청은 먼저 처리한 관리자의 결과를 그대로 받는다.
+            DeadStreamMessage finalState = deadStreamMessageRepository.findById(saved.getId()).orElseThrow();
+            assertThat(finalState.isUnresolved()).isFalse();
+            assertThat(firstResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
+            assertThat(secondResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
+            // 먼저 커밋한 요청은 메모리의 Instant(Linux는 나노초)를, 나중 요청은 DB(DATETIME(6))에서 읽은 값을 돌려받는다.
+            // MySQL은 소수부를 잘라내지 않고 반올림하므로 1마이크로초 오차까지 같은 값으로 본다.
+            assertThat(firstResult.getResolvedAt()).isCloseTo(finalState.getResolvedAt(), within(1, ChronoUnit.MICROS));
+            assertThat(secondResult.getResolvedAt()).isCloseTo(finalState.getResolvedAt(), within(1, ChronoUnit.MICROS));
+            assertThat(eventEntryRepository.findByRequestId(requestId)).isPresent();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void 존재하지_않는_메시지_ID면_RESOURCE_NOT_FOUND를_던진다() {
         assertThatThrownBy(() -> deadStreamReplayService.replay(-1L, RESOLVED_BY))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Test
+    void 이미_RESOLVED인_메시지는_다시_적용하지_않고_처리_정보도_바꾸지_않는다() {
+        String requestId = UUID.randomUUID().toString();
+        Map<String, String> fields = Map.of(
+                "eventId", String.valueOf(eventId),
+                "userId", String.valueOf(MEMBER_ID),
+                "creatorId", String.valueOf(CREATOR_ID),
+                "requestId", requestId,
+                "ticketCount", "3"
+        );
+        DeadStreamMessage message = DeadStreamMessage.builder()
+                .sourceStreamId("1235-0")
+                .streamType(DeadStreamType.SPEND)
+                .payload(objectMapper.writeValueAsString(fields))
+                .requestId(requestId)
+                .eventId(eventId)
+                .memberId(MEMBER_ID)
+                .failureReason("테스트 유도 실패")
+                .retryCount(6)
+                .lastFailedAt(Instant.now())
+                .resolutionStatus(DeadStreamResolutionStatus.UNRESOLVED)
+                .createdAt(Instant.now())
+                .build();
+        message.resolve(OWNER_MEMBER_ID, Instant.parse("2026-09-20T00:00:00Z"));
+        DeadStreamMessage saved = deadStreamMessageRepository.save(message);
+
+        DeadStreamMessage result = deadStreamReplayService.replay(saved.getId(), RESOLVED_BY);
+
+        assertThat(result.getResolvedBy()).isEqualTo(OWNER_MEMBER_ID);
+        assertThat(eventEntryRepository.findByRequestId(requestId)).isEmpty();
     }
 }
