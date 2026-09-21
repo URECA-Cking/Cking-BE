@@ -2,6 +2,8 @@ package kr.co.cking.event.scheduler;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Component;
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.application.service.EventDrainChecker;
+import kr.co.cking.event.application.service.EventGateLoader;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
@@ -39,13 +42,23 @@ public class EventLifecycleScheduler {
     private final EventCommandService eventCommandService;
     private final EventClosingService eventClosingService;
     private final EventDrainChecker eventDrainChecker;
+    private final EventGateLoader eventGateLoader;
     private final OfficialSnapshotService officialSnapshotService;
     private final Clock clock;
+
+    /**
+     * Drain이 연속으로 끝나지 않은 틱 수(eventId별). 10초 틱 기준 30틱(약 5분)마다 WARN을 남긴다.
+     * 임계값은 FR-11b(Drain 최대 대기시간)가 팀에서 확정되기 전까지의 잠정값이다.
+     * ponytail: 인스턴스 메모리라 재기동하면 0부터 다시 센다, 영속 기준이 필요해지면 CLOSING 진입 시각을 저장.
+     */
+    private static final int DRAIN_WARN_EVERY_TICKS = 30;
+    private final Map<Long, Integer> undrainedTicks = new ConcurrentHashMap<>();
 
     /** 예약 시작, 마감 시작, Drain 완료 처리를 순서대로 한 번 실행한다. */
     @Scheduled(fixedDelayString = "${cking.event.lifecycle-interval-ms:10000}")
     public void run() {
         openScheduledEvents();
+        restoreOpenGates();
         startClosingOverdueEvents();
         completeDrainedEvents();
     }
@@ -68,6 +81,35 @@ public class EventLifecycleScheduler {
                 eventCommandService.open(eventId);
             } catch (RuntimeException e) {
                 log.error("이벤트 자동 시작(SCHEDULED→OPEN)에 실패했습니다. eventId={}", eventId, e);
+            }
+        }
+    }
+
+    /**
+     * 기동 직후, Redis 유실·eviction, OPEN 직후 적재 실패로 Gate 키가 없는 진행 중 Event를 DB 기준으로 복원한다
+     * (취합v1.5.4 §2.4). 종료 시각이 지난 Event는 곧 마감되므로 제외하고, 이미 있는 키는 덮어쓰지 않는다.
+     * OPEN 적재 뒤 CLOSING 이벤트를 새로 조회해 Gate를 닫으므로, cutoff까지 유실된 상태에서 stale한 OPEN 조회로
+     * 다시 열린 Gate도 같은 틱에 닫힌다. cutoff는 DB의 cutoffStreamId로 Drain하므로 복구하지 않는다.
+     *
+     * <p>ponytail: 매 틱 OPEN 전체 조회는 OPEN 이벤트 100개 이하 전제다(#149). 100개를 넘거나 틱 실행 시간이 주기의 절반을
+     * 넘으면 Slice 페이징을 도입한다. 10초는 fixedDelay라서 Redis가 정상일 때 Gate 유실 복원을 재시도하는 기본 간격일 뿐,
+     * 실제 GATE_NOT_LOADED 지속 시간은 틱 실행 시간과 Redis 장애 기간만큼 10초를 넘을 수 있다.
+     */
+    private void restoreOpenGates() {
+        for (Event event : eventRepository.findByStatus(EventStatus.OPEN)) {
+            try {
+                if (event.getEndAt().isAfter(clock.instant())) {
+                    eventGateLoader.load(event);
+                }
+            } catch (RuntimeException e) {
+                log.error("응모 Gate 복원에 실패했습니다. eventId={}", event.getEventId(), e);
+            }
+        }
+        for (Event event : eventRepository.findByStatus(EventStatus.CLOSING)) {
+            try {
+                eventGateLoader.close(event.getEventId());
+            } catch (RuntimeException e) {
+                log.error("마감 중 응모 Gate 차단에 실패했습니다. eventId={}", event.getEventId(), e);
             }
         }
     }
@@ -118,8 +160,15 @@ public class EventLifecycleScheduler {
         }
         try {
             if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
+                undrainedTicks.remove(eventId);
                 eventCommandService.completeClosing(eventId);
                 officialSnapshotService.createIfAbsent(eventId);
+                return;
+            }
+            int ticks = undrainedTicks.merge(eventId, 1, Integer::sum);
+            if (ticks % DRAIN_WARN_EVERY_TICKS == 0) {
+                log.warn("이벤트가 CLOSING에서 Drain을 끝내지 못하고 있습니다. eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
+                        eventId, cutoffStreamId, ticks);
             }
         } catch (RuntimeException e) {
             log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);

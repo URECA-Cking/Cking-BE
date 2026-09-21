@@ -22,7 +22,11 @@ import kr.co.cking.snapshot.domain.PrizeValue;
         name = "winner",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_winner_drawing_rank", columnNames = {"drawing_id", "rank_in_drawing"}),
-                @UniqueConstraint(name = "uk_winner_event_member", columnNames = {"event_id", "member_id"})
+                @UniqueConstraint(name = "uk_winner_event_member", columnNames = {"event_id", "member_id"}),
+                @UniqueConstraint(
+                        name = "uk_winner_notification_lineage",
+                        columnNames = {"id", "member_id", "event_id", "drawing_id"}
+                )
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

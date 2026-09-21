@@ -1,17 +1,18 @@
 package kr.co.cking.event.application.service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import kr.co.cking.stream.repository.DeadStreamMessageQueryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Range;
+import org.springframework.data.redis.connection.Limit;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamInfo.XInfoGroup;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -95,20 +96,31 @@ public class EventDrainChecker {
         }
     }
 
+    /**
+     * PEL 메시지의 eventId를 ID 단위로 조회한다. min~max 범위 XRANGE는 PEL 사이에 낀 정상 처리분
+     * 전체를 읽어오므로 쓰지 않는다. PEL 건수만큼의 {@code XRANGE id id COUNT 1}을 pipelining한다.
+     */
     private boolean containsPendingMessageForEvent(Long eventId, PendingMessages pending) {
-        Set<String> pendingIds = pending.stream()
-                .map(message -> message.getId().getValue())
-                .collect(Collectors.toSet());
-        String minId = pending.get(0).getId().getValue();
-        String maxId = pending.get(pending.size() - 1).getId().getValue();
+        byte[] key = entryStreamKey.getBytes(StandardCharsets.UTF_8);
+        List<String> ids = pending.stream().map(m -> m.getId().getValue()).toList();
+        List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (String id : ids) {
+                connection.streamCommands().xRange(key, Range.closed(id, id), Limit.limit().count(1));
+            }
+            return null;
+        });
+
         String targetEventId = String.valueOf(eventId);
+        return results.stream()
+                .flatMap(result -> ((List<?>) result).stream())
+                .map(record -> (MapRecord<?, ?, ?>) record)
+                .flatMap(record -> record.getValue().entrySet().stream())
+                .anyMatch(field -> "eventId".equals(decode(field.getKey())) && targetEventId.equals(decode(field.getValue())));
+    }
 
-        List<MapRecord<String, Object, Object>> records = redisTemplate.opsForStream()
-                .range(entryStreamKey, Range.closed(minId, maxId));
-
-        return records.stream()
-                .filter(record -> pendingIds.contains(record.getId().getValue()))
-                .anyMatch(record -> targetEventId.equals(record.getValue().get("eventId")));
+    // 파이프라인 결과는 template serializer를 거치지 않아 필드가 byte[]로 남는다.
+    private static String decode(Object value) {
+        return value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : String.valueOf(value);
     }
 
     private XInfoGroup findGroup() {

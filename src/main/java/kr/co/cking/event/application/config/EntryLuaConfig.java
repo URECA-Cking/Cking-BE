@@ -29,4 +29,14 @@ public class EntryLuaConfig {
 
         return script;
     }
+
+    @Bean
+    public DefaultRedisScript<Long> eventGateLoadLuaScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+
+        script.setLocation(new ClassPathResource("scripts/event-gate-load.lua"));
+        script.setResultType(Long.class);
+
+        return script;
+    }
 }

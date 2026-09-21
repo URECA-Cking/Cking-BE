@@ -1,0 +1,41 @@
+# Ticket 조회 API
+
+모든 응답은 [공통 API 규약](../../common/api.md)의 봉투를 사용한다. `userId`는 현재 인증 미도입 계약에서 호출자 자신을 뜻하는 필수 query parameter다.
+
+## GET /api/creators/{creatorId}/tickets
+
+Query: `userId`. Creator별 요청 사용자의 현재 응모권 잔액을 조회한다.
+
+```json
+{
+  "userId": 1,
+  "creatorId": 2,
+  "balance": 5,
+  "updatedAt": "2026-09-18T00:00:00Z"
+}
+```
+
+## GET /api/creators/{creatorId}/tickets/history
+
+Query: 필수 `userId`, 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범위는 1~100이다. Ledger는 `createdAt DESC, ledgerId DESC` 순서로 조회하며, 다음 페이지 cursor는 마지막 항목의 `(createdAt, ledgerId)`를 URL-safe Base64로 인코딩한다.
+
+```json
+{
+  "userId": 1,
+  "creatorId": 2,
+  "items": [{
+    "ledgerId": 10,
+    "deltaAmount": -3,
+    "type": "SPEND",
+    "missionId": null,
+    "eventId": 5,
+    "reason": null,
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-09-18T00:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDATION_FAILED`다.

@@ -1,40 +1,41 @@
 -- EARN(적립) 요청의 원자적 처리 — 멱등성 확인 + 중복 적립 가드 +
 -- Balance 증가 + Stream 발행을 하나의 스크립트에서 원자적으로 수행한다 (FR-P2-006/008).
 --
--- 순서(entry-spend.lua와 동일 원칙): 멱등성 확인 -> 중복
--- 적립 가드 -> Balance 증가 -> Stream 발행 -> 성공 시에만 멱등 결과 저장. XADD 실패
--- 시 Balance와 가드 모두 보상한다 — 가드를 안 풀면 실제로는 적립되지 않았는데도
--- 오늘 하루 이 미션을 영원히 다시 받을 수 없게 된다. Balance 보상은 원래 키가
--- 있었는지(EXISTS)에 따라 DECRBY/DEL을 구분한다 — 원래 없던 키를 0으로 남기면
--- entry-spend.lua가 구분하는 "키 없음(BALANCE_NOT_LOADED)"과 "0"이 뒤섞인다(§2.4).
+-- 순서(entry-spend.lua와 동일 원칙): 멱등성 확인 -> 중복 적립 가드 -> Balance 증가
+-- -> Stream 발행 -> 성공 시에만 멱등 결과 저장.
 --
--- KEYS[1] = idem:mission:{requestId}                                        String(JSON, TTL 24h, FR-P1-017)
+-- KEYS[1] = idem:mission:{requestId}                                        String(JSON, TTL 25h)
 -- KEYS[2] = mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd} String(SETNX, FR-P2-006)
 -- KEYS[3] = ticket:balance:{creatorId}:{userId}                             String(integer)
 --
 -- ARGV[1] = amount
 -- ARGV[2] = fingerprint      (TicketEarnServiceImpl이 userId+creatorId+missionType+
---                             missionId+periodKey+missionKey+amount로 계산)
+--                             missionId+missionKey+amount로 계산, periodKey 제외)
 -- ARGV[3] = streamKey        (예: stream:ticket-earned)
--- ARGV[4] = idemTtlSeconds   (FR-P1-017 확정: 24시간 = 86400)
--- ARGV[5] = guardTtlSeconds  (가드 키 만료. 팀 확정 25시간 = 90000 — 키에 yyyyMMdd가
---                             포함돼 자정 지나면 자연 만료되지만, 서버 시간대 오차 대비
---                             24시간+1시간 여유를 둔다. PR #63 리뷰 반영)
+-- ARGV[4] = idemTtlSeconds   (25시간 = 90000)
+-- ARGV[5] = guardTtlSeconds  (25시간 = 90000)
 -- ARGV[6] = requestId
 -- ARGV[7] = userId
 -- ARGV[8] = creatorId
 -- ARGV[9] = missionType
 -- ARGV[10] = missionId
--- ARGV[11] = periodKey
+-- ARGV[11] = periodKey       (이번 호출 시점에 계산된 값. fingerprint에는 안 쓰이고
+--                             Guard 키 구성과 Stream 발행 필드로만 쓰인다)
 -- ARGV[12] = missionKey
 --
 -- 반환: { resultCode, ...옵션 필드 } (EarnResultCode 6종 중 4종은 이 스크립트가 반환)
---   ALREADY_PROCESSED   -- 동일 requestId, 동일 fingerprint -> 기존 결과 재반환
---                           (idem 히트, 또는 idem 저장 실패 후 가드로 복구)
+--   ALREADY_PROCESSED   -- 동일 requestId, 동일 fingerprint, idem이 COMPLETED -> 기존 결과 재반환
+--                           (또는 idem 저장 실패 후 가드로 복구된 경우, code만)
 --   REQUEST_ID_CONFLICT -- 동일 requestId, 다른 fingerprint (idem 또는 가드 기준)
---   DUPLICATE_MISSION   -- 다른 requestId, 이미 완료된 미션(가드 값의 requestId 불일치)
+--   DUPLICATE_MISSION   -- 다른 requestId, 이미 완료(또는 처리 중)된 미션(가드 값의 requestId 불일치)
+--   EARN_STATUS_UNKNOWN -- idem이 PROCESSING이고 Guard로 성공을 확인하지 못함
 --   EARN_ACCEPTED       -- { 'EARN_ACCEPTED', streamId, 적립후잔액 }
--- (EARN_PROCESSING_FAILED/EARN_STATUS_UNKNOWN은 스크립트가 아니라 호출측 Java가 매핑한다)
+-- (EARN_PROCESSING_FAILED는 스크립트가 아니라 호출측 Java가 매핑한다)
+--
+-- periodKey는 서버 파생값이다. 자정 이후 재시도도 같은 요청으로 판정하도록
+-- fingerprint에서 제외한다.
+--
+-- 동일 requestId 재시도는 idem 단계에서 끝나며 Guard는 신규 요청에만 사용한다.
 
 local idemKey    = KEYS[1]
 local guardKey   = KEYS[2]
@@ -53,29 +54,62 @@ local missionId   = ARGV[10]
 local periodKey   = ARGV[11]
 local missionKey  = ARGV[12]
 
--- 1) 멱등성 확인 (entry-spend.lua의 issue #36 결정과 동일하게 가드보다 먼저 수행)
+-- 1) 멱등성 확인
 local stored = redis.call('GET', idemKey)
 if stored then
     local parsed = cjson.decode(stored)
-    if parsed.fingerprint == fingerprint then
+
+    -- 이전 형식은 status가 없고 periodKey 포함 fingerprint를 사용했다.
+    -- 기존 record의 TTL 동안 완료된 성공으로만 취급한다.
+    if parsed.status == nil and parsed.result ~= nil then
         local result = parsed.result
         result[1] = 'ALREADY_PROCESSED'
         return result
-    else
+    end
+
+    if parsed.fingerprint ~= fingerprint then
         return { 'REQUEST_ID_CONFLICT' }
     end
+    if parsed.status == 'COMPLETED' then
+        local result = parsed.result
+        result[1] = 'ALREADY_PROCESSED'
+        return result
+    end
+    -- PROCESSING은 저장된 Guard로 확인하고, 기존 레코드는 이번 Guard 키를 사용한다.
+    local originalGuardKey = parsed.guardKey or guardKey
+    local guardValue = requestId .. ':' .. fingerprint
+    if redis.call('GET', originalGuardKey) == guardValue then
+        local result = { 'ALREADY_PROCESSED' }
+        redis.pcall('SET', idemKey,
+            cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = originalGuardKey }),
+            'EX', idemTtl)
+        return result
+    end
+    -- Guard가 없거나 다르면 신규 지급을 막는다.
+    return { 'EARN_STATUS_UNKNOWN' }
+end
+
+-- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.
+local idemReserved = redis.call('SET', idemKey,
+    cjson.encode({ fingerprint = fingerprint, status = 'PROCESSING', guardKey = guardKey }),
+    'NX', 'EX', idemTtl)
+if not idemReserved then
+    return redis.error_reply('IDEM_RESERVE_FAILED: unexpected idem conflict for requestId=' .. requestId)
 end
 
 -- 2) 중복 적립 가드 (userId+missionType+creatorId+yyyyMMdd, FR-P2-006)
 -- EARN API Business Key(userId+creatorId+missionId+periodKey, FR-P2-008)와는
 -- 다른 레이어의 별도 키다 - 임의로 통합하지 않는다(취합v1.5.4 §4.2).
--- 값에 requestId뿐 아니라 fingerprint까지 저장해, idem 저장이 실패해도 가드가
--- 보조 멱등성 장치 역할을 한다(PR #63 리뷰) - 동일 requestId+fingerprint 재시도는
--- ALREADY_PROCESSED로, requestId만 같고 fingerprint가 다르면 REQUEST_ID_CONFLICT로,
--- requestId 자체가 다르면 진짜 DUPLICATE_MISSION으로 구분한다.
+-- Guard 선점 오류 시에는 아직 변경된 상태가 없으므로 idem 예약을 정리한다.
 local guardValue = requestId .. ':' .. fingerprint
-local guardAcquired = redis.call('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+local guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+if type(guardAcquired) == 'table' and guardAcquired.err then
+    redis.call('DEL', idemKey)
+    return redis.error_reply('GUARD_ACQUIRE_FAILED: ' .. guardAcquired.err)
+end
 if not guardAcquired then
+    -- 이 요청 자체는 성사되지 않았으므로 방금 만든 PROCESSING 예약을 정리한다.
+    redis.call('DEL', idemKey)
     local existingGuard = redis.call('GET', guardKey)
     if existingGuard == guardValue then
         return { 'ALREADY_PROCESSED' }
@@ -88,14 +122,15 @@ end
 
 -- 3) Balance 증가 + Stream 발행. Balance 키가 없으면 0에서 시작(INCRBY가 자동
 -- 생성) — 취합v1.5.4 §2.4가 EARN 최초 적립을 Balance Key 미존재 정책(SPEND는
--- BALANCE_NOT_LOADED 반환)의 명시적 예외로 확정했다. Redis 재기동/eviction으로
--- 기존 유저의 키가 사라진 경우도 이 경로를 타 신규 유저처럼 0에서 재생성될 수
--- 있으나, 이는 §2.4가 받아들인 트레이드오프이며 §13.2 정합성 배치가 뒤늦게 보정한다.
+-- BALANCE_NOT_LOADED 반환)의 명시적 예외로 확정했다.
 local balanceExisted = redis.call('EXISTS', balanceKey) == 1
 local newBalance = redis.pcall('INCRBY', balanceKey, amount)
 
 if type(newBalance) == 'table' and newBalance.err then
+    -- 아직 아무것도 반영되지 않았으므로 예약 전부를 지우고 재시도를 처음부터
+    -- 받을 수 있게 한다.
     redis.call('DEL', guardKey)
+    redis.call('DEL', idemKey)
     return redis.error_reply('INCRBY_FAILED: ' .. newBalance.err)
 end
 
@@ -110,22 +145,23 @@ local streamId = redis.pcall('XADD', streamKey, '*',
     'amount', ARGV[1])
 
 if type(streamId) == 'table' and streamId.err then
+    -- Balance는 보상해 원상복구했으므로 이 시도도 안전하게 처음부터 재시도할 수
+    -- 있다.
     if balanceExisted then
         redis.call('DECRBY', balanceKey, amount)
     else
         redis.call('DEL', balanceKey)
     end
     redis.call('DEL', guardKey)
+    redis.call('DEL', idemKey)
     return redis.error_reply('XADD_FAILED: ' .. streamId.err)
 end
 
 local result = { 'EARN_ACCEPTED', streamId, tostring(newBalance) }
 
--- idem 저장은 정합성 백스톱이 아니라 성능 최적화용 캐시다(FR-P1-017) - 여기서
--- 실패해도 Balance 증가와 Stream 발행은 이미 끝난 정상 처리이므로 pcall로 감싸
--- 무시하고 EARN_ACCEPTED를 그대로 반환한다. 실패 시 idem이 비어도 가드 값에
--- fingerprint까지 있어 같은 requestId 재시도는 위 2)에서 ALREADY_PROCESSED로
--- 복구된다(PR #63 리뷰).
-redis.pcall('SET', idemKey, cjson.encode({ fingerprint = fingerprint, result = result }), 'EX', idemTtl)
+-- COMPLETED에도 guardKey를 보존해 원래 Guard를 추적한다.
+redis.pcall('SET', idemKey,
+    cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = guardKey }),
+    'EX', idemTtl)
 
 return result

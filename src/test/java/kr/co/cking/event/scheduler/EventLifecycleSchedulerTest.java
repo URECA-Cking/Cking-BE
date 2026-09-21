@@ -5,6 +5,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.time.Clock;
@@ -18,16 +19,19 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.application.service.EventDrainChecker;
+import kr.co.cking.event.application.service.EventGateLoader;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.snapshot.application.OfficialSnapshotService;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class EventLifecycleSchedulerTest {
 
     private static final Instant NOW = Instant.parse("2026-09-20T00:05:00Z");
@@ -43,6 +47,9 @@ class EventLifecycleSchedulerTest {
 
     @Mock
     private EventDrainChecker eventDrainChecker;
+
+    @Mock
+    private EventGateLoader eventGateLoader;
 
     @Mock
     private OfficialSnapshotService officialSnapshotService;
@@ -70,6 +77,38 @@ class EventLifecycleSchedulerTest {
     }
 
     @Test
+    void 진행중_OPEN_이벤트의_Gate를_복원하고_종료시각이_지난_이벤트는_건너뛴다() {
+        Event live = org.mockito.Mockito.mock(Event.class);
+        Event overdue = org.mockito.Mockito.mock(Event.class);
+        when(live.getEndAt()).thenReturn(NOW.plusSeconds(60));
+        when(overdue.getEndAt()).thenReturn(NOW.minusSeconds(1));
+        when(clock.instant()).thenReturn(NOW);
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of(live, overdue));
+
+        scheduler.run();
+
+        verify(eventGateLoader).load(live);
+        org.mockito.Mockito.verifyNoMoreInteractions(eventGateLoader);
+    }
+
+    @Test
+    void CLOSING_이벤트의_Gate를_OPEN_적재_뒤에_닫는다() {
+        Event live = org.mockito.Mockito.mock(Event.class);
+        Event closing = org.mockito.Mockito.mock(Event.class);
+        when(live.getEndAt()).thenReturn(NOW.plusSeconds(60));
+        when(closing.getEventId()).thenReturn(7L);
+        when(clock.instant()).thenReturn(NOW);
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of(live));
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(closing));
+
+        scheduler.run();
+
+        InOrder inOrder = inOrder(eventGateLoader);
+        inOrder.verify(eventGateLoader).load(live);
+        inOrder.verify(eventGateLoader).close(7L);
+    }
+
+    @Test
     void 종료시각이_지난_OPEN_이벤트는_공통_마감_서비스로_요청한다() {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
@@ -87,6 +126,7 @@ class EventLifecycleSchedulerTest {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
         when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
         when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
         when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
 
@@ -98,10 +138,76 @@ class EventLifecycleSchedulerTest {
     }
 
     @Test
+    void Drain이_30틱_연속_끝나지_않으면_그때_한번_경고한다(CapturedOutput output) {
+        Event event = org.mockito.Mockito.mock(Event.class);
+        when(event.getEventId()).thenReturn(1L);
+        when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        for (int i = 0; i < 29; i++) {
+            scheduler.run();
+        }
+        assertThat(output.getAll()).doesNotContain("Drain을 끝내지 못하고");
+
+        scheduler.run();
+        assertThat(output.getAll()).contains("Drain을 끝내지 못하고").contains("연속 미완료 틱=30");
+    }
+
+    @Test
+    void Drain_경고는_30틱마다_반복된다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        runTicks(60);
+
+        assertThat(countWarnings(output)).isEqualTo(2);
+        assertThat(output.getAll()).contains("연속 미완료 틱=60");
+    }
+
+    @Test
+    void Drain이_완료되면_카운터를_비워_이후_미완료는_다시_30틱부터_센다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+        runTicks(20);
+
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
+        scheduler.run();
+
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+        runTicks(29);
+        assertThat(countWarnings(output)).isZero();
+
+        scheduler.run();
+        assertThat(countWarnings(output)).isEqualTo(1);
+        assertThat(output.getAll()).contains("연속 미완료 틱=30");
+    }
+
+    private void givenClosingEvent() {
+        Event event = org.mockito.Mockito.mock(Event.class);
+        when(event.getEventId()).thenReturn(1L);
+        when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
+    }
+
+    private void runTicks(int count) {
+        for (int i = 0; i < count; i++) {
+            scheduler.run();
+        }
+    }
+
+    private static int countWarnings(CapturedOutput output) {
+        return output.getAll().split("Drain을 끝내지 못하고", -1).length - 1;
+    }
+
+    @Test
     void Snapshot_생성_실패가_이미_완료된_CLOSED_전이를_되돌리지_않는다() {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
         when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
         when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
         when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
         doThrow(new RuntimeException("snapshot failed"))

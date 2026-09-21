@@ -23,6 +23,15 @@ public class DrawingSeedPolicy {
     }
 
     public DrawingSeed createForRedraw(DrawingSeed previousSeed) {
+        return generateDifferentFrom(previousSeed);
+    }
+
+    /** 독립 재실행은 원본 Drawing과 다른 Seed를 사용하되 Seed 행을 새로 만들지 않는다. */
+    public DrawingSeed createForVerification(DrawingSeed originalSeed) {
+        return generateDifferentFrom(originalSeed);
+    }
+
+    private DrawingSeed generateDifferentFrom(DrawingSeed previousSeed) {
         if (previousSeed == null) {
             throw new IllegalArgumentException("이전 Drawing의 Seed는 필수입니다.");
         }

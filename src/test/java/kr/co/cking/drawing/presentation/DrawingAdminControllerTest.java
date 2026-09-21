@@ -1,26 +1,35 @@
 package kr.co.cking.drawing.presentation;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Instant;
+import java.util.List;
+
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.drawing.application.DrawingAdminQueryService;
+import kr.co.cking.drawing.application.DrawingPublicationResult;
+import kr.co.cking.drawing.application.DrawingPublicationResult.PublicationOutcome;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
 import kr.co.cking.drawing.application.DrawingWinnerResult;
+import kr.co.cking.drawing.application.DrawingVerificationResult;
+import kr.co.cking.drawing.application.DrawingVerificationService;
 import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import kr.co.cking.drawing.application.InitialDrawingResult;
-import kr.co.cking.drawing.application.DrawingPublicQueryService;
-import kr.co.cking.drawing.application.PublicDrawingResult;
-import kr.co.cking.drawing.application.PublicWinnerResult;
+import kr.co.cking.drawing.application.PublicationService;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
+import kr.co.cking.drawing.domain.DrawingVerificationMode;
+import kr.co.cking.drawing.domain.DrawingVerificationStatus;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
 import org.junit.jupiter.api.Test;
@@ -29,9 +38,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.time.Instant;
-import java.util.List;
 
 @WebMvcTest(DrawingAdminController.class)
 class DrawingAdminControllerTest {
@@ -43,22 +49,13 @@ class DrawingAdminControllerTest {
     private InitialDrawingExecutionService initialDrawingExecutionService;
 
     @MockitoBean
+    private PublicationService publicationService;
+
+    @MockitoBean
     private DrawingAdminQueryService drawingAdminQueryService;
 
     @MockitoBean
-    private DrawingPublicQueryService drawingPublicQueryService;
-
-    @Test
-    void 공개된_Winner와_배정_상품을_조회한다() throws Exception {
-        when(drawingPublicQueryService.getPublishedWinners(10L)).thenReturn(new PublicDrawingResult(
-                10L, 20L, List.of(new PublicWinnerResult(100L, 2L, 1, "FIRST", "1등 상품", 1))));
-
-        mockMvc.perform(get("/api/events/10/winners"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.drawingId").value(20))
-                .andExpect(jsonPath("$.data.winners[0].prizeKey").value("FIRST"))
-                .andExpect(jsonPath("$.data.winners[0].prizeDisplayName").value("1등 상품"));
-    }
+    private DrawingVerificationService drawingVerificationService;
 
     @Test
     void 관리자는_공통_성공_응답으로_INITIAL_Drawing_실행_결과를_받는다() throws Exception {
@@ -242,5 +239,204 @@ class DrawingAdminControllerTest {
         mockMvc.perform(get("/api/admin/drawings/20/result").param("userId", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 관리자는_공통_성공_응답으로_Drawing을_공개한다() throws Exception {
+        Instant publishedAt = Instant.parse("2026-09-18T12:00:00Z");
+        when(publicationService.publish(10L, 1L)).thenReturn(new DrawingPublicationResult(
+                10L, 20L, DrawingVisibility.PUBLIC, publishedAt, PublicationOutcome.PUBLISHED));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.drawingId").value(10))
+                .andExpect(jsonPath("$.data.eventId").value(20))
+                .andExpect(jsonPath("$.data.visibility").value("PUBLIC"))
+                .andExpect(jsonPath("$.data.publishedAt").value("2026-09-18T12:00:00Z"));
+
+        verify(publicationService).publish(10L, 1L);
+    }
+
+    @Test
+    void 존재하지_않는_관리자의_Drawing_공개_요청은_RESOURCE_NOT_FOUND를_반환한다() throws Exception {
+        when(publicationService.publish(10L, 999L))
+                .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":999}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void ADMIN이_아닌_사용자의_Drawing_공개_요청은_FORBIDDEN을_반환한다() throws Exception {
+        when(publicationService.publish(10L, 2L))
+                .thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":2}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void 존재하지_않는_Drawing_공개_요청은_DRAWING_NOT_FOUND를_반환한다() throws Exception {
+        when(publicationService.publish(10L, 1L))
+                .thenThrow(new BusinessException(DrawingErrorCode.DRAWING_NOT_FOUND));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DRAWING_NOT_FOUND"));
+    }
+
+    @Test
+    void 완료되지_않은_Drawing_공개_요청은_DRAWING_NOT_COMPLETED를_반환한다() throws Exception {
+        when(publicationService.publish(10L, 1L))
+                .thenThrow(new BusinessException(DrawingErrorCode.DRAWING_NOT_COMPLETED));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DRAWING_NOT_COMPLETED"));
+    }
+
+    @Test
+    void REDRAW_Drawing_공개_요청도_현재_공개_상태를_성공_응답으로_반환한다() throws Exception {
+        Instant publishedAt = Instant.parse("2026-09-18T12:00:00Z");
+        when(publicationService.publish(10L, 1L)).thenReturn(new DrawingPublicationResult(
+                10L, 20L, DrawingType.REDRAW, DrawingVisibility.PUBLIC, publishedAt, PublicationOutcome.PUBLISHED));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.visibility").value("PUBLIC"))
+                .andExpect(jsonPath("$.data.publishedAt").value("2026-09-18T12:00:00Z"));
+    }
+
+    @Test
+    void 잘못된_공개_상태는_INVALID_STATE를_반환한다() throws Exception {
+        when(publicationService.publish(10L, 1L))
+                .thenThrow(new BusinessException(EventErrorCode.INVALID_STATE));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
+    @Test
+    void 이미_공개된_Drawing_재요청도_현재_공개_상태를_성공_응답으로_반환한다() throws Exception {
+        Instant publishedAt = Instant.parse("2026-09-18T12:00:00Z");
+        when(publicationService.publish(10L, 1L)).thenReturn(new DrawingPublicationResult(
+                10L, 20L, DrawingVisibility.PUBLIC, publishedAt, PublicationOutcome.ALREADY_PUBLISHED));
+
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.drawingId").value(10))
+                .andExpect(jsonPath("$.data.eventId").value(20))
+                .andExpect(jsonPath("$.data.visibility").value("PUBLIC"))
+                .andExpect(jsonPath("$.data.publishedAt").value("2026-09-18T12:00:00Z"));
+
+        verify(publicationService).publish(10L, 1L);
+    }
+
+    @Test
+    void 공개_요청의_userId_또는_drawingId가_양수가_아니면_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/admin/drawings/10/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(post("/api/admin/drawings/0/publish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 관리자는_독립_재실행의_당첨_인원_수_검증_결과를_받는다() throws Exception {
+        when(drawingVerificationService.verify(20L, 1L)).thenReturn(verificationResult(100L));
+
+        mockMvc.perform(post("/api/admin/drawings/20/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.verificationId").value(100))
+                .andExpect(jsonPath("$.data.status").value("VERIFIED"))
+                .andExpect(jsonPath("$.data.verificationMode")
+                        .value("DETERMINISTIC_AND_CARDINALITY_REPLAY"))
+                .andExpect(jsonPath("$.data.expectedWinnerCount").value(10))
+                .andExpect(jsonPath("$.data.actualWinnerCount").value(10))
+                .andExpect(jsonPath("$.data.winnerCountMatched").value(true));
+    }
+
+    @Test
+    void 관리자는_검증_이력을_최신순_Page로_조회한다() throws Exception {
+        when(drawingVerificationService.getHistory(20L, 1L, 0, 20)).thenReturn(
+                new PageResponse<>(List.of(verificationResult(100L)), 0, 20, 1, 1, false));
+
+        mockMvc.perform(get("/api/admin/drawings/20/verification-history")
+                        .param("userId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].verificationId").value(100))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+    }
+
+    @Test
+    void 검증_API의_식별자와_Page_범위가_잘못되면_VALIDATION_FAILED다() throws Exception {
+        mockMvc.perform(post("/api/admin/drawings/0/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/admin/drawings/20/verification-history")
+                        .param("userId", "1")
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    private DrawingVerificationResult verificationResult(Long verificationId) {
+        return new DrawingVerificationResult(
+                verificationId,
+                20L,
+                DrawingVerificationStatus.VERIFIED,
+                DrawingVerificationMode.DETERMINISTIC_AND_CARDINALITY_REPLAY,
+                10,
+                10,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                null,
+                null,
+                1L,
+                Instant.parse("2026-09-18T00:00:00Z")
+        );
     }
 }

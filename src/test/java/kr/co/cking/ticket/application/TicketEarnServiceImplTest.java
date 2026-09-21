@@ -1,8 +1,14 @@
 package kr.co.cking.ticket.application;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,8 +20,12 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnLookupResult;
+import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,6 +45,8 @@ class TicketEarnServiceImplTest {
     private static final Long MISSION_ID = 10L;
     private static final String PERIOD_KEY = "2026-09-16";
     private static final String PERIOD_KEY_GUARD_FORMAT = "20260916";
+    private static final String NEXT_PERIOD_KEY = "2026-09-17";
+    private static final String NEXT_PERIOD_KEY_GUARD_FORMAT = "20260917";
     private static final String MISSION_KEY = "attendance:creator:2026-09-16";
     // Balance는 creatorId+userId 기준이라, 같은 Balance에 다른 미션으로 먼저
     // 적립해둘 때(가드가 겹치지 않도록)만 이 미션 타입을 쓴다.
@@ -58,7 +70,7 @@ class TicketEarnServiceImplTest {
         script.setLocation(new ClassPathResource("scripts/ticket-earn.lua"));
         script.setResultType(List.class);
 
-        service = new TicketEarnServiceImpl(redisTemplate, script, TEST_STREAM_KEY);
+        service = new TicketEarnServiceImpl(redisTemplate, script, TEST_STREAM_KEY, new ObjectMapper());
 
         cleanUpKeys();
     }
@@ -72,6 +84,7 @@ class TicketEarnServiceImplTest {
     private void cleanUpKeys() {
         redisTemplate.delete(TicketRedisKeys.balance(CREATOR_ID, USER_ID));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
+        redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, NEXT_PERIOD_KEY_GUARD_FORMAT));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, OTHER_MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
         redisTemplate.delete(TEST_STREAM_KEY);
         requestIds.forEach(id -> redisTemplate.delete(TicketRedisKeys.idemMission(id.toString())));
@@ -86,6 +99,35 @@ class TicketEarnServiceImplTest {
     private EarnResult earn(EarnCommand command) {
         requestIds.add(command.requestId());
         return service.earn(command);
+    }
+
+    // findExisting()만 부르는 테스트도 idem 키 정리를 위해 requestId를 등록해야 한다.
+    private EarnLookupResult findExisting(EarnCommand command) {
+        requestIds.add(command.requestId());
+        return service.findExisting(command);
+    }
+
+    // PROCESSING record를 직접 구성하기 위한 현재 fingerprint 공식이다.
+    private String fingerprint(EarnCommand command) throws NoSuchAlgorithmException {
+        String payload = command.userId() + ":" + command.creatorId() + ":" + command.missionType()
+                + ":" + command.missionId() + ":" + command.missionKey() + ":" + command.amount();
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+
+        return HexFormat.of().formatHex(hash);
+    }
+
+    // guardKeyField가 null이면 guardKey 없는 기존 PROCESSING 레코드를 만든다.
+    private String seedStuckProcessing(EarnCommand command, String guardKey, String guardKeyField)
+            throws NoSuchAlgorithmException {
+        String fp = fingerprint(command);
+        redisTemplate.opsForValue().set(TicketRedisKeys.balance(CREATOR_ID, USER_ID), "1");
+        redisTemplate.opsForValue().set(guardKey, command.requestId() + ":" + fp);
+        String json = guardKeyField != null
+                ? "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\",\"guardKey\":\"" + guardKeyField + "\"}"
+                : "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\"}";
+        redisTemplate.opsForValue().set(TicketRedisKeys.idemMission(command.requestId().toString()), json);
+        return fp;
     }
 
     @Test
@@ -249,5 +291,293 @@ class TicketEarnServiceImplTest {
         EarnResult conflictResult = earn(conflicting);
 
         assertThat(conflictResult.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
+    }
+
+    // 자정 이후 periodKey가 달라도 동일 requestId 재시도는 replay한다.
+    @Test
+    void periodKey만_다른_재시도는_자정_경계와_무관하게_ALREADY_PROCESSED를_반환한다() {
+        UUID requestId = UUID.randomUUID();
+        EarnResult first = earn(newCommand(requestId));
+        assertThat(first.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        EarnCommand retryNextDay =
+                new EarnCommand(requestId, USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, NEXT_PERIOD_KEY, MISSION_KEY, 1L);
+        EarnResult retry = earn(retryNextDay);
+
+        assertThat(retry.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    // periodKey가 달라도 missionKey나 amount처럼 실질적인 내용이 다르면 여전히
+    // REQUEST_ID_CONFLICT여야 한다 - periodKey 제외가 다른 필드의 구분력까지
+    // 없애면 안 된다.
+    @Test
+    void periodKey와_amount가_함께_다른_재시도는_REQUEST_ID_CONFLICT를_반환한다() {
+        UUID requestId = UUID.randomUUID();
+        EarnResult first = earn(newCommand(requestId));
+        assertThat(first.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        EarnCommand conflicting =
+                new EarnCommand(requestId, USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, NEXT_PERIOD_KEY, MISSION_KEY, 5L);
+        EarnResult conflictResult = earn(conflicting);
+
+        assertThat(conflictResult.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
+    }
+
+    // 같은 미션이라도 periodKey(날짜)가 다르면 별도 Guard 키를 쓰므로, 새
+    // requestId·새 periodKey는 일일 중복 보상 규칙에 따라 정상적으로 지급돼야 한다.
+    @Test
+    void 새_requestId와_새_periodKey면_정상적으로_EARN_ACCEPTED를_반환한다() {
+        EarnResult day1 = earn(newCommand(UUID.randomUUID()));
+        assertThat(day1.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        EarnCommand day2Command = new EarnCommand(
+                UUID.randomUUID(), USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, NEXT_PERIOD_KEY, MISSION_KEY, 1L);
+        EarnResult day2 = earn(day2Command);
+
+        assertThat(day2.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("2");
+    }
+
+    @Test
+    void idem과_Guard_TTL이_25시간으로_저장된다() {
+        EarnResult result = earn(newCommand(UUID.randomUUID()));
+        assertThat(result.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        Long idemTtl = redisTemplate.getExpire(
+                TicketRedisKeys.idemMission(requestIds.get(requestIds.size() - 1).toString()), TimeUnit.SECONDS);
+        Long guardTtl = redisTemplate.getExpire(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT), TimeUnit.SECONDS);
+
+        assertThat(idemTtl).isBetween(89_990L, 90_000L);
+        assertThat(guardTtl).isBetween(89_990L, 90_000L);
+    }
+
+    @Test
+    void findExisting_기록이_없으면_NOT_FOUND를_반환한다() {
+        EarnLookupResult result = findExisting(newCommand(UUID.randomUUID()));
+
+        assertThat(result.status()).isEqualTo(EarnLookupStatus.NOT_FOUND);
+    }
+
+    @Test
+    void findExisting_성공_처리된_요청은_ALREADY_PROCESSED를_반환한다() {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        EarnResult earnResult = earn(command);
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        EarnLookupResult lookup = findExisting(command);
+
+        assertThat(lookup.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+    }
+
+    // 활성 상태 검증 전에 호출될 replay 조회도 자정 경계를 통과해야 한다.
+    @Test
+    void findExisting은_periodKey만_다른_재시도도_ALREADY_PROCESSED를_반환한다() {
+        UUID requestId = UUID.randomUUID();
+        EarnResult day1 = earn(newCommand(requestId));
+        assertThat(day1.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        EarnCommand day2Lookup =
+                new EarnCommand(requestId, USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, NEXT_PERIOD_KEY, MISSION_KEY, 1L);
+        EarnLookupResult lookup = findExisting(day2Lookup);
+
+        assertThat(lookup.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+    }
+
+    @Test
+    void findExisting_같은_requestId_다른_amount는_REQUEST_ID_CONFLICT를_반환한다() {
+        UUID requestId = UUID.randomUUID();
+        earn(newCommand(requestId));
+
+        EarnCommand conflicting =
+                new EarnCommand(requestId, USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, PERIOD_KEY, MISSION_KEY, 5L);
+        EarnLookupResult lookup = findExisting(conflicting);
+
+        assertThat(lookup.status()).isEqualTo(EarnLookupStatus.REQUEST_ID_CONFLICT);
+    }
+
+    // PROCESSING만 남은 요청은 신규 지급으로 진행하면 안 된다.
+    @Test
+    void idem이_PROCESSING_상태면_earn과_findExisting_모두_신규_지급으로_진행하지_않는다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String fp = fingerprint(command);
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\"}"
+        );
+
+        EarnResult earnResult = service.earn(command);
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.EARN_STATUS_UNKNOWN);
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.UNAVAILABLE);
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+    }
+
+    @Test
+    void findExisting은_PROCESSING이어도_Guard가_일치하면_ALREADY_PROCESSED를_반환한다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String guardKey = TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT);
+        seedStuckProcessing(command, guardKey, null);
+
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+    }
+
+    // 복구는 잔액을 다시 증가시키지 않고, self-heal 뒤에도 재현돼야 한다.
+    @Test
+    void earn의_Guard_폴백_복구는_잔액을_재증가하지_않고_idem을_COMPLETED로_self_heal한다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String guardKey = TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT);
+        seedStuckProcessing(command, guardKey, null);
+
+        EarnResult recovered = service.earn(command);
+
+        assertThat(recovered.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+
+        // Guard가 사라져도(TTL 만료 흉내) self-heal된 idem만으로 계속 재현돼야 한다.
+        redisTemplate.delete(guardKey);
+
+        EarnResult retried = service.earn(command);
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(retried.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+    }
+
+    // 자정 이후에도 PROCESSING 예약 당시의 Guard를 사용한다.
+    @Test
+    void PROCESSING_Guard_폴백은_자정을_넘긴_재시도에서도_저장된_원래_Guard_키를_찾는다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String originalGuardKey =
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT);
+        seedStuckProcessing(command, originalGuardKey, originalGuardKey);
+
+        EarnCommand retryNextDay = new EarnCommand(
+                command.requestId(), USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID, NEXT_PERIOD_KEY, MISSION_KEY, 1L);
+
+        EarnLookupResult lookupResult = service.findExisting(retryNextDay);
+        EarnResult earnResult = service.earn(retryNextDay);
+
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    // guardKey 없는 기존 PROCESSING 레코드는 같은 날짜 재시도를 지원한다.
+    @Test
+    void guardKey_필드가_없는_legacy_PROCESSING_record도_같은_날짜_재시도는_ALREADY_PROCESSED로_복구한다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String guardKey = TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT);
+        seedStuckProcessing(command, guardKey, null);
+
+        EarnResult earnResult = service.earn(command);
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+    }
+
+    // 정상 earn() 경로가 guardKey를 기록하는지 검증한다.
+    @Test
+    void earn은_실제로_사용한_Guard_키를_idem에_기록한다() throws Exception {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        EarnResult result = earn(command);
+        assertThat(result.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        String stored = redisTemplate.opsForValue().get(TicketRedisKeys.idemMission(command.requestId().toString()));
+        Map<String, Object> idemRecord =
+                new ObjectMapper().readValue(stored, new TypeReference<Map<String, Object>>() { });
+
+        assertThat(idemRecord.get("guardKey")).isEqualTo(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
+    }
+
+    @Test
+    void idem이_PROCESSING이고_Guard도_다른_요청_값이면_여전히_신규_지급으로_진행하지_않는다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String fp = fingerprint(command);
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT),
+                UUID.randomUUID() + ":" + fp
+        );
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\"}"
+        );
+
+        EarnResult earnResult = service.earn(command);
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.EARN_STATUS_UNKNOWN);
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.UNAVAILABLE);
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+    }
+
+    // status 없는 이전 형식 record도 완료된 성공으로 호환한다.
+    @Test
+    void status_필드가_없는_legacy_idem_레코드도_ALREADY_PROCESSED를_반환한다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        // 실제 legacy 레코드는 옛 공식(periodKey 포함)으로 계산된 fingerprint를
+        // 저장하고 있었다 - 지금 공식(periodKey 제외)으로 계산하면 절대 일치하지
+        // 않는다는 걸 증명하기 위해 일부러 옛 공식으로 만든 값을 쓴다.
+        String legacyFp = legacyFingerprint(command);
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"" + legacyFp + "\",\"result\":[\"EARN_ACCEPTED\",\"legacy-stream-id\",\"3\"]}"
+        );
+
+        EarnResult earnResult = service.earn(command);
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+    }
+
+    // 이전 형식 record는 fingerprint와 무관하게 기존 결과를 재현한다.
+    @Test
+    void legacy_idem은_fingerprint가_완전히_달라도_ALREADY_PROCESSED로_재현된다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"completely-different-fingerprint\","
+                        + "\"result\":[\"EARN_ACCEPTED\",\"legacy-stream-id\",\"3\"]}"
+        );
+
+        EarnResult earnResult = service.earn(command);
+
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+    }
+
+    // 이전 형식의 periodKey 포함 fingerprint 공식이다.
+    private String legacyFingerprint(EarnCommand command) throws NoSuchAlgorithmException {
+        String payload = command.userId() + ":" + command.creatorId() + ":" + command.missionType()
+                + ":" + command.missionId() + ":" + command.periodKey() + ":" + command.missionKey()
+                + ":" + command.amount();
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+
+        return HexFormat.of().formatHex(hash);
     }
 }

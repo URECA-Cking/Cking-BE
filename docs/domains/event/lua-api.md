@@ -9,12 +9,16 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 
 | 키 | 타입 | 용도 |
 | --- | --- | --- |
-| `event:status:{eventId}` | STRING | `OPEN`이면 응모 허용, 그 외 값이면 차단. 시스템2 `EventCutoffBarrier`가 마감 시작 시 `CLOSED`로 갱신 |
-| `event:endat:{eventId}` | STRING | 마감 시각(epoch millis). 이벤트 생성 시 1회 세팅, 불변 |
+| `event:status:{eventId}` | STRING | `OPEN`이면 응모 허용, 그 외 값이면 차단. `EventGateLoader`가 `open()` 커밋 직후(및 스케줄러 틱마다 키가 없을 때) `OPEN`으로 적재하고, `EventCutoffBarrier`가 마감 시작 시 `CLOSED`로 갱신 |
+| `event:endat:{eventId}` | STRING | 마감 시각(epoch millis). `open()` 시점에 `EventGateLoader`가 `status`보다 먼저 적재, 불변. 키가 없을 때만 쓰고, `event:cutoff`가 있으면(마감 barrier 실행 후) 적재를 건너뛰어 stale한 DB 조회값으로 `CLOSED` Gate를 다시 열지 않음(`event-gate-load.lua`). 진행 중 OPEN 이벤트의 유실 키는 `EventLifecycleScheduler`가 DB 기준으로 복원 |
 | `event:cutoff:{eventId}` | STRING | 시스템2가 확정한 마감 barrier Stream ID. 재시도 시 같은 값을 재사용 |
 | `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 응모권 잔액 |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
+
+Gate 복원은 10초 틱(`cking.event.lifecycle-interval-ms`)마다 OPEN 이벤트 전체를 조회한다(#149). 10초는 `fixedDelay`(이전 실행 종료 후 대기)라서 Redis가 정상일 때 Gate 유실 복원을 재시도하는 기본 간격이다. 실제 `GATE_NOT_LOADED`(503) 지속 시간은 틱 실행 시간과 Redis 장애 기간만큼 10초를 초과할 수 있다.
+- 전체 조회는 OPEN 이벤트 100개 이하를 전제한다. 100개를 넘거나 틱 실행 시간이 주기의 절반(5초)을 넘으면 Slice 페이징을 도입한다.
+- `GATE_NOT_LOADED` 발생 시 응모 경로에서 즉시 적재·재시도하지 않는다. 백그라운드 복원만 쓴다(Redis 장애 시 DB 부하 집중 방지).
 
 Gate 키 구조는 `데이터 구조.md` §2 확정 스키마를 따른다(Hash가 아니라 String 2개로 분리).
 

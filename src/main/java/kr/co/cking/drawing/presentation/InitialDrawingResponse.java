@@ -10,6 +10,7 @@ public record InitialDrawingResponse(
         int winnerCount
 ) {
 
+    /** INITIAL Drawing 실행 결과를 관리자 API 응답 형식으로 변환한다. */
     public static InitialDrawingResponse from(InitialDrawingResult result) {
         return new InitialDrawingResponse(
                 result.drawingId(),
