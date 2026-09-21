@@ -44,8 +44,12 @@ public class WinnerStatusHistoryQueryService {
 
     /** USER가 본인 소유가 아닌 Winner의 감사 이력을 읽는 것을 차단한다. */
     private void validateAccess(MemberRole role, Winner winner, Long userId) {
-        if (role == MemberRole.USER && !winner.getMemberId().equals(userId)) {
-            throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        if (role == MemberRole.ADMIN) {
+            return;
         }
+        if (role == MemberRole.USER && winner.getMemberId().equals(userId)) {
+            return;
+        }
+        throw new BusinessException(CommonErrorCode.FORBIDDEN);
     }
 }
