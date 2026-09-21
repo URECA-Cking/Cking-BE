@@ -41,6 +41,7 @@
 - 같은 키로 같은 `userId`, `eventId`, 정규화한 `reason`을 재요청하면 기존 RedrawRequest를 반환한다.
   하나라도 다르면 `IDEMPOTENCY_CONFLICT`로 거부한다.
 - 서로 다른 Event에서 같은 키가 동시에 들어와 unique 제약이 충돌하면 저장 후 기존 요청을 다시
-  조회하고, 본문이 다르면 `IDEMPOTENCY_CONFLICT`를 반환한다.
+  조회한다. 기존 요청을 찾지 못하면 `CONCURRENT_COMMAND`, 본문이 다르면 `IDEMPOTENCY_CONFLICT`를
+  반환한다.
 
 DB 구조와 unique·foreign key 제약의 정본은 `src/main/resources/db/migration/`이다.
