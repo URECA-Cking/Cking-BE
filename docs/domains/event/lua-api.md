@@ -16,7 +16,9 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
 
-Gate 복원은 10초 틱마다 OPEN 이벤트 전체를 조회한다. 복원 주기와 조회 범위·페이징 기준은 2차 MVP에서 팀 합의로 확정한다(#149).
+Gate 복원은 10초 틱(`cking.event.lifecycle-interval-ms`)마다 OPEN 이벤트 전체를 조회한다(#149). 10초는 `fixedDelay`(이전 실행 종료 후 대기)라서 Redis가 정상일 때 Gate 유실 복원을 재시도하는 기본 간격이다. 실제 `GATE_NOT_LOADED`(503) 지속 시간은 틱 실행 시간과 Redis 장애 기간만큼 10초를 초과할 수 있다.
+- 전체 조회는 OPEN 이벤트 100개 이하를 전제한다. 100개를 넘거나 틱 실행 시간이 주기의 절반(5초)을 넘으면 Slice 페이징을 도입한다.
+- `GATE_NOT_LOADED` 발생 시 응모 경로에서 즉시 적재·재시도하지 않는다. 백그라운드 복원만 쓴다(Redis 장애 시 DB 부하 집중 방지).
 
 Gate 키 구조는 `데이터 구조.md` §2 확정 스키마를 따른다(Hash가 아니라 String 2개로 분리).
 
