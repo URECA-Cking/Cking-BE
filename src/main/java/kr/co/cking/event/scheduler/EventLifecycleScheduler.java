@@ -81,7 +81,8 @@ public class EventLifecycleScheduler {
      * OPEN 적재 뒤 CLOSING 이벤트를 새로 조회해 Gate를 닫으므로, cutoff까지 유실된 상태에서 stale한 OPEN 조회로
      * 다시 열린 Gate도 같은 틱에 닫힌다. cutoff는 DB의 cutoffStreamId로 Drain하므로 복구하지 않는다.
      *
-     * <p>ponytail: 매 틱 OPEN 전체 조회는 소수 이벤트 전제다. 복원 주기·조회 범위·페이징은 2차 MVP에서 팀 합의로 확정한다(#149).
+     * <p>ponytail: 매 틱 OPEN 전체 조회는 OPEN 이벤트 100개 이하 전제다(#149). 100개를 넘거나 틱 실행 시간이 주기의 절반을
+     * 넘으면 Slice 페이징을 도입한다. 주기 10초는 Redis 유실 후 GATE_NOT_LOADED 최대 지속 시간이다.
      */
     private void restoreOpenGates() {
         for (Event event : eventRepository.findByStatus(EventStatus.OPEN)) {
