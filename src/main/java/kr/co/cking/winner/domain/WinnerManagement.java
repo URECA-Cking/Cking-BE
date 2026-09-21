@@ -72,4 +72,12 @@ public class WinnerManagement {
         }
         status = WinnerManagementStatus.RECEIVED;
     }
+
+    /** SELECTED 상태의 Winner를 자격 박탈 종결 상태로 변경한다. */
+    public void disqualify() {
+        if (status != WinnerManagementStatus.SELECTED) {
+            throw new BusinessException(WinnerErrorCode.INVALID_STATE);
+        }
+        status = WinnerManagementStatus.DISQUALIFIED;
+    }
 }
