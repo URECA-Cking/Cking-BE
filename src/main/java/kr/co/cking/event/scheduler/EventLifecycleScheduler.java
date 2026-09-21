@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.application.service.EventDrainChecker;
+import kr.co.cking.event.application.service.EventGateLoader;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
@@ -39,6 +40,7 @@ public class EventLifecycleScheduler {
     private final EventCommandService eventCommandService;
     private final EventClosingService eventClosingService;
     private final EventDrainChecker eventDrainChecker;
+    private final EventGateLoader eventGateLoader;
     private final OfficialSnapshotService officialSnapshotService;
     private final Clock clock;
 
@@ -46,6 +48,7 @@ public class EventLifecycleScheduler {
     @Scheduled(fixedDelayString = "${cking.event.lifecycle-interval-ms:10000}")
     public void run() {
         openScheduledEvents();
+        restoreOpenGates();
         startClosingOverdueEvents();
         completeDrainedEvents();
     }
@@ -68,6 +71,33 @@ public class EventLifecycleScheduler {
                 eventCommandService.open(eventId);
             } catch (RuntimeException e) {
                 log.error("이벤트 자동 시작(SCHEDULED→OPEN)에 실패했습니다. eventId={}", eventId, e);
+            }
+        }
+    }
+
+    /**
+     * 기동 직후, Redis 유실·eviction, OPEN 직후 적재 실패로 Gate 키가 없는 진행 중 Event를 DB 기준으로 복원한다
+     * (취합v1.5.4 §2.4). 종료 시각이 지난 Event는 곧 마감되므로 제외하고, 이미 있는 키는 덮어쓰지 않는다.
+     * OPEN 적재 뒤 CLOSING 이벤트를 새로 조회해 Gate를 닫으므로, cutoff까지 유실된 상태에서 stale한 OPEN 조회로
+     * 다시 열린 Gate도 같은 틱에 닫힌다. cutoff는 DB의 cutoffStreamId로 Drain하므로 복구하지 않는다.
+     *
+     * <p>ponytail: 매 틱 OPEN 전체 조회는 소수 이벤트 전제다. 복원 주기·조회 범위·페이징은 2차 MVP에서 팀 합의로 확정한다(#149).
+     */
+    private void restoreOpenGates() {
+        for (Event event : eventRepository.findByStatus(EventStatus.OPEN)) {
+            try {
+                if (event.getEndAt().isAfter(clock.instant())) {
+                    eventGateLoader.load(event);
+                }
+            } catch (RuntimeException e) {
+                log.error("응모 Gate 복원에 실패했습니다. eventId={}", event.getEventId(), e);
+            }
+        }
+        for (Event event : eventRepository.findByStatus(EventStatus.CLOSING)) {
+            try {
+                eventGateLoader.close(event.getEventId());
+            } catch (RuntimeException e) {
+                log.error("마감 중 응모 Gate 차단에 실패했습니다. eventId={}", event.getEventId(), e);
             }
         }
     }

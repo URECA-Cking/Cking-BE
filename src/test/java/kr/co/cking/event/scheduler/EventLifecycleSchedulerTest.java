@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.application.service.EventDrainChecker;
+import kr.co.cking.event.application.service.EventGateLoader;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
@@ -43,6 +44,9 @@ class EventLifecycleSchedulerTest {
 
     @Mock
     private EventDrainChecker eventDrainChecker;
+
+    @Mock
+    private EventGateLoader eventGateLoader;
 
     @Mock
     private OfficialSnapshotService officialSnapshotService;
@@ -70,6 +74,38 @@ class EventLifecycleSchedulerTest {
     }
 
     @Test
+    void 진행중_OPEN_이벤트의_Gate를_복원하고_종료시각이_지난_이벤트는_건너뛴다() {
+        Event live = org.mockito.Mockito.mock(Event.class);
+        Event overdue = org.mockito.Mockito.mock(Event.class);
+        when(live.getEndAt()).thenReturn(NOW.plusSeconds(60));
+        when(overdue.getEndAt()).thenReturn(NOW.minusSeconds(1));
+        when(clock.instant()).thenReturn(NOW);
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of(live, overdue));
+
+        scheduler.run();
+
+        verify(eventGateLoader).load(live);
+        org.mockito.Mockito.verifyNoMoreInteractions(eventGateLoader);
+    }
+
+    @Test
+    void CLOSING_이벤트의_Gate를_OPEN_적재_뒤에_닫는다() {
+        Event live = org.mockito.Mockito.mock(Event.class);
+        Event closing = org.mockito.Mockito.mock(Event.class);
+        when(live.getEndAt()).thenReturn(NOW.plusSeconds(60));
+        when(closing.getEventId()).thenReturn(7L);
+        when(clock.instant()).thenReturn(NOW);
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of(live));
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(closing));
+
+        scheduler.run();
+
+        InOrder inOrder = inOrder(eventGateLoader);
+        inOrder.verify(eventGateLoader).load(live);
+        inOrder.verify(eventGateLoader).close(7L);
+    }
+
+    @Test
     void 종료시각이_지난_OPEN_이벤트는_공통_마감_서비스로_요청한다() {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
@@ -87,6 +123,7 @@ class EventLifecycleSchedulerTest {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
         when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
         when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
         when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
 
@@ -102,6 +139,7 @@ class EventLifecycleSchedulerTest {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
         when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
         when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
         when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
         doThrow(new RuntimeException("snapshot failed"))
