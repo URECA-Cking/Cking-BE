@@ -10,11 +10,6 @@ public final class TicketRedisKeys {
         return "ticket:balance:" + creatorId + ":" + userId;
     }
 
-    // 수동 보정 중 SPEND·EARN을 막는 maintenance lock. Balance 키와 같은 (creatorId, userId) 순서다.
-    public static String maintenance(Long creatorId, Long userId) {
-        return "ticket:maint:" + creatorId + ":" + userId;
-    }
-
     // SPEND의 idem:{requestId}와 분리된 미션 적립 replay 키다.
     public static String idemMission(String requestId) {
         return "idem:mission:" + requestId;
@@ -24,5 +19,12 @@ public final class TicketRedisKeys {
     // YYYY-MM-DD와는 다른 표기이니 호출측에서 변환해서 넘겨야 한다.
     public static String earnGuard(Long userId, String missionType, Long creatorId, String periodKeyYyyyMmDd) {
         return "mission:earn-guard:" + userId + ":" + missionType + ":" + creatorId + ":" + periodKeyYyyyMmDd;
+    }
+
+    // 수동 보정(TicketCompensationService.resyncRedisToDb)이 (creatorId, userId) 조합의
+    // Redis Balance를 덮어쓰는 동안 SPEND/EARN Lua가 존재 여부만 확인하는 락 키다(issue #172).
+    // 이 키를 SET/DEL하는 보정 서비스 쪽 로직은 별도로 구현한다 - Lua는 EXISTS만 본다.
+    public static String maintenanceLock(Long creatorId, Long userId) {
+        return "ticket:maint:" + creatorId + ":" + userId;
     }
 }

@@ -63,7 +63,7 @@ class TicketCompensationServiceIntegrationTest {
         jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", CREATOR_ID);
         jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?)", MEMBER_ID, OWNER_MEMBER_ID);
         redisTemplate.delete(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID));
-        redisTemplate.delete(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID));
+        redisTemplate.delete(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID));
         jdbcTemplate.update("DELETE FROM dead_stream_message WHERE source_stream_id LIKE 'comp-it-%'");
     }
 
@@ -102,18 +102,18 @@ class TicketCompensationServiceIntegrationTest {
     void 보정이_끝나면_maintenance_lock을_해제한다() {
         ticketCompensationService.resyncRedisToDb(MEMBER_ID, CREATOR_ID, "정합성 배치 불일치 확인");
 
-        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID))).isFalse();
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID))).isFalse();
     }
 
     @Test
     void 이미_보정_lock이_잡혀_있으면_거부하고_남의_lock은_지우지_않는다() {
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID), "3");
-        redisTemplate.opsForValue().set(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID), "other-token");
+        redisTemplate.opsForValue().set(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID), "other-token");
 
         assertThatThrownBy(() -> ticketCompensationService.resyncRedisToDb(MEMBER_ID, CREATOR_ID, "사유"))
                 .isInstanceOf(BusinessException.class);
 
-        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID)))
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID)))
                 .isEqualTo("other-token");
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isEqualTo("3");
     }
@@ -132,6 +132,6 @@ class TicketCompensationServiceIntegrationTest {
 
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isEqualTo("13");
         assertThat(ticketLedgerRepository.findAll()).noneMatch(l -> l.getMemberId().equals(MEMBER_ID));
-        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID))).isFalse();
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID))).isFalse();
     }
 }
