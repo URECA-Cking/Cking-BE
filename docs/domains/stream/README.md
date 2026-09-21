@@ -48,7 +48,7 @@ EARN·SPEND 스케줄러는 기본 30초마다 idle 60초 이상인 Pending을 �
 - 보존 항목: source Stream ID, 원본 payload(JSON), requestId, memberId, eventId(SPEND만), 실패 이유, `retry_count`, `UNRESOLVED`.
 - `UNIQUE(source_stream_id, stream_type)`(A안)이므로 같은 원본은 한 행만 두고, 다시 들어오면 `retry_count`·실패 이유·`last_failed_at`만 갱신한다.
 
-운영자는 원인 확인 뒤 `DeadStreamReplayService.replay(deadStreamMessageId, resolvedBy)`를 호출한다. 보존 payload를 같은 EARN·SPEND Ledger 서비스에 재적용하고 성공한 경우에만 `RESOLVED`로 표시한다. Ledger가 requestId 멱등이라 중복 replay도 이중 반영하지 않는다. `replay()`를 호출하는 코드(API·스케줄러)는 현재 없어 서비스 메서드로만 존재한다.
+운영자는 원인 확인 뒤 [관리자 API](api.md)로 목록을 조회하고 replay한다(내부적으로 `DeadStreamReplayService.replay(deadStreamMessageId, resolvedBy)`를 호출한다). 보존 payload를 같은 EARN·SPEND Ledger 서비스에 재적용하고 성공한 경우에만 `RESOLVED`로 표시한다. Ledger가 requestId 멱등이라 중복 replay도 이중 반영하지 않는다.
 
 ## 마감 Drain과의 관계
 

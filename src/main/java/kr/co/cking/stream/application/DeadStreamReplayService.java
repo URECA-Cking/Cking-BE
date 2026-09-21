@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Map;
 
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.repository.DeadStreamMessageRepository;
 import kr.co.cking.ticket.application.TicketEarnLedgerService;
@@ -34,10 +36,14 @@ public class DeadStreamReplayService {
     private final TicketSpendLedgerService ticketSpendLedgerService;
     private final ObjectMapper objectMapper;
 
+    /** 이미 RESOLVED인 메시지는 다시 적용하지 않고 현재 상태를 그대로 반환한다(상태 기반 멱등). */
     @Transactional
-    public void replay(Long deadStreamMessageId, Long resolvedBy) {
+    public DeadStreamMessage replay(Long deadStreamMessageId, Long resolvedBy) {
         DeadStreamMessage message = deadStreamMessageRepository.findById(deadStreamMessageId)
-                .orElseThrow(() -> new IllegalArgumentException("Dead Stream 메시지를 찾을 수 없습니다. id=" + deadStreamMessageId));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (!message.isUnresolved()) {
+            return message;
+        }
 
         Map<String, String> fields = readPayload(message.getPayload());
 
@@ -47,6 +53,7 @@ public class DeadStreamReplayService {
         }
 
         message.resolve(resolvedBy, Instant.now());
+        return message;
     }
 
     private Map<String, String> readPayload(String payload) {
