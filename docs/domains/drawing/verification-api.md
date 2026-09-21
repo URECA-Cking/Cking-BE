@@ -68,7 +68,8 @@
 
 `VERIFICATION_FAILED`에서는 실행 단계에 따라 아직 계산하지 못한 재실행 Boolean과
 `actualWinnerCount`가 `null`일 수 있다. 마이그레이션 전에 생성된 기존 이력은
-`expectedWinnerCount`도 `null`일 수 있다. `failureCode`는 다음 중 하나다.
+`verificationMode=LEGACY_INTEGRITY`로 표시되며 `expectedWinnerCount`도 `null`일 수 있다.
+신규 이력만 `DETERMINISTIC_AND_CARDINALITY_REPLAY`로 기록된다. `failureCode`는 다음 중 하나다.
 
 | 코드 | 조건 |
 | --- | --- |
@@ -107,5 +108,9 @@
 - 검증 모드와 독립 재실행 Seed
 - 기대/실제 당첨 인원 수
 - 인원 수, 중복, 후보 포함, 제외 명단, Rank 검증 결과
+
+V7 이전 기존 행은 실제 수행 범위를 보존하기 위해 `verificationMode=LEGACY_INTEGRITY`로
+backfill한다. V7 이후 생성되는 이력은 애플리케이션에서
+`DETERMINISTIC_AND_CARDINALITY_REPLAY`를 명시한다.
 
 독립 재실행 Seed는 이력에만 보존하며 운영 Drawing의 `seed_id`나 결과에는 영향을 주지 않는다.

@@ -50,11 +50,12 @@ class DrawingVerificationHistoryTest {
         ReflectionTestUtils.setField(
                 legacyHistory,
                 "verificationMode",
-                DrawingVerificationMode.DETERMINISTIC_AND_CARDINALITY_REPLAY
+                DrawingVerificationMode.LEGACY_INTEGRITY
         );
 
         DrawingVerificationResult result = DrawingVerificationResult.from(legacyHistory);
 
         assertThat(result.expectedWinnerCount()).isNull();
+        assertThat(result.verificationMode()).isEqualTo(DrawingVerificationMode.LEGACY_INTEGRITY);
     }
 }
