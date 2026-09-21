@@ -5,6 +5,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.time.Clock;
@@ -18,6 +19,8 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.application.service.EventClosingService;
@@ -28,7 +31,7 @@ import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.snapshot.application.OfficialSnapshotService;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class EventLifecycleSchedulerTest {
 
     private static final Instant NOW = Instant.parse("2026-09-20T00:05:00Z");
@@ -132,6 +135,24 @@ class EventLifecycleSchedulerTest {
         InOrder inOrder = inOrder(eventCommandService, officialSnapshotService);
         inOrder.verify(eventCommandService).completeClosing(1L);
         inOrder.verify(officialSnapshotService).createIfAbsent(1L);
+    }
+
+    @Test
+    void Drain이_30틱_연속_끝나지_않으면_그때_한번_경고한다(CapturedOutput output) {
+        Event event = org.mockito.Mockito.mock(Event.class);
+        when(event.getEventId()).thenReturn(1L);
+        when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        for (int i = 0; i < 29; i++) {
+            scheduler.run();
+        }
+        assertThat(output.getAll()).doesNotContain("Drain을 끝내지 못하고");
+
+        scheduler.run();
+        assertThat(output.getAll()).contains("Drain을 끝내지 못하고").contains("연속 미완료 틱=30");
     }
 
     @Test

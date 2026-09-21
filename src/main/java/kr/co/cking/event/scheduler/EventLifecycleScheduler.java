@@ -2,6 +2,8 @@ package kr.co.cking.event.scheduler;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -43,6 +45,14 @@ public class EventLifecycleScheduler {
     private final EventGateLoader eventGateLoader;
     private final OfficialSnapshotService officialSnapshotService;
     private final Clock clock;
+
+    /**
+     * Drain이 연속으로 끝나지 않은 틱 수(eventId별). 10초 틱 기준 30틱(약 5분)마다 WARN을 남긴다.
+     * 임계값은 FR-11b(Drain 최대 대기시간)가 팀에서 확정되기 전까지의 잠정값이다.
+     * ponytail: 인스턴스 메모리라 재기동하면 0부터 다시 센다, 영속 기준이 필요해지면 CLOSING 진입 시각을 저장.
+     */
+    private static final int DRAIN_WARN_EVERY_TICKS = 30;
+    private final Map<Long, Integer> undrainedTicks = new ConcurrentHashMap<>();
 
     /** 예약 시작, 마감 시작, Drain 완료 처리를 순서대로 한 번 실행한다. */
     @Scheduled(fixedDelayString = "${cking.event.lifecycle-interval-ms:10000}")
@@ -150,8 +160,15 @@ public class EventLifecycleScheduler {
         }
         try {
             if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
+                undrainedTicks.remove(eventId);
                 eventCommandService.completeClosing(eventId);
                 officialSnapshotService.createIfAbsent(eventId);
+                return;
+            }
+            int ticks = undrainedTicks.merge(eventId, 1, Integer::sum);
+            if (ticks % DRAIN_WARN_EVERY_TICKS == 0) {
+                log.warn("이벤트가 CLOSING에서 Drain을 끝내지 못하고 있습니다. eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
+                        eventId, cutoffStreamId, ticks);
             }
         } catch (RuntimeException e) {
             log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);
