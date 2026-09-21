@@ -23,6 +23,7 @@
 
 - [Snapshot](domains/snapshot/README.md): 공식 후보 확정, 멱등 생성, Snapshot Hash 정규화 계약
 - [Drawing](domains/drawing/README.md): 추첨 엔진 알고리즘과 당첨 결과 영속성 경계
+- [Drawing 재현 검증 API](domains/drawing/verification-api.md): 원본 Seed 결정적 재현과 새 Seed 독립 재실행 검증
 - [Drawing API](domains/drawing/api.md): 관리자 Drawing 요청·공개 API 계약
 - [Event](domains/event/README.md): 이벤트 조회·응모·마감의 외부 API와 내부 마감 계약
 - [Ticket](domains/ticket/README.md): 응모권 조회·EARN·정합성 보정 계약

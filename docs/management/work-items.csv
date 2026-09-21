@@ -16,7 +16,7 @@ T3-01,FR-P3-001~019; FR-P3-086,P0,자동·수동 마감과 Gate·Barrier·Drain 
 T3-02,FR-P3-020~034; FR-P3-083; FR-P3-087,P0,공식 Snapshot 생성·Hash·누락 복구,3조,윤희,T3-01,Snapshot 서비스·Candidate 집계·Hash·복구 스케줄러·테스트,진행 중,,No,
 T3-03,FR-P3-035~046; FR-P3-082,P1,추첨 엔진·Seed·결정성 보장,3조,성원,T3-02,DrawInput/Output·WEIGHTED_V1·Seed 처리·테스트,시작 전,UNIFORM_V1·Seed Commitment는 1.5.4와 추가 합의 필요,No,
 T3-04,FR-P3-047~062; FR-P3-084~085,P0,INITIAL Drawing 실행·Winner 저장·Retry·복구,3조,윤희,"T3-02, T3-03",Drawing 서비스·Winner 저장·원자 Transaction·Retry 테스트,시작 전,,No,
-T3-05,FR-P3-063~068,P1,추첨 결과 재현 검증 이력,3조,성원,T3-04,검증 서비스·draw_verification_history·테스트,시작 전,,No,
+T3-05,FR-P3-063~068,P1,추첨 입력 보존·결정적 재현 및 인원 수 검증 이력,3조,성원,T3-04,검증 서비스·관리자 API·draw_verification_history·테스트,진행 중,원본 Seed 결정적 재현 후 새 Seed 독립 재실행 검증,No,Issue #120 (https://github.com/URECA-Cking/Cking-BE/issues/120)
 T3-06,FR-P3-069~077; FR-P3-089,P1,REDRAW Drawing 실행과 후보 제외,3조,윤희,T3-04,재추첨 Drawing·후보 제외·부족 후보 처리·테스트,시작 전,,No,
 T3-07,FR-P3-078~081,P2,Kafka Outbox와 결과 Read Model,3조,성원,T3-04,Outbox·Kafka 발행·Read Model,시작 전,현재 1.5.4에는 Kafka/Outbox 계약 없음,No,
 T4-02,FR-P4-106~109,P1,Creator/Admin 수동 마감 요청,4조,혁준,"T4-01, T2-07",close API·권한 검증·ClosingStatus 응답·테스트,시작 전,파트2 마감 서비스 호출,No,

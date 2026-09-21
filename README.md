@@ -315,4 +315,3 @@ repository
 공통 응답과 예외 처리는 `common` 패키지에서 관리합니다.
 
 도메인별 ErrorCode는 공통 `ErrorCode` 인터페이스를 구현한 enum으로 정의합니다.
-

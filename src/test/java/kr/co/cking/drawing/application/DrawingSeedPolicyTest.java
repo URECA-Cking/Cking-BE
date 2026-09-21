@@ -55,6 +55,15 @@ class DrawingSeedPolicyTest {
     }
 
     @Test
+    void 독립_재실행에는_원본과_다른_신규_Seed를_사용한다() {
+        DrawingSeedPolicy policy = new DrawingSeedPolicy(sequenceGenerator(FIRST_SEED, SECOND_SEED));
+
+        DrawingSeed verificationSeed = policy.createForVerification(FIRST_SEED);
+
+        assertThat(verificationSeed).isEqualTo(SECOND_SEED);
+    }
+
+    @Test
     void REDRAW_Drawing의_이전_Seed가_null이면_거부한다() {
         DrawingSeedPolicy policy = new DrawingSeedPolicy(() -> SECOND_SEED);
 

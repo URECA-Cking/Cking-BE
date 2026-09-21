@@ -3,11 +3,16 @@ package kr.co.cking.drawing.presentation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.drawing.application.DrawingAdminQueryService;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
+import kr.co.cking.drawing.application.DrawingVerificationResult;
+import kr.co.cking.drawing.application.DrawingVerificationService;
 import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import kr.co.cking.drawing.application.PublicationService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +33,7 @@ public class DrawingAdminController {
     private final PublicationService publicationService;
     private final InitialDrawingExecutionService initialDrawingExecutionService;
     private final DrawingAdminQueryService drawingAdminQueryService;
+    private final DrawingVerificationService drawingVerificationService;
 
     /** 관리자 요청으로 INITIAL Drawing을 실행하고 완료된 추첨 결과 요약을 반환한다. */
     @Operation(
@@ -78,5 +84,24 @@ public class DrawingAdminController {
             @RequestParam @Positive Long userId
     ) {
         return ApiResponse.success(drawingAdminQueryService.getDrawingResult(drawingId, userId));
+    }
+
+    @PostMapping("/api/admin/drawings/{drawingId}/verify")
+    public ApiResponse<DrawingVerificationResult> verifyDrawing(
+            @PathVariable @Positive Long drawingId,
+            @Valid @RequestBody DrawingVerificationRequest request
+    ) {
+        return ApiResponse.success(drawingVerificationService.verify(drawingId, request.userId()));
+    }
+
+    @GetMapping("/api/admin/drawings/{drawingId}/verification-history")
+    public ApiResponse<PageResponse<DrawingVerificationResult>> getVerificationHistory(
+            @PathVariable @Positive Long drawingId,
+            @RequestParam @Positive Long userId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+    ) {
+        return ApiResponse.success(drawingVerificationService.getHistory(
+                drawingId, userId, page, size));
     }
 }
