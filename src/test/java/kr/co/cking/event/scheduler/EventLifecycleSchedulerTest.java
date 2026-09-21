@@ -203,7 +203,7 @@ class EventLifecycleSchedulerTest {
     }
 
     @Test
-    void Snapshot_생성_실패가_이미_완료된_CLOSED_전이를_되돌리지_않는다() {
+    void Snapshot_생성_실패가_이미_완료된_CLOSED_전이를_되돌리지_않는다(CapturedOutput output) {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
         when(event.getCutoffStreamId()).thenReturn("123-0");
@@ -217,6 +217,9 @@ class EventLifecycleSchedulerTest {
 
         verify(eventCommandService).completeClosing(1L);
         verify(officialSnapshotService).createIfAbsent(1L);
+        assertThat(output.getAll())
+                .contains("공식 Snapshot 생성에 실패했습니다")
+                .doesNotContain("마감 완료(CLOSING→CLOSED) 확인에 실패했습니다");
     }
 
     @Test

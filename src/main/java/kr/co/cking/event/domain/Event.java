@@ -151,10 +151,10 @@ public class Event {
     }
 
     /** 추첨이 완료된 Event를 결과 공개 상태로 전이한다. */
-    public void publish() {
+    public void publish(Instant publishedAt) {
         requireStatus(EventStatus.DRAW_COMPLETED);
         status = EventStatus.PUBLISHED;
-        publishedAt = Instant.now();
+        this.publishedAt = publishedAt;
     }
 
     public void reject() {
@@ -229,11 +229,11 @@ public class Event {
                 .forEach(prizes::add);
     }
 
-    public void delete() {
+    public void delete(Instant deletedAt) {
         if (status != EventStatus.DRAFT && status != EventStatus.REJECTED) {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
-        deletedAt = Instant.now();
+        this.deletedAt = deletedAt;
     }
 
     public DisplayStatus displayStatus(Instant now) {
