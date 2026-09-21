@@ -37,7 +37,7 @@ public class RedrawRequestCreateService {
                 .orElseGet(() -> createOrRecover(normalizedCommand));
     }
 
-    /** unique 제약 충돌 시 커밋한 요청을 다시 읽어 멱등 재시도로 복구한다. */
+    /** Event 잠금 후 생성·재사용 결과를 처리하고, unique 제약 충돌 시 커밋된 요청을 다시 읽어 복구한다. */
     private RedrawRequestCreateResult createOrRecover(RedrawRequestCreateCommand command) {
         try {
             RedrawRequestCreationOutcome outcome = persistenceService.create(command);
