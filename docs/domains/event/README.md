@@ -4,7 +4,8 @@ Event 도메인은 공개 이벤트 조회, 응모 요청 진입점, Event 상�
 
 ## 문서
 
-- [외부 API](api.md): 이벤트 조회, 응모, Creator 운영, 수동 마감과 관리자 마감 상태 조회 계약
+- [외부 API](api.md): 이벤트 조회, Creator 운영, 수동 마감과 관리자 마감 상태 조회 계약
+- [응모 API](entry-api.md): 응모와 내 응모 조회 계약, 결과코드별 HTTP 상태
 - [응모 Lua API](lua-api.md): 응모권 차감·멱등성·Stream 발행의 Redis 원자 처리 계약
 - [마감 오케스트레이션](closing.md): 자동·수동 마감이 공유하는 Gate, cutoff, Drain, CLOSED 확정 흐름
 

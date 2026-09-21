@@ -8,9 +8,8 @@ import org.springframework.http.HttpStatus;
  * {@link EntryResultCode}의 실패 케이스를 HTTP로 매핑한다. SUCCESS/DUPLICATE_REPLAY는
  * 실패가 아니므로 제외.
  *
- * <p>통합 API 명세 v2.5에는 명령 API별 HTTP Status 상세가 아직 P1(미확정)이라,
- * §8 공통 오류코드 표(INVALID_STATE/IDEMPOTENCY_CONFLICT→409, SYSTEM_ERROR→500)에
- * 맞춰 잠정 매핑한 스텁이다. 실제 Lua 연동(T2-03) 확정 시 갱신한다.
+ * <p>취합 v1.5.4 §5.4는 구체 HTTP 값을 "구현 시 확정"으로 남겼고, 여기 값이 확정본이다.
+ * 문서는 docs/domains/event/entry-api.md의 결과코드 표이며, 값을 바꾸면 함께 갱신한다.
  */
 @RequiredArgsConstructor
 public enum EntryErrorCode implements ErrorCode {
