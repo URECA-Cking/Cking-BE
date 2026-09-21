@@ -10,6 +10,11 @@ public final class TicketRedisKeys {
         return "ticket:balance:" + creatorId + ":" + userId;
     }
 
+    // 수동 보정 중 SPEND·EARN을 막는 maintenance lock. Balance 키와 같은 (creatorId, userId) 순서다.
+    public static String maintenance(Long creatorId, Long userId) {
+        return "ticket:maint:" + creatorId + ":" + userId;
+    }
+
     // SPEND의 idem:{requestId}와 분리된 미션 적립 replay 키다.
     public static String idemMission(String requestId) {
         return "idem:mission:" + requestId;
