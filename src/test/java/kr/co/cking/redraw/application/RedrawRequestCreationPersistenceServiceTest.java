@@ -81,9 +81,10 @@ class RedrawRequestCreationPersistenceServiceTest {
                 .thenReturn(List.of(102L));
         when(redrawRequestRepository.saveAndFlush(any(RedrawRequest.class))).thenReturn(persisted);
 
-        RedrawRequest result = service.create(command());
+        RedrawRequestCreationOutcome result = service.create(command());
 
-        assertThat(result).isSameAs(persisted);
+        assertThat(result.request()).isSameAs(persisted);
+        assertThat(result.created()).isTrue();
         ArgumentCaptor<RedrawRequest> requestCaptor = ArgumentCaptor.forClass(RedrawRequest.class);
         verify(redrawRequestRepository).saveAndFlush(requestCaptor.capture());
         assertThat(requestCaptor.getValue().getEventId()).isEqualTo(EVENT_ID);
@@ -104,8 +105,22 @@ class RedrawRequestCreationPersistenceServiceTest {
         assertThatThrownBy(() -> service.create(command()))
                 .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.INVALID_STATE);
 
-        verifyNoInteractions(drawingRepository, redrawVacancyCandidateRepository,
-                redrawRequestRepository, redrawRequestVacancyRepository);
+        verifyNoInteractions(drawingRepository, redrawVacancyCandidateRepository, redrawRequestVacancyRepository);
+    }
+
+    /** Event 잠금 뒤 발견한 기존 요청은 상태·결원을 다시 확인하지 않고 재사용한다. */
+    @Test
+    void Event_잠금_후_기존_요청이_있으면_결원을_계산하지_않는다() {
+        RedrawRequest existing = org.mockito.Mockito.mock(RedrawRequest.class);
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(EVENT_ID))
+                .thenReturn(new EventDrawingSource(EVENT_ID, EventStatus.PUBLISHED, null));
+        when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(existing));
+
+        RedrawRequestCreationOutcome result = service.create(command());
+
+        assertThat(result.request()).isSameAs(existing);
+        assertThat(result.created()).isFalse();
+        verifyNoInteractions(drawingRepository, redrawVacancyCandidateRepository, redrawRequestVacancyRepository);
     }
 
     /** 최초 INITIAL Drawing이 없으면 Event 단위 명령의 상태 위반으로 차단한다. */
@@ -118,8 +133,7 @@ class RedrawRequestCreationPersistenceServiceTest {
         assertThatThrownBy(() -> service.create(command()))
                 .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.INVALID_STATE);
 
-        verifyNoInteractions(redrawVacancyCandidateRepository,
-                redrawRequestRepository, redrawRequestVacancyRepository);
+        verifyNoInteractions(redrawVacancyCandidateRepository, redrawRequestVacancyRepository);
     }
 
     /** 미점유 DECLINED·DISQUALIFIED Winner가 없으면 빈 요청을 저장하지 않는다. */
@@ -135,7 +149,7 @@ class RedrawRequestCreationPersistenceServiceTest {
         assertThatThrownBy(() -> service.create(command()))
                 .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.NO_REDRAW_VACANCY);
 
-        verifyNoInteractions(redrawRequestRepository, redrawRequestVacancyRepository);
+        verifyNoInteractions(redrawRequestVacancyRepository);
     }
 
     /** 테스트용 PUBLISHED Event의 최초 INITIAL Drawing을 만든다. */

@@ -56,7 +56,7 @@ class RedrawRequestCreateServiceTest {
         RedrawRequest request = request(100L, REASON);
         when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
         when(persistenceService.create(new RedrawRequestCreateCommand(ADMIN_ID, EVENT_ID, REASON, IDEMPOTENCY_KEY)))
-                .thenReturn(request);
+                .thenReturn(RedrawRequestCreationOutcome.created(request));
 
         RedrawRequestCreateResult result = service.create(command("  " + REASON + "  "));
 
@@ -67,6 +67,20 @@ class RedrawRequestCreateServiceTest {
         assertThat(result.created()).isTrue();
         verify(memberQueryService).validateAdmin(ADMIN_ID);
         verify(persistenceService).create(new RedrawRequestCreateCommand(ADMIN_ID, EVENT_ID, REASON, IDEMPOTENCY_KEY));
+    }
+
+    /** 잠금 획득 뒤 발견한 같은 본문 요청도 재사용 결과로 Controller에 전달한다. */
+    @Test
+    void 잠금_후_발견한_같은_본문의_기존_요청은_재사용한다() {
+        RedrawRequest existing = request(100L, REASON);
+        when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
+        when(persistenceService.create(new RedrawRequestCreateCommand(ADMIN_ID, EVENT_ID, REASON, IDEMPOTENCY_KEY)))
+                .thenReturn(RedrawRequestCreationOutcome.existing(existing));
+
+        RedrawRequestCreateResult result = service.create(command(REASON));
+
+        assertThat(result.redrawRequestId()).isEqualTo(100L);
+        assertThat(result.created()).isFalse();
     }
 
     /** 같은 키와 같은 본문은 새 결원 계산 없이 기존 요청을 멱등 재사용한다. */

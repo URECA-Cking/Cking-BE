@@ -40,7 +40,11 @@ public class RedrawRequestCreateService {
     /** unique 제약 충돌 시 커밋한 요청을 다시 읽어 멱등 재시도로 복구한다. */
     private RedrawRequestCreateResult createOrRecover(RedrawRequestCreateCommand command) {
         try {
-            return RedrawRequestCreateResult.from(persistenceService.create(command), true);
+            RedrawRequestCreationOutcome outcome = persistenceService.create(command);
+            RedrawRequest request = outcome.created()
+                    ? outcome.request()
+                    : returnExistingOrThrow(outcome.request(), command);
+            return RedrawRequestCreateResult.from(request, outcome.created());
         } catch (DataIntegrityViolationException exception) {
             RedrawRequest existing = redrawRequestRepository.findByIdempotencyKey(command.idempotencyKey())
                     .orElseThrow(() -> new BusinessException(RedrawErrorCode.CONCURRENT_COMMAND));

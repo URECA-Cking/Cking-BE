@@ -36,10 +36,20 @@ class RedrawRequestCreationPersistenceService {
     private final RedrawRequestRepository redrawRequestRepository;
     private final RedrawRequestVacancyRepository redrawRequestVacancyRepository;
 
-    /** Event 잠금 후 원본 Drawing과 미점유 결원을 확정해 새 RedrawRequest를 저장한다. */
+    /** Event 잠금 후 멱등 요청을 재확인하고, 없을 때만 미점유 결원을 확정해 저장한다. */
     @Transactional
-    public RedrawRequest create(RedrawRequestCreateCommand command) {
+    public RedrawRequestCreationOutcome create(RedrawRequestCreateCommand command) {
         EventDrawingSource event = eventDrawingQueryService.getDrawingSourceForUpdate(command.eventId());
+        return redrawRequestRepository.findByIdempotencyKey(command.idempotencyKey())
+                .map(RedrawRequestCreationOutcome::existing)
+                .orElseGet(() -> createNewRequest(command, event));
+    }
+
+    /** 잠금 후 기존 멱등 요청이 없을 때만 Event 상태·결원·점유를 검증해 새 요청을 저장한다. */
+    private RedrawRequestCreationOutcome createNewRequest(
+            RedrawRequestCreateCommand command,
+            EventDrawingSource event
+    ) {
         validatePublishedEvent(event);
         Drawing originalDrawing = findOriginalInitialDrawing(command.eventId());
         List<Long> vacancyWinnerIds = findUnoccupiedVacancyWinnerIds(command.eventId(), originalDrawing.getId());
@@ -54,7 +64,7 @@ class RedrawRequestCreationPersistenceService {
         redrawRequestVacancyRepository.saveAll(vacancyWinnerIds.stream()
                 .map(winnerId -> RedrawRequestVacancy.of(request.getId(), winnerId))
                 .toList());
-        return request;
+        return RedrawRequestCreationOutcome.created(request);
     }
 
     /** 삭제되지 않은 PUBLISHED Event에서만 재추첨 요청을 만들도록 검증한다. */
