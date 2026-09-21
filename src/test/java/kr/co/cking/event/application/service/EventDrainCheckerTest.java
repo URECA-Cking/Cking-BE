@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -20,6 +21,7 @@ import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 @SpringBootTest(properties = {
@@ -153,6 +155,41 @@ class EventDrainCheckerTest {
         );
 
         assertThat(eventDrainChecker.isDrained(1L, cutoff.getValue())).isFalse();
+    }
+
+    @Test
+    void PEL이_양끝에만_남고_사이가_전부_ACK돼도_대상_이벤트_PEL을_ID_단위로_확인한다() {
+        redisTemplate.opsForStream().add(MapRecord.create(STREAM_KEY, Map.of("eventId", "2")));
+        RecordId middleEnd = null;
+        for (int index = 0; index < 2_000; index++) {
+            middleEnd = redisTemplate.opsForStream().add(MapRecord.create(STREAM_KEY, Map.of("eventId", "1")));
+        }
+        RecordId cutoff = redisTemplate.opsForStream()
+                .add(MapRecord.create(STREAM_KEY, Map.of("eventId", "1")));
+        createGroupFromZero();
+        redisTemplate.opsForStream().read(
+                Consumer.from(GROUP, CONSUMER),
+                StreamReadOptions.empty().count(3_000),
+                StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+        );
+        // 첫 메시지(eventId=2)와 cutoff(eventId=1)만 PEL에 남기고 사이 2,000건은 ACK한다.
+        redisTemplate.opsForStream().range(STREAM_KEY, org.springframework.data.domain.Range.closed("-", middleEnd.getValue()))
+                .stream().skip(1)
+                .forEach(record -> redisTemplate.opsForStream().acknowledge(STREAM_KEY, GROUP, record.getId()));
+
+        long before = xrangeCalls();
+        boolean drained = eventDrainChecker.isDrained(1L, cutoff.getValue());
+
+        assertThat(drained).isFalse();
+        // 범위 XRANGE 1회가 아니라 PEL 2건을 각각 ID 단위로 조회해야 사이 2,000건을 읽지 않는다.
+        assertThat(xrangeCalls() - before).isEqualTo(2);
+    }
+
+    private long xrangeCalls() {
+        Properties stats = redisTemplate.execute((RedisCallback<Properties>) connection ->
+                connection.serverCommands().info("commandstats"));
+        String line = stats == null ? null : stats.getProperty("cmdstat_xrange");
+        return line == null ? 0 : Long.parseLong(line.replaceAll("^calls=(\\d+).*", "$1"));
     }
 
     @Test
