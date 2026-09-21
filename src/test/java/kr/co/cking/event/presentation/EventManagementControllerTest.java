@@ -57,6 +57,24 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
     }
 
+    @Test
+    void 생성_API에서_후보와_상품_알고리즘을_독립적으로_선택한다() throws Exception {
+        Event event = event(1L, "팬미팅");
+        given(creatorEventService.create(any())).willAnswer(invocation -> {
+            var command = invocation.getArgument(0, kr.co.cking.event.application.dto.CreateEventCommand.class);
+            assertThat(command.drawMethod()).isEqualTo(DrawMethod.UNIFORM);
+            assertThat(command.prizeAlgorithmVersion().name()).isEqualTo("PRIZE_UNIFORM_V1");
+            return event;
+        });
+
+        mockMvc.perform(post("/api/creator/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"UNIFORM","prizeAlgorithmVersion":"PRIZE_UNIFORM_V1"}
+                                """))
+                .andExpect(status().isCreated());
+    }
+
     /** offset이 포함된 생성 시각을 UTC Instant로 정규화해 명령에 전달하는지 검증한다. */
     @Test
     void createEventNormalizesOffsetInstant() throws Exception {

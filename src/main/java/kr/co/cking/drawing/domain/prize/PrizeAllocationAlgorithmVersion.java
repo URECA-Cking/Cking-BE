@@ -1,6 +1,7 @@
 package kr.co.cking.drawing.domain.prize;
 
 public enum PrizeAllocationAlgorithmVersion {
+    PRIZE_UNIFORM_V1,
     PRIZE_WEIGHTED_V1;
 
     public static PrizeAllocationAlgorithmVersion from(String value) {

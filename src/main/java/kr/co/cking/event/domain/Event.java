@@ -14,6 +14,7 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Table;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -44,6 +45,8 @@ public class Event {
     private Instant endAt;
     private Integer winnerCount;
     private String drawMethod;
+    @Column(name = "prize_algorithm_version", nullable = false, length = 30)
+    private String prizeAlgorithmVersion;
 
     @Enumerated(EnumType.STRING)
     private EventStatus status;
@@ -71,6 +74,7 @@ public class Event {
             Instant endAt,
             Integer winnerCount,
             String drawMethod,
+            String prizeAlgorithmVersion,
             EventStatus status,
             Long createdBy,
             Instant createdAt
@@ -83,6 +87,8 @@ public class Event {
         this.endAt = endAt;
         this.winnerCount = winnerCount;
         this.drawMethod = drawMethod;
+        this.prizeAlgorithmVersion = prizeAlgorithmVersion == null
+                ? PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1.name() : prizeAlgorithmVersion;
         this.status = status;
         this.createdBy = createdBy;
         this.createdAt = createdAt;
@@ -100,7 +106,8 @@ public class Event {
             Long createdBy,
             String requestId
     ) {
-        this(creatorId, title, description, startAt, endAt, winnerCount, drawMethod, createdBy, requestId, List.of());
+        this(creatorId, title, description, startAt, endAt, winnerCount, drawMethod, createdBy, requestId, List.of(),
+                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1);
     }
 
     public Event(
@@ -115,6 +122,26 @@ public class Event {
             String requestId,
             List<PrizeConfig> prizes
     ) {
+        this(creatorId, title, description, startAt, endAt, winnerCount, drawMethod, createdBy, requestId, prizes,
+                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1);
+    }
+
+    public Event(
+            Long creatorId,
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            int winnerCount,
+            DrawMethod drawMethod,
+            Long createdBy,
+            String requestId,
+            List<PrizeConfig> prizes,
+            PrizeAllocationAlgorithmVersion prizeAlgorithmVersion
+    ) {
+        if (prizeAlgorithmVersion == null) {
+            throw new IllegalArgumentException("상품 배정 알고리즘은 필수입니다.");
+        }
         this.creatorId = creatorId;
         this.requestId = requestId;
         this.title = title;
@@ -123,6 +150,7 @@ public class Event {
         this.endAt = endAt;
         this.winnerCount = winnerCount;
         this.drawMethod = drawMethod.name();
+        this.prizeAlgorithmVersion = prizeAlgorithmVersion.name();
         this.status = EventStatus.DRAFT;
         this.createdBy = createdBy;
         this.createdAt = Instant.now();
@@ -175,7 +203,8 @@ public class Event {
             int winnerCount,
             DrawMethod drawMethod
     ) {
-        update(title, description, startAt, endAt, winnerCount, drawMethod, getPrizeConfigs());
+        update(title, description, startAt, endAt, winnerCount, drawMethod, getPrizeConfigs(),
+                PrizeAllocationAlgorithmVersion.from(prizeAlgorithmVersion));
     }
 
     public void update(
@@ -187,13 +216,31 @@ public class Event {
             DrawMethod drawMethod,
             List<PrizeConfig> prizes
     ) {
+        update(title, description, startAt, endAt, winnerCount, drawMethod, prizes,
+                PrizeAllocationAlgorithmVersion.from(prizeAlgorithmVersion));
+    }
+
+    public void update(
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            int winnerCount,
+            DrawMethod drawMethod,
+            List<PrizeConfig> prizes,
+            PrizeAllocationAlgorithmVersion prizeAlgorithmVersion
+    ) {
         requireStatus(EventStatus.DRAFT);
+        if (prizeAlgorithmVersion == null) {
+            throw new IllegalArgumentException("상품 배정 알고리즘은 필수입니다.");
+        }
         this.title = title;
         this.description = description;
         this.startAt = startAt;
         this.endAt = endAt;
         this.winnerCount = winnerCount;
         this.drawMethod = drawMethod.name();
+        this.prizeAlgorithmVersion = prizeAlgorithmVersion.name();
         replacePrizes(prizes);
     }
 

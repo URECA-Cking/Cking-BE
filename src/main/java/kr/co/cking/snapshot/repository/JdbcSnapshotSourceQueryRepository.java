@@ -18,7 +18,7 @@ public class JdbcSnapshotSourceQueryRepository implements SnapshotSourceQueryRep
     @Override
     public Optional<SnapshotEventSource> findEventForUpdate(Long eventId) {
         return jdbcClient.sql("""
-                        SELECT event_id, status, winner_count, draw_method
+                        SELECT event_id, status, winner_count, draw_method, prize_algorithm_version
                         FROM event
                         WHERE event_id = :eventId
                         FOR UPDATE
@@ -28,7 +28,8 @@ public class JdbcSnapshotSourceQueryRepository implements SnapshotSourceQueryRep
                         resultSet.getLong("event_id"),
                         EventStatus.valueOf(resultSet.getString("status")),
                         resultSet.getInt("winner_count"),
-                        resultSet.getString("draw_method")
+                        resultSet.getString("draw_method"),
+                        resultSet.getString("prize_algorithm_version")
                 ))
                 .optional();
     }

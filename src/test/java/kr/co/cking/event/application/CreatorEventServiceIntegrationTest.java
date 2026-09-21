@@ -9,6 +9,7 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
 import kr.co.cking.event.domain.EventApprovalRequestStatus;
 import kr.co.cking.event.domain.EventStatus;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.event.repository.EventApprovalRequestRepository;
 import kr.co.cking.member.domain.Member;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
+import java.util.List;
 
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +45,22 @@ class CreatorEventServiceIntegrationTest {
     void cleanTestEvents() {
         jdbcTemplate.update("DELETE FROM event_approval_request WHERE event_id IN (SELECT event_id FROM event WHERE request_id LIKE ?)", "550e8400-e29b-41d4-a716-4466554400%");
         jdbcTemplate.update("DELETE FROM event WHERE request_id LIKE ?", "550e8400-e29b-41d4-a716-4466554400%");
+    }
+
+    @Test
+    void 후보와_상품_알고리즘_선택을_Event에_독립적으로_저장한다() {
+        Member member = memberRepository.save(new Member("선택 테스트", null, null, MemberRole.USER));
+        creatorRepository.save(new Creator(member.getMemberId(), member.getName()));
+
+        Event event = creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440099", "알고리즘 조합", null,
+                Instant.now().plus(java.time.Duration.ofDays(1)),
+                Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.UNIFORM,
+                PrizeAllocationAlgorithmVersion.PRIZE_UNIFORM_V1, List.of()));
+
+        Event persisted = eventRepository.findById(event.getEventId()).orElseThrow();
+        assertThat(persisted.getDrawMethod()).isEqualTo("UNIFORM");
+        assertThat(persisted.getPrizeAlgorithmVersion()).isEqualTo("PRIZE_UNIFORM_V1");
     }
 
     /** 동일 요청 식별자와 동일 본문은 새 Event 대신 기존 Event를 반환하는지 검증한다. */

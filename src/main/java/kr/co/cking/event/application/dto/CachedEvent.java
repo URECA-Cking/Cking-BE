@@ -17,16 +17,19 @@ public record CachedEvent(
         Instant endAt,
         Integer winnerCount,
         String drawMethod,
+        String prizeAlgorithmVersion,
         EventStatus status,
         List<PrizeConfig> prizes
 ) implements Serializable {
 
     public CachedEvent(Long eventId, Long creatorId, String title, String description, Instant startAt, Instant endAt,
                        Integer winnerCount, String drawMethod, EventStatus status) {
-        this(eventId, creatorId, title, description, startAt, endAt, winnerCount, drawMethod, status, List.of());
+        this(eventId, creatorId, title, description, startAt, endAt, winnerCount, drawMethod,
+                "PRIZE_WEIGHTED_V1", status, List.of());
     }
 
     public CachedEvent {
+        prizeAlgorithmVersion = prizeAlgorithmVersion == null ? "PRIZE_WEIGHTED_V1" : prizeAlgorithmVersion;
         prizes = List.copyOf(prizes);
     }
 
@@ -40,6 +43,7 @@ public record CachedEvent(
                 event.getEndAt(),
                 event.getWinnerCount(),
                 event.getDrawMethod(),
+                event.getPrizeAlgorithmVersion(),
                 event.getStatus(),
                 event.getPrizeConfigs()
         );
