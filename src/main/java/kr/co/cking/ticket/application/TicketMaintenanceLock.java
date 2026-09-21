@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class TicketMaintenanceLock {
 
-    static final Duration LEASE = Duration.ofSeconds(60);
+    private static final Duration LEASE = Duration.ofSeconds(60);
 
     // ponytail: 한 줄짜리 스크립트 두 개라 파일 대신 인라인으로 둔다. 늘어나면 scripts/로 옮긴다.
     private static final DefaultRedisScript<Long> RELEASE = new DefaultRedisScript<>(

@@ -1,6 +1,5 @@
 package kr.co.cking.stream.application;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -10,7 +9,6 @@ import org.springframework.data.redis.connection.Limit;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.StreamInfo.XInfoGroup;
-import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -89,23 +87,16 @@ public class UnappliedBalanceMessageChecker {
         }
     }
 
-    /**
-     * PEL ID별 {@code XRANGE id id COUNT 1}을 pipelining해 조회한다. 파이프라인 결과는 template
-     * serializer를 거치지 않아 필드가 byte[]로 남는다.
-     */
+    // 수동·저빈도 경로라 PEL ID마다 XRANGE id id COUNT 1을 순차 조회한다(EventDrainChecker는 틱마다 돌아 pipelining).
     private boolean anyMatchByIds(String streamKey, List<String> ids, Long memberId, Long creatorId) {
-        byte[] key = streamKey.getBytes(StandardCharsets.UTF_8);
-        List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-            for (String id : ids) {
-                connection.streamCommands().xRange(key, Range.closed(id, id), Limit.limit().count(1));
-            }
-            return null;
+        return ids.stream().anyMatch(id -> {
+            List<MapRecord<String, Object, Object>> records =
+                    redisTemplate.opsForStream().range(streamKey, Range.closed(id, id), Limit.limit().count(1));
+            return records != null && records.stream().anyMatch(record -> matches(
+                    String.valueOf(record.getValue().get("userId")),
+                    String.valueOf(record.getValue().get("creatorId")),
+                    memberId, creatorId));
         });
-        return results.stream()
-                .flatMap(result -> ((List<?>) result).stream())
-                .map(record -> (MapRecord<?, ?, ?>) record)
-                .anyMatch(record -> matches(
-                        field(record, "userId"), field(record, "creatorId"), memberId, creatorId));
     }
 
     /** Consumer Group이 아직 읽지 않은(전달 기준점 이후) 메시지 중 대상의 것이 있으면 true. */
@@ -145,18 +136,5 @@ public class UnappliedBalanceMessageChecker {
 
     private static boolean matches(String userId, String creatorId, Long memberId, Long targetCreatorId) {
         return String.valueOf(memberId).equals(userId) && String.valueOf(targetCreatorId).equals(creatorId);
-    }
-
-    // byte[]는 equals가 동일성 비교라 Map.get으로 찾을 수 없어 키를 디코딩해 비교한다.
-    private static String field(MapRecord<?, ?, ?> record, String name) {
-        return record.getValue().entrySet().stream()
-                .filter(entry -> name.equals(decode(entry.getKey())))
-                .map(entry -> decode(entry.getValue()))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private static String decode(Object value) {
-        return value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : String.valueOf(value);
     }
 }
