@@ -27,6 +27,7 @@ import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import kr.co.cking.event.application.config.EntryRedisKeys;
+import kr.co.cking.ticket.application.TicketMaintenanceLock;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
 
@@ -50,6 +51,9 @@ class EntrySpendServiceIntegrationTest {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @Autowired
+    private TicketMaintenanceLock maintenanceLock;
+
     private static final List<String> REQUEST_IDS = List.of(
             "req-success",
             "req-duplicate",
@@ -65,7 +69,8 @@ class EntrySpendServiceIntegrationTest {
             "req-decrby-fail",
             "req-guard-ttl",
             "req-maintenance-lock",
-            "req-maintenance-lock-replay"
+            "req-maintenance-lock-replay",
+            "req-real-lock"
     );
 
     @BeforeEach
@@ -448,6 +453,23 @@ class EntrySpendServiceIntegrationTest {
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retry.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
         assertThat(retry.streamId()).isEqualTo(first.streamId());
+    }
+
+    // 보정 서비스가 쓰는 TicketMaintenanceLock이 잡은 실제 lock과 SPEND Lua가 같은 키를 보는지 확인한다.
+    // 키 함수나 형식이 한쪽만 바뀌면 lock이 조용히 무력화되므로 두 PR이 맞물리는 지점을 고정한다.
+    @Test
+    void TicketMaintenanceLock이_잡은_lock은_SPEND를_막고_해제하면_통과시킨다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        String token = maintenanceLock.acquire(CREATOR_ID, USER_ID);
+        EntrySpendResult blocked = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2);
+        maintenanceLock.release(CREATOR_ID, USER_ID, token);
+        EntrySpendResult passed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2);
+
+        assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
+        assertThat(passed.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(passed.balance()).isEqualTo(8L);
     }
 
     // 문서(event/lua-api.md)가 약속하는 동작: 락이 풀린 뒤 같은 requestId로 재시도하면

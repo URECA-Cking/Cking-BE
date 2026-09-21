@@ -603,6 +603,22 @@ class TicketEarnServiceImplTest {
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
     }
 
+    // 보정 서비스가 쓰는 TicketMaintenanceLock이 잡은 실제 lock과 EARN Lua가 같은 키를 보는지 확인한다.
+    @Test
+    void TicketMaintenanceLock이_잡은_lock은_EARN을_막고_해제하면_통과시킨다() {
+        TicketMaintenanceLock maintenanceLock = new TicketMaintenanceLock(redisTemplate);
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+
+        String token = maintenanceLock.acquire(CREATOR_ID, USER_ID);
+        EarnResult blocked = service.earn(command);
+        maintenanceLock.release(CREATOR_ID, USER_ID, token);
+        EarnResult passed = service.earn(command);
+
+        assertThat(blocked.code()).isEqualTo(EarnResultCode.BALANCE_MAINTENANCE);
+        assertThat(passed.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+    }
+
     // 문서(ticket/lua-api.md)가 약속하는 동작: 락이 풀린 뒤 같은 requestId로 재시도하면
     // BALANCE_MAINTENANCE가 아니라 신규 요청과 동일하게 처리되어 성공한다.
     @Test
