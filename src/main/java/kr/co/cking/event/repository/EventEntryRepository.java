@@ -1,7 +1,12 @@
 package kr.co.cking.event.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import kr.co.cking.event.domain.EventEntry;
@@ -9,4 +14,28 @@ import kr.co.cking.event.domain.EventEntry;
 public interface EventEntryRepository extends JpaRepository<EventEntry, Long> {
 
     Optional<EventEntry> findByRequestId(String requestId);
+
+    @Query("""
+            select e.entryId as entryId, e.usedTicketCount as usedTicketCount, e.appliedAt as appliedAt
+            from EventEntry e
+            where e.memberId = :memberId and e.eventId = :eventId
+            order by e.appliedAt desc, e.entryId desc
+            """)
+    List<EventEntryView> findFirstPageView(@Param("memberId") Long memberId,
+                                           @Param("eventId") Long eventId,
+                                           Pageable pageable);
+
+    @Query("""
+            select e.entryId as entryId, e.usedTicketCount as usedTicketCount, e.appliedAt as appliedAt
+            from EventEntry e
+            where e.memberId = :memberId and e.eventId = :eventId
+              and (e.appliedAt < :appliedAt
+                   or (e.appliedAt = :appliedAt and e.entryId < :entryId))
+            order by e.appliedAt desc, e.entryId desc
+            """)
+    List<EventEntryView> findAfterCursorView(@Param("memberId") Long memberId,
+                                             @Param("eventId") Long eventId,
+                                             @Param("appliedAt") Instant appliedAt,
+                                             @Param("entryId") Long entryId,
+                                             Pageable pageable);
 }

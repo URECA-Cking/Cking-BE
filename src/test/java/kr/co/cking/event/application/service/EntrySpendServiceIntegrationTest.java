@@ -2,7 +2,11 @@ package kr.co.cking.event.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -46,23 +50,47 @@ class EntrySpendServiceIntegrationTest {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    private static final List<String> REQUEST_IDS = List.of(
+            "req-success",
+            "req-duplicate",
+            "req-conflict",
+            "req-xadd-fail",
+            "req-concurrent",
+            "req-replay-after-close",
+            "req-conflict-after-close",
+            "req-misc",
+            "req-guard-recovery",
+            "req-guard-stuck",
+            "req-guard-conflict",
+            "req-decrby-fail",
+            "req-guard-ttl"
+    );
+
     @BeforeEach
     @AfterEach
     void cleanUp() {
-        redisTemplate.delete(List.of(
+        List<String> keys = new ArrayList<>(List.of(
                 EntryRedisKeys.status(EVENT_ID),
                 EntryRedisKeys.endAt(EVENT_ID),
                 EntryRedisKeys.balance(CREATOR_ID, USER_ID),
-                EntryRedisKeys.idem("req-success"),
-                EntryRedisKeys.idem("req-duplicate"),
-                EntryRedisKeys.idem("req-conflict"),
-                EntryRedisKeys.idem("req-xadd-fail"),
-                EntryRedisKeys.idem("req-concurrent"),
-                EntryRedisKeys.idem("req-replay-after-close"),
-                EntryRedisKeys.idem("req-conflict-after-close"),
-                EntryRedisKeys.idem("req-misc"),
                 STREAM_KEY
         ));
+
+        for (String requestId : REQUEST_IDS) {
+            keys.add(EntryRedisKeys.idem(requestId));
+            keys.add(EntryRedisKeys.spendGuard(requestId));
+        }
+
+        redisTemplate.delete(keys);
+    }
+
+    // Guard 상태를 직접 구성하기 위해 운영 코드와 같은 fingerprint를 계산한다.
+    private String fingerprint(Long eventId, Long userId, int ticketCount) throws NoSuchAlgorithmException {
+        String payload = eventId + ":" + userId + ":" + ticketCount;
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+
+        return HexFormat.of().formatHex(hash);
     }
 
     private void openGate() {
@@ -160,6 +188,27 @@ class EntrySpendServiceIntegrationTest {
         assertThat(fields.get("ticketCount")).isEqualTo("2");
     }
 
+    // issue #106: guard는 idemTtl이 아니라 endAt까지 유지돼야 한다 - idemTtl로
+    // 통일하면 이벤트가 1시간보다 오래 열려 있을 때 idem 저장 실패 후 guard까지
+    // 만료돼 재차감이 다시 가능해진다. endAt을 idemTtl보다 먼 2시간 뒤로 잡아
+    // guard TTL이 그만큼 유지되는지 확인한다.
+    @Test
+    void guard_TTL은_idemTtl이_아니라_이벤트_종료_시각까지_유지된다() {
+        long endAtMillis = System.currentTimeMillis() + TimeUnit.HOURS.toMillis(2);
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "OPEN");
+        redisTemplate.opsForValue().set(EntryRedisKeys.endAt(EVENT_ID), String.valueOf(endAtMillis));
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-ttl", 2);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+
+        // idemTtl(3600초)보다 길게 유지되어야 하며, endAt(2시간 뒤)에 맞춰 7200초 근방이어야 한다.
+        Long guardTtl = redisTemplate.getExpire(EntryRedisKeys.spendGuard("req-guard-ttl"), TimeUnit.SECONDS);
+        assertThat(guardTtl).isGreaterThan(3600L);
+        assertThat(guardTtl).isBetween(7190L, 7200L);
+    }
+
     @Test
     void 같은_요청을_재시도하면_DUPLICATE_REPLAY로_기존_결과를_반환한다() {
         openGate();
@@ -234,10 +283,92 @@ class EntrySpendServiceIntegrationTest {
         // DECRBY가 INCRBY로 보상되어 원래 잔액(10)이 그대로 유지되어야 한다.
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("10");
         assertThat(redisTemplate.hasKey(EntryRedisKeys.idem("req-xadd-fail"))).isFalse();
+        // 실패한 요청은 guard 없이 다시 시도할 수 있어야 한다.
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.spendGuard("req-xadd-fail"))).isFalse();
     }
 
-    // FR-P2-030/FR-P2-043: RTM에 "코드 리뷰로 대체 불가"로 명시된 항목 - 동일 requestId로
-    // 동시에 여러 요청이 들어와도 Lua의 원자성 덕분에 차감과 XADD가 딱 한 번만 일어나야 한다.
+    // 실제 차감에 실패한 요청은 guard 없이 다시 시도할 수 있어야 한다.
+    @Test
+    void Balance가_정수가_아니면_DECRBY_실패_시_guard가_남지_않고_보정_후_재시도가_성공한다() {
+        openGate();
+        // ticketCount(2)보다 큰 값을 써서 INSUFFICIENT_BALANCE 분기(1.5 < 2)를 피한다.
+        // tonumber("10.5")는 10.5로 파싱되어 Balance 확인은 통과하지만, Redis DECRBY는
+        // 정수 문자열만 허용하므로 여기서 실제로 실패한다.
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10.5");
+
+        EntrySpendResult failed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-decrby-fail", 2);
+
+        assertThat(failed.code()).isEqualTo(EntrySpendResultCode.SYSTEM_ERROR);
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.spendGuard("req-decrby-fail"))).isFalse();
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.idem("req-decrby-fail"))).isFalse();
+
+        // Balance를 정상값으로 고치면, 같은 requestId로도 처음부터 다시 성공해야 한다.
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-decrby-fail", 2);
+
+        assertThat(retry.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(retry.balance()).isEqualTo(8L);
+    }
+
+    // idem이 없더라도 guard가 같은 요청의 재차감을 막아야 한다.
+    @Test
+    void idem_키가_유실돼도_guard가_DUPLICATE_REPLAY로_막고_잔액을_다시_깎지_않는다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-recovery", 2);
+        redisTemplate.delete(EntryRedisKeys.idem("req-guard-recovery"));
+
+        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-recovery", 2);
+
+        assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(retry.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
+        assertThat(retry.streamId()).isNull();
+        assertThat(retry.balance()).isNull();
+        // 잔액이 재차감되지 않아야 한다 (10 - 2 = 8 그대로 유지)
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("8");
+    }
+
+    // Guard만 남아 있으면 동일 요청은 재처리하지 않는다.
+    @Test
+    void idem_없이_guard만_있으면_DUPLICATE_REPLAY를_반환하고_잔액을_건드리지_않는다()
+            throws NoSuchAlgorithmException {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+        String fp = fingerprint(EVENT_ID, USER_ID, 2);
+        redisTemplate.opsForValue().set(
+                EntryRedisKeys.spendGuard("req-guard-stuck"),
+                "{\"fingerprint\":\"" + fp + "\"}"
+        );
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-stuck", 2);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
+        assertThat(result.streamId()).isNull();
+        assertThat(result.balance()).isNull();
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("10");
+    }
+
+    // 같은 requestId라도 요청 내용이 다르면 충돌로 처리한다.
+    @Test
+    void idem_없이_guard의_fingerprint가_다르면_IDEMPOTENCY_CONFLICT를_반환한다()
+            throws NoSuchAlgorithmException {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+        String differentFingerprint = fingerprint(EVENT_ID, USER_ID, 3);
+        redisTemplate.opsForValue().set(
+                EntryRedisKeys.spendGuard("req-guard-conflict"),
+                "{\"fingerprint\":\"" + differentFingerprint + "\"}"
+        );
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-conflict", 2);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.IDEMPOTENCY_CONFLICT);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("10");
+    }
+
+    // 동시에 같은 요청이 들어와도 차감과 Stream 발행은 한 번만 일어나야 한다.
     @Test
     void 동시에_같은_요청이_들어와도_차감과_XADD가_한_번만_일어난다() throws InterruptedException {
         openGate();

@@ -21,6 +21,8 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     Page<Event> findByDeletedAtIsNull(Pageable pageable);
 
+    boolean existsByEventIdAndDeletedAtIsNull(Long eventId);
+
     Optional<Event> findByRequestId(String requestId);
 
     /** 상태 전이를 직렬화해야 하는 명령 경로(승인·거절·마감 등) 전용 조회. */

@@ -82,6 +82,14 @@ Controller는 요청에서 호출자 `userId`를 추출해 Application/Service�
 - 업무 의미가 있는 오류는 해당 도메인 `*ErrorCode` enum에 둔다.
 - 각 API 문서는 그 API가 반환할 수 있는 오류 코드만 적는다.
 
+## Swagger UI 문서화
+
+- Swagger UI는 `/swagger-ui/index.html`, OpenAPI JSON은 `/v3/api-docs`에서 제공한다.
+- 외부 API의 정본은 [전체 API 인덱스](../api-index.md), 이 문서, 도메인별 API 문서다. Swagger UI는 이 계약을 보기 쉽게 표시하는 보조 문서이며 계약을 대체하지 않는다.
+- 문서화 대상 Controller 클래스에는 도메인 단위의 `@Tag(name, description)`을, 해당 외부 endpoint에는 동작을 요약하는 `@Operation(summary, description)`을 추가한다.
+- `summary`는 API가 수행하는 동작을 짧게 쓰고, `description`에는 권한, 멱등성, 비동기 처리, 페이지네이션처럼 호출자가 알아야 하는 계약만 적는다. DTO 필드·공통 응답 봉투·오류 코드를 중복해서 나열하지 않는다.
+- HTTP 상태별 `@ApiResponse`가 필요한 경우 프로젝트의 `kr.co.cking.common.response.ApiResponse`와 이름이 같으므로 `io.swagger.v3.oas.annotations.responses.ApiResponse`의 완전 수식명을 사용한다.
+
 ## 공통 API
 
 ### GET /api/users

@@ -2,6 +2,7 @@ package kr.co.cking.stream.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,14 +13,23 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Range;
+import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.PendingMessages;
+import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.event.repository.EventEntryRepository;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.domain.DeadStreamType;
+import kr.co.cking.stream.presentation.SpendStreamListener;
 import kr.co.cking.stream.repository.DeadStreamMessageRepository;
+import kr.co.cking.ticket.application.TicketSpendLedgerService;
+import kr.co.cking.ticket.application.dto.SpendCommand;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 완료조건(Codex 리뷰 반영, 이슈 #62 확장): PEL에 남은 SPEND 메시지를 XCLAIM으로
@@ -35,12 +45,15 @@ import kr.co.cking.stream.repository.DeadStreamMessageRepository;
         "cking.entry.stream-key=stream:ticket-deducted:pel-test",
         "cking.entry.history-consumer-group=cg:ticket-history:pel-test",
         "cking.entry.spend-pel-min-idle-ms=100",
-        "cking.entry.spend-pel-max-retry=1"
+        "cking.entry.spend-pel-max-retry=1",
+        "cking.scheduling.enabled=false"
 })
 class SpendStreamPelRecoverySchedulerIntegrationTest {
 
     private static final String STREAM_KEY = "stream:ticket-deducted:pel-test";
     private static final String CONSUMER_GROUP = "cg:ticket-history:pel-test";
+    private static final String REDELIVERY_STREAM_KEY = "stream:ticket-deducted:pel-redelivery-test";
+    private static final String REDELIVERY_CONSUMER_GROUP = "cg:ticket-history:pel-redelivery-test";
     private static final long AWAIT_TIMEOUT_MILLIS = 8000L;
 
     private static final long OWNER_MEMBER_ID = 94001L;
@@ -52,6 +65,12 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
 
     @Autowired
     private SpendStreamPelRecoveryScheduler scheduler;
+
+    @Autowired
+    private TicketSpendLedgerService ticketSpendLedgerService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     private DeadStreamMessageRepository deadStreamMessageRepository;
@@ -94,6 +113,7 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
     }
 
     private void cleanUp() {
+        redisTemplate.delete(REDELIVERY_STREAM_KEY);
         deadStreamMessageRepository.deleteAll();
         jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM event_entry WHERE member_id = ?", MEMBER_ID);
@@ -133,6 +153,50 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
         awaitEntry(requestId);
         PendingMessages pending = redisTemplate.opsForStream()
                 .pending(STREAM_KEY, CONSUMER_GROUP, Range.unbounded(), 10);
+        assertThat(pending.isEmpty()).isTrue();
+    }
+
+    @Test
+    void DB_반영_후_ACK되지_않은_메시지를_재처리해도_중복_차감되지_않는다() throws InterruptedException {
+        String requestId = UUID.randomUUID().toString();
+        Map<String, String> fields = spendFields(requestId);
+        jdbcTemplate.update(
+                "INSERT INTO user_ticket_balance (member_id, creator_id, balance, updated_at) VALUES (?, ?, ?, NOW(6))",
+                MEMBER_ID, CREATOR_ID, 100L);
+
+        redisTemplate.opsForStream().add(REDELIVERY_STREAM_KEY, fields);
+        redisTemplate.opsForStream().createGroup(
+                REDELIVERY_STREAM_KEY, ReadOffset.from("0"), REDELIVERY_CONSUMER_GROUP);
+        List<MapRecord<String, Object, Object>> delivered = redisTemplate.opsForStream().read(
+                Consumer.from(REDELIVERY_CONSUMER_GROUP, "spend-before-ack-failure"),
+                StreamReadOptions.empty().count(1),
+                StreamOffset.create(REDELIVERY_STREAM_KEY, ReadOffset.lastConsumed())
+        );
+        assertThat(delivered).hasSize(1);
+
+        ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
+
+        SpendStreamListener redeliveryListener = new SpendStreamListener(
+                ticketSpendLedgerService, redisTemplate, REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
+        SpendStreamPelRecoveryScheduler redeliveryScheduler = new SpendStreamPelRecoveryScheduler(
+                redisTemplate, redeliveryListener, deadStreamMessageRepository, objectMapper,
+                REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP, 100L, 5L);
+        Thread.sleep(150);
+        redeliveryScheduler.recoverPending();
+
+        Integer entryCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM event_entry WHERE request_id = ?", Integer.class, requestId);
+        Integer ledgerCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM ticket_ledger WHERE request_id = ?", Integer.class, requestId);
+        Long balance = jdbcTemplate.queryForObject(
+                "SELECT balance FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?",
+                Long.class, MEMBER_ID, CREATOR_ID);
+        PendingMessages pending = redisTemplate.opsForStream()
+                .pending(REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP, Range.unbounded(), 10);
+
+        assertThat(entryCount).isEqualTo(1);
+        assertThat(ledgerCount).isEqualTo(1);
+        assertThat(balance).isEqualTo(95L);
         assertThat(pending.isEmpty()).isTrue();
     }
 

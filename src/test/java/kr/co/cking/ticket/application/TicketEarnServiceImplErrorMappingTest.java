@@ -12,6 +12,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,7 +38,7 @@ class TicketEarnServiceImplErrorMappingTest {
         when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
                 .thenThrow(new QueryTimeoutException("Redis 응답 타임아웃"));
         TicketEarnServiceImpl service =
-                new TicketEarnServiceImpl(redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test");
+                new TicketEarnServiceImpl(redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper());
 
         EarnResult result = service.earn(command());
 
@@ -50,7 +51,7 @@ class TicketEarnServiceImplErrorMappingTest {
         when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
                 .thenThrow(new RedisSystemException("Redis 연결 실패", new RuntimeException("connection refused")));
         TicketEarnServiceImpl service =
-                new TicketEarnServiceImpl(redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test");
+                new TicketEarnServiceImpl(redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper());
 
         EarnResult result = service.earn(command());
 

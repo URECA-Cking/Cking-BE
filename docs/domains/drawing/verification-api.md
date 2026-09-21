@@ -96,7 +96,7 @@ Winner와 Rank를 결정적으로 만든다. 독립 재실행은 새 Seed를 사
 
 ## 영속성
 
-`V6__extend_drawing_verification_history.sql`은 기존 무결성 Boolean에 다음 증거를 추가한다.
+`V7__extend_drawing_verification_history.sql`은 기존 무결성 Boolean에 다음 증거를 추가한다.
 
 - 검증 모드와 독립 재실행 Seed
 - 기대/실제 당첨 인원 수

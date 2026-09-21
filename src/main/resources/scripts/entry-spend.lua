@@ -1,18 +1,20 @@
 -- 응모 요청을 하나의 Lua 스크립트에서 원자적으로 처리한다.
--- 처리 순서: ticketCount 검증 → 멱등성 확인 → Gate 확인 → 시각 확인 → 잔액 확인
--- → 차감 → Stream 발행 → 멱등 결과 저장
--- 이미 성공한 동일 요청은 마감 이후에도 DUPLICATE_REPLAY로 기존 결과를 재현한다.
+-- 처리 순서: ticketCount 검증 → 멱등성 확인 → guard 확인 → Gate 확인 → 시각 확인
+-- → 잔액 확인 → guard 선점 → 차감 → Stream 발행 → 멱등 결과 저장
+-- idem이 남아 있는 동일 요청은 마감 이후에도 DUPLICATE_REPLAY로 처리한다.
+-- idem 저장 실패 시 Guard는 이벤트 진행 중 재차감만 막고, 종료 뒤에는 Gate/시각 검증을 따른다.
 -- 멱등키가 없는 신규 요청만 Gate·시각·잔액을 검증한다.
 --
 -- KEYS[1] = event:status:{eventId}                   String(OPEN/CLOSED)
 -- KEYS[2] = event:endat:{eventId}                     String(epoch millis, 불변)
 -- KEYS[3] = ticket:balance:{creatorId}:{userId}      String(integer)
 -- KEYS[4] = idem:{requestId}                         String(JSON: {fingerprint, result})
+-- KEYS[5] = entry:spend-guard:{requestId}            String(JSON: {fingerprint})
 --
 -- ARGV[1] = ticketCount
 -- ARGV[2] = fingerprint      (EntrySpendService가 eventId+userId+ticketCount로 계산)
 -- ARGV[3] = streamKey        (예: stream:ticket-deducted)
--- ARGV[4] = idemTtlSeconds   (FR-P2-033: 1시간 = 3600)
+-- ARGV[4] = idemTtlSeconds   (FR-P2-033: 1시간 = 3600. idem 전용 - guard는 endAt 기준)
 -- ARGV[5] = eventId
 -- ARGV[6] = userId
 -- ARGV[7] = creatorId
@@ -23,8 +25,8 @@
 --   INVALID_TICKET_COUNT   -- ticketCount가 1 미만이거나 100 초과 (방어용, 주 검증은 상위 레이어. §5.3 방어용 최대값 100)
 --   EVENT_NOT_OPEN         -- status != OPEN
 --   EVENT_CLOSED           -- now >= endAt
---   IDEMPOTENCY_CONFLICT   -- 동일 requestId, 다른 fingerprint
---   DUPLICATE_REPLAY       -- 동일 requestId, 동일 fingerprint -> 기존 결과 재반환
+--   IDEMPOTENCY_CONFLICT   -- 동일 requestId, 다른 fingerprint (idem 또는 guard 기준)
+--   DUPLICATE_REPLAY       -- 동일 requestId, 동일 fingerprint. guard 경로는 code만 반환
 --   BALANCE_NOT_LOADED     -- Balance 키 자체가 없음(없음=0 취급 금지)
 --   INSUFFICIENT_BALANCE   -- 보유 응모권 < ticketCount
 --   SUCCESS                -- { 'SUCCESS', streamId, 차감후잔액 }
@@ -35,6 +37,7 @@ local statusKey  = KEYS[1]
 local endAtKey   = KEYS[2]
 local balanceKey = KEYS[3]
 local idemKey    = KEYS[4]
+local guardKey   = KEYS[5]
 
 local ticketCount = tonumber(ARGV[1])
 local fingerprint = ARGV[2]
@@ -63,7 +66,18 @@ if stored then
     end
 end
 
--- 2) Gate 확인 (여기부터는 멱등키가 없는 신규 요청만 도달한다)
+-- 1-1) idem이 없을 때 guard로 동일 요청 여부를 확인한다.
+local storedGuard = redis.call('GET', guardKey)
+if storedGuard then
+    local parsedGuard = cjson.decode(storedGuard)
+    if parsedGuard.fingerprint == fingerprint then
+        return { 'DUPLICATE_REPLAY' }
+    else
+        return { 'IDEMPOTENCY_CONFLICT' }
+    end
+end
+
+-- 2) Gate 확인 (여기부터는 idem·guard 모두 없는 신규 요청만 도달한다)
 local status = redis.call('GET', statusKey)
 local endAt  = redis.call('GET', endAtKey)
 if status == false or endAt == false then
@@ -89,10 +103,24 @@ if tonumber(balance) < ticketCount then
     return { 'INSUFFICIENT_BALANCE', balance }
 end
 
--- 5) 차감 + Stream 발행 + 멱등 결과 저장
--- Redis Lua는 실행 중 오류가 나도 이전 쓰기를 자동 롤백하지 않는다. XADD 실패는
--- pcall로 잡아 INCRBY 보상 후 오류로 반환하며, Java가 SYSTEM_ERROR로 매핑한다.
-local newBalance = redis.call('DECRBY', balanceKey, ticketCount)
+-- 5) 차감 전에 guard를 한 번만 선점한다.
+local guardAcquired = redis.call('SET', guardKey,
+    cjson.encode({ fingerprint = fingerprint }), 'NX')
+if not guardAcquired then
+    return redis.error_reply('GUARD_ACQUIRE_FAILED: unexpected guard conflict for requestId=' .. requestId)
+end
+redis.call('PEXPIREAT', guardKey, tonumber(endAt))
+
+-- 6) 차감 + Stream 발행 + 멱등 결과 저장. Redis Lua는 오류가 나도 이전 쓰기를 자동
+-- 롤백하지 않는다. DECRBY는 Balance가 손상돼(예: "1.5") tonumber() 검증은 통과해도
+-- Redis 단에서 실패할 수 있다 - pcall로 잡아 guard를 해제하고 반환한다(차감이 없었
+-- 으므로 잔액 보상은 불필요). XADD 실패는 INCRBY 보상 후 guard 해제. 둘 다 Java에서
+-- SYSTEM_ERROR로 매핑된다.
+local newBalance = redis.pcall('DECRBY', balanceKey, ticketCount)
+if type(newBalance) == 'table' and newBalance.err then
+    redis.call('DEL', guardKey)
+    return redis.error_reply('DECRBY_FAILED: ' .. newBalance.err)
+end
 
 local streamId = redis.pcall('XADD', streamKey, '*',
     'eventId', eventId,
@@ -103,10 +131,13 @@ local streamId = redis.pcall('XADD', streamKey, '*',
 
 if type(streamId) == 'table' and streamId.err then
     redis.call('INCRBY', balanceKey, ticketCount)
+    redis.call('DEL', guardKey)
     return redis.error_reply('XADD_FAILED: ' .. streamId.err)
 end
 
 local result = { 'SUCCESS', streamId, tostring(newBalance) }
-redis.call('SET', idemKey, cjson.encode({ fingerprint = fingerprint, result = result }), 'EX', idemTtl)
+
+-- guard가 재차감을 막으므로 idem 저장 실패는 처리 결과에 영향을 주지 않는다.
+redis.pcall('SET', idemKey, cjson.encode({ fingerprint = fingerprint, result = result }), 'EX', idemTtl)
 
 return result

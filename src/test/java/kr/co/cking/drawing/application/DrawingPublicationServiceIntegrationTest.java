@@ -38,7 +38,10 @@ class DrawingPublicationServiceIntegrationTest {
     private static final long EVENT_ID = 93001L;
     private static final long SNAPSHOT_ID = 94001L;
     private static final long SEED_ID = 95001L;
+    private static final long REDRAW_SEED_ID = 95002L;
     private static final long DRAWING_ID = 96001L;
+    private static final long REDRAW_REQUEST_ID = 97001L;
+    private static final long REDRAW_DRAWING_ID = 96002L;
 
     @Autowired
     private DrawingPublicationService service;
@@ -67,6 +70,9 @@ class DrawingPublicationServiceIntegrationTest {
         jdbcTemplate.update("""
                 INSERT INTO draw_seed (id, seed_value) VALUES (?, ?)
                 """, SEED_ID, "seed".getBytes());
+        jdbcTemplate.update("""
+                INSERT INTO draw_seed (id, seed_value) VALUES (?, ?)
+                """, REDRAW_SEED_ID, "redraw-seed".getBytes());
     }
 
     @AfterEach
@@ -160,6 +166,25 @@ class DrawingPublicationServiceIntegrationTest {
                 .isEqualTo("PUBLISHED");
     }
 
+    @Test
+    void REDRAW_공개는_Event를_PUBLISHED로_유지하고_멱등하게_성공한다() {
+        insertEvent("PUBLISHED");
+        insertSnapshot();
+        insertInitialDrawingForRedraw();
+        insertRedrawRequest();
+        insertRedrawDrawing(DrawingVisibility.PRIVATE);
+
+        DrawingPublicationResult first = service.publish(REDRAW_DRAWING_ID, ADMIN_ID);
+        DrawingPublicationResult replay = service.publish(REDRAW_DRAWING_ID, ADMIN_ID);
+
+        assertThat(first.outcome()).isEqualTo(PublicationOutcome.PUBLISHED);
+        assertThat(replay.outcome()).isEqualTo(PublicationOutcome.ALREADY_PUBLISHED);
+        assertThat(drawingRepository.findById(REDRAW_DRAWING_ID).orElseThrow().getVisibility())
+                .isEqualTo(DrawingVisibility.PUBLIC);
+        assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name())
+                .isEqualTo("PUBLISHED");
+    }
+
     private void insertEvent(String status) {
         jdbcTemplate.update("""
                 INSERT INTO event (
@@ -204,11 +229,52 @@ class DrawingPublicationServiceIntegrationTest {
         );
     }
 
+    private void insertInitialDrawingForRedraw() {
+        jdbcTemplate.update("""
+                INSERT INTO drawing (
+                    id, event_id, draw_no, draw_type, snapshot_id, seed_id, draw_method,
+                    algorithm_version, winner_count, status, visibility, requested_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                DRAWING_ID, EVENT_ID, 0, "INITIAL", SNAPSHOT_ID, SEED_ID, "WEIGHTED",
+                "WEIGHTED_V1", 2, "COMPLETED", DrawingVisibility.PUBLIC.name(), ADMIN_ID
+        );
+    }
+
+    private void insertRedrawRequest() {
+        jdbcTemplate.update("""
+                INSERT INTO redraw_request (
+                    id, event_id, original_drawing_id, vacancy_count, idempotency_key, status,
+                    execution_status, requested_by, requested_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                REDRAW_REQUEST_ID, EVENT_ID, DRAWING_ID, 1, "redraw-publication-test",
+                "APPROVED", "EXECUTED", ADMIN_ID, LocalDateTime.of(2026, 9, 16, 0, 0)
+        );
+    }
+
+    private void insertRedrawDrawing(DrawingVisibility visibility) {
+        jdbcTemplate.update("""
+                INSERT INTO drawing (
+                    id, event_id, draw_no, draw_type, original_drawing_id, redraw_request_id,
+                    snapshot_id, seed_id, draw_method, algorithm_version, winner_count, status,
+                    visibility, requested_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                REDRAW_DRAWING_ID, EVENT_ID, 1, "REDRAW", DRAWING_ID, REDRAW_REQUEST_ID,
+                SNAPSHOT_ID, REDRAW_SEED_ID, "WEIGHTED", "WEIGHTED_V1", 1, "COMPLETED",
+                visibility.name(), ADMIN_ID
+        );
+    }
+
     private void cleanUp() {
+        jdbcTemplate.update("DELETE FROM drawing WHERE id = ?", REDRAW_DRAWING_ID);
+        jdbcTemplate.update("DELETE FROM redraw_request WHERE id = ?", REDRAW_REQUEST_ID);
         jdbcTemplate.update("DELETE FROM drawing WHERE id = ?", DRAWING_ID);
         jdbcTemplate.update("DELETE FROM draw_snapshot WHERE id = ?", SNAPSHOT_ID);
         jdbcTemplate.update("DELETE FROM event WHERE event_id = ?", EVENT_ID);
         jdbcTemplate.update("DELETE FROM draw_seed WHERE id = ?", SEED_ID);
+        jdbcTemplate.update("DELETE FROM draw_seed WHERE id = ?", REDRAW_SEED_ID);
         jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", CREATOR_ID);
         jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?)", ADMIN_ID, CREATOR_OWNER_ID);
     }

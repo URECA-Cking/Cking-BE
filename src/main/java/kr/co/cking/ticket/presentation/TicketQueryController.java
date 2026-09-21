@@ -2,6 +2,8 @@ package kr.co.cking.ticket.presentation;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.ticket.application.TicketQueryService;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
@@ -16,16 +18,26 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @Validated
+@Tag(name = "Ticket", description = "응모권 잔액 및 이력 조회 API")
 public class TicketQueryController {
 
     private final TicketQueryService ticketQueryService;
 
+    @Operation(
+            summary = "응모권 잔액 조회",
+            description = "크리에이터별 사용자의 현재 응모권 잔액을 조회합니다."
+    )
     @GetMapping("/api/creators/{creatorId}/tickets")
     public ApiResponse<TicketBalanceResponse> getBalance(@PathVariable Long creatorId,
                                                          @RequestParam Long userId) {
         return ApiResponse.success(ticketQueryService.getBalance(creatorId, userId));
     }
 
+    @Operation(
+            summary = "응모권 이력 조회",
+            description = "크리에이터별 사용자의 응모권 적립·사용 이력을 cursor 기반으로 조회합니다. "
+                    + "size의 기본값은 20이며 1~100 범위입니다."
+    )
     @GetMapping("/api/creators/{creatorId}/tickets/history")
     public ApiResponse<TicketLedgerPage> getHistory(@PathVariable Long creatorId,
                                                     @RequestParam Long userId,
