@@ -145,7 +145,27 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
-        // PROCESSING은 이전 처리의 결과가 확정되지 않은 상태이므로 신규 지급을 막는다.
+        // status == PROCESSING: COMPLETED 확정 전에 죽었을 수 있다. Guard 값이
+        // 이 requestId+fingerprint로 남아있다면(실패 경로는 전부 Guard를 지우므로)
+        // Balance/Stream까지는 실제로 성사된 것이니 ALREADY_PROCESSED로 복구한다
+        // (Lua의 earn() 쪽 self-heal과 동일한 근거, 이슈 #148).
+        String guardValue;
+
+        try {
+            String periodKeyGuardFormat = toGuardPeriodKey(command.periodKey());
+            guardValue = redisTemplate.opsForValue().get(TicketRedisKeys.earnGuard(
+                    command.userId(), command.missionType(), command.creatorId(), periodKeyGuardFormat));
+        } catch (DataAccessException e) {
+            log.error("EARN replay 조회 중 Guard 확인에 실패했습니다. requestId={}, userId={}",
+                    command.requestId(), command.userId(), e);
+            return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE);
+        }
+
+        if ((requestId + ":" + fingerprint).equals(guardValue)) {
+            return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
+        }
+
+        // Guard가 없거나 다른 값이면 실제 성사 여부를 알 수 없으니 신규 지급을 막는다.
         return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE);
     }
 

@@ -404,6 +404,108 @@ class TicketEarnServiceImplTest {
         assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
     }
 
+    // COMPLETED 확정(SET)이 실패해 idem이 PROCESSING인 채로 남았어도, Guard 값이
+    // 이 requestId+fingerprint와 일치하면 실제로는 Guard 선점+Balance+Stream까지
+    // 성사된 것이므로 findExisting()이 ALREADY_PROCESSED로 복구해야 한다(이슈 #148).
+    @Test
+    void findExisting은_PROCESSING이어도_Guard가_일치하면_ALREADY_PROCESSED를_반환한다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String fp = fingerprint(command);
+        redisTemplate.opsForValue().set(TicketRedisKeys.balance(CREATOR_ID, USER_ID), "1");
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT),
+                command.requestId() + ":" + fp
+        );
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\"}"
+        );
+
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+    }
+
+    // earn() 쪽도 같은 근거로 복구해야 하며, 복구는 새 지급이 아니므로 잔액이
+    // 다시 증가해서는 안 된다.
+    @Test
+    void earn은_PROCESSING이어도_Guard가_일치하면_ALREADY_PROCESSED로_복구하고_잔액을_재증가하지_않는다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String fp = fingerprint(command);
+        redisTemplate.opsForValue().set(TicketRedisKeys.balance(CREATOR_ID, USER_ID), "1");
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT),
+                command.requestId() + ":" + fp
+        );
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\"}"
+        );
+
+        EarnResult earnResult = service.earn(command);
+
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    // earn()의 Guard 폴백 복구는 idem을 COMPLETED로 self-heal해야 한다 - 그래야
+    // 다음 재시도부터는 Guard TTL이 만료돼도 계속 ALREADY_PROCESSED를 재현할 수 있다.
+    @Test
+    void earn의_Guard_폴백_복구는_idem을_COMPLETED로_self_heal한다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String fp = fingerprint(command);
+        redisTemplate.opsForValue().set(TicketRedisKeys.balance(CREATOR_ID, USER_ID), "1");
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT),
+                command.requestId() + ":" + fp
+        );
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\"}"
+        );
+
+        service.earn(command);
+        // Guard가 사라져도(TTL 만료 흉내) self-heal된 idem만으로 계속 재현돼야 한다.
+        redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
+
+        EarnResult retried = service.earn(command);
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(retried.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+    }
+
+    // Guard 값이 다른 요청(다른 requestId 또는 다른 fingerprint)이면 이 요청이
+    // 실제로 성사됐는지 알 수 없으니 여전히 신규 지급을 막아야 한다.
+    @Test
+    void idem이_PROCESSING이고_Guard도_다른_요청_값이면_여전히_신규_지급으로_진행하지_않는다()
+            throws NoSuchAlgorithmException {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        String fp = fingerprint(command);
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT),
+                UUID.randomUUID() + ":" + fp
+        );
+        redisTemplate.opsForValue().set(
+                TicketRedisKeys.idemMission(command.requestId().toString()),
+                "{\"fingerprint\":\"" + fp + "\",\"status\":\"PROCESSING\"}"
+        );
+
+        EarnResult earnResult = service.earn(command);
+        EarnLookupResult lookupResult = service.findExisting(command);
+
+        assertThat(earnResult.code()).isEqualTo(EarnResultCode.EARN_STATUS_UNKNOWN);
+        assertThat(lookupResult.status()).isEqualTo(EarnLookupStatus.UNAVAILABLE);
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+    }
+
     // status 없는 이전 형식 record도 완료된 성공으로 호환한다.
     @Test
     void status_필드가_없는_legacy_idem_레코드도_ALREADY_PROCESSED를_반환한다()

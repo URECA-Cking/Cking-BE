@@ -79,8 +79,21 @@ if stored then
         result[1] = 'ALREADY_PROCESSED'
         return result
     end
-    -- status == 'PROCESSING': 이전 시도가 Balance/Stream까지 처리했을 수도 있는
-    -- 상태라 신규 지급을 진행하면 안 된다. 같은 requestId 재시도를 유도한다.
+    -- status == 'PROCESSING': 이전 시도가 COMPLETED 확정 전에 죽었을 수 있다.
+    -- Guard 값이 이 requestId+fingerprint로 남아있다면(실패 경로는 전부 Guard를
+    -- 지우므로) Balance/Stream까지는 실제로 성사된 것이다 - ALREADY_PROCESSED로
+    -- 복구하고, 다음 재시도부터는 다시 확인할 필요 없게 idem도 COMPLETED로
+    -- self-heal한다(이슈 #148).
+    local guardValue = requestId .. ':' .. fingerprint
+    if redis.call('GET', guardKey) == guardValue then
+        local result = { 'ALREADY_PROCESSED' }
+        redis.pcall('SET', idemKey,
+            cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result }),
+            'EX', idemTtl)
+        return result
+    end
+    -- Guard가 없거나 다른 값이면 실제 성사 여부를 알 수 없으니 신규 지급을
+    -- 막고 같은 requestId 재시도만 유도한다.
     return { 'EARN_STATUS_UNKNOWN' }
 end
 
