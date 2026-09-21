@@ -9,12 +9,12 @@ Java 연동: `kr.co.cking.ticket.application` (`TicketEarnService`/`TicketEarnSe
 
 | 키 | 타입 | TTL | 용도 |
 | --- | --- | --- | --- |
-| `idem:mission:{requestId}` | STRING(JSON) | 25시간 | requestId 기준 결과 재현. `{fingerprint, status, result?}` |
+| `idem:mission:{requestId}` | STRING(JSON) | 25시간 | requestId 기준 결과 재현. `{fingerprint, status, guardKey, result?}` |
 | `mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyyMMdd}` | STRING | 25시간 | 하루 1회 중복 적립 방지(FR-P2-006). 값은 `requestId:fingerprint` |
 
 두 키 모두 25시간으로 통일했다(issue #125) — 서로 다른 TTL로 두면 한쪽만 만료된 비대칭 상태가 생겨 처리를 복잡하게 만든다.
 
-Guard는 `requestId:fingerprint`만 저장하며, 원본 요청 payload나 `periodKey`를 별도 필드로 보존하지 않는다. idem도 신규 형식에서는 `fingerprint`, `status`, 완료 시 `result`만 저장한다. `periodKey`는 일일 Guard 키와 Stream의 `MissionCompletion` 저장값에만 사용한다.
+Guard는 `requestId:fingerprint`만 저장한다. 신규 idem은 `fingerprint`, `status`, `guardKey`를 저장하고 완료 시 `result`를 추가한다. `guardKey`는 PROCESSING 예약 시 실제로 SET NX한 Guard 키 문자열이며, `COMPLETED`로 확정된 뒤에도 지우지 않고 그대로 남긴다 — 재조회 로직은 안 쓰지만 어떤 Guard로 확정됐는지 추적할 수 있다. `periodKey` 자체는 저장하지 않는다.
 
 ## TTL 만료 후 재요청 정책
 
@@ -24,10 +24,11 @@ idem과 일일 Guard는 모두 25시간 후 만료된다. 두 기록이 모두 �
 
 ```
 idem:mission:{requestId} 조회
-├─ 없음                              → PROCESSING 레코드 SET NX (fingerprint만 저장)
+├─ 없음                              → PROCESSING 레코드 SET NX (fingerprint, guardKey 저장)
 ├─ 있고 fingerprint 다름              → REQUEST_ID_CONFLICT
 ├─ 있고 fingerprint 같음 + COMPLETED → ALREADY_PROCESSED (저장된 result 재현)
-├─ 있고 fingerprint 같음 + PROCESSING → EARN_STATUS_UNKNOWN
+├─ 있고 fingerprint 같음 + PROCESSING, 저장된 Guard가 이 requestId:fingerprint → ALREADY_PROCESSED (self-heal, issue #148)
+├─ 있고 fingerprint 같음 + PROCESSING, Guard 불일치/부재               → EARN_STATUS_UNKNOWN
 └─ 있고 status 필드 자체가 없음        → ALREADY_PROCESSED (legacy 호환, 아래 참고)
 
 (신규 요청만) 일일 Guard 검사·선점 → INCRBY → XADD → idem을 COMPLETED로 확정
@@ -37,18 +38,22 @@ idem:mission:{requestId} 조회
 
 `periodKey`는 클라이언트 입력이 아니라 System1이 서버 UTC 기준으로 매 호출마다 새로 계산하는 파생값이다. fingerprint에 포함시키면 같은 `requestId`가 자정을 넘겨 재시도될 때 서버가 다시 계산한 오늘 날짜 때문에 fingerprint가 최초 요청과 달라져 `REQUEST_ID_CONFLICT`로 오판된다. 그래서 fingerprint는 `userId, creatorId, missionType, missionId, missionKey, amount`만으로 계산하고, `periodKey`는 fingerprint가 아니라 일일 Guard 키와 `MissionCompletion` 저장값에만 쓴다.
 
-Guard(2단계)는 여전히 이번 호출의 periodKey로 주소 지정된다. **이게 안전하려면 idem이 실제로 존재해야 한다** — idem이 있으면 동일 requestId 재시도는 항상 1단계에서 끝나 Guard까지 도달하지 않으므로 문제가 없다. 하지만 idem이 애초에 없는 상태(아래 "Guard-only" 참고)에서 자정을 넘겨 재시도가 오면, Java가 그 호출 시점의(오늘) periodKey로 Guard 키를 새로 구성하기 때문에 원래 요청이 쓰던(어제) Guard 키와는 **완전히 다른 키**가 되어 원래 기록을 전혀 보지 못한다. 이 경우는 새 요청처럼 처리되어 이중 지급으로 이어질 수 있다 — 아래 "Legacy idem 호환과 배포 시 유의사항"에서 이 시나리오와 필요한 배포 전제조건을 다룬다.
+신규 요청의 Guard는 이번 호출의 periodKey로 주소 지정한다. `COMPLETED` idem 재시도는 Guard를 보지 않고, `PROCESSING` idem 재시도는 저장된 `guardKey`로 원래 Guard를 확인한다. 하지만 idem이 애초에 없는 Guard-only 상태(아래 참고)에서 자정을 넘겨 재시도하면, 원래 Guard 키를 찾을 방법이 없어 새 요청처럼 처리되어 이중 지급으로 이어질 수 있다.
 
-**검토했지만 채택하지 않은 대안: 최초 periodKey를 replay 레코드에 저장하고 재시도 시 재사용.** 이 방식은 Guard-only 문제를 해결하지 못한다 - Guard-only 상태는 정의상 idem 자체가 없어서(구버전에서 idem 저장이 실패했기 때문에) 애초에 복원할 최초 periodKey가 없다. 설령 idem에 periodKey를 저장해도, Java가 `earn()` Lua를 호출하기 *전에* Guard 키(`KEYS[]`)를 이미 확정해버리는 현재 구조상 그 값을 이번 호출의 Guard 키 계산에 반영할 방법이 없다(Java가 매 호출 전에 idem을 먼저 읽는 사전 조회를 추가해야 하는데, 이는 앞서 §자정 경계 절에서 채택하지 않기로 한 왕복·TOCTOU 비용을 다시 끌어들인다). 그래서 이 대안은 idem이 정상적으로 존재하는 케이스에는 아무 이득이 없고(이미 1단계에서 끝남), idem이 없는 케이스(Guard-only)는 애초에 못 고친다.
+**채택하지 않은 대안: 최초 periodKey 자체를 replay 레코드에 저장.** PROCESSING 복구에는 periodKey보다 실제 Redis 키인 `guardKey`만 저장하면 충분하다. Guard-only 상태는 idem이 없으므로 어느 값을 저장해도 해결되지 않는다.
 
 ## PROCESSING → COMPLETED 2단계와 실패 시 정리
 
 idem은 실제 지급 전에 `PROCESSING`으로 먼저 선점되고, `INCRBY`+`XADD` 성공 후 `COMPLETED`로 확정된다. 실패 시점에 따라 처리가 다르다:
 
 - **Guard 선점 실패, `INCRBY` 실패, `XADD` 실패** — 아직 아무것도 반영되지 않았거나(Guard 선점 실패, INCRBY 실패) 보상까지 끝난 경우(XADD 실패 후 Balance 원복)라 idem·Guard를 모두 정리하고 재시도를 처음부터 받는다. Guard 선점은 `redis.pcall`로 감싸 진짜 Redis 오류(OOM 등)에도 idem PROCESSING이 25시간 잠기지 않도록 한다.
-- **`COMPLETED` 확정 자체가 실패** — Balance/Stream은 이미 반영된 뒤라 되돌릴 수 없다. idem은 `PROCESSING`인 채로 남고, 같은 requestId 재시도는 `EARN_STATUS_UNKNOWN`으로 막힌다(신규 지급 절대 금지). 그 요청의 실제 성사 여부 복구는 이 스크립트 범위 밖이며, 별도 운영 절차가 필요하다.
+- **`COMPLETED` 확정 자체가 실패** — Balance/Stream은 이미 반영된 뒤라 되돌릴 수 없다. PROCESSING idem에 남긴 원래 `guardKey`에서 `requestId:fingerprint`를 확인해 `ALREADY_PROCESSED`로 복구하고, idem을 `COMPLETED`로 self-heal한다(issue #148). Guard가 없거나 다른 값이면 `EARN_STATUS_UNKNOWN`/`UNAVAILABLE`로 신규 지급을 막는다.
 
 `EARN_STATUS_UNKNOWN`은 이 PROCESSING 분기에서 Lua가 **일반 반환값**으로 직접 내보낸다(`redis.error_reply`가 아님). 기존에는 `TicketEarnServiceImpl`이 `QueryTimeoutException`을 잡았을 때만 매핑하던 코드인데, Lua가 정상 실행 중 판단해서 반환하는 경우가 추가된 것뿐이며 `EarnResultCode` enum에는 새 값을 추가하지 않는다.
+
+Guard 자체가 idem보다 먼저 만료되는 경우는 없다 — 같은 `EX` 값(25h)으로 idem을 먼저 SET하고 그 다음에 Guard를 SET하므로, idem이 살아있는 동안 Guard가 이미 만료돼 있을 수 없다. "PROCESSING SET 직후 ~ Guard SET 사이에 죽는 경우"도 Lua 스크립트 실행 자체가 원자적이라(다른 클라이언트가 그 사이 상태를 관측할 수 없음) 이 코드베이스가 전제하는 실행 모델에서는 나오지 않는다. 즉 idem이 `PROCESSING`으로 관측됐다면 Guard도 반드시 존재하며, Guard 값이 이 requestId:fingerprint와 다르다는 것은 다른 요청이 그 사이 같은 Guard를 선점했다는 뜻이지 "복구 불가능한 잔여 범위"가 아니다.
+
+복구 경로가 `{'ALREADY_PROCESSED'}` 코드만 반환하고 원래 `streamId`·적립후잔액은 재현하지 못한다는 점은 남아있는 한계다 — Guard 값에는 `requestId:fingerprint`만 있어 그 두 값을 복원할 방법이 없다. `EarnResult`가 지금은 `EarnResultCode`만 담는 bare record라 문제되지 않지만, 이후 `EarnResult`가 streamId·잔액을 노출하도록 확장되면 이 self-heal 경로부터 재검토해야 한다.
 
 ## Legacy idem 호환과 배포 시 유의사항 (issue #125)
 
@@ -85,7 +90,7 @@ idem은 실제 지급 전에 `PROCESSING`으로 먼저 선점되고, `INCRBY`+`X
 | `ALREADY_PROCESSED` | 동일 requestId·동일 fingerprint 재시도(또는 legacy 레코드). 기존 성공 결과 재반환 |
 | `REQUEST_ID_CONFLICT` | 동일 requestId·다른 fingerprint (idem 또는 Guard 기준) |
 | `DUPLICATE_MISSION` | 다른 requestId로 같은 미션(같은 날) 재요청 |
-| `EARN_STATUS_UNKNOWN` | idem이 PROCESSING(이전 시도 미확정) — Lua가 직접 반환. Redis 타임아웃 등 Java 예외 매핑 시에도 동일 코드 사용 |
+| `EARN_STATUS_UNKNOWN` | idem이 PROCESSING이고 Guard로도 성사 여부를 확인 못함 — Lua가 직접 반환. Redis 타임아웃 등 Java 예외 매핑 시에도 동일 코드 사용. (Guard가 이 requestId:fingerprint와 일치하면 `ALREADY_PROCESSED`로 복구되므로 이 코드는 안 나온다, issue #148) |
 | `EARN_PROCESSING_FAILED` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
 
 ## `findExisting()` — read-only 조회 Contract (issue #125)
@@ -97,17 +102,20 @@ idem은 실제 지급 전에 `PROCESSING`으로 먼저 선점되고, `INCRBY`+`X
 | `ALREADY_PROCESSED` | 완료된 기존 요청(정상 COMPLETED 또는 legacy) |
 | `REQUEST_ID_CONFLICT` | 동일 requestId·다른 fingerprint |
 | `NOT_FOUND` | idem 기록 없음 |
-| `UNAVAILABLE` | Redis 조회 실패, 또는 idem이 PROCESSING(신규 지급 금지 판단은 같지만 원인이 다름) |
+| `UNAVAILABLE` | Redis 조회 실패, 또는 idem이 PROCESSING이고 Guard로도 성사 여부를 확인 못함(신규 지급 금지 판단은 같지만 원인이 다름) — Guard가 이 requestId:fingerprint와 일치하면 `ALREADY_PROCESSED`로 복구된다(issue #148) |
 
 조회와 실제 `earn()` 호출 사이의 경쟁 상태는 허용한다 — 최종 판정은 `earn()` Lua의 원자적 처리가 보장하므로 TOCTOU가 중복 지급으로 이어지지 않는다.
 
 ## 테스트
 
-파일: `src/test/java/kr/co/cking/ticket/application/TicketEarnServiceImplTest.java` (22개), `TicketEarnServiceImplErrorMappingTest.java` (2개)
+파일: `src/test/java/kr/co/cking/ticket/application/TicketEarnServiceImplTest.java` (28개), `TicketEarnServiceImplErrorMappingTest.java` (2개)
 
 - periodKey만 자정 경계로 달라진 재시도가 `earn()`에서는 `REQUEST_ID_CONFLICT`가 아니라 `ALREADY_PROCESSED`인지
 - **`findExisting()`도 periodKey만 다른 재시도에 `ALREADY_PROCESSED`를 반환하는지** — 이슈 #125가 실제로 고치는 지점(미션 active 검증 전 호출)은 `earn()`이 아니라 `findExisting()`이므로 별도로 직접 검증한다
 - periodKey와 amount가 함께 다르면 여전히 `REQUEST_ID_CONFLICT`인지
 - idem·Guard가 25시간 TTL로 함께 생성되는지
-- idem이 PROCESSING으로 남으면 `earn()`/`findExisting()` 모두 신규 지급으로 진행하지 않는지
+- idem이 PROCESSING이고 **Guard도 없으면** `earn()`/`findExisting()` 모두 신규 지급으로 진행하지 않는지
+- idem이 PROCESSING이어도 **저장된 Guard가 이 requestId:fingerprint와 일치하면** `earn()`/`findExisting()` 모두 `ALREADY_PROCESSED`로 복구하고, 자정 이후 재시도에도 원래 Guard를 조회하는지(issue #148)
+- idem이 PROCESSING이고 **Guard가 다른 요청의 값**이면(다른 requestId) 여전히 신규 지급을 막는지
+- **`earn()`이 PROCESSING 예약 시 실제로 사용한 Guard 키를 idem의 `guardKey` 필드에 기록하는지** — idem JSON을 직접 심어 읽기만 검증하는 다른 테스트들과 달리, 이 테스트는 정상 `earn()` 실행 결과를 직접 읽어 Lua의 저장 로직 자체를 검증한다
 - `status` 필드 없는 legacy 레코드가 fingerprint 불일치와 무관하게 `ALREADY_PROCESSED`로 재현되는지

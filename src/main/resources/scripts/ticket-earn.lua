@@ -28,11 +28,7 @@
 --                           (또는 idem 저장 실패 후 가드로 복구된 경우, code만)
 --   REQUEST_ID_CONFLICT -- 동일 requestId, 다른 fingerprint (idem 또는 가드 기준)
 --   DUPLICATE_MISSION   -- 다른 requestId, 이미 완료(또는 처리 중)된 미션(가드 값의 requestId 불일치)
---   EARN_STATUS_UNKNOWN -- 동일 requestId, 동일 fingerprint, idem이 PROCESSING
---                           (이전 시도가 Balance/Stream 처리 뒤 확정 전에 죽은 경우 - 신규
---                           지급 금지, 같은 requestId로만 재시도. 이 코드는 원래 Java가
---                           QueryTimeoutException에만 매핑하던 것인데, 이 분기에서는 Lua가
---                           직접 반환한다)
+--   EARN_STATUS_UNKNOWN -- idem이 PROCESSING이고 Guard로 성공을 확인하지 못함
 --   EARN_ACCEPTED       -- { 'EARN_ACCEPTED', streamId, 적립후잔액 }
 -- (EARN_PROCESSING_FAILED는 스크립트가 아니라 호출측 Java가 매핑한다)
 --
@@ -79,15 +75,23 @@ if stored then
         result[1] = 'ALREADY_PROCESSED'
         return result
     end
-    -- status == 'PROCESSING': 이전 시도가 Balance/Stream까지 처리했을 수도 있는
-    -- 상태라 신규 지급을 진행하면 안 된다. 같은 requestId 재시도를 유도한다.
+    -- PROCESSING은 저장된 Guard로 확인하고, 기존 레코드는 이번 Guard 키를 사용한다.
+    local originalGuardKey = parsed.guardKey or guardKey
+    local guardValue = requestId .. ':' .. fingerprint
+    if redis.call('GET', originalGuardKey) == guardValue then
+        local result = { 'ALREADY_PROCESSED' }
+        redis.pcall('SET', idemKey,
+            cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = originalGuardKey }),
+            'EX', idemTtl)
+        return result
+    end
+    -- Guard가 없거나 다르면 신규 지급을 막는다.
     return { 'EARN_STATUS_UNKNOWN' }
 end
 
--- 신규 요청: idem을 PROCESSING으로 선점한다. 바로 위에서 idem 부재를 확인했고
--- Lua는 단일 스레드로 원자 실행되므로 NX 없이도 안전하지만, 방어적으로 명시한다.
+-- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.
 local idemReserved = redis.call('SET', idemKey,
-    cjson.encode({ fingerprint = fingerprint, status = 'PROCESSING' }),
+    cjson.encode({ fingerprint = fingerprint, status = 'PROCESSING', guardKey = guardKey }),
     'NX', 'EX', idemTtl)
 if not idemReserved then
     return redis.error_reply('IDEM_RESERVE_FAILED: unexpected idem conflict for requestId=' .. requestId)
@@ -155,12 +159,9 @@ end
 
 local result = { 'EARN_ACCEPTED', streamId, tostring(newBalance) }
 
--- 4) idem을 COMPLETED로 확정한다. 이 SET이 실패하면(pcall로 무시) idem은
--- PROCESSING인 채로 남는다 - Balance/Stream은 이미 반영됐으므로 되돌릴 수 없고,
--- 재시도는 1단계에서 EARN_STATUS_UNKNOWN으로 안전하게 막힌다(신규 지급 방지가
--- 최우선). 그 요청의 실제 성사 여부 복구는 이 스크립트 범위 밖이다.
+-- COMPLETED에도 guardKey를 보존해 원래 Guard를 추적한다.
 redis.pcall('SET', idemKey,
-    cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result }),
+    cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = guardKey }),
     'EX', idemTtl)
 
 return result
