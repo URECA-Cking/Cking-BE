@@ -145,14 +145,13 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
-        // PROCESSING은 저장된 원래 Guard 키로 확인한다. 자정 이후 재시도에도
-        // 같은 Guard를 조회해야 하며, guardKey 없는 기존 레코드는 호출 시점 키를 쓴다.
+        // PROCESSING은 저장된 Guard 키로 확인하고, 기존 레코드는 호출 시점 키를 쓴다.
         Object storedGuardKey = idemRecord.get("guardKey");
         String guardValue;
 
         try {
-            String guardKey = storedGuardKey != null
-                    ? (String) storedGuardKey
+            String guardKey = storedGuardKey instanceof String s
+                    ? s
                     : TicketRedisKeys.earnGuard(command.userId(), command.missionType(), command.creatorId(),
                             toGuardPeriodKey(command.periodKey()));
             guardValue = redisTemplate.opsForValue().get(guardKey);

@@ -75,19 +75,17 @@ if stored then
         result[1] = 'ALREADY_PROCESSED'
         return result
     end
-    -- PROCESSING은 예약 당시 Guard로 성공 여부를 확인한다. guardKey가 없는
-    -- 기존 레코드만 이번 호출의 Guard 키를 사용한다.
+    -- PROCESSING은 저장된 Guard로 확인하고, 기존 레코드는 이번 Guard 키를 사용한다.
     local originalGuardKey = parsed.guardKey or guardKey
     local guardValue = requestId .. ':' .. fingerprint
     if redis.call('GET', originalGuardKey) == guardValue then
         local result = { 'ALREADY_PROCESSED' }
         redis.pcall('SET', idemKey,
-            cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result }),
+            cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = originalGuardKey }),
             'EX', idemTtl)
         return result
     end
-    -- Guard가 없거나 다른 값이면 실제 성사 여부를 알 수 없으니 신규 지급을
-    -- 막고 같은 requestId 재시도만 유도한다.
+    -- Guard가 없거나 다르면 신규 지급을 막는다.
     return { 'EARN_STATUS_UNKNOWN' }
 end
 
@@ -161,10 +159,9 @@ end
 
 local result = { 'EARN_ACCEPTED', streamId, tostring(newBalance) }
 
--- COMPLETED 확정이 실패하면 PROCESSING과 Guard를 남긴다. 같은 요청의 재시도는
--- 1단계에서 Guard를 확인해 ALREADY_PROCESSED로 복구한다.
+-- COMPLETED에도 guardKey를 보존해 원래 Guard를 추적한다.
 redis.pcall('SET', idemKey,
-    cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result }),
+    cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = guardKey }),
     'EX', idemTtl)
 
 return result
