@@ -29,6 +29,19 @@ class EventCacheInvalidationListenerTest {
     }
 
     @Test
+    void 마감_상태전이_커밋후_Gate를_닫고_닫기_실패도_예외로_번지지_않는다() {
+        EventGateLoader eventGateLoader = mock(EventGateLoader.class);
+        doThrow(new RuntimeException("Redis unavailable")).when(eventGateLoader).close(1L);
+        EventCacheInvalidationListener listener = new EventCacheInvalidationListener(
+                mock(EventQueryService.class), eventGateLoader, mock(EventRepository.class));
+
+        assertThatCode(() -> listener.invalidateAfterClosingTransition(new EventClosingStateChangedEvent(1L)))
+                .doesNotThrowAnyException();
+
+        verify(eventGateLoader).close(1L);
+    }
+
+    @Test
     void 캐시_무효화_실패는_OPEN_전이_후속_처리를_실패시키지_않는다() {
         EventQueryService eventQueryService = mock(EventQueryService.class);
         EventGateLoader eventGateLoader = mock(EventGateLoader.class);

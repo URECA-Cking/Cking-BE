@@ -29,6 +29,16 @@ class EventCacheInvalidationListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void invalidateAfterClosingTransition(EventClosingStateChangedEvent event) {
         invalidate(event.eventId(), "closing transition");
+        closeGate(event.eventId());
+    }
+
+    // 복원 틱이 stale한 OPEN 조회로 Gate를 다시 열었어도, 마감 전이 커밋 직후 닫는다. 실패하면 스케줄러가 CLOSING을 재조회해 닫는다.
+    private void closeGate(Long eventId) {
+        try {
+            eventGateLoader.close(eventId);
+        } catch (RuntimeException exception) {
+            log.error("Failed to close entry gate after closing transition, scheduler will retry: eventId={}", eventId, exception);
+        }
     }
 
     // 이미 커밋된 뒤라 롤백할 수 없다. 실패하면 EventLifecycleScheduler가 다음 틱에 다시 적재한다.

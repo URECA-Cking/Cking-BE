@@ -79,7 +79,7 @@ class EventGateLoaderIntegrationTest {
         eventGateLoader.load(event);
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(EVENT_ID))).isEqualTo("OPEN");
 
-        eventGateLoader.close(event);
+        eventGateLoader.close(EVENT_ID);
 
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(EVENT_ID))).isEqualTo("CLOSED");
     }

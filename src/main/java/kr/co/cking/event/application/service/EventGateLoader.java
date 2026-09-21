@@ -15,7 +15,7 @@ import kr.co.cking.event.domain.Event;
  * 마감 barrier가 cutoff를 확정한 이벤트는 건너뛴다(event-gate-load.lua). 여러 번 호출해도 안전하다.
  *
  * <p>cutoff 키까지 유실된 상태에서 stale한 OPEN 조회값이 겹치면 CLOSING 이벤트의 Gate가 다시 열릴 수 있다.
- * 스케줄러가 CLOSING 이벤트에 {@link #close}를 반복 호출해 다음 틱에 닫는다.
+ * 마감 전이 커밋 직후 리스너와 스케줄러(CLOSING 재조회)가 {@link #close}로 다시 닫는다.
  */
 @Component
 public class EventGateLoader {
@@ -40,8 +40,8 @@ public class EventGateLoader {
         );
     }
 
-    /** CLOSING 이후 이벤트의 Gate를 CLOSED로 덮어쓴다. 마감 중인 Gate는 항상 닫혀 있어야 하므로 반복 호출해도 안전하다. */
-    public void close(Event event) {
-        redisTemplate.opsForValue().set(EntryRedisKeys.status(event.getEventId()), "CLOSED");
+    /** 마감 전이(CLOSING·CLOSED) 이벤트의 Gate를 CLOSED로 덮어쓴다. 마감 중인 Gate는 항상 닫혀 있어야 하므로 반복 호출해도 안전하다. */
+    public void close(Long eventId) {
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(eventId), "CLOSED");
     }
 }

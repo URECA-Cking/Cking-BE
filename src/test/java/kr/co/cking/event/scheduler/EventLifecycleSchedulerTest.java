@@ -93,6 +93,7 @@ class EventLifecycleSchedulerTest {
         Event live = org.mockito.Mockito.mock(Event.class);
         Event closing = org.mockito.Mockito.mock(Event.class);
         when(live.getEndAt()).thenReturn(NOW.plusSeconds(60));
+        when(closing.getEventId()).thenReturn(7L);
         when(clock.instant()).thenReturn(NOW);
         when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of(live));
         when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(closing));
@@ -101,7 +102,7 @@ class EventLifecycleSchedulerTest {
 
         InOrder inOrder = inOrder(eventGateLoader);
         inOrder.verify(eventGateLoader).load(live);
-        inOrder.verify(eventGateLoader).close(closing);
+        inOrder.verify(eventGateLoader).close(7L);
     }
 
     @Test

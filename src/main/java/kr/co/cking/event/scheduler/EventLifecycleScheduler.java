@@ -95,7 +95,7 @@ public class EventLifecycleScheduler {
         }
         for (Event event : eventRepository.findByStatus(EventStatus.CLOSING)) {
             try {
-                eventGateLoader.close(event);
+                eventGateLoader.close(event.getEventId());
             } catch (RuntimeException e) {
                 log.error("마감 중 응모 Gate 차단에 실패했습니다. eventId={}", event.getEventId(), e);
             }
