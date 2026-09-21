@@ -20,6 +20,7 @@
   "visibility": "PRIVATE",
   "drawMethod": "WEIGHTED",
   "algorithmVersion": "WEIGHTED_V1",
+  "prizeAlgorithmVersion": "PRIZE_WEIGHTED_V1",
   "winnerCount": 2,
   "requestedBy": 1,
   "createdAt": "2026-09-17T00:00:00Z",
@@ -53,6 +54,9 @@
       "email": "hong@example.com",
       "rankInDrawing": 1,
       "appliedTicketCount": 7,
+      "prizeKey": "FIRST",
+      "prizeDisplayName": "1등 상품",
+      "prizePriority": 1,
       "createdAt": "2026-09-17T00:02:00Z"
     }
   ]
@@ -68,3 +72,10 @@
 | `FORBIDDEN` | 요청한 Member가 `ADMIN`이 아님 |
 | `DRAWING_NOT_FOUND` | 요청한 Drawing이 존재하지 않음 |
 | `DRAWING_NOT_COMPLETED` | 결과 조회 대상 Drawing의 상태가 `COMPLETED`가 아님 |
+
+### `GET /api/events/{eventId}/winners`
+
+`PUBLIC`이면서 `COMPLETED`인 INITIAL Drawing의 당첨 결과만 공개한다. 응답은 `eventId`, `drawingId`와
+`rankInDrawing ASC` Winner 목록을 포함하며, 각 Winner에 `winnerId`, `userId`, `rankInDrawing`,
+`prizeKey`, `prizeDisplayName`, `prizePriority`를 반환한다. PRIVATE Drawing은 `DRAWING_NOT_FOUND`로
+처리해 비공개 결과 존재 여부를 노출하지 않는다.

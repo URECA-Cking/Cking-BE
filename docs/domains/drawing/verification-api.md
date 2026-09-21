@@ -8,15 +8,19 @@
    - Drawing이 참조한 당시 Snapshot을 현재 Event/응모 데이터와 무관하게 조회한다.
    - Snapshot Hash와 집계값을 다시 계산한다.
    - 원본 Seed, Algorithm Version, Exclusion List, `winnerCount`, 후보 명단으로 원본
-     Input Payload/Hash를 다시 계산한다.
-   - 저장 Winner로 Result Payload/Hash를 다시 계산해 저장 데이터가 변조되지 않았는지 확인한다.
+     Input Payload/Hash를 다시 계산한다. 상품 Snapshot이 있으면 상품 구성과
+     `prizeAlgorithmVersion`을 포함하는 V2 계약을 사용하고, 레거시 상품 없는 Snapshot은 V1을 유지한다.
+   - 저장 Winner로 Result Payload/Hash를 다시 계산한다. V2에서는 Winner의 `snapshotPrizeId`와
+     상품 식별자·표시명·우선순위가 공식 Snapshot 상품과 일치하는지도 확인한다.
 2. **원본 Seed 결정적 재현 검증**
    - 원본 Seed와 당시 확정 입력으로 추첨 엔진을 다시 실행한다.
    - 재실행 Winner와 Rank가 저장 Winner와 일치하는지 확인한다.
-   - 재실행 Result Payload/Hash가 저장 결과와 일치하는지 확인한다.
+   - 상품 Snapshot이 있으면 원본 Seed에서 상품 배정용 Seed를 다시 파생해 당첨자별 상품도 재현한다.
+   - 재실행 Result Payload/Hash와 상품 배정이 저장 결과와 일치하는지 확인한다.
 3. **새 Seed 독립 재실행 인원 수 검증**
    - 원본과 다른 새 Seed를 메모리에서 생성한다. 별도 `draw_seed` 행은 만들지 않는다.
-   - 당시 Snapshot과 조건으로 추첨 엔진을 실행한다.
+   - 당시 Snapshot과 조건으로 추첨 엔진을 실행하고, 상품 Snapshot이 있으면 같은 새 Seed에서
+     상품 배정용 Seed를 파생해 모든 당첨자에게 상품을 배정할 수 있는지도 검증한다.
    - 결과가 정확히 `winnerCount`명인지, 사용자 중복이 없는지, 모두 후보에 포함되고 제외 명단에는
      없는지, Rank가 `1..winnerCount`로 연속인지 검증한다.
    - 기존 Winner와 독립 재실행 Winner의 동일성 또는 순위 일치는 검사하지 않는다. 같은 사용자가
@@ -74,10 +78,10 @@
 | 코드 | 조건 |
 | --- | --- |
 | `SNAPSHOT_INTEGRITY_FAILED` | 당시 Snapshot이 없거나 Hash/집계값이 변조됨 |
-| `DRAWING_CONTRACT_MISMATCH` | Drawing과 Snapshot의 Event/방식/버전/인원 조건이 다름 |
+| `DRAWING_CONTRACT_MISMATCH` | Drawing과 Snapshot의 Event/방식/후보·상품 알고리즘 버전/인원 조건이 다름 |
 | `STORED_INPUT_INTEGRITY_FAILED` | 원본 Input Payload/Hash가 보존 입력과 다름 |
-| `STORED_RESULT_INTEGRITY_FAILED` | Winner 또는 Result Payload/Hash가 보존 결과와 다름 |
-| `DETERMINISTIC_REPLAY_MISMATCH` | 원본 Seed 재실행의 Winner, Rank 또는 Result Hash가 저장 결과와 다름 |
+| `STORED_RESULT_INTEGRITY_FAILED` | Winner, 배정 상품 또는 Result Payload/Hash가 보존 결과와 다름 |
+| `DETERMINISTIC_REPLAY_MISMATCH` | 원본 Seed 재실행의 Winner, Rank, 상품 배정 또는 Result Hash가 저장 결과와 다름 |
 | `INSUFFICIENT_CANDIDATES` | 제외 명단 반영 후 후보 수가 `winnerCount`보다 적음 |
 | `UNSUPPORTED_ALGORITHM_VERSION` | 저장된 알고리즘 버전을 현재 서버가 지원하지 않음 |
 | `REPLAY_RESULT_INVALID` | 재실행 결과의 인원·중복·후보·제외·Rank 계약이 틀림 |

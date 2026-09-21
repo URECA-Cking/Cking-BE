@@ -23,26 +23,30 @@ public final class EventManagementResponse {
 
     /** Creator Event 목록의 한 항목을 반환한다. */
     public record Item(Long eventId, String title, java.time.Instant startAt, java.time.Instant endAt, int winnerCount,
-                       kr.co.cking.event.domain.DrawMethod drawMethod, EventStatus status, java.time.Instant createdAt) {
+                       kr.co.cking.event.domain.DrawMethod drawMethod, EventStatus status, java.time.Instant createdAt,
+                       List<kr.co.cking.event.application.dto.PrizeResult> prizes) {
         /** Event 엔티티를 목록 항목으로 변환한다. */
         public static Item from(Event event) {
             return new Item(event.getEventId(), event.getTitle(), event.getStartAt(),
                     event.getEndAt(), event.getWinnerCount(), kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()),
-                    event.getStatus(), event.getCreatedAt());
+                    event.getStatus(), event.getCreatedAt(), event.getPrizeConfigs().stream()
+                            .map(kr.co.cking.event.application.dto.PrizeResult::from).toList());
         }
     }
 
     /** 관리자 승인 대기 목록의 승인 요청 항목을 반환한다. */
     public record ApprovalItem(Long eventId, Long creatorId, String creatorName, String title, java.time.Instant startAt,
                                java.time.Instant endAt, int winnerCount, kr.co.cking.event.domain.DrawMethod drawMethod,
-                               EventStatus status, int approvalRound, java.time.Instant requestedAt) {
+                               EventStatus status, int approvalRound, java.time.Instant requestedAt,
+                               List<kr.co.cking.event.application.dto.PrizeResult> prizes) {
         /** 승인 요청 엔티티를 관리자 목록 항목으로 변환한다. */
         public static ApprovalItem from(kr.co.cking.event.application.EventReviewService.PendingEvent pending) {
             Event event = pending.event(); EventApprovalRequest request = pending.request();
             return new ApprovalItem(event.getEventId(), event.getCreatorId(), pending.creatorName(), event.getTitle(),
                     event.getStartAt(), event.getEndAt(),
                     event.getWinnerCount(), kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()), event.getStatus(), request.getApprovalRound(),
-                    request.getRequestedAt().toInstant(java.time.ZoneOffset.UTC));
+                    request.getRequestedAt().toInstant(java.time.ZoneOffset.UTC), event.getPrizeConfigs().stream()
+                            .map(kr.co.cking.event.application.dto.PrizeResult::from).toList());
         }
     }
 

@@ -25,8 +25,11 @@ import kr.co.cking.drawing.domain.engine.DrawWinner;
 import kr.co.cking.drawing.domain.engine.DrawingAlgorithmVersion;
 import kr.co.cking.drawing.domain.engine.DrawingEngine;
 import kr.co.cking.drawing.domain.hash.DrawInputHashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawInputV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawingHash;
+import kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine;
 import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawingExclusionQueryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
@@ -68,6 +71,8 @@ class DrawingVerificationServiceTest {
 
     private final DrawInputHashGenerator inputHashGenerator = new DrawInputHashGenerator();
     private final DrawResultHashGenerator resultHashGenerator = new DrawResultHashGenerator();
+    private final DrawInputV2HashGenerator inputV2HashGenerator = new DrawInputV2HashGenerator();
+    private final DrawResultV2HashGenerator resultV2HashGenerator = new DrawResultV2HashGenerator();
     private DrawingVerificationService service;
 
     @BeforeEach
@@ -84,6 +89,9 @@ class DrawingVerificationServiceTest {
                 drawingEngine,
                 inputHashGenerator,
                 resultHashGenerator,
+                inputV2HashGenerator,
+                resultV2HashGenerator,
+                new WeightedPrizeV1AllocationEngine(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
         when(historyRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -207,6 +215,7 @@ class DrawingVerificationServiceTest {
         when(drawing.getWinnerCount()).thenReturn(1);
         when(drawing.getDrawMethod()).thenReturn("WEIGHTED");
         when(drawing.getAlgorithmVersion()).thenReturn("WEIGHTED_V1");
+        when(drawing.getPrizeAlgorithmVersion()).thenReturn("PRIZE_WEIGHTED_V1");
         when(drawing.getSeedId()).thenReturn(SEED_ID);
         when(drawing.getInputHash()).thenReturn("f".repeat(64));
 
@@ -247,6 +256,7 @@ class DrawingVerificationServiceTest {
         when(drawing.getWinnerCount()).thenReturn(winnerCount);
         when(drawing.getDrawMethod()).thenReturn("WEIGHTED");
         when(drawing.getAlgorithmVersion()).thenReturn("WEIGHTED_V1");
+        when(drawing.getPrizeAlgorithmVersion()).thenReturn("PRIZE_WEIGHTED_V1");
         when(drawing.getSeedId()).thenReturn(SEED_ID);
         when(drawing.getInputHash()).thenReturn(inputHash.value());
         when(drawing.getInputPayload()).thenReturn(inputHash.canonicalPayload());

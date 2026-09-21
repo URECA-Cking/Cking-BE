@@ -7,6 +7,7 @@
 -- KEYS[1] = idem:mission:{requestId}                                        String(JSON, TTL 25h)
 -- KEYS[2] = mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd} String(SETNX, FR-P2-006)
 -- KEYS[3] = ticket:balance:{creatorId}:{userId}                             String(integer)
+-- KEYS[4] = ticket:maint:{creatorId}:{userId}                               존재 여부만 확인(issue #172)
 --
 -- ARGV[1] = amount
 -- ARGV[2] = fingerprint      (TicketEarnServiceImpl이 userId+creatorId+missionType+
@@ -23,12 +24,15 @@
 --                             Guard 키 구성과 Stream 발행 필드로만 쓰인다)
 -- ARGV[12] = missionKey
 --
--- 반환: { resultCode, ...옵션 필드 } (EarnResultCode 6종 중 4종은 이 스크립트가 반환)
+-- 반환: { resultCode, ...옵션 필드 } (EarnResultCode 6종 + BALANCE_MAINTENANCE 중
+-- 이 스크립트가 직접 반환하는 코드)
 --   ALREADY_PROCESSED   -- 동일 requestId, 동일 fingerprint, idem이 COMPLETED -> 기존 결과 재반환
 --                           (또는 idem 저장 실패 후 가드로 복구된 경우, code만)
 --   REQUEST_ID_CONFLICT -- 동일 requestId, 다른 fingerprint (idem 또는 가드 기준)
 --   DUPLICATE_MISSION   -- 다른 requestId, 이미 완료(또는 처리 중)된 미션(가드 값의 requestId 불일치)
 --   EARN_STATUS_UNKNOWN -- idem이 PROCESSING이고 Guard로 성공을 확인하지 못함
+--   BALANCE_MAINTENANCE -- 수동 보정 락(ticket:maint:{creatorId}:{userId})이 걸린
+--                           신규 요청(issue #172, HTTP 503, SPEND의 BALANCE_MAINTENANCE와 동일 계약)
 --   EARN_ACCEPTED       -- { 'EARN_ACCEPTED', streamId, 적립후잔액 }
 -- (EARN_PROCESSING_FAILED는 스크립트가 아니라 호출측 Java가 매핑한다)
 --
@@ -40,6 +44,7 @@
 local idemKey    = KEYS[1]
 local guardKey   = KEYS[2]
 local balanceKey = KEYS[3]
+local maintenanceLockKey = KEYS[4]
 
 local amount      = tonumber(ARGV[1])
 local fingerprint = ARGV[2]
@@ -87,6 +92,13 @@ if stored then
     end
     -- Guard가 없거나 다르면 신규 지급을 막는다.
     return { 'EARN_STATUS_UNKNOWN' }
+end
+
+-- 1-2) 수동 보정 락 확인 (idem 재현 분기를 모두 통과한 신규 요청에만 적용 - issue #172)
+-- TicketCompensationService.resyncRedisToDb()가 이 (creatorId, userId) 조합을
+-- 보정하는 동안에는 PROCESSING 예약조차 만들지 않고 BALANCE_MAINTENANCE로 종료한다.
+if redis.call('EXISTS', maintenanceLockKey) == 1 then
+    return { 'BALANCE_MAINTENANCE' }
 end
 
 -- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.

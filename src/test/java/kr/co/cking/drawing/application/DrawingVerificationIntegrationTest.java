@@ -21,10 +21,11 @@ import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
-import kr.co.cking.snapshot.application.SnapshotHashGenerator;
-import kr.co.cking.snapshot.application.SnapshotHashInput;
+import kr.co.cking.snapshot.application.SnapshotHashV2Generator;
+import kr.co.cking.snapshot.application.SnapshotHashV2Input;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.snapshot.repository.DrawSnapshotRepository;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.repository.WinnerRepository;
@@ -48,7 +49,7 @@ class DrawingVerificationIntegrationTest {
     @Autowired private WinnerRepository winnerRepository;
     @Autowired private DrawSeedRepository seedRepository;
     @Autowired private DrawingVerificationHistoryRepository historyRepository;
-    @Autowired private SnapshotHashGenerator snapshotHashGenerator;
+    @Autowired private SnapshotHashV2Generator snapshotHashGenerator;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private final List<Long> memberIds = new ArrayList<>();
@@ -86,10 +87,16 @@ class DrawingVerificationIntegrationTest {
                 .build());
         eventId = event.getEventId();
 
-        String snapshotHash = snapshotHashGenerator.generate(new SnapshotHashInput(
-                eventId, 10, DrawMethod.WEIGHTED.name(), "WEIGHTED_V1", candidates)).value();
+        List<PrizeValue> prizes = List.of(
+                new PrizeValue("FIRST", "1등 상품", 1, 5, 2),
+                new PrizeValue("SECOND", "2등 상품", 2, 95, 8)
+        );
+        String snapshotHash = snapshotHashGenerator.generate(new SnapshotHashV2Input(
+                eventId, 10, DrawMethod.WEIGHTED.name(), "WEIGHTED_V1", "PRIZE_WEIGHTED_V1",
+                candidates, prizes)).value();
         DrawSnapshot snapshot = snapshotRepository.saveAndFlush(DrawSnapshot.create(
-                eventId, 10, DrawMethod.WEIGHTED.name(), "WEIGHTED_V1", snapshotHash, candidates));
+                eventId, 10, DrawMethod.WEIGHTED.name(), "WEIGHTED_V1", "PRIZE_WEIGHTED_V1",
+                snapshotHash, candidates, prizes));
         snapshotId = snapshot.getId();
         drawingId = drawingExecutionService.execute(adminId, eventId).drawingId();
     }
@@ -106,6 +113,7 @@ class DrawingVerificationIntegrationTest {
         jdbcTemplate.update("DELETE FROM drawing WHERE event_id = ?", eventId);
         seedIds.forEach(seedRepository::deleteById);
         jdbcTemplate.update("DELETE FROM draw_snapshot_candidate WHERE snapshot_id = ?", snapshotId);
+        jdbcTemplate.update("DELETE FROM draw_snapshot_prize WHERE snapshot_id = ?", snapshotId);
         snapshotRepository.deleteById(snapshotId);
         eventRepository.deleteById(eventId);
         creatorRepository.deleteById(creatorId);
@@ -115,10 +123,10 @@ class DrawingVerificationIntegrationTest {
     @Test
     void 독립_재실행은_정확한_인원만_검증하고_원본_Drawing과_Winner를_변경하지_않는다() {
         Drawing before = drawingRepository.findById(drawingId).orElseThrow();
-        List<Long> winnerIdsBefore = winnerRepository
+        List<String> winnersBefore = winnerRepository
                 .findAllByDrawingIdOrderByRankInDrawingAsc(drawingId)
                 .stream()
-                .map(Winner::getId)
+                .map(winner -> winner.getId() + ":" + winner.getPrizeKey())
                 .toList();
         long seedCountBefore = seedRepository.count();
 
@@ -126,10 +134,10 @@ class DrawingVerificationIntegrationTest {
         DrawingVerificationResult second = verificationService.verify(drawingId, adminId);
 
         Drawing after = drawingRepository.findById(drawingId).orElseThrow();
-        List<Long> winnerIdsAfter = winnerRepository
+        List<String> winnersAfter = winnerRepository
                 .findAllByDrawingIdOrderByRankInDrawingAsc(drawingId)
                 .stream()
-                .map(Winner::getId)
+                .map(winner -> winner.getId() + ":" + winner.getPrizeKey())
                 .toList();
         assertThat(first.status()).isEqualTo(DrawingVerificationStatus.VERIFIED);
         assertThat(first.expectedWinnerCount()).isEqualTo(10);
@@ -139,7 +147,7 @@ class DrawingVerificationIntegrationTest {
         assertThat(seedRepository.count()).isEqualTo(seedCountBefore);
         assertThat(after.getInputHash()).isEqualTo(before.getInputHash());
         assertThat(after.getResultHash()).isEqualTo(before.getResultHash());
-        assertThat(winnerIdsAfter).containsExactlyElementsOf(winnerIdsBefore);
+        assertThat(winnersAfter).containsExactlyElementsOf(winnersBefore);
     }
 
     private Member saveMember(String name, MemberRole role) {

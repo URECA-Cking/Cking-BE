@@ -4,6 +4,10 @@ import kr.co.cking.drawing.domain.engine.DrawingEngine;
 import kr.co.cking.drawing.domain.engine.WeightedV1DrawingEngine;
 import kr.co.cking.drawing.domain.hash.DrawInputHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawInputV2HashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
+import kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -25,5 +29,20 @@ public class DrawingEngineConfig {
     @Bean
     public DrawResultHashGenerator drawResultHashGenerator() {
         return new DrawResultHashGenerator();
+    }
+
+    @Bean
+    public PrizeAllocationEngine prizeAllocationEngine() {
+        return new WeightedPrizeV1AllocationEngine();
+    }
+
+    @Bean
+    public DrawInputV2HashGenerator drawInputV2HashGenerator() {
+        return new DrawInputV2HashGenerator();
+    }
+
+    @Bean
+    public DrawResultV2HashGenerator drawResultV2HashGenerator() {
+        return new DrawResultV2HashGenerator();
     }
 }

@@ -13,7 +13,10 @@ public record PublicWinnerResult(
         DrawingType drawType,
         String name,
         String phone,
-        int rankInDrawing
+        int rankInDrawing,
+        String prizeKey,
+        String prizeDisplayName,
+        Integer prizePriority
 ) {
 
     /** 공개 Winner Projection과 회원 원본 정보를 마스킹된 이력 식별 응답으로 변환한다. */
@@ -25,7 +28,10 @@ public record PublicWinnerResult(
                 winner.drawType(),
                 PersonalInfoMasker.maskName(member.name()),
                 PersonalInfoMasker.maskPhone(member.phone()),
-                winner.rankInDrawing()
+                winner.rankInDrawing(),
+                winner.prizeKey(),
+                winner.prizeDisplayName(),
+                winner.prizePriority()
         );
     }
 }

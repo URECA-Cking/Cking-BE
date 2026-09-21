@@ -19,7 +19,11 @@ Snapshot은 마감 트랜잭션이 Commit된 뒤 별도 트랜잭션에서 생�
 4. `event_entry`를 `member_id`로 묶어 `used_ticket_count`를 합산한다.
 5. 합계가 0보다 큰 후보만 `memberId ASC`로 정렬한다.
 6. Snapshot Hash를 생성한다.
-7. Snapshot과 Candidate를 한 트랜잭션으로 저장한다.
+7. Event 상품 설정을 `priority ASC, prizeKey ASC`로 조회한다.
+8. Snapshot, Candidate, 상품 등급을 한 트랜잭션으로 저장한다.
+
+상품 등급의 식별자, 표시명, priority, 확률 가중치, 수량과 `PRIZE_WEIGHTED_V1` 버전은 공식
+Snapshot 이후 변경하지 않는다.
 
 DB의 `UNIQUE(draw_snapshot.event_id)`는 애플리케이션 잠금 외의 최종 중복 방어선이다.
 
@@ -62,6 +66,7 @@ Drawing 모듈은 Snapshot Entity나 Repository를 직접 사용하지 않고 �
   "winnerCount": 2,
   "drawMethod": "WEIGHTED",
   "algorithmVersion": "WEIGHTED_V1",
+  "prizeAlgorithmVersion": "PRIZE_WEIGHTED_V1",
   "candidateCount": 2,
   "totalTicketCount": 10,
   "snapshotHash": "a3a997ca2bed6ff1ad71484b6d13cc7a07dec9b0260c5bb040c55ddcb87ec281",
@@ -69,6 +74,10 @@ Drawing 모듈은 Snapshot Entity나 Repository를 직접 사용하지 않고 �
   "candidates": [
     { "userId": 1, "ticketCount": 3 },
     { "userId": 2, "ticketCount": 7 }
+  ],
+  "prizes": [
+    { "snapshotPrizeId": 1, "prizeKey": "FIRST", "displayName": "1등 상품", "priority": 1, "weight": 5, "quantity": 1 },
+    { "snapshotPrizeId": 2, "prizeKey": "SECOND", "displayName": "2등 상품", "priority": 2, "weight": 95, "quantity": 1 }
   ]
 }
 ```
@@ -117,3 +126,25 @@ candidates
 위 문자열의 SHA-256은 `a3a997ca2bed6ff1ad71484b6d13cc7a07dec9b0260c5bb040c55ddcb87ec281`이다.
 
 추첨 직전 무결성 검증도 `SnapshotHashGenerator`와 동일한 계약을 사용한다.
+
+## 상품 포함 Snapshot Hash V2
+
+기존 `CKING_SNAPSHOT_V1`은 변경하지 않는다. 상품 설정이 있는 Event는 `CKING_SNAPSHOT_V2`를 사용한다.
+상품 문자열은 UTF-8 URL-safe Base64 without padding으로 인코딩하고 상품은
+`priority ASC, prizeKey ASC`로 정렬한다.
+
+```text
+CKING_SNAPSHOT_V2
+eventId={eventId}
+winnerCount={winnerCount}
+drawMethod={drawMethod}
+algorithmVersion={algorithmVersion}
+prizeAlgorithmVersion=PRIZE_WEIGHTED_V1
+candidates
+{memberId},{ticketCount}
+prizes
+{base64(prizeKey)},{base64(displayName)},{priority},{weight},{quantity}
+```
+
+추첨 직전에는 Candidate와 `draw_snapshot_prize`를 함께 읽어 V2 Hash를 재계산한다. 상품 식별자,
+표시명, priority, 가중치, 수량, 상품 알고리즘 버전 중 하나라도 바뀌면 추첨을 중단한다.

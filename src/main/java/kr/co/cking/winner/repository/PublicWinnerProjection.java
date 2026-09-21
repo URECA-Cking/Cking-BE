@@ -9,6 +9,9 @@ public record PublicWinnerProjection(
         int drawNo,
         DrawingType drawType,
         Long memberId,
-        int rankInDrawing
+        int rankInDrawing,
+        String prizeKey,
+        String prizeDisplayName,
+        Integer prizePriority
 ) {
 }

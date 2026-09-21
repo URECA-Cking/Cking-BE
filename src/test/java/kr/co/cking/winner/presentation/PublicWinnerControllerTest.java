@@ -30,8 +30,10 @@ class PublicWinnerControllerTest {
     @Test
     void 공개_Winner를_공통_성공_응답으로_반환한다() throws Exception {
         when(publicWinnerQueryService.getPublicWinners(10L)).thenReturn(new PublicWinnerQueryResult(10L, List.of(
-                new PublicWinnerResult(100L, 20L, 0, DrawingType.INITIAL, "권*준", "010-****-5678", 1),
-                new PublicWinnerResult(101L, 21L, 1, DrawingType.REDRAW, "김*지", "010-****-5432", 1)
+                new PublicWinnerResult(100L, 20L, 0, DrawingType.INITIAL, "권*준", "010-****-5678", 1,
+                        "FIRST", "1등 상품", 1),
+                new PublicWinnerResult(101L, 21L, 1, DrawingType.REDRAW, "김*지", "010-****-5432", 1,
+                        "SECOND", "2등 상품", 2)
         )));
 
         mockMvc.perform(get("/api/events/10/winners"))
@@ -43,6 +45,9 @@ class PublicWinnerControllerTest {
                 .andExpect(jsonPath("$.data.winners[0].drawType").value("INITIAL"))
                 .andExpect(jsonPath("$.data.winners[0].name").value("권*준"))
                 .andExpect(jsonPath("$.data.winners[0].phone").value("010-****-5678"))
+                .andExpect(jsonPath("$.data.winners[0].prizeKey").value("FIRST"))
+                .andExpect(jsonPath("$.data.winners[0].prizeDisplayName").value("1등 상품"))
+                .andExpect(jsonPath("$.data.winners[0].prizePriority").value(1))
                 .andExpect(jsonPath("$.data.winners[1].drawingId").value(21))
                 .andExpect(jsonPath("$.data.winners[1].drawNo").value(1))
                 .andExpect(jsonPath("$.data.winners[1].drawType").value("REDRAW"));

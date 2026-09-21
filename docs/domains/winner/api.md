@@ -10,6 +10,8 @@
   `drawNo ASC`, `rankInDrawing ASC` 순으로 반환한다. 따라서 공개된 INITIAL과 공개된 REDRAW
   결과를 함께 조회하고, PRIVATE Drawing의 결과는 포함하지 않는다.
 - 각 Winner는 `drawNo`와 `drawType`으로 INITIAL·REDRAW 이력을 구분한다. 운영 상태는 공개하지 않는다.
+- 각 Winner에 Snapshot에서 확정되어 저장된 `prizeKey`, `prizeDisplayName`, `prizePriority`를 함께 반환한다.
+  상품 추첨 도입 전 생성된 레거시 Winner는 해당 필드가 `null`일 수 있다.
 - 응답을 만들 때만 이름과 전화번호를 마스킹한다. Winner와 Member의 원본 데이터는 바꾸지 않으며,
   관리자 결과 조회 및 당첨자 본인 조회의 원본 개인정보 정책과 분리한다.
 
@@ -32,7 +34,10 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
         "drawType": "INITIAL",
         "name": "권*준",
         "phone": "010-****-5678",
-        "rankInDrawing": 1
+        "rankInDrawing": 1,
+        "prizeKey": "FIRST",
+        "prizeDisplayName": "1등 상품",
+        "prizePriority": 1
       }
     ]
   },
