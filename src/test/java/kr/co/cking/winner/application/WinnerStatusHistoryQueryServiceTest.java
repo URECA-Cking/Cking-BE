@@ -142,6 +142,20 @@ class WinnerStatusHistoryQueryServiceTest {
         verifyNoInteractions(winnerManagementRepository, winnerStatusHistoryRepository);
     }
 
+    /** Winner에 연결된 운영 정보가 없으면 이력을 조회하지 않는다. */
+    @Test
+    void 운영_정보가_없으면_WINNER_MANAGEMENT_NOT_FOUND이다() {
+        Winner winner = mock(Winner.class);
+        when(memberQueryService.getRole(ADMIN_ID)).thenReturn(MemberRole.ADMIN);
+        when(winnerRepository.findById(WINNER_ID)).thenReturn(Optional.of(winner));
+        when(winnerManagementRepository.findByWinnerId(WINNER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getHistory(WINNER_ID, ADMIN_ID))
+                .hasFieldOrPropertyWithValue("errorCode", WinnerErrorCode.WINNER_MANAGEMENT_NOT_FOUND);
+
+        verifyNoInteractions(winnerStatusHistoryRepository);
+    }
+
     /** Winner를 지정한 소유자 정보로 반환하는 테스트 double을 만든다. */
     private Winner winner(Long memberId) {
         Winner winner = mock(Winner.class);
