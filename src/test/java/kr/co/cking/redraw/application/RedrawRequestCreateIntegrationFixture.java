@@ -1,7 +1,7 @@
 package kr.co.cking.redraw.application;
 
 import java.time.Instant;
-import java.util.List;
+import java.util.Arrays;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -113,6 +113,11 @@ abstract class RedrawRequestCreateIntegrationFixture {
         return new RedrawRequestCreateCommand(adminId, eventId, REASON, idempotencyKey);
     }
 
+    /** 공유 DB의 잔존 요청과 충돌하지 않는 테스트 전용 멱등 키를 발급한다. */
+    protected String newIdempotencyKey() {
+        return UUID.randomUUID().toString();
+    }
+
     /** fixture Event에 생성된 RedrawRequest 수를 반환한다. */
     protected int redrawRequestCount() {
         return jdbcTemplate.queryForObject(
@@ -136,7 +141,7 @@ abstract class RedrawRequestCreateIntegrationFixture {
         factory.setReturnGeneratedKeys(true);
         factory.setGeneratedKeysColumnNames(keyColumn);
         KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(factory.newPreparedStatementCreator(List.of(values)), keyHolder);
+        jdbcTemplate.update(factory.newPreparedStatementCreator(Arrays.asList(values)), keyHolder);
         return keyHolder.getKey().longValue();
     }
 }

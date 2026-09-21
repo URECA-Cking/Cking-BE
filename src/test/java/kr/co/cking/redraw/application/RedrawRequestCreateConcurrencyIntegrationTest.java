@@ -16,20 +16,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest
 class RedrawRequestCreateConcurrencyIntegrationTest extends RedrawRequestCreateIntegrationFixture {
 
-    private static final String IDEMPOTENCY_KEY = "d2719c4a-1f9b-4dc4-a656-9a4bb37d8e70";
-    private static final String SECOND_IDEMPOTENCY_KEY = "e3829e5b-2f0c-5ed5-b767-ab5ac48e9f81";
-
     /** 같은 멱등 키 요청을 동시에 보내도 잠금 후 기존 요청을 재사용해 하나만 생성한다. */
     @Test
     void 같은_멱등_키의_동시_재시도는_기존_요청을_재사용한다() throws Exception {
+        String idempotencyKey = newIdempotencyKey();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<RedrawRequestCreateResult> first = executor.submit(
-                    () -> createAfterSignal(ready, start, IDEMPOTENCY_KEY)
+                    () -> createAfterSignal(ready, start, idempotencyKey)
             );
             Future<RedrawRequestCreateResult> second = executor.submit(
-                    () -> createAfterSignal(ready, start, IDEMPOTENCY_KEY)
+                    () -> createAfterSignal(ready, start, idempotencyKey)
             );
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
@@ -49,11 +47,13 @@ class RedrawRequestCreateConcurrencyIntegrationTest extends RedrawRequestCreateI
     /** 서로 다른 멱등 키의 동시 요청도 같은 Winner 결원을 중복 점유하지 못하게 한다. */
     @Test
     void 다른_멱등_키의_동시_요청은_결원을_한번만_점유한다() throws Exception {
+        String firstIdempotencyKey = newIdempotencyKey();
+        String secondIdempotencyKey = newIdempotencyKey();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Future<String> first = executor.submit(() -> createOrReturnError(ready, start, IDEMPOTENCY_KEY));
-            Future<String> second = executor.submit(() -> createOrReturnError(ready, start, SECOND_IDEMPOTENCY_KEY));
+            Future<String> first = executor.submit(() -> createOrReturnError(ready, start, firstIdempotencyKey));
+            Future<String> second = executor.submit(() -> createOrReturnError(ready, start, secondIdempotencyKey));
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
 

@@ -15,18 +15,17 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 @SpringBootTest
 class RedrawRequestCreateRollbackIntegrationTest extends RedrawRequestCreateIntegrationFixture {
 
-    private static final String IDEMPOTENCY_KEY = "f493af6c-3a1d-6fe6-c878-bc6bd59fa092";
-
     @MockitoSpyBean
     private RedrawRequestVacancyRepository redrawRequestVacancyRepository;
 
     /** Vacancy 저장 실패는 Request까지 롤백하고 같은 멱등 키의 복구 재시도를 허용한다. */
     @Test
     void Vacancy_저장_실패_후_같은_멱등_키로_재시도할_수_있다() {
+        String idempotencyKey = newIdempotencyKey();
         doThrow(new RuntimeException("Vacancy 저장 강제 실패"))
                 .when(redrawRequestVacancyRepository).saveAll(any());
 
-        assertThatThrownBy(() -> redrawRequestCreateService.create(command(IDEMPOTENCY_KEY)))
+        assertThatThrownBy(() -> redrawRequestCreateService.create(command(idempotencyKey)))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("강제 실패");
         assertThat(redrawRequestCount()).isZero();
@@ -34,7 +33,7 @@ class RedrawRequestCreateRollbackIntegrationTest extends RedrawRequestCreateInte
 
         reset(redrawRequestVacancyRepository);
 
-        RedrawRequestCreateResult retry = redrawRequestCreateService.create(command(IDEMPOTENCY_KEY));
+        RedrawRequestCreateResult retry = redrawRequestCreateService.create(command(idempotencyKey));
 
         assertThat(retry.created()).isTrue();
         assertThat(redrawRequestCount()).isEqualTo(1);
