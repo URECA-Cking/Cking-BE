@@ -52,7 +52,7 @@ ticketCount 검증
 
 idem·guard 재현 분기(이미 끝난 요청의 replay)를 통과한 **신규 차감 요청만** `ticket:maint:{creatorId}:{userId}` 존재 여부를 확인한다. 락이 있으면 `{ 'BALANCE_MAINTENANCE' }`를 반환한다(HTTP 503) - SPEND/EARN이 동일한 코드·HTTP 상태를 쓰기로 합의했다. 락이 풀린 뒤 같은 요청으로 재시도하면 정상 처리된다.
 
-`BALANCE_MAINTENANCE`는 `EntrySpendResultCode`에 아직 없다 - 그 enum 값과 HTTP 503 매핑, 그리고 락 키를 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 `TicketCompensationService` 쪽 로직은 이슈 #172의 나머지 범위(별도 PR)에서 함께 추가한다. 그 전까지는 이 Lua 변경을 검증하는 테스트가 컴파일되지 않는다.
+락 키를 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 `TicketCompensationService` 쪽 로직(`TicketMaintenanceLock`, issue #174/PR #176)은 이 변경에 포함되지 않았다 - 별도 PR에서 진행하며, 두 PR이 모두 머지된 뒤 이슈 #172를 닫는다. `TicketRedisKeys.maintenance(creatorId, userId)`가 두 PR이 공유하는 키 빌더다.
 
 ## DECRBY·XADD 실패 시 보상
 
@@ -92,7 +92,7 @@ guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 �
 | `INSUFFICIENT_BALANCE` | 보유 응모권 < 요청 수량 |
 | `INVALID_TICKET_COUNT` | ticketCount가 1 미만이거나 100 초과 |
 | `SYSTEM_ERROR` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
-| `BALANCE_MAINTENANCE` | 수동 보정 락(`ticket:maint:{creatorId}:{userId}`)이 걸려 있음(issue #172, HTTP 503). `EntrySpendResultCode`·HTTP 매핑 추가는 별도 PR에서 진행 중 |
+| `BALANCE_MAINTENANCE` | 수동 보정 락(`ticket:maint:{creatorId}:{userId}`)이 걸려 있음(issue #172, HTTP 503, `EntryErrorCode.BALANCE_MAINTENANCE`) |
 
 `fingerprint`는 클라이언트가 보내지 않는다. `EntrySpendServiceImpl`이 `eventId+userId+ticketCount`를 SHA-256으로 해시해서 계산한다(FR-P2-029).
 
@@ -114,10 +114,10 @@ SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다
 - `@Value("${cking.entry.stream-key:...}")`로 stream 키를 테스트 전용(`stream:ticket-deducted:test`)으로 오버라이드해서, 테스트가 실제 운영 `stream:ticket-deducted`를 절대 건드리지 않는다.
 - 매 테스트 전후로 그 테스트가 쓴 키만 `delete`한다(FLUSHALL 사용 안 함).
 
-검증하는 케이스(21개):
+검증하는 케이스(22개):
 
 - 10종 결과 코드 각각 (Gate 없음/닫힘, 마감, ticketCount 상하한, Balance 없음/부족, 성공, XADD 실패)
-- 수동 보정 락이 걸려 있으면 `BALANCE_MAINTENANCE`를 반환하고 잔액·idem·guard를 건드리지 않는지, 이미 완료된 요청의 replay는 락과 무관하게 재현되는지 (issue #172)
+- 수동 보정 락이 걸려 있으면 `BALANCE_MAINTENANCE`를 반환하고 잔액·idem·guard를 건드리지 않는지, 이미 완료된 요청의 replay는 락과 무관하게 재현되는지, 락이 풀린 뒤 같은 requestId로 재시도하면 SUCCESS로 처리되는지 (issue #172)
 - 성공 시 idem TTL이 1시간(3590~3600초)인지, Stream에 실제로 올바른 필드(eventId/userId/creatorId/requestId/ticketCount)가 들어갔는지
 - 이벤트 마감 후 재시도해도 `DUPLICATE_REPLAY`/`IDEMPOTENCY_CONFLICT`가 유지되는지 (issue #36)
 - 동시 요청 20개가 같은 requestId로 들어와도 차감·XADD가 정확히 1번만 일어나는지 (FR-P2-030/043, 코드 리뷰로 대체 불가 항목)

@@ -17,4 +17,4 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 지속 불일치가 운영자 확인으로 확정됐을 때만 `TicketCompensationService.resyncRedisToDb()`를 호출한다. 이 서비스는 기존 Ledger를 수정하지 않고 `COMPENSATE` Ledger를 append-only로 남긴 뒤 Redis를 DB 값으로 재동기화한다. Redis 키가 없으면 DB 값을 쓰되 기준이 없으므로 delta 0의 감사 Ledger를 남긴다.
 
-**진행 중(issue #172):** SPEND/EARN Lua는 `ticket:maint:{creatorId}:{userId}` 존재 여부를 확인해 락이 걸린 동안 새 차감·적립을 `BALANCE_MAINTENANCE`(HTTP 503)로 거부한다([lua-api.md](lua-api.md) 참고). `EntrySpendResultCode`/`EarnResultCode`에 `BALANCE_MAINTENANCE`를 추가하고 HTTP 503으로 매핑하는 작업, 이 락을 실제로 SET/DEL하고 보정 전 해당 조합의 미반영 Stream·PEL·Dead Stream 메시지를 확인해 있으면 보정을 거부하는 `TicketCompensationService` 쪽 로직은 별도 PR에서 진행 중이며 아직 병합되지 않았다.
+SPEND/EARN Lua는 `ticket:maint:{creatorId}:{userId}` 존재 여부를 확인해 락이 걸린 동안 새 차감·적립을 `BALANCE_MAINTENANCE`(HTTP 503)로 거부한다([lua-api.md](lua-api.md) 참고, issue #172). 이 락을 실제로 SET/DEL하고 보정 전 해당 조합의 미반영 Stream·PEL·Dead Stream 메시지를 확인해 있으면 보정을 거부하는 `TicketCompensationService`/`TicketMaintenanceLock` 쪽 로직은 별도 PR(issue #174/PR #176)에서 진행 중이며, 두 PR이 모두 머지된 뒤 이슈 #172를 닫는다. `TicketRedisKeys.maintenance(creatorId, userId)`가 두 PR이 공유하는 키 빌더다.
