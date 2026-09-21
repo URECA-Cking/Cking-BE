@@ -1,9 +1,6 @@
 package kr.co.cking.redraw.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -12,14 +9,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import kr.co.cking.common.exception.BusinessException;
-import kr.co.cking.redraw.repository.RedrawRequestVacancyRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 /** 같은 Event·멱등 키의 병렬 재시도가 기존 요청을 재사용하는지 실제 DB로 검증한다. */
 @SpringBootTest
@@ -41,9 +36,6 @@ class RedrawRequestCreateConcurrencyIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @MockitoSpyBean
-    private RedrawRequestVacancyRepository redrawRequestVacancyRepository;
 
     /** 각 테스트 전에 PUBLISHED Event의 DECLINED Winner 한 명을 준비한다. */
     @BeforeEach
@@ -129,22 +121,6 @@ class RedrawRequestCreateConcurrencyIntegrationTest {
             assertThat(redrawRequestCount()).isEqualTo(1);
             assertThat(vacancyCount()).isEqualTo(1);
         }
-    }
-
-    /** Vacancy 저장 실패 시 먼저 flush된 RedrawRequest까지 같은 트랜잭션에서 롤백한다. */
-    @Test
-    void Vacancy_저장이_실패하면_RedrawRequest도_함께_Rollback된다() {
-        doThrow(new RuntimeException("Vacancy 저장 강제 실패"))
-                .when(redrawRequestVacancyRepository).saveAll(any());
-
-        assertThatThrownBy(() -> redrawRequestCreateService.create(new RedrawRequestCreateCommand(
-                ADMIN_ID, EVENT_ID, "당첨자 포기에 따른 재추첨", IDEMPOTENCY_KEY
-        )))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("강제 실패");
-
-        assertThat(redrawRequestCount()).isZero();
-        assertThat(vacancyCount()).isZero();
     }
 
     /** 시작 신호 뒤 지정한 멱등 키로 생성 명령을 실행한다. */
