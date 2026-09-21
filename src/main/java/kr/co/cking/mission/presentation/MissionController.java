@@ -1,6 +1,7 @@
 package kr.co.cking.mission.presentation;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.mission.application.MissionCompletionService;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
@@ -11,6 +12,7 @@ import kr.co.cking.ticket.application.dto.EarnResultCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,14 +23,15 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequiredArgsConstructor
+@Validated
 public class MissionController {
 
     private final MissionCompletionService missionCompletionService;
 
     @PostMapping("/api/creators/{creatorId}/missions/{missionId}/complete")
     public ResponseEntity<ApiResponse<MissionCompleteResponse>> complete(
-            @PathVariable Long creatorId,
-            @PathVariable Long missionId,
+            @PathVariable @Positive Long creatorId,
+            @PathVariable @Positive Long missionId,
             @Valid @RequestBody MissionCompleteRequest request
     ) {
         MissionCompleteCommand command = new MissionCompleteCommand(request.userId(), request.requestId());

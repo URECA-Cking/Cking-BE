@@ -37,6 +37,10 @@ public class WinnerStatusHistory {
     @Column(name = "status", nullable = false, length = 30, updatable = false)
     private WinnerManagementStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "previous_status", nullable = false, length = 30, updatable = false)
+    private WinnerManagementStatus previousStatus;
+
     @Column(name = "reason", length = 500, updatable = false)
     private String reason;
 
@@ -47,23 +51,26 @@ public class WinnerStatusHistory {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    /** 사유 없이 상태 전이 결과와 변경 주체를 이력으로 만든다. */
+    /** 사유 없이 상태 전이 전후 상태와 변경 주체를 이력으로 만든다. */
     public static WinnerStatusHistory create(
             Long winnerManagementId,
+            WinnerManagementStatus previousStatus,
             WinnerManagementStatus status,
             Long changedBy
     ) {
-        return create(winnerManagementId, status, null, changedBy);
+        return create(winnerManagementId, previousStatus, status, null, changedBy);
     }
 
-    /** 상태 전이 결과·사유·변경 주체를 이력으로 만든다. */
+    /** 상태 전이 전후 상태·사유·변경 주체를 이력으로 만든다. */
     public static WinnerStatusHistory create(
             Long winnerManagementId,
+            WinnerManagementStatus previousStatus,
             WinnerManagementStatus status,
             String reason,
             Long changedBy
     ) {
         requirePositive(winnerManagementId, "winnerManagementId");
+        Objects.requireNonNull(previousStatus, "previousStatus");
         Objects.requireNonNull(status, "status");
         requireReasonLength(reason);
         if (changedBy != null) {
@@ -72,6 +79,7 @@ public class WinnerStatusHistory {
 
         WinnerStatusHistory history = new WinnerStatusHistory();
         history.winnerManagementId = winnerManagementId;
+        history.previousStatus = previousStatus;
         history.status = status;
         history.reason = reason;
         history.changedBy = changedBy;

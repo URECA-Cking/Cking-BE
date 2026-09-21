@@ -31,6 +31,10 @@
 
 ## POST /api/creators/{creatorId}/missions/{missionId}/complete
 
+- 권한: `USER`
+- Path Variable `creatorId`: 필수, 양수 Long.
+- Path Variable `missionId`: 필수, 양수 Long.
+
 ```json
 {
   "userId": 1,
@@ -80,7 +84,7 @@
 
 | 코드 | HTTP | 의미 |
 | --- | --- | --- |
-| `VALIDATION_FAILED` | 400 | 요청 형식·`userId` 범위 오류 |
+| `VALIDATION_FAILED` | 400 | 요청 형식 또는 `creatorId`·`missionId`·`userId` 범위 오류 |
 | `RESOURCE_NOT_FOUND` | 404 | 존재하지 않는 Member |
 | `MISSION_NOT_FOUND` | 404 | 존재하지 않는 Mission |
 | `MISSION_INACTIVE` | 409 | 활성 기간이 아닌 미션에 대한 신규 요청 |

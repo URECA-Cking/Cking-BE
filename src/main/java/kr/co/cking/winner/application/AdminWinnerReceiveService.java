@@ -4,6 +4,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.winner.domain.WinnerErrorCode;
 import kr.co.cking.winner.domain.WinnerManagement;
+import kr.co.cking.winner.domain.WinnerManagementStatus;
 import kr.co.cking.winner.domain.WinnerStatusHistory;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
 import kr.co.cking.winner.repository.WinnerRepository;
@@ -30,9 +31,10 @@ public class AdminWinnerReceiveService {
 
         WinnerManagement management = winnerManagementRepository.findByWinnerIdForUpdate(winnerId)
                 .orElseThrow(() -> new BusinessException(WinnerErrorCode.WINNER_MANAGEMENT_NOT_FOUND));
+        WinnerManagementStatus previousStatus = management.getStatus();
         management.receive();
         winnerStatusHistoryRepository.save(WinnerStatusHistory.create(
-                management.getId(), management.getStatus(), userId
+                management.getId(), previousStatus, management.getStatus(), userId
         ));
     }
 

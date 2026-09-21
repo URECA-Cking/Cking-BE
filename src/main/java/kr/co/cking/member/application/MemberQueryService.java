@@ -51,6 +51,13 @@ public class MemberQueryService {
         }
     }
 
+    /** 존재하는 호출자 Member의 역할을 조회해 도메인별 접근 제어에 사용한다. */
+    public MemberRole getRole(Long userId) {
+        return memberRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .getRole();
+    }
+
     public Map<Long, MemberInfo> findMemberInfosByIds(Collection<Long> memberIds) {
         if (memberIds.isEmpty()) {
             return Map.of();

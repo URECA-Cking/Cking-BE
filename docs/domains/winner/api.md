@@ -202,3 +202,40 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 | `WINNER_NOT_FOUND` | winnerId에 해당하는 Winner가 존재하지 않음 |
 | `WINNER_MANAGEMENT_NOT_FOUND` | Winner에 연결된 WinnerManagement가 존재하지 않음 |
 | `INVALID_STATE` | WinnerManagement 상태가 SELECTED가 아니어서 자격 박탈할 수 없음 |
+
+## Winner 상태 이력 조회
+
+### `GET /api/winners/{winnerId}/history`
+
+- 권한: `USER` 또는 `ADMIN`
+- Path Variable: `winnerId` (`Long`, 양수, 필수)
+- Query Parameter: `userId` (`Long`, 양수, 필수). 인증 미도입 단계의 호출자 식별자다.
+- Member 존재와 역할을 검증한 뒤 Winner 존재 여부를 확인한다. `USER`는 본인 소유 Winner만 조회할 수 있고,
+  `ADMIN`은 모든 Winner를 조회할 수 있다. 다른 사용자의 Winner 조회는 `FORBIDDEN`이다.
+- WinnerManagement에 연결된 변경 이력을 `changedAt ASC`, `historyId ASC`으로 반환한다. 이력이 없으면 빈 배열을
+  정상 반환한다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": [
+    {
+      "historyId": 900,
+      "beforeStatus": "SELECTED",
+      "afterStatus": "DISQUALIFIED",
+      "reason": "이벤트 참여 조건을 충족하지 않았습니다.",
+      "changedBy": 1,
+      "changedAt": "2026-09-21T01:00:00Z"
+    }
+  ],
+  "message": null
+}
+```
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | winnerId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `WINNER_NOT_FOUND` | winnerId에 해당하는 Winner가 존재하지 않음 |
+| `WINNER_MANAGEMENT_NOT_FOUND` | Winner에 연결된 WinnerManagement가 존재하지 않음 |
+| `FORBIDDEN` | USER 요청 Member가 Winner의 소유자가 아님 |
