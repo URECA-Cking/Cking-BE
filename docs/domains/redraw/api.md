@@ -51,3 +51,4 @@
 | `INVALID_STATE` | Event가 PUBLISHED가 아니거나 INITIAL Drawing이 없음 |
 | `NO_REDRAW_VACANCY` | 미점유 DECLINED·DISQUALIFIED 결원이 없음 |
 | `IDEMPOTENCY_CONFLICT` | 기존 idempotencyKey에 다른 요청 본문이 전달됨 |
+| `CONCURRENT_COMMAND` | 저장 충돌 후 동일 idempotencyKey의 기존 요청을 확인할 수 없음 |
