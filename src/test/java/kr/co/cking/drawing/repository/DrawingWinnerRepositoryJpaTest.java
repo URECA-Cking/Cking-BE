@@ -15,6 +15,7 @@ import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
@@ -375,6 +376,29 @@ class DrawingWinnerRepositoryJpaTest {
     }
 
     @Test
+    void Winner에는_Drawing의_공식_Snapshot에_속한_상품만_저장할_수_있다() {
+        Fixture drawingFixture = fixture();
+        Fixture anotherSnapshotFixture = fixture();
+        Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(drawingFixture));
+        long foreignSnapshotPrizeId = insertSnapshotPrize(anotherSnapshotFixture.snapshotId());
+        long memberId = insertMember("상품당첨자", "USER");
+        PrizeValue foreignPrize = new PrizeValue(
+                foreignSnapshotPrizeId, "FIRST", "1등 상품", 1, 5L, 1);
+        Winner mismatch = Winner.create(
+                drawingFixture.eventId(),
+                drawing.getId(),
+                memberId,
+                1,
+                3L,
+                drawingFixture.snapshotId(),
+                foreignPrize
+        );
+
+        assertThatThrownBy(() -> winnerRepository.saveAndFlush(mismatch))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void Winner에는_하나의_WinnerManagement만_연결할_수_있다() {
         Fixture fixture = fixture();
         Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
@@ -489,6 +513,19 @@ class DrawingWinnerRepositoryJpaTest {
     private long insertSeed() {
         entityManager.createNativeQuery("INSERT INTO draw_seed (seed_value) VALUES (:seedValue)")
                 .setParameter("seedValue", new byte[]{1, 2, 3})
+                .executeUpdate();
+        return lastInsertId();
+    }
+
+    private long insertSnapshotPrize(long snapshotId) {
+        entityManager.createNativeQuery("""
+                        INSERT INTO draw_snapshot_prize (
+                            snapshot_id, prize_key, display_name, priority, probability_weight, quantity
+                        ) VALUES (
+                            :snapshotId, 'FIRST', '1등 상품', 1, 5, 1
+                        )
+                        """)
+                .setParameter("snapshotId", snapshotId)
                 .executeUpdate();
         return lastInsertId();
     }

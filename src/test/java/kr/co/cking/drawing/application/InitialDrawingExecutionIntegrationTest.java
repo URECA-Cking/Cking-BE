@@ -150,6 +150,7 @@ class InitialDrawingExecutionIntegrationTest {
         assertThat(winners).extracting(Winner::getRankInDrawing).containsExactly(1, 2);
         assertThat(winners).extracting(Winner::getMemberId).doesNotHaveDuplicates();
         assertThat(winners).allSatisfy(winner -> {
+            assertThat(winner.getSnapshotId()).isEqualTo(snapshotId);
             assertThat(winner.getSnapshotPrizeId()).isPositive();
             assertThat(winner.getPrizeKey()).isNotBlank();
             assertThat(winner.getPrizeDisplayName()).isNotBlank();
