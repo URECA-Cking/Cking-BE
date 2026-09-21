@@ -27,7 +27,7 @@ Lua 결과코드 10종 중 실패 8종은 `EntryErrorCode`가 HTTP 상태로 매
 | 결과코드 | HTTP | 의미 | 클라이언트 처리 |
 | --- | --- | --- | --- |
 | `SUCCESS` | 200 | 이번 요청에서 차감과 Stream 발행 완료 | - |
-| `DUPLICATE_REPLAY` | 200 | 동일 `requestId`의 기존 성공 결과 재사용. 실패가 아니며 `SUCCESS`와 같은 응답 스키마 | - |
+| `DUPLICATE_REPLAY` | 200 | 동일 `requestId`·동일 payload 재시도. 재차감 없음. 실패가 아니며 HTTP 응답은 `SUCCESS`와 같은 스키마(idem/guard 내부 경로 구분은 외부에 노출하지 않음) | - |
 | `INVALID_TICKET_COUNT` | 400 | Lua가 방어적으로 거른 잘못된 응모 수량 | 요청 수정 |
 | `EVENT_NOT_OPEN` | 409 | Gate 값이 `OPEN`이 아님. 마감 barrier가 Gate를 `CLOSED`로 바꾼 뒤(마감 진행 중·이후) 발생한다 | 재시도 무의미 |
 | `EVENT_CLOSED` | 409 | Gate는 `OPEN`이지만 `endAt`을 지남(마감 배치가 Gate를 닫기 전) | 재시도 무의미 |
