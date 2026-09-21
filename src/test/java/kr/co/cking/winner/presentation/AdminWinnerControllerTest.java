@@ -138,11 +138,26 @@ class AdminWinnerControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
+        String oversizedReason = "가".repeat(501);
+        org.mockito.Mockito.doThrow(new BusinessException(CommonErrorCode.VALIDATION_FAILED))
+                .when(adminWinnerDisqualifyService).disqualify(100L, 1L, oversizedReason);
         mockMvc.perform(post("/api/admin/winners/100/disqualify")
                         .contentType("application/json")
-                        .content("{\"userId\":1,\"reason\":\"" + "가".repeat(501) + "\"}"))
+                        .content("{\"userId\":1,\"reason\":\"" + oversizedReason + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 500자 사유에 앞뒤 공백이 있어도 Service 정규화 정책에 맡기고 요청을 통과시킨다. */
+    @Test
+    void 자격_박탈_요청의_사유는_정규화_후_500자면_통과한다() throws Exception {
+        String reason = "  " + "가".repeat(500) + "  ";
+
+        mockMvc.perform(post("/api/admin/winners/100/disqualify")
+                        .contentType("application/json")
+                        .content("{\"userId\":1,\"reason\":\"" + reason + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
     }
 
     /** 대상 winnerId가 양수가 아니면 자격 박탈 Controller 경계에서 입력 검증 오류를 반환한다. */

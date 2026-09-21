@@ -42,10 +42,15 @@ public class AdminWinnerDisqualifyService {
 
     /** 자격 박탈 사유를 감사 가능한 1~500자 값으로 검증하고 저장용으로 정규화한다. */
     private String normalizeReason(String reason) {
-        if (reason == null || reason.isBlank() || reason.length() > MAX_REASON_LENGTH) {
+        if (reason == null) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        return reason.trim();
+
+        String normalizedReason = reason.strip();
+        if (normalizedReason.isBlank() || normalizedReason.length() > MAX_REASON_LENGTH) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        return normalizedReason;
     }
 
     /** 자격 박탈 대상 Winner가 존재하는지 확인해 운영 정보 조회 전 오류를 명확히 한다. */

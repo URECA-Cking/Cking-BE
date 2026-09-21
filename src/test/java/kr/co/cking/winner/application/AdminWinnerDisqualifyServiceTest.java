@@ -63,10 +63,11 @@ class AdminWinnerDisqualifyServiceTest {
     @Test
     void 관리자_자격_박탈은_SELECTED_Winner를_DISQUALIFIED로_변경하고_변경_이력을_저장한다() {
         WinnerManagement management = management();
+        String reason = "가".repeat(500);
         when(winnerRepository.existsById(WINNER_ID)).thenReturn(true);
         when(winnerManagementRepository.findByWinnerIdForUpdate(WINNER_ID)).thenReturn(Optional.of(management));
 
-        service.disqualify(WINNER_ID, ADMIN_ID, "  " + REASON + "  ");
+        service.disqualify(WINNER_ID, ADMIN_ID, "\n  " + reason + "\t");
 
         assertThat(management.getStatus()).isEqualTo(WinnerManagementStatus.DISQUALIFIED);
         ArgumentCaptor<WinnerStatusHistory> historyCaptor = ArgumentCaptor.forClass(WinnerStatusHistory.class);
@@ -74,7 +75,7 @@ class AdminWinnerDisqualifyServiceTest {
         WinnerStatusHistory history = historyCaptor.getValue();
         assertThat(history.getWinnerManagementId()).isEqualTo(300L);
         assertThat(history.getStatus()).isEqualTo(WinnerManagementStatus.DISQUALIFIED);
-        assertThat(history.getReason()).isEqualTo(REASON);
+        assertThat(history.getReason()).isEqualTo(reason);
         assertThat(history.getChangedBy()).isEqualTo(ADMIN_ID);
     }
 
