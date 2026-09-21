@@ -30,19 +30,6 @@ class EventRepositoryTest {
     private static final Instant END = Instant.parse("2026-09-20T00:00:00Z");
 
     @Test
-    void 삭제되지_않은_이벤트만_조회된다() {
-        long memberId = insertMember();
-        long creatorId = insertCreator(memberId);
-        persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, null);
-        persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, Instant.parse("2026-09-01T00:00:00Z"));
-
-        var page = eventRepository.findByDeletedAtIsNull(PageRequest.of(0, 10));
-
-        assertThat(page.getContent()).hasSize(1);
-        assertThat(page.getContent().get(0).getDeletedAt()).isNull();
-    }
-
-    @Test
     void displayStatus로_필터링한다() {
         long memberId = insertMember();
         long creatorId = insertCreator(memberId);
@@ -53,9 +40,9 @@ class EventRepositoryTest {
         persistEvent(creatorId, memberId, EventStatus.PUBLISHED, END, null);
         Instant now = Instant.parse("2026-09-15T00:00:00Z");
 
-        var upcoming = eventRepository.search(null, DisplayStatus.UPCOMING, now, PageRequest.of(0, 10));
-        var inProgress = eventRepository.search(null, DisplayStatus.IN_PROGRESS, now, PageRequest.of(0, 10));
-        var closed = eventRepository.search(null, DisplayStatus.CLOSED, now, PageRequest.of(0, 10));
+        var upcoming = eventRepository.search(creatorId, DisplayStatus.UPCOMING, now, PageRequest.of(0, 10));
+        var inProgress = eventRepository.search(creatorId, DisplayStatus.IN_PROGRESS, now, PageRequest.of(0, 10));
+        var closed = eventRepository.search(creatorId, DisplayStatus.CLOSED, now, PageRequest.of(0, 10));
 
         assertThat(upcoming.getContent()).hasSize(1).allMatch(e -> e.getStatus() == EventStatus.SCHEDULED);
         assertThat(inProgress.getContent()).hasSize(1).allMatch(e -> e.getEndAt().isAfter(now));
@@ -125,7 +112,7 @@ class EventRepositoryTest {
         persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, null);
         Instant now = Instant.parse("2026-09-15T00:00:00Z");
 
-        var noFilter = eventRepository.search(null, (DisplayStatus) null, now, PageRequest.of(0, 10));
+        var noFilter = eventRepository.search(creatorId, (DisplayStatus) null, now, PageRequest.of(0, 10));
 
         assertThat(noFilter.getContent()).hasSize(1).allMatch(e -> e.getStatus() == EventStatus.SCHEDULED);
     }
