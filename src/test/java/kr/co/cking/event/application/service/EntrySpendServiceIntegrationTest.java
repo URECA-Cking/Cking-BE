@@ -75,7 +75,7 @@ class EntrySpendServiceIntegrationTest {
                 EntryRedisKeys.status(EVENT_ID),
                 EntryRedisKeys.endAt(EVENT_ID),
                 EntryRedisKeys.balance(CREATOR_ID, USER_ID),
-                EntryRedisKeys.maintenanceLock(CREATOR_ID, USER_ID),
+                EntryRedisKeys.maintenance(CREATOR_ID, USER_ID),
                 STREAM_KEY
         ));
 
@@ -417,14 +417,11 @@ class EntrySpendServiceIntegrationTest {
     }
 
     // issue #172: 수동 보정(resyncRedisToDb) 중에는 신규 차감을 막아야 한다.
-    // BALANCE_MAINTENANCE(HTTP 503)는 EntrySpendResultCode에 추가될 새 코드다 -
-    // TicketCompensationService 쪽 PR이 그 enum 값과 HTTP 매핑을 추가하기 전까지는
-    // 이 테스트가 컴파일되지 않는다(합의된 순서).
     @Test
     void 수동_보정_락이_걸려있으면_BALANCE_MAINTENANCE를_반환하고_잔액을_건드리지_않는다() {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
-        redisTemplate.opsForValue().set(EntryRedisKeys.maintenanceLock(CREATOR_ID, USER_ID), "locked");
+        redisTemplate.opsForValue().set(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
 
         EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2);
 
@@ -443,7 +440,7 @@ class EntrySpendServiceIntegrationTest {
 
         EntrySpendResult first =
                 entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2);
-        redisTemplate.opsForValue().set(EntryRedisKeys.maintenanceLock(CREATOR_ID, USER_ID), "locked");
+        redisTemplate.opsForValue().set(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
 
         EntrySpendResult retry =
                 entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2);
@@ -451,5 +448,25 @@ class EntrySpendServiceIntegrationTest {
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retry.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
         assertThat(retry.streamId()).isEqualTo(first.streamId());
+    }
+
+    // 문서(event/lua-api.md)가 약속하는 동작: 락이 풀린 뒤 같은 requestId로 재시도하면
+    // BALANCE_MAINTENANCE가 아니라 신규 요청과 동일하게 처리되어 성공한다.
+    @Test
+    void 수동_보정_락이_풀리면_같은_requestId로_재시도해도_SUCCESS를_반환한다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+        redisTemplate.opsForValue().set(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
+
+        EntrySpendResult blocked =
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2);
+        assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
+
+        redisTemplate.delete(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID));
+        EntrySpendResult retried =
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2);
+
+        assertThat(retried.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(retried.balance()).isEqualTo(8L);
     }
 }
