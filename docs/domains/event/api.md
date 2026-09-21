@@ -51,21 +51,7 @@ Event는 Event 전용 `EVENT_NOT_FOUND`다.
 
 ## POST /api/events/{eventId}/entries
 
-```json
-{
-  "userId": 1,
-  "requestId": "550e8400-e29b-41d4-a716-446655440000",
-  "ticketCount": 3
-}
-```
-
-`userId`, UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. Controller는 형식과
-범위만 검증하고, Event 개방 여부·잔액·멱등성·차감·Stream 발행은 `entry-spend.lua`가 원자적으로
-처리한다. 자세한 Redis 계약은 [응모 Lua API](lua-api.md)를 따른다.
-
-같은 `requestId`와 동일한 요청은 기존 성공 결과를 재현한다. 같은 `requestId`에 다른 요청 본문을
-보내면 `IDEMPOTENCY_CONFLICT`다. 성공 응답 `data`는 `requestId`, `eventId`, `accepted: true`를
-포함한다. Lua 결과의 실패 코드는 HTTP 상태와 함께 공통 응답 봉투로 반환한다.
+응모 계약과 결과코드별 HTTP 매핑은 [응모 API](entry-api.md)를 따른다.
 
 ## GET /api/creator/events
 
@@ -195,25 +181,7 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 
 ## GET /api/events/{eventId}/entries/me
 
-USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`, 선택 `cursor`, `size`를 사용한다.
-`size` 기본값은 20이고 허용 범위는 1~100이다. 응모 내역은 `appliedAt DESC, entryId DESC`로 정렬하며,
-다음 페이지 커서는 마지막 항목의 `(appliedAt, entryId)`를 URL-safe Base64로 인코딩한다.
-
-```json
-{
-  "items": [{
-    "entryId": 10,
-    "usedTicketCount": 3,
-    "appliedAt": "2026-09-18T02:00:00Z"
-  }],
-  "nextCursor": null,
-  "hasNext": false
-}
-```
-
-조회 조건은 `event_entry.member_id = userId`와 `event_entry.event_id = eventId`를 모두 사용한다. 없는 Member 또는
-존재하지 않거나 삭제된 Event는 `RESOURCE_NOT_FOUND`, 식별자·size 범위·cursor 형식 오류는
-`VALIDATION_FAILED`다.
+[응모 API](entry-api.md#get-apieventseventidentriesme)를 따른다.
 
 ## POST /api/events/{eventId}/close
 

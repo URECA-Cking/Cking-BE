@@ -32,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p>재시도 횟수는 별도 카운터를 두지 않고 Redis가 XCLAIM마다 관리하는
  * {@code totalDeliveryCount}(XPENDING 결과)를 그대로 기준으로 삼는다.
+ *
+ * <p>{@link SpendStreamPelRecoveryScheduler}와 거의 같은 구조다. 한쪽을 고칠 때 다른 쪽도 같은 수정이 필요한지 함께 확인한다.
  */
 @Slf4j
 @Component
