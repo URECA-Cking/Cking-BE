@@ -72,4 +72,15 @@ class EventGateLoaderIntegrationTest {
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(EVENT_ID))).isNull();
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.endAt(EVENT_ID))).isNull();
     }
+
+    @Test
+    void cutoff까지_유실된_상태에서_stale_OPEN으로_다시_열린_Gate도_close로_닫는다() {
+        Event event = event(Instant.parse("2099-01-01T00:00:00Z"));
+        eventGateLoader.load(event);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(EVENT_ID))).isEqualTo("OPEN");
+
+        eventGateLoader.close(event);
+
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(EVENT_ID))).isEqualTo("CLOSED");
+    }
 }

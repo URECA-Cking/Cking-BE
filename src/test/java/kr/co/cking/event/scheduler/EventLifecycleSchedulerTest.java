@@ -89,6 +89,22 @@ class EventLifecycleSchedulerTest {
     }
 
     @Test
+    void CLOSING_이벤트의_Gate를_OPEN_적재_뒤에_닫는다() {
+        Event live = org.mockito.Mockito.mock(Event.class);
+        Event closing = org.mockito.Mockito.mock(Event.class);
+        when(live.getEndAt()).thenReturn(NOW.plusSeconds(60));
+        when(clock.instant()).thenReturn(NOW);
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of(live));
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(closing));
+
+        scheduler.run();
+
+        InOrder inOrder = inOrder(eventGateLoader);
+        inOrder.verify(eventGateLoader).load(live);
+        inOrder.verify(eventGateLoader).close(closing);
+    }
+
+    @Test
     void 종료시각이_지난_OPEN_이벤트는_공통_마감_서비스로_요청한다() {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);

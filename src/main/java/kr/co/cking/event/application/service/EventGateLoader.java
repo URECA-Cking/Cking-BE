@@ -14,8 +14,8 @@ import kr.co.cking.event.domain.Event;
  * DB의 OPEN 이벤트를 응모 Gate(event:status, event:endat)로 적재한다. 키가 없을 때만 쓰고,
  * 마감 barrier가 cutoff를 확정한 이벤트는 건너뛴다(event-gate-load.lua). 여러 번 호출해도 안전하다.
  *
- * <p>ponytail: cutoff 키까지 유실된 상태에서 stale한 OPEN 조회값이 겹치는 경우(Redis 전체 유실 직후 마감 시작)는
- * 막지 못한다. 그 경우 다음 틱의 마감 시작이 barrier로 Gate를 다시 닫는다.
+ * <p>cutoff 키까지 유실된 상태에서 stale한 OPEN 조회값이 겹치면 CLOSING 이벤트의 Gate가 다시 열릴 수 있다.
+ * 스케줄러가 CLOSING 이벤트에 {@link #close}를 반복 호출해 다음 틱에 닫는다.
  */
 @Component
 public class EventGateLoader {
@@ -38,5 +38,10 @@ public class EventGateLoader {
                 List.of(EntryRedisKeys.status(eventId), EntryRedisKeys.endAt(eventId), EntryRedisKeys.cutoff(eventId)),
                 String.valueOf(event.getEndAt().toEpochMilli())
         );
+    }
+
+    /** CLOSING 이후 이벤트의 Gate를 CLOSED로 덮어쓴다. 마감 중인 Gate는 항상 닫혀 있어야 하므로 반복 호출해도 안전하다. */
+    public void close(Event event) {
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(event.getEventId()), "CLOSED");
     }
 }
