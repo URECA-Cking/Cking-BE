@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import kr.co.cking.common.exception.BusinessException;
@@ -32,6 +33,7 @@ import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
@@ -116,7 +118,7 @@ public class InitialDrawingExecutionService {
                 ? resultV2HashGenerator.generate(inputHash.value(), output, prizeOutput)
                 : resultHashGenerator.generate(inputHash.value(), output);
 
-        saveWinners(drawing, output, prizeOutput);
+        saveWinners(drawing, snapshot, output, prizeOutput);
         drawing.complete(resultHash.canonicalPayload(), resultHash.value(), clock.instant());
         drawingRepository.flush();
         eventCommandService.completeDrawing(eventId);
@@ -174,13 +176,19 @@ public class InitialDrawingExecutionService {
         }
     }
 
-    private void saveWinners(Drawing drawing, DrawOutput output, PrizeAllocationOutput prizeOutput) {
-        java.util.Map<Integer, AllocatedPrize> allocations = prizeOutput == null ? java.util.Map.of()
-                : prizeOutput.allocations().stream().collect(java.util.stream.Collectors.toMap(
+    private void saveWinners(
+            Drawing drawing,
+            VerifiedSnapshot snapshot,
+            DrawOutput output,
+            PrizeAllocationOutput prizeOutput
+    ) {
+        Map<Integer, AllocatedPrize> allocations = prizeOutput == null ? Map.of()
+                : prizeOutput.allocations().stream().collect(Collectors.toMap(
                         AllocatedPrize::rank, java.util.function.Function.identity()));
+        validatePrizeAllocations(snapshot, output, allocations);
         List<Winner> winners = output.winners().stream()
                 .sorted(Comparator.comparingInt(DrawWinner::rank))
-                .map(winner -> toWinner(drawing, winner, allocations.get(winner.rank())))
+                .map(winner -> toWinner(drawing, snapshot, winner, allocations.get(winner.rank())))
                 .toList();
 
         winners.forEach(winner -> {
@@ -196,7 +204,39 @@ public class InitialDrawingExecutionService {
         winnerManagementRepository.saveAllAndFlush(managements);
     }
 
-    private Winner toWinner(Drawing drawing, DrawWinner winner, AllocatedPrize allocation) {
+    private void validatePrizeAllocations(
+            VerifiedSnapshot snapshot,
+            DrawOutput output,
+            Map<Integer, AllocatedPrize> allocations
+    ) {
+        if (snapshot.prizes().isEmpty()) {
+            if (!allocations.isEmpty()) {
+                throw new IllegalStateException("상품이 없는 공식 Snapshot에는 상품을 배정할 수 없습니다.");
+            }
+            return;
+        }
+        if (allocations.size() != output.winners().size()) {
+            throw new IllegalStateException("모든 당첨자에게 공식 Snapshot 상품이 배정되어야 합니다.");
+        }
+
+        Map<Long, PrizeValue> officialPrizes = snapshot.prizes().stream()
+                .filter(prize -> prize.snapshotPrizeId() != null)
+                .collect(Collectors.toMap(PrizeValue::snapshotPrizeId, java.util.function.Function.identity()));
+        for (AllocatedPrize allocation : allocations.values()) {
+            PrizeValue allocatedPrize = allocation.prize();
+            PrizeValue officialPrize = officialPrizes.get(allocatedPrize.snapshotPrizeId());
+            if (!allocatedPrize.equals(officialPrize)) {
+                throw new IllegalStateException("배정 상품은 Drawing의 공식 Snapshot에 포함되어야 합니다.");
+            }
+        }
+    }
+
+    private Winner toWinner(
+            Drawing drawing,
+            VerifiedSnapshot snapshot,
+            DrawWinner winner,
+            AllocatedPrize allocation
+    ) {
         if (allocation != null && !allocation.memberId().equals(winner.memberId())) {
             throw new IllegalStateException("당첨자와 상품 배정 결과가 일치하지 않습니다.");
         }
@@ -206,6 +246,7 @@ public class InitialDrawingExecutionService {
                 winner.memberId(),
                 winner.rank(),
                 winner.appliedTicketCount(),
+                allocation == null ? null : snapshot.snapshotId(),
                 allocation == null ? null : allocation.prize()
         );
     }

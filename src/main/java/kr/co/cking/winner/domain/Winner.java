@@ -42,6 +42,9 @@ public class Winner {
     @Column(name = "drawing_id", nullable = false, updatable = false)
     private Long drawingId;
 
+    @Column(name = "snapshot_id", updatable = false)
+    private Long snapshotId;
+
     @Column(name = "member_id", nullable = false, updatable = false)
     private Long memberId;
 
@@ -74,7 +77,7 @@ public class Winner {
             int rankInDrawing,
             long appliedTicketCount
     ) {
-        return create(eventId, drawingId, memberId, rankInDrawing, appliedTicketCount, null);
+        return create(eventId, drawingId, memberId, rankInDrawing, appliedTicketCount, null, null);
     }
 
     public static Winner create(
@@ -83,6 +86,7 @@ public class Winner {
             Long memberId,
             int rankInDrawing,
             long appliedTicketCount,
+            Long snapshotId,
             PrizeValue prize
     ) {
         requirePositive(eventId, "eventId");
@@ -102,7 +106,9 @@ public class Winner {
         winner.rankInDrawing = rankInDrawing;
         winner.appliedTicketCount = appliedTicketCount;
         if (prize != null) {
+            requirePositive(snapshotId, "snapshotId");
             requirePositive(prize.snapshotPrizeId(), "snapshotPrizeId");
+            winner.snapshotId = snapshotId;
             winner.snapshotPrizeId = prize.snapshotPrizeId();
             winner.prizeKey = prize.prizeKey();
             winner.prizeDisplayName = prize.displayName();
