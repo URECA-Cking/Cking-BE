@@ -66,7 +66,7 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
             assertThat(winnerManagementRepository.findByWinnerId(fixture.winnerId()).orElseThrow().getStatus())
                     .isEqualTo(WinnerManagementStatus.RECEIVED);
             List<WinnerStatusHistory> histories = winnerStatusHistoryRepository
-                    .findByWinnerManagementIdOrderByCreatedAtAsc(fixture.winnerManagementId());
+                    .findByWinnerManagementIdOrderByCreatedAtAscIdAsc(fixture.winnerManagementId());
             assertThat(histories).hasSize(1);
             assertThat(histories.getFirst().getChangedBy()).isEqualTo(fixture.adminId());
             assertThat(histories.getFirst().getCreatedAt()).isNotNull();

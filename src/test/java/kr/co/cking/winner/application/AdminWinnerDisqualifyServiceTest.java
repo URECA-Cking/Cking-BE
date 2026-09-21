@@ -74,6 +74,7 @@ class AdminWinnerDisqualifyServiceTest {
         verify(winnerStatusHistoryRepository).save(historyCaptor.capture());
         WinnerStatusHistory history = historyCaptor.getValue();
         assertThat(history.getWinnerManagementId()).isEqualTo(300L);
+        assertThat(history.getPreviousStatus()).isEqualTo(WinnerManagementStatus.SELECTED);
         assertThat(history.getStatus()).isEqualTo(WinnerManagementStatus.DISQUALIFIED);
         assertThat(history.getReason()).isEqualTo(reason);
         assertThat(history.getChangedBy()).isEqualTo(ADMIN_ID);

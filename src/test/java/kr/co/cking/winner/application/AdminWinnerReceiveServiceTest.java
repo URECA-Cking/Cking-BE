@@ -72,6 +72,7 @@ class AdminWinnerReceiveServiceTest {
         verify(winnerStatusHistoryRepository).save(historyCaptor.capture());
         WinnerStatusHistory history = historyCaptor.getValue();
         assertThat(history.getWinnerManagementId()).isEqualTo(300L);
+        assertThat(history.getPreviousStatus()).isEqualTo(WinnerManagementStatus.SELECTED);
         assertThat(history.getStatus()).isEqualTo(WinnerManagementStatus.RECEIVED);
         assertThat(history.getReason()).isNull();
         assertThat(history.getChangedBy()).isEqualTo(ADMIN_ID);
