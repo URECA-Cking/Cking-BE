@@ -8,6 +8,10 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Table;
 import kr.co.cking.common.exception.BusinessException;
 import lombok.AccessLevel;
@@ -16,6 +20,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "event")
@@ -47,6 +56,10 @@ public class Event {
 
     @Column(updatable = false)
     private Instant createdAt;
+
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("priority ASC, prizeKey ASC")
+    private List<EventPrize> prizes = new ArrayList<>();
 
     @Builder
     private Event(
@@ -87,6 +100,21 @@ public class Event {
             Long createdBy,
             String requestId
     ) {
+        this(creatorId, title, description, startAt, endAt, winnerCount, drawMethod, createdBy, requestId, List.of());
+    }
+
+    public Event(
+            Long creatorId,
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            int winnerCount,
+            DrawMethod drawMethod,
+            Long createdBy,
+            String requestId,
+            List<PrizeConfig> prizes
+    ) {
         this.creatorId = creatorId;
         this.requestId = requestId;
         this.title = title;
@@ -98,6 +126,7 @@ public class Event {
         this.status = EventStatus.DRAFT;
         this.createdBy = createdBy;
         this.createdAt = Instant.now();
+        replacePrizes(prizes);
     }
 
     public void requestApproval() {
@@ -146,6 +175,18 @@ public class Event {
             int winnerCount,
             DrawMethod drawMethod
     ) {
+        update(title, description, startAt, endAt, winnerCount, drawMethod, getPrizeConfigs());
+    }
+
+    public void update(
+            String title,
+            String description,
+            Instant startAt,
+            Instant endAt,
+            int winnerCount,
+            DrawMethod drawMethod,
+            List<PrizeConfig> prizes
+    ) {
         requireStatus(EventStatus.DRAFT);
         this.title = title;
         this.description = description;
@@ -153,6 +194,39 @@ public class Event {
         this.endAt = endAt;
         this.winnerCount = winnerCount;
         this.drawMethod = drawMethod.name();
+        replacePrizes(prizes);
+    }
+
+    public List<EventPrize> getPrizes() {
+        return Collections.unmodifiableList(prizes);
+    }
+
+    public List<PrizeConfig> getPrizeConfigs() {
+        return prizes.stream().map(EventPrize::toConfig).toList();
+    }
+
+    private void replacePrizes(List<PrizeConfig> prizeConfigs) {
+        if (prizeConfigs == null) {
+            throw new IllegalArgumentException("상품 설정은 필수입니다.");
+        }
+        Set<String> prizeKeys = new HashSet<>();
+        long totalQuantity = 0;
+        long totalWeight = 0;
+        for (PrizeConfig config : prizeConfigs) {
+            if (config == null || !prizeKeys.add(config.prizeKey())) {
+                throw new IllegalArgumentException("상품 식별자는 중복될 수 없습니다.");
+            }
+            totalQuantity = Math.addExact(totalQuantity, config.quantity());
+            totalWeight = Math.addExact(totalWeight, config.weight());
+        }
+        if (!prizeConfigs.isEmpty() && totalQuantity < winnerCount) {
+            throw new IllegalArgumentException("총 상품 수량은 winnerCount 이상이어야 합니다.");
+        }
+        prizes.clear();
+        prizeConfigs.stream()
+                .sorted(java.util.Comparator.comparingInt(PrizeConfig::priority).thenComparing(PrizeConfig::prizeKey))
+                .map(config -> new EventPrize(this, config))
+                .forEach(prizes::add);
     }
 
     public void delete() {

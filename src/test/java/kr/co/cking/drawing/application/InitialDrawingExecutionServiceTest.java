@@ -3,6 +3,7 @@ package kr.co.cking.drawing.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,7 +24,13 @@ import kr.co.cking.drawing.domain.engine.DrawWinner;
 import kr.co.cking.drawing.domain.engine.DrawingAlgorithmVersion;
 import kr.co.cking.drawing.domain.engine.DrawingEngine;
 import kr.co.cking.drawing.domain.hash.DrawInputHashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawInputV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
+import kr.co.cking.drawing.domain.prize.AllocatedPrize;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.event.application.EventDrawingQueryService;
@@ -36,6 +43,7 @@ import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import kr.co.cking.snapshot.domain.CandidateValue;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagement;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
@@ -116,6 +124,66 @@ class InitialDrawingExecutionServiceTest {
         verify(winnerRepository).saveAllAndFlush(any());
         verify(winnerManagementRepository).saveAllAndFlush(any());
         verify(eventCommandService).completeDrawing(10L);
+    }
+
+    @Test
+    void 공식_Snapshot에_없는_상품이_배정되면_Winner를_저장하지_않는다() {
+        PrizeValue firstPrize = new PrizeValue(501L, "FIRST", "1등 상품", 1, 5L, 1);
+        PrizeValue secondPrize = new PrizeValue(502L, "SECOND", "2등 상품", 2, 95L, 1);
+        VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(
+                20L,
+                10L,
+                2,
+                "WEIGHTED",
+                "WEIGHTED_V1",
+                List.of(new CandidateValue(101L, 3L), new CandidateValue(102L, 7L)),
+                List.of(firstPrize, secondPrize)
+        );
+        PrizeAllocationEngine prizeAllocationEngine = mock(PrizeAllocationEngine.class);
+        InitialDrawingExecutionService productService = new InitialDrawingExecutionService(
+                memberQueryService,
+                eventDrawingQueryService,
+                snapshotIntegrityService,
+                drawingSeedService,
+                drawingRepository,
+                winnerRepository,
+                winnerManagementRepository,
+                drawingEngine,
+                new DrawInputHashGenerator(),
+                new DrawResultHashGenerator(),
+                new DrawInputV2HashGenerator(),
+                new DrawResultV2HashGenerator(),
+                prizeAllocationEngine,
+                eventCommandService,
+                Clock.fixed(NOW, ZoneOffset.UTC)
+        );
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
+                .thenReturn(source(EventStatus.CLOSED));
+        when(drawingRepository.findByEventIdAndDrawNoForUpdate(10L, 0)).thenReturn(Optional.empty());
+        when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
+        when(drawingSeedService.createForInitial()).thenReturn(new PersistedDrawingSeed(
+                30L, DrawingSeed.from("01".repeat(32))));
+        when(drawingRepository.saveAndFlush(any(Drawing.class))).thenAnswer(invocation -> {
+            Drawing drawing = invocation.getArgument(0);
+            ReflectionTestUtils.setField(drawing, "id", 40L);
+            return drawing;
+        });
+        when(drawingEngine.draw(any(DrawInput.class))).thenReturn(output());
+        PrizeValue anotherSnapshotPrize = new PrizeValue(999L, "FIRST", "1등 상품", 1, 5L, 1);
+        when(prizeAllocationEngine.allocate(any())).thenReturn(new PrizeAllocationOutput(
+                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1,
+                List.of(
+                        new AllocatedPrize(101L, 1, anotherSnapshotPrize),
+                        new AllocatedPrize(102L, 2, secondPrize)
+                )
+        ));
+
+        assertThatThrownBy(() -> productService.execute(1L, 10L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("공식 Snapshot");
+
+        verify(winnerRepository, never()).saveAllAndFlush(any());
+        verify(eventCommandService, never()).completeDrawing(any());
     }
 
     @Test

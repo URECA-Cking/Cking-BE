@@ -66,6 +66,10 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
     "endAt": "2026-09-21T09:00:00Z",
     "winnerCount": 3,
     "drawMethod": "WEIGHTED",
+    "prizes": [
+      { "prizeKey": "FIRST", "displayName": "1등 상품", "priority": 1, "weight": 5, "quantity": 1 },
+      { "prizeKey": "SECOND", "displayName": "2등 상품", "priority": 2, "weight": 95, "quantity": 2 }
+    ],
     "status": "DRAFT",
     "createdAt": "2026-09-16T00:20:00Z"
   }],
@@ -88,7 +92,11 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
   "startAt": "2026-09-20T09:00:00Z",
   "endAt": "2026-09-21T09:00:00Z",
   "winnerCount": 3,
-  "drawMethod": "WEIGHTED"
+  "drawMethod": "WEIGHTED",
+  "prizes": [
+    { "prizeKey": "FIRST", "displayName": "1등 상품", "priority": 1, "weight": 5, "quantity": 1 },
+    { "prizeKey": "SECOND", "displayName": "2등 상품", "priority": 2, "weight": 95, "quantity": 2 }
+  ]
 }
 ```
 
@@ -96,11 +104,13 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
 - 생성 상태는 DRAFT다. 성공은 201이며 응답은 `{ "eventId": 1, "status": "DRAFT" }`다.
 - `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다.
 - `userId`, `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가, description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이며 drawMethod는 MVP에서 WEIGHTED만 허용한다.
+- `prizes`는 상품 등급 설정이다. `prizeKey`는 Event 안에서 고유하고 영문·숫자·`_`·`-`만 허용한다. `priority`, `weight`, `quantity`는 양수이며 전체 quantity 합은 `winnerCount` 이상이어야 한다. 가중치 합이 `long` 범위를 넘는 설정은 거부한다.
+- 상품 `weight`는 당첨자 선정에 사용하지 않는다. 기존 `CandidateValue.ticketCount` 기반 사람 선정이 끝난 뒤 상품 배정 단계에서만 사용한다.
 - 시간은 `Z` 또는 `+09:00`처럼 offset을 포함한 ISO-8601 instant로 받는다. 서버는 이를 UTC instant로 정규화해 처리하며, 응답 시각은 UTC `Z` 형식이다.
 
 ## PATCH /api/creator/events/{eventId}
 
-요청 본문은 생성 API에서 `requestId`를 제외한 동일 필수 필드를 사용한다. DRAFT 또는 REJECTED 상태에서만 수정할 수 있으며, REJECTED 수정은 `EventCommandService.changeToDraft(eventId)`로 DRAFT로 전이한다.
+요청 본문은 생성 API에서 `requestId`를 제외한 동일 필드를 사용한다. 상품 설정 변경도 DRAFT에서만 허용한다. DRAFT 또는 REJECTED 상태에서만 수정할 수 있으며, REJECTED 수정은 `EventCommandService.changeToDraft(eventId)`로 DRAFT로 전이한다.
 
 성공은 200이고 응답은 `{ "eventId": 1, "status": "DRAFT" }`다. 별도 멱등 키는 사용하지 않으며 같은 값을 재적용해도 같은 최종 상태가 된다.
 

@@ -3,6 +3,7 @@ package kr.co.cking.drawing.repository;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import kr.co.cking.drawing.domain.Drawing;
+import kr.co.cking.drawing.domain.DrawingVisibility;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -10,6 +11,8 @@ import org.springframework.data.jpa.repository.Query;
 public interface DrawingRepository extends JpaRepository<Drawing, Long> {
 
     Optional<Drawing> findByEventIdAndDrawNo(Long eventId, int drawNo);
+
+    Optional<Drawing> findByEventIdAndDrawNoAndVisibility(Long eventId, int drawNo, DrawingVisibility visibility);
 
     /** Event 행 잠금 뒤 최신 INITIAL Drawing을 확인해야 하는 실행 명령 전용 조회. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

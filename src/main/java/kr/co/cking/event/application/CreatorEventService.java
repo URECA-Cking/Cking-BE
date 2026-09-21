@@ -89,7 +89,7 @@ public class CreatorEventService {
                 command.eventId(),
                 event -> requireOwnership(creator, event),
                 event -> event.update(command.title().trim(), command.description(), command.startAt(), command.endAt(),
-                        command.winnerCount(), command.drawMethod())
+                        command.winnerCount(), command.drawMethod(), command.prizes())
         );
     }
 
@@ -124,6 +124,7 @@ public class CreatorEventService {
                 || !command.startAt().isBefore(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
+        validatePrizes(command.prizes(), command.winnerCount());
     }
 
     /** requestId가 UUID의 표준 문자열 형식인지 검증한다. */
@@ -142,6 +143,30 @@ public class CreatorEventService {
                 || command.drawMethod() != DrawMethod.WEIGHTED || !command.startAt().isBefore(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
+        validatePrizes(command.prizes(), command.winnerCount());
+    }
+
+    private void validatePrizes(java.util.List<kr.co.cking.event.domain.PrizeConfig> prizes, int winnerCount) {
+        if (prizes == null) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        java.util.HashSet<String> keys = new java.util.HashSet<>();
+        long quantity = 0;
+        long weight = 0;
+        try {
+            for (var prize : prizes) {
+                if (prize == null || !keys.add(prize.prizeKey())) {
+                    throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+                }
+                quantity = Math.addExact(quantity, prize.quantity());
+                weight = Math.addExact(weight, prize.weight());
+            }
+        } catch (ArithmeticException exception) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        if (!prizes.isEmpty() && quantity < winnerCount) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
     }
 
     /** 저장된 Event와 재시도 요청의 의미 있는 생성 본문이 같은지 비교한다. */
@@ -152,7 +177,11 @@ public class CreatorEventService {
                 && normalizeToMicros(event.getStartAt()).equals(normalizeToMicros(command.startAt()))
                 && normalizeToMicros(event.getEndAt()).equals(normalizeToMicros(command.endAt()))
                 && event.getWinnerCount() == command.winnerCount()
-                && event.getDrawMethod().equals(command.drawMethod().name());
+                && event.getDrawMethod().equals(command.drawMethod().name())
+                && event.getPrizeConfigs().equals(command.prizes().stream()
+                        .sorted(java.util.Comparator.comparingInt(kr.co.cking.event.domain.PrizeConfig::priority)
+                                .thenComparing(kr.co.cking.event.domain.PrizeConfig::prizeKey))
+                        .toList());
     }
 
     /** MySQL DATETIME(6) 저장 정밀도에 맞춰 멱등성 비교 시각을 마이크로초로 정규화한다. */

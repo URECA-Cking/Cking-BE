@@ -16,6 +16,7 @@ public record DrawingQueryResult(
         DrawingVisibility visibility,
         String drawMethod,
         String algorithmVersion,
+        String prizeAlgorithmVersion,
         int winnerCount,
         Long requestedBy,
         Instant createdAt,
@@ -23,6 +24,14 @@ public record DrawingQueryResult(
         Instant completedAt,
         Instant publishedAt
 ) {
+
+    public DrawingQueryResult(Long drawingId, Long eventId, Long snapshotId, int drawNo, DrawingType drawType,
+            DrawingStatus status, DrawingVisibility visibility, String drawMethod, String algorithmVersion,
+            int winnerCount, Long requestedBy, Instant createdAt, Instant firstStartedAt, Instant completedAt,
+            Instant publishedAt) {
+        this(drawingId, eventId, snapshotId, drawNo, drawType, status, visibility, drawMethod, algorithmVersion,
+                "PRIZE_WEIGHTED_V1", winnerCount, requestedBy, createdAt, firstStartedAt, completedAt, publishedAt);
+    }
 
     public static DrawingQueryResult from(Drawing drawing) {
         return new DrawingQueryResult(
@@ -35,6 +44,7 @@ public record DrawingQueryResult(
                 drawing.getVisibility(),
                 drawing.getDrawMethod(),
                 drawing.getAlgorithmVersion(),
+                drawing.getPrizeAlgorithmVersion(),
                 drawing.getWinnerCount(),
                 drawing.getRequestedBy(),
                 drawing.getCreatedAt(),

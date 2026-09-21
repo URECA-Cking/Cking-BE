@@ -11,6 +11,7 @@ public final class DrawingSnapshotContract {
     private final Long eventId;
     private final String drawMethod;
     private final String algorithmVersion;
+    private final String prizeAlgorithmVersion;
     private final int winnerCount;
 
     private DrawingSnapshotContract(
@@ -18,7 +19,8 @@ public final class DrawingSnapshotContract {
             Long eventId,
             String drawMethod,
             String algorithmVersion,
-            int winnerCount
+            int winnerCount,
+            String prizeAlgorithmVersion
     ) {
         requirePositive(snapshotId, "snapshotId");
         requirePositive(eventId, "eventId");
@@ -36,6 +38,10 @@ public final class DrawingSnapshotContract {
         this.drawMethod = drawMethod;
         this.algorithmVersion = algorithmVersion;
         this.winnerCount = winnerCount;
+        if (prizeAlgorithmVersion == null || prizeAlgorithmVersion.isBlank()) {
+            throw new IllegalArgumentException("prizeAlgorithmVersion은 필수입니다.");
+        }
+        this.prizeAlgorithmVersion = prizeAlgorithmVersion;
     }
 
     public static DrawingSnapshotContract from(VerifiedSnapshot snapshot) {
@@ -47,7 +53,8 @@ public final class DrawingSnapshotContract {
                 snapshot.eventId(),
                 snapshot.drawMethod(),
                 snapshot.algorithmVersion(),
-                snapshot.winnerCount()
+                snapshot.winnerCount(),
+                snapshot.prizeAlgorithmVersion()
         );
     }
 
@@ -69,5 +76,9 @@ public final class DrawingSnapshotContract {
 
     public int winnerCount() {
         return winnerCount;
+    }
+
+    public String prizeAlgorithmVersion() {
+        return prizeAlgorithmVersion;
     }
 }

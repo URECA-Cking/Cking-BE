@@ -18,6 +18,7 @@ class EventCreationPersistenceService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Event create(CreateEventCommand command, Long creatorId) {
         return eventRepository.saveAndFlush(new Event(creatorId, command.title().trim(), command.description(),
-                command.startAt(), command.endAt(), command.winnerCount(), command.drawMethod(), command.userId(), command.requestId()));
+                command.startAt(), command.endAt(), command.winnerCount(), command.drawMethod(), command.userId(),
+                command.requestId(), command.prizes()));
     }
 }
