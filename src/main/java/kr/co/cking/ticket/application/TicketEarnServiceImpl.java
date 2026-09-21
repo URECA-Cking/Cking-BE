@@ -145,16 +145,17 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
-        // status == PROCESSING: COMPLETED 확정 전에 죽었을 수 있다. Guard 값이
-        // 이 requestId+fingerprint로 남아있다면(실패 경로는 전부 Guard를 지우므로)
-        // Balance/Stream까지는 실제로 성사된 것이니 ALREADY_PROCESSED로 복구한다
-        // (Lua의 earn() 쪽 self-heal과 동일한 근거, 이슈 #148).
+        // PROCESSING은 저장된 원래 Guard 키로 확인한다. 자정 이후 재시도에도
+        // 같은 Guard를 조회해야 하며, guardKey 없는 기존 레코드는 호출 시점 키를 쓴다.
+        Object storedGuardKey = idemRecord.get("guardKey");
         String guardValue;
 
         try {
-            String periodKeyGuardFormat = toGuardPeriodKey(command.periodKey());
-            guardValue = redisTemplate.opsForValue().get(TicketRedisKeys.earnGuard(
-                    command.userId(), command.missionType(), command.creatorId(), periodKeyGuardFormat));
+            String guardKey = storedGuardKey != null
+                    ? (String) storedGuardKey
+                    : TicketRedisKeys.earnGuard(command.userId(), command.missionType(), command.creatorId(),
+                            toGuardPeriodKey(command.periodKey()));
+            guardValue = redisTemplate.opsForValue().get(guardKey);
         } catch (DataAccessException e) {
             log.error("EARN replay 조회 중 Guard 확인에 실패했습니다. requestId={}, userId={}",
                     command.requestId(), command.userId(), e);
