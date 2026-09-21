@@ -1,8 +1,8 @@
--- 기존 결과 무결성 검증과 새 Seed를 사용한 독립 재실행의 인원 수 검증을
--- 하나의 append-only 이력에서 구분해 감사할 수 있도록 증거 필드를 확장한다.
+-- 원본 Seed 결정적 재현과 새 Seed 독립 재실행의 인원 수 검증을
+-- 하나의 append-only 이력에서 감사할 수 있도록 증거 필드를 확장한다.
 ALTER TABLE draw_verification_history
-    ADD COLUMN verification_mode       VARCHAR(30)  NOT NULL DEFAULT 'CARDINALITY_REPLAY'
-        COMMENT 'CARDINALITY_REPLAY' AFTER status,
+    ADD COLUMN verification_mode       VARCHAR(50)  NOT NULL DEFAULT 'DETERMINISTIC_AND_CARDINALITY_REPLAY'
+        COMMENT 'DETERMINISTIC_AND_CARDINALITY_REPLAY' AFTER status,
     ADD COLUMN replay_seed_value       VARBINARY(32) NULL
         COMMENT '독립 재실행에 사용한 32-byte Seed' AFTER verification_mode,
     ADD COLUMN expected_winner_count   INT           NULL AFTER replay_seed_value,

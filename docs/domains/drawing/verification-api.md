@@ -2,15 +2,19 @@
 
 ## 검증 계약
 
-완료된 Drawing의 검증은 다음 두 책임을 분리한다.
+완료된 Drawing의 검증은 다음 세 책임을 순서대로 수행한다.
 
 1. **저장 결과 무결성 검증**
    - Drawing이 참조한 당시 Snapshot을 현재 Event/응모 데이터와 무관하게 조회한다.
    - Snapshot Hash와 집계값을 다시 계산한다.
    - 원본 Seed, Algorithm Version, Exclusion List, `winnerCount`, 후보 명단으로 원본
      Input Payload/Hash를 다시 계산한다.
-   - 저장 Winner로 Result Payload/Hash를 다시 계산한다.
-2. **독립 재실행 인원 수 검증**
+   - 저장 Winner로 Result Payload/Hash를 다시 계산해 저장 데이터가 변조되지 않았는지 확인한다.
+2. **원본 Seed 결정적 재현 검증**
+   - 원본 Seed와 당시 확정 입력으로 추첨 엔진을 다시 실행한다.
+   - 재실행 Winner와 Rank가 저장 Winner와 일치하는지 확인한다.
+   - 재실행 Result Payload/Hash가 저장 결과와 일치하는지 확인한다.
+3. **새 Seed 독립 재실행 인원 수 검증**
    - 원본과 다른 새 Seed를 메모리에서 생성한다. 별도 `draw_seed` 행은 만들지 않는다.
    - 당시 Snapshot과 조건으로 추첨 엔진을 실행한다.
    - 결과가 정확히 `winnerCount`명인지, 사용자 중복이 없는지, 모두 후보에 포함되고 제외 명단에는
@@ -18,8 +22,8 @@
    - 기존 Winner와 독립 재실행 Winner의 동일성 또는 순위 일치는 검사하지 않는다. 같은 사용자가
      우연히 다시 선정돼도 실패가 아니다.
 
-동일 Drawing의 장애 복구 Retry는 별도 계약이다. Retry는 기존 Drawing ID와 Seed를 유지하므로 같은
-Winner와 Rank를 결정적으로 만든다. 독립 재실행은 새 Seed를 사용하므로 당첨자 구성은 달라질 수 있다.
+원본 Seed 결정적 재현은 같은 Winner와 Rank를 만들어야 한다. 새 Seed 독립 재실행은 보조 검증이므로
+당첨자 구성은 달라질 수 있지만 보존된 `winnerCount`와 후보 계약은 동일하게 만족해야 한다.
 
 검증은 Event, Snapshot, Drawing, Winner를 변경하지 않는다. 결과만
 `draw_verification_history`에 append-only로 저장한다.
@@ -41,7 +45,7 @@ Winner와 Rank를 결정적으로 만든다. 독립 재실행은 새 Seed를 사
     "verificationId": 100,
     "drawingId": 20,
     "status": "VERIFIED",
-    "verificationMode": "CARDINALITY_REPLAY",
+    "verificationMode": "DETERMINISTIC_AND_CARDINALITY_REPLAY",
     "expectedWinnerCount": 10,
     "actualWinnerCount": 10,
     "winnerCountMatched": true,
@@ -63,7 +67,8 @@ Winner와 Rank를 결정적으로 만든다. 독립 재실행은 새 Seed를 사
 ```
 
 `VERIFICATION_FAILED`에서는 실행 단계에 따라 아직 계산하지 못한 재실행 Boolean과
-`actualWinnerCount`가 `null`일 수 있다. `failureCode`는 다음 중 하나다.
+`actualWinnerCount`가 `null`일 수 있다. 마이그레이션 전에 생성된 기존 이력은
+`expectedWinnerCount`도 `null`일 수 있다. `failureCode`는 다음 중 하나다.
 
 | 코드 | 조건 |
 | --- | --- |
@@ -71,6 +76,7 @@ Winner와 Rank를 결정적으로 만든다. 독립 재실행은 새 Seed를 사
 | `DRAWING_CONTRACT_MISMATCH` | Drawing과 Snapshot의 Event/방식/버전/인원 조건이 다름 |
 | `STORED_INPUT_INTEGRITY_FAILED` | 원본 Input Payload/Hash가 보존 입력과 다름 |
 | `STORED_RESULT_INTEGRITY_FAILED` | Winner 또는 Result Payload/Hash가 보존 결과와 다름 |
+| `DETERMINISTIC_REPLAY_MISMATCH` | 원본 Seed 재실행의 Winner, Rank 또는 Result Hash가 저장 결과와 다름 |
 | `INSUFFICIENT_CANDIDATES` | 제외 명단 반영 후 후보 수가 `winnerCount`보다 적음 |
 | `UNSUPPORTED_ALGORITHM_VERSION` | 저장된 알고리즘 버전을 현재 서버가 지원하지 않음 |
 | `REPLAY_RESULT_INVALID` | 재실행 결과의 인원·중복·후보·제외·Rank 계약이 틀림 |

@@ -10,7 +10,7 @@ public record DrawingVerificationResult(
         Long drawingId,
         DrawingVerificationStatus status,
         DrawingVerificationMode verificationMode,
-        int expectedWinnerCount,
+        Integer expectedWinnerCount,
         Integer actualWinnerCount,
         Boolean winnerCountMatched,
         Boolean winnersUnique,

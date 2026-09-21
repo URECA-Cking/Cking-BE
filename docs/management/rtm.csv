@@ -147,12 +147,12 @@ FR-P3-059,3조,"Drawing Retry 시 Snapshot, Seed, Algorithm Version, winnerCount
 FR-P3-060,3조,Snapshot Hash 불일치나 후보 부족 등 입력 자체가 유효하지 않은 경우 동일 조건 Retry를 수행하지 않아야 한다.,윤희,이벤트 마감,기술 실패와 비즈니스 실패 구분,1차 확정,시작 전,No
 FR-P3-061,3조,이미 정상 추첨 결과가 존재하는 Drawing에 재실행 요청이 오면 다시 추첨하지 않아야 한다.,윤희,이벤트 마감,중복 실행 방지,1차 확정,시작 전,No
 FR-P3-062,3조,RUNNING 중 서버가 종료된 경우 기존 Drawing을 기준으로 복구할 수 있어야 한다.,윤희,이벤트 마감,장애 복구,1차 확정,시작 전,No
-FR-P3-063,3조,완료된 Drawing의 당시 응모자 명단과 조건을 보존하고 독립 재실행으로 정확한 당첨 인원 수를 검증할 수 있어야 한다.,성원,이벤트 마감,INITIAL/REDRAW 모두·당첨자 동일성은 검증 대상 아님,1차 확정,진행 중,No
-FR-P3-064,3조,"독립 재실행은 당시 Snapshot, Snapshot Hash, Algorithm Version, Exclusion List, winnerCount와 새 Seed를 사용해야 한다.",성원,이벤트 마감,현재 Event·응모 데이터 사용 금지,1차 확정,진행 중,No
-FR-P3-065,3조,"저장 결과 검증은 Snapshot/Input/Result Hash와 저장 Winner의 무결성을 확인하고 독립 재실행은 winnerCount, 중복, 후보 포함, 제외 명단, Rank 연속성을 확인해야 한다.",성원,이벤트 마감,기존 Winner와 재실행 Winner의 동일성 비교 금지,1차 확정,진행 중,No
-FR-P3-066,3조,독립 재실행 검증 결과는 VERIFIED 또는 VERIFICATION_FAILED로 기록해야 한다.,성원,이벤트 마감,Verification History,1차 확정,진행 중,No
-FR-P3-067,3조,검증 모드와 재실행 Seed 및 항목별 결과를 포함한 검증 이력은 append-only로 저장해야 한다.,성원,이벤트 마감,감사 가능성,1차 확정,진행 중,No
-FR-P3-068,3조,"독립 재실행 검증 과정에서 Event, Snapshot, Drawing, Winner와 원본 Seed를 변경해서는 안 된다.",성원,이벤트 마감,검증 결과 이력만 추가,1차 확정,진행 중,No
+FR-P3-063,3조,완료된 Drawing을 당시 확정된 입력으로 재현 검증할 수 있어야 한다.,성원,이벤트 마감,INITIAL/REDRAW 모두,1차 확정,시작 전,No
+FR-P3-064,3조,"재현 검증에는 Snapshot, Snapshot Hash, Seed, Algorithm Version, Exclusion List, winnerCount를 사용해야 한다.",성원,이벤트 마감,현재 데이터 사용 금지,1차 확정,시작 전,No
+FR-P3-065,3조,"재현 결과의 Snapshot Hash, Input Hash, Winner, Rank, Result Hash를 기존 결과와 비교해야 한다.",성원,이벤트 마감,VERIFIED/FAILED,1차 확정,시작 전,No
+FR-P3-066,3조,재현 검증 결과는 VERIFIED 또는 VERIFICATION_FAILED로 기록해야 한다.,성원,이벤트 마감,Verification History,1차 확정,시작 전,No
+FR-P3-067,3조,재현 검증 이력은 append-only로 저장해야 한다.,성원,이벤트 마감,감사 가능성,1차 확정,시작 전,No
+FR-P3-068,3조,"재현 검증 과정에서 Event, Snapshot, Drawing, Winner를 변경해서는 안 된다.",성원,이벤트 마감,검증은 read-only,1차 확정,시작 전,No
 FR-P3-069,3조,승인된 RedrawRequest에 대해 실제 REDRAW Drawing을 실행할 수 있어야 한다.,윤희,이벤트 마감,운영 Workflow 승인 이후 호출,1차 확정,시작 전,No
 FR-P3-070,3조,재추첨은 최초 공식 Snapshot을 재사용해야 한다.,윤희,이벤트 마감,Snapshot 재생성 X,1차 확정,시작 전,No
 FR-P3-071,3조,재추첨 후보에서 해당 Event의 기존 모든 Winner를 제외해야 한다.,윤희,이벤트 마감,DECLINED/DISQUALIFIED도 재진입 금지,1차 확정,시작 전,No
@@ -166,7 +166,7 @@ FR-P3-078,3조,추첨 완료 결과를 Kafka 이벤트로 발행해야 한다.,�
 FR-P3-079,3조,추첨 결과 저장과 Outbox Event 저장을 동일 Transaction으로 처리해야 한다.,윤희,이벤트 마감,Kafka 채택 시 필요,확인 필요,시작 전,No
 FR-P3-080,3조,Outbox 이벤트를 Kafka로 전달하여 추첨 결과 후속 처리를 수행해야 한다.,성원,이벤트 마감,Outbox/Kafka 채택 전제,확인 필요,시작 전,No
 FR-P3-081,3조,공개된 추첨 결과 조회를 위한 Read Model을 제공해야 한다.,성원,이벤트 마감,CQRS성 구조가 실제 필요한지 확인,확인 필요,시작 전,No
-FR-P3-082,3조,동일 Drawing Retry처럼 Snapshot + Seed + Algorithm Version + Exclusion List + winnerCount가 모두 같으면 동일 Winner와 Rank를 생성해야 한다.,성원,이벤트 마감,새 Seed를 쓰는 독립 재실행의 당첨자 동일성은 요구하지 않음,1차 확정,진행 중,No
+FR-P3-082,3조,동일 Snapshot + Seed + Algorithm Version + Exclusion List + winnerCount 입력은 항상 동일 Winner와 Rank를 생성해야 한다.,성원,이벤트 마감,결정적 재현성,1차 확정,시작 전,No
 FR-P3-083,3조,Event당 공식 Snapshot은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,동시 생성 포함,1차 확정,시작 전,No
 FR-P3-084,3조,Event당 INITIAL Drawing은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,다중 인스턴스 포함,1차 확정,시작 전,No
 FR-P3-085,3조,INITIAL 결과 확정은 Winner·Drawing·ResultHash·Event 상태가 원자적으로 저장되어야 한다.,윤희,이벤트 마감,Transaction invariant,1차 확정,시작 전,No

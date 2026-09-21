@@ -380,7 +380,8 @@ class DrawingAdminControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.verificationId").value(100))
                 .andExpect(jsonPath("$.data.status").value("VERIFIED"))
-                .andExpect(jsonPath("$.data.verificationMode").value("CARDINALITY_REPLAY"))
+                .andExpect(jsonPath("$.data.verificationMode")
+                        .value("DETERMINISTIC_AND_CARDINALITY_REPLAY"))
                 .andExpect(jsonPath("$.data.expectedWinnerCount").value(10))
                 .andExpect(jsonPath("$.data.actualWinnerCount").value(10))
                 .andExpect(jsonPath("$.data.winnerCountMatched").value(true));
@@ -420,7 +421,7 @@ class DrawingAdminControllerTest {
                 verificationId,
                 20L,
                 DrawingVerificationStatus.VERIFIED,
-                DrawingVerificationMode.CARDINALITY_REPLAY,
+                DrawingVerificationMode.DETERMINISTIC_AND_CARDINALITY_REPLAY,
                 10,
                 10,
                 true,

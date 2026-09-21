@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -89,7 +90,7 @@ class DrawingVerificationServiceTest {
     }
 
     @Test
-    void 후보_100명에서_기존과_다른_당첨자여도_정확히_10명이면_검증에_성공한다() {
+    void 원본을_결정적으로_재현한_뒤_새_Seed로_정확히_10명을_뽑으면_검증에_성공한다() {
         List<CandidateValue> candidates = LongStream.rangeClosed(1, 100)
                 .mapToObj(memberId -> new CandidateValue(memberId, 1L))
                 .toList();
@@ -120,12 +121,13 @@ class DrawingVerificationServiceTest {
                 .thenReturn(storedWinners);
         DrawingSeed replaySeed = DrawingSeed.from(REPLAY_SEED);
         when(drawingSeedPolicy.createForVerification(originalSeed)).thenReturn(replaySeed);
-        when(drawingEngine.draw(any())).thenReturn(new DrawOutput(
+        DrawOutput cardinalityReplayOutput = new DrawOutput(
                 DrawingAlgorithmVersion.WEIGHTED_V1,
                 LongStream.rangeClosed(11, 20)
                         .mapToObj(memberId -> new DrawWinner(memberId, (int) memberId - 10, 1L))
                         .toList()
-        ));
+        );
+        when(drawingEngine.draw(any())).thenReturn(storedOutput, cardinalityReplayOutput);
 
         DrawingVerificationResult result = service.verify(DRAWING_ID, ADMIN_ID);
 
@@ -137,7 +139,55 @@ class DrawingVerificationServiceTest {
         assertThat(result.candidatesMatched()).isTrue();
         assertThat(result.exclusionsMatched()).isTrue();
         assertThat(result.ranksMatched()).isTrue();
+        assertThat(result.resultHashMatched()).isTrue();
+        assertThat(result.algorithmMatched()).isTrue();
         assertThat(result.failureCode()).isNull();
+        verify(drawingEngine, times(2)).draw(any());
+        verify(historyRepository).save(any(DrawingVerificationHistory.class));
+    }
+
+    @Test
+    void 원본_Seed_재실행의_Winner와_Rank가_다르면_검증에_실패한다() {
+        List<CandidateValue> candidates = LongStream.rangeClosed(1, 12)
+                .mapToObj(memberId -> new CandidateValue(memberId, 1L))
+                .toList();
+        VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(
+                SNAPSHOT_ID, EVENT_ID, 10, "WEIGHTED", "WEIGHTED_V1", candidates);
+        DrawingSeed originalSeed = DrawingSeed.from(ORIGINAL_SEED);
+        DrawInput originalInput = input(snapshot, originalSeed, 10);
+        DrawingHash inputHash = inputHashGenerator.generate(originalInput);
+        List<Winner> storedWinners = LongStream.rangeClosed(1, 10)
+                .mapToObj(memberId -> winner(memberId, (int) memberId))
+                .toList();
+        DrawOutput storedOutput = new DrawOutput(
+                DrawingAlgorithmVersion.WEIGHTED_V1,
+                LongStream.rangeClosed(1, 10)
+                        .mapToObj(memberId -> new DrawWinner(memberId, (int) memberId, 1L))
+                        .toList()
+        );
+        DrawingHash resultHash = resultHashGenerator.generate(inputHash.value(), storedOutput);
+        Drawing drawing = drawing(10, inputHash, resultHash);
+
+        when(drawingRepository.findById(DRAWING_ID)).thenReturn(Optional.of(drawing));
+        when(snapshotIntegrityService.verifyForReplay(SNAPSHOT_ID)).thenReturn(snapshot);
+        when(exclusionRepository.findMemberIdsByDrawingId(DRAWING_ID)).thenReturn(List.of());
+        when(drawingSeedService.reuseForRetry(SEED_ID))
+                .thenReturn(new PersistedDrawingSeed(SEED_ID, originalSeed));
+        when(winnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(DRAWING_ID))
+                .thenReturn(storedWinners);
+        when(drawingEngine.draw(originalInput)).thenReturn(new DrawOutput(
+                DrawingAlgorithmVersion.WEIGHTED_V1,
+                LongStream.rangeClosed(2, 11)
+                        .mapToObj(memberId -> new DrawWinner(memberId, (int) memberId - 1, 1L))
+                        .toList()
+        ));
+
+        DrawingVerificationResult result = service.verify(DRAWING_ID, ADMIN_ID);
+
+        assertThat(result.status()).isEqualTo(DrawingVerificationStatus.VERIFICATION_FAILED);
+        assertThat(result.resultHashMatched()).isFalse();
+        assertThat(result.failureCode()).isEqualTo("DETERMINISTIC_REPLAY_MISMATCH");
+        verify(drawingSeedPolicy, never()).createForVerification(any());
         verify(historyRepository).save(any(DrawingVerificationHistory.class));
     }
 

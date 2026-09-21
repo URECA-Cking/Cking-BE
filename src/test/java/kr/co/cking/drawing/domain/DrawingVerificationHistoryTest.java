@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import kr.co.cking.drawing.application.DrawingVerificationResult;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class DrawingVerificationHistoryTest {
 
@@ -25,7 +27,8 @@ class DrawingVerificationHistoryTest {
         exposed[0] = 8;
 
         assertThat(history.getReplaySeedValue()[0]).isEqualTo((byte) 1);
-        assertThat(history.getVerificationMode()).isEqualTo(DrawingVerificationMode.CARDINALITY_REPLAY);
+        assertThat(history.getVerificationMode())
+                .isEqualTo(DrawingVerificationMode.DETERMINISTIC_AND_CARDINALITY_REPLAY);
     }
 
     @Test
@@ -36,5 +39,22 @@ class DrawingVerificationHistoryTest {
                 true, true, true, true,
                 null, null, 1L, Instant.parse("2026-09-18T00:00:00Z")
         )).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 마이그레이션_이전_이력의_기대_당첨자_수가_null이어도_조회할_수_있다() {
+        DrawingVerificationHistory legacyHistory = new DrawingVerificationHistory();
+        ReflectionTestUtils.setField(legacyHistory, "id", 1L);
+        ReflectionTestUtils.setField(legacyHistory, "drawingId", 10L);
+        ReflectionTestUtils.setField(legacyHistory, "status", DrawingVerificationStatus.VERIFIED);
+        ReflectionTestUtils.setField(
+                legacyHistory,
+                "verificationMode",
+                DrawingVerificationMode.DETERMINISTIC_AND_CARDINALITY_REPLAY
+        );
+
+        DrawingVerificationResult result = DrawingVerificationResult.from(legacyHistory);
+
+        assertThat(result.expectedWinnerCount()).isNull();
     }
 }

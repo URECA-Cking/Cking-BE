@@ -40,7 +40,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 저장 결과 무결성과 새 Seed 기반 독립 재실행의 인원 수 계약을 함께 검증한다. */
+/** 원본 Seed 결정적 재현과 새 Seed 기반 독립 재실행의 인원 수 계약을 함께 검증한다. */
 @Service
 @RequiredArgsConstructor
 public class DrawingVerificationService {
@@ -128,10 +128,10 @@ public class DrawingVerificationService {
                 storedWinners.stream().map(this::toDrawWinner).toList()
         );
         DrawingHash storedResultHash = resultHashGenerator.generate(originalInputHash.value(), storedOutput);
-        evidence.resultHashMatched = Objects.equals(drawing.getResultHash(), storedResultHash.value())
+        boolean storedResultIntegrityMatched = Objects.equals(drawing.getResultHash(), storedResultHash.value())
                 && Objects.equals(drawing.getOutputPayload(), storedResultHash.canonicalPayload())
                 && hasValidOutputContract(originalInput, storedOutput);
-        if (!evidence.resultHashMatched) {
+        if (!storedResultIntegrityMatched) {
             throw new VerificationFailure(
                     DrawingVerificationFailureCode.STORED_RESULT_INTEGRITY_FAILED,
                     "저장된 당첨 결과, Payload 또는 Hash가 보존 입력 계약과 일치하지 않습니다."
@@ -146,6 +146,21 @@ public class DrawingVerificationService {
             throw new VerificationFailure(
                     DrawingVerificationFailureCode.INSUFFICIENT_CANDIDATES,
                     "제외 대상을 반영한 후보 수가 보존된 winnerCount보다 적습니다."
+            );
+        }
+
+        DrawOutput deterministicOutput = drawingEngine.draw(originalInput);
+        DrawingHash deterministicResultHash = resultHashGenerator.generate(
+                originalInputHash.value(), deterministicOutput);
+        evidence.algorithmMatched = deterministicOutput.algorithmVersion() == algorithmVersion;
+        evidence.resultHashMatched = evidence.algorithmMatched
+                && Objects.equals(storedOutput, deterministicOutput)
+                && Objects.equals(drawing.getResultHash(), deterministicResultHash.value())
+                && Objects.equals(drawing.getOutputPayload(), deterministicResultHash.canonicalPayload());
+        if (!evidence.resultHashMatched) {
+            throw new VerificationFailure(
+                    DrawingVerificationFailureCode.DETERMINISTIC_REPLAY_MISMATCH,
+                    "원본 Seed 결정적 재실행 결과가 저장된 Winner, Rank 또는 Result Hash와 일치하지 않습니다."
             );
         }
 
@@ -284,7 +299,8 @@ public class DrawingVerificationService {
                     .map(DrawWinner::rank)
                     .collect(Collectors.toSet());
             ranksMatched = ranks.equals(expectedRanks(expectedWinnerCount));
-            algorithmMatched = output.algorithmVersion().name().equals(input.algorithmVersion());
+            algorithmMatched = algorithmMatched
+                    && output.algorithmVersion().name().equals(input.algorithmVersion());
         }
 
         private boolean replayContractMatched() {

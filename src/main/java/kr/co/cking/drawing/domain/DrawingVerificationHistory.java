@@ -33,7 +33,7 @@ public class DrawingVerificationHistory {
     private DrawingVerificationStatus status;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "verification_mode", nullable = false, updatable = false, length = 30)
+    @Column(name = "verification_mode", nullable = false, updatable = false, length = 50)
     private DrawingVerificationMode verificationMode;
 
     @Column(name = "replay_seed_value", updatable = false, length = 32)
@@ -117,7 +117,7 @@ public class DrawingVerificationHistory {
         DrawingVerificationHistory history = new DrawingVerificationHistory();
         history.drawingId = drawingId;
         history.status = status;
-        history.verificationMode = DrawingVerificationMode.CARDINALITY_REPLAY;
+        history.verificationMode = DrawingVerificationMode.DETERMINISTIC_AND_CARDINALITY_REPLAY;
         history.replaySeedValue = replaySeedValue == null ? null : Arrays.copyOf(replaySeedValue, replaySeedValue.length);
         history.expectedWinnerCount = expectedWinnerCount;
         history.actualWinnerCount = actualWinnerCount;
