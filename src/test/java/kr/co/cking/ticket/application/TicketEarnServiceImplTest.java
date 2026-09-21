@@ -86,6 +86,7 @@ class TicketEarnServiceImplTest {
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, NEXT_PERIOD_KEY_GUARD_FORMAT));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, OTHER_MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
+        redisTemplate.delete(TicketRedisKeys.maintenance(CREATOR_ID, USER_ID));
         redisTemplate.delete(TEST_STREAM_KEY);
         requestIds.forEach(id -> redisTemplate.delete(TicketRedisKeys.idemMission(id.toString())));
         requestIds.clear();
@@ -568,6 +569,56 @@ class TicketEarnServiceImplTest {
 
         assertThat(earnResult.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
         assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+    }
+
+    // issue #172: 수동 보정(resyncRedisToDb) 중에는 신규 PROCESSING 예약조차 만들지 않아야 한다.
+    @Test
+    void 수동_보정_락이_걸려있으면_BALANCE_MAINTENANCE를_반환하고_잔액과_idem을_건드리지_않는다() {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        redisTemplate.opsForValue().set(TicketRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
+
+        EarnResult result = service.earn(command);
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.BALANCE_MAINTENANCE);
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.idemMission(command.requestId().toString()))).isFalse();
+        assertThat(redisTemplate.hasKey(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT)
+        )).isFalse();
+    }
+
+    // 이미 완료된 요청의 replay는 보정 락과 무관하게 기존 결과를 그대로 재현해야 한다 -
+    // idem COMPLETED 분기가 락 확인보다 먼저 실행되므로 replay는 락에 막히지 않는다.
+    @Test
+    void 수동_보정_락이_걸려있어도_이미_완료된_요청은_ALREADY_PROCESSED로_재현된다() {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        EarnResult first = earn(command);
+        assertThat(first.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+
+        redisTemplate.opsForValue().set(TicketRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
+        EarnResult retry = service.earn(command);
+
+        assertThat(retry.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
+    }
+
+    // 문서(ticket/lua-api.md)가 약속하는 동작: 락이 풀린 뒤 같은 requestId로 재시도하면
+    // BALANCE_MAINTENANCE가 아니라 신규 요청과 동일하게 처리되어 성공한다.
+    @Test
+    void 수동_보정_락이_풀리면_같은_requestId로_재시도해도_EARN_ACCEPTED를_반환한다() {
+        EarnCommand command = newCommand(UUID.randomUUID());
+        requestIds.add(command.requestId());
+        redisTemplate.opsForValue().set(TicketRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
+
+        EarnResult blocked = service.earn(command);
+        assertThat(blocked.code()).isEqualTo(EarnResultCode.BALANCE_MAINTENANCE);
+
+        redisTemplate.delete(TicketRedisKeys.maintenance(CREATOR_ID, USER_ID));
+        EarnResult retried = service.earn(command);
+
+        assertThat(retried.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("1");
     }
 
     // 이전 형식의 periodKey 포함 fingerprint 공식이다.

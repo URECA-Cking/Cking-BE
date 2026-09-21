@@ -15,6 +15,7 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 응모권 잔액 |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
+| `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172) |
 
 Gate 복원은 10초 틱(`cking.event.lifecycle-interval-ms`)마다 OPEN 이벤트 전체를 조회한다(#149). 10초는 `fixedDelay`(이전 실행 종료 후 대기)라서 Redis가 정상일 때 Gate 유실 복원을 재시도하는 기본 간격이다. 실제 `GATE_NOT_LOADED`(503) 지속 시간은 틱 실행 시간과 Redis 장애 기간만큼 10초를 초과할 수 있다.
 - 전체 조회는 OPEN 이벤트 100개 이하를 전제한다. 100개를 넘거나 틱 실행 시간이 주기의 절반(5초)을 넘으면 Slice 페이징을 도입한다.
@@ -33,6 +34,7 @@ Gate 키 구조는 `데이터 구조.md` §2 확정 스키마를 따른다(Hash�
 ticketCount 검증
 → 멱등성 확인 (idem:{requestId})
 → guard 확인 (entry:spend-guard:{requestId})
+→ 수동 보정 락 확인 (ticket:maint:{creatorId}:{userId}, issue #172)
 → Gate 확인 (event:status)
 → 시각 확인 (event:endat, Redis 서버 시각 기준)
 → Balance 확인
@@ -43,6 +45,14 @@ ticketCount 검증
 **멱등성 확인이 Gate/시각 확인보다 먼저 실행된다.** idem 키가 남아 있는 기존 성공 요청은 응답 타임아웃 등으로 재시도되더라도, 이벤트 마감 뒤 Gate/시각 상태와 무관하게 `DUPLICATE_REPLAY`를 반환한다. idem 저장 실패 시에는 Guard가 이벤트 진행 중 재차감을 막고, 이벤트 종료 뒤에는 기존 Gate/시각 검증을 따른다. idem·Guard가 모두 없는 신규 요청만 Gate → 시각 → Balance를 검증한다.
 
 > 이 순서는 원래 `취합v1.5.4 §5.3`에 명시된 순서(Gate → 시각 → 멱등성)에서 변경된 것이다. [issue #29](https://github.com/URECA-Cking/Cking-BE/issues/29)에서 "재시도가 마감 경계와 겹치면 이미 성공한 요청이 실패로 오인된다"는 문제가 발견됐고, [issue #36](https://github.com/URECA-Cking/Cking-BE/issues/36)에서 지금 순서로 변경하기로 결정했다. 외부 스펙 문서(`취합v1.5.4`)는 아직 이 변경을 반영하지 않은 상태이니, 문서와 충돌하면 이 파일과 실제 코드를 따른다.
+
+## 수동 보정 락 (issue #172)
+
+`TicketCompensationService.resyncRedisToDb()`는 DB 잔액을 Redis에 덮어써 재동기화한다. 이 보정과 SPEND가 같은 `(creatorId, userId)`를 동시에 건드리면, 보정 직후 Stream Consumer가 밀려 있던 SPEND를 DB에 반영하거나 조회~덮어쓰기 사이 새 SPEND가 끼어들어 Redis·DB가 다시 어긋날 수 있다.
+
+idem·guard 재현 분기(이미 끝난 요청의 replay)를 통과한 **신규 차감 요청만** `ticket:maint:{creatorId}:{userId}` 존재 여부를 확인한다. 락이 있으면 `{ 'BALANCE_MAINTENANCE' }`를 반환한다(HTTP 503) - SPEND/EARN이 동일한 코드·HTTP 상태를 쓰기로 합의했다. 락이 풀린 뒤 같은 요청으로 재시도하면 정상 처리된다.
+
+락 키를 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 `TicketCompensationService` 쪽 로직(`TicketMaintenanceLock`, issue #174/PR #176)은 이 변경에 포함되지 않았다 - 별도 PR에서 진행하며, 두 PR이 모두 머지된 뒤 이슈 #172를 닫는다. `TicketRedisKeys.maintenance(creatorId, userId)`가 두 PR이 공유하는 키 빌더다.
 
 ## DECRBY·XADD 실패 시 보상
 
@@ -68,7 +78,7 @@ guard 히트 시 결과 payload를 재구성하지 않아도 되는 이유는 SP
 
 guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 시각)에 `PEXPIREAT`로 맞춘다. 이벤트가 idemTtl(1시간)보다 오래 열려 있어도 guard가 만료되지 않아 재차감을 이벤트 진행 기간 내내 막는다 — 이벤트 종료 이후에는 Gate/시각 검증이 어차피 모든 신규 요청을 차단하므로 그 이상 유지할 필요는 없다. (EARN의 guard가 idem보다 긴 TTL을 쓰는 건 미션 중복 방지라는 별개의 도메인 이유지만, SPEND의 guard는 idem 저장 실패에 대한 순수 기술적 백스톱이라는 별도 근거로 이벤트 종료 시각까지 유지한다.)
 
-## 결과 코드 (FR-P2-036, 10종)
+## 결과 코드 (FR-P2-036, 기존 10종 + BALANCE_MAINTENANCE)
 
 | 코드 | 의미 |
 | --- | --- |
@@ -82,12 +92,13 @@ guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 �
 | `INSUFFICIENT_BALANCE` | 보유 응모권 < 요청 수량 |
 | `INVALID_TICKET_COUNT` | ticketCount가 1 미만이거나 100 초과 |
 | `SYSTEM_ERROR` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
+| `BALANCE_MAINTENANCE` | 수동 보정 락(`ticket:maint:{creatorId}:{userId}`)이 걸려 있음(issue #172, HTTP 503, `EntryErrorCode.BALANCE_MAINTENANCE`) |
 
 `fingerprint`는 클라이언트가 보내지 않는다. `EntrySpendServiceImpl`이 `eventId+userId+ticketCount`를 SHA-256으로 해시해서 계산한다(FR-P2-029).
 
 ## Redis 타임아웃과 SYSTEM_ERROR
 
-SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다. `DataAccessException`을 모두 `SYSTEM_ERROR`(HTTP 500)로 반환한다. 결과 코드 10종에 "처리 여부 불명" 코드가 없고, 새 코드를 만들면 명세(취합 v1.5.4 §5.4) 계약 위반이기 때문이다.
+SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다. `DataAccessException`을 모두 `SYSTEM_ERROR`(HTTP 500)로 반환한다. 결과 코드 10종에 "처리 여부 불명" 코드가 없고, 새 코드를 만들면 명세(취합 v1.5.4 §5.4) 계약 위반이기 때문이다. (수동 보정 락은 "처리 여부 불명"이 아니라 Lua가 명확히 판단해 반환하는 별개의 상태라 `BALANCE_MAINTENANCE`로 예외적으로 추가했다 - 위 "수동 보정 락" 절 참고.)
 
 타임아웃이면 Lua가 이미 차감·XADD·idem 저장까지 끝냈을 수 있다. 클라이언트는 `SYSTEM_ERROR`를 받으면 **새 `requestId`를 만들지 않고 동일 `requestId`와 동일 payload로 재시도**한다. 재시도는 이중 차감 없이 안전하지만, **최종 결과가 성공이라는 보장은 없다.**
 
@@ -103,9 +114,10 @@ SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다
 - `@Value("${cking.entry.stream-key:...}")`로 stream 키를 테스트 전용(`stream:ticket-deducted:test`)으로 오버라이드해서, 테스트가 실제 운영 `stream:ticket-deducted`를 절대 건드리지 않는다.
 - 매 테스트 전후로 그 테스트가 쓴 키만 `delete`한다(FLUSHALL 사용 안 함).
 
-검증하는 케이스(19개):
+검증하는 케이스(22개):
 
 - 10종 결과 코드 각각 (Gate 없음/닫힘, 마감, ticketCount 상하한, Balance 없음/부족, 성공, XADD 실패)
+- 수동 보정 락이 걸려 있으면 `BALANCE_MAINTENANCE`를 반환하고 잔액·idem·guard를 건드리지 않는지, 이미 완료된 요청의 replay는 락과 무관하게 재현되는지, 락이 풀린 뒤 같은 requestId로 재시도하면 SUCCESS로 처리되는지 (issue #172)
 - 성공 시 idem TTL이 1시간(3590~3600초)인지, Stream에 실제로 올바른 필드(eventId/userId/creatorId/requestId/ticketCount)가 들어갔는지
 - 이벤트 마감 후 재시도해도 `DUPLICATE_REPLAY`/`IDEMPOTENCY_CONFLICT`가 유지되는지 (issue #36)
 - 동시 요청 20개가 같은 requestId로 들어와도 차감·XADD가 정확히 1번만 일어나는지 (FR-P2-030/043, 코드 리뷰로 대체 불가 항목)

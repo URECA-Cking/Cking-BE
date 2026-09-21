@@ -11,6 +11,7 @@ Java 연동: `kr.co.cking.ticket.application` (`TicketEarnService`/`TicketEarnSe
 | --- | --- | --- | --- |
 | `idem:mission:{requestId}` | STRING(JSON) | 25시간 | requestId 기준 결과 재현. `{fingerprint, status, guardKey, result?}` |
 | `mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyyMMdd}` | STRING | 25시간 | 하루 1회 중복 적립 방지(FR-P2-006). 값은 `requestId:fingerprint` |
+| `ticket:maint:{creatorId}:{userId}` | STRING | 보정 서비스 관리 | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인한다(issue #172) |
 
 두 키 모두 25시간으로 통일했다(issue #125) — 서로 다른 TTL로 두면 한쪽만 만료된 비대칭 상태가 생겨 처리를 복잡하게 만든다.
 
@@ -31,7 +32,7 @@ idem:mission:{requestId} 조회
 ├─ 있고 fingerprint 같음 + PROCESSING, Guard 불일치/부재               → EARN_STATUS_UNKNOWN
 └─ 있고 status 필드 자체가 없음        → ALREADY_PROCESSED (legacy 호환, 아래 참고)
 
-(신규 요청만) 일일 Guard 검사·선점 → INCRBY → XADD → idem을 COMPLETED로 확정
+(신규 요청만) 수동 보정 락 확인 (issue #172) → BALANCE_MAINTENANCE 또는 계속 진행 → 일일 Guard 검사·선점 → INCRBY → XADD → idem을 COMPLETED로 확정
 ```
 
 ## fingerprint는 periodKey를 제외한다 (issue #125)
@@ -92,6 +93,15 @@ Guard 자체가 idem보다 먼저 만료되는 경우는 없다 — 같은 `EX` 
 | `DUPLICATE_MISSION` | 다른 requestId로 같은 미션(같은 날) 재요청 |
 | `EARN_STATUS_UNKNOWN` | idem이 PROCESSING이고 Guard로도 성사 여부를 확인 못함 — Lua가 직접 반환. Redis 타임아웃 등 Java 예외 매핑 시에도 동일 코드 사용. (Guard가 이 requestId:fingerprint와 일치하면 `ALREADY_PROCESSED`로 복구되므로 이 코드는 안 나온다, issue #148) |
 | `EARN_PROCESSING_FAILED` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
+| `BALANCE_MAINTENANCE` | 수동 보정 락(`ticket:maint:{creatorId}:{userId}`)이 걸린 신규 요청(issue #172, HTTP 503, `MissionErrorCode.BALANCE_MAINTENANCE`, SPEND의 `BALANCE_MAINTENANCE`와 동일 계약) |
+
+## 수동 보정 락 (issue #172)
+
+`TicketCompensationService.resyncRedisToDb()`가 DB 잔액을 Redis에 덮어써 재동기화하는 동안 EARN이 같은 `(creatorId, userId)`에 끼어들면, 보정 직후 잔액이 다시 어긋날 수 있다. idem 재현 분기(위 처리 순서의 위쪽 5개 분기)를 모두 통과한 **신규 요청만** `ticket:maint:{creatorId}:{userId}` 존재 여부를 확인하고, 있으면 PROCESSING idem 예약조차 만들지 않고 `{ 'BALANCE_MAINTENANCE' }`를 반환한다(HTTP 503) - SPEND와 동일한 코드·HTTP 상태를 쓰기로 합의했다.
+
+이 확인은 **일일 Guard 검사보다 먼저** 실행된다(SPEND가 idem·guard 재현 직후, Balance 확인 이전에 락을 보는 것과 같은 자리). 그래서 보정 중에 새 `requestId` + 같은 Business Key(같은 미션·같은 날)로 요청이 오면, 원래라면 `DUPLICATE_MISSION`(409)이 될 요청도 `BALANCE_MAINTENANCE`(503)로 먼저 걸린다. 재시도하면 락 해제 후 실제 판정(`DUPLICATE_MISSION` 또는 성공)으로 수렴하므로 정합성 문제는 아니다.
+
+락 키를 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 `TicketCompensationService` 쪽 로직(`TicketMaintenanceLock`, issue #174/PR #176)은 이 변경에 포함되지 않았다 - 별도 PR에서 진행하며, 두 PR이 모두 머지된 뒤 이슈 #172를 닫는다. `TicketRedisKeys.maintenance(creatorId, userId)`가 두 PR이 공유하는 키 빌더다.
 
 ## `findExisting()` — read-only 조회 Contract (issue #125)
 
@@ -108,8 +118,9 @@ Guard 자체가 idem보다 먼저 만료되는 경우는 없다 — 같은 `EX` 
 
 ## 테스트
 
-파일: `src/test/java/kr/co/cking/ticket/application/TicketEarnServiceImplTest.java` (28개), `TicketEarnServiceImplErrorMappingTest.java` (2개)
+파일: `src/test/java/kr/co/cking/ticket/application/TicketEarnServiceImplTest.java` (31개), `TicketEarnServiceImplErrorMappingTest.java` (2개)
 
+- 수동 보정 락이 걸려 있으면 `BALANCE_MAINTENANCE`를 반환하고 잔액·idem·guard를 건드리지 않는지, 이미 완료된 요청의 replay는 락과 무관하게 재현되는지, 락이 풀린 뒤 같은 requestId로 재시도하면 EARN_ACCEPTED로 처리되는지 (issue #172)
 - periodKey만 자정 경계로 달라진 재시도가 `earn()`에서는 `REQUEST_ID_CONFLICT`가 아니라 `ALREADY_PROCESSED`인지
 - **`findExisting()`도 periodKey만 다른 재시도에 `ALREADY_PROCESSED`를 반환하는지** — 이슈 #125가 실제로 고치는 지점(미션 active 검증 전 호출)은 `earn()`이 아니라 `findExisting()`이므로 별도로 직접 검증한다
 - periodKey와 amount가 함께 다르면 여전히 `REQUEST_ID_CONFLICT`인지

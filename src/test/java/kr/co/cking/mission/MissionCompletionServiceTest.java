@@ -52,6 +52,10 @@ class MissionCompletionServiceTest {
         return new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1, null, null);
     }
 
+    private Mission likeMission() {
+        return new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null);
+    }
+
     private void stubMemberAndMission(Mission mission) {
         when(memberRepository.findById(USER_ID)).thenReturn(Optional.of(mock(Member.class)));
         when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID))
@@ -119,6 +123,84 @@ class MissionCompletionServiceTest {
         assertThat(commands.get(0).periodKey()).isEqualTo("2026-09-16");
         assertThat(commands.get(1).periodKey()).isEqualTo("2026-09-17");
         assertThat(commands.get(0).missionKey()).isEqualTo(commands.get(1).missionKey());
+    }
+
+    @Test
+    void 좋아요_미션을_최초_완료하면_EARN_ACCEPTED를_반환하고_missionType이_LIKE로_전달된다() {
+        // 이슈 2: MissionCompletionService는 MissionType을 분기하지 않는다 — 출석과
+        // 동일한 코드 경로로 판정·지급되는지, EarnCommand에 실리는 missionType만
+        // 다른지 확인한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService).earn(captor.capture());
+        assertThat(captor.getValue().missionType()).isEqualTo("LIKE");
+    }
+
+    @Test
+    void 같은_creator의_출석과_좋아요는_missionType과_missionKey가_달라_서로_다른_적립_단위로_구분된다() {
+        // Redis EARN Guard 키(mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd},
+        // FR-P2-006)는 missionType으로 미션 유형을 구분한다. 출석 완료가 좋아요 적립을
+        // 막거나(또는 반대로) 서로 간섭하지 않으려면, 같은 creator라도 두 EarnCommand의
+        // missionType·missionKey가 달라야 한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        stubMemberAndMission(attendanceMission());
+        serviceWith(clock).complete(CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        stubMemberAndMission(likeMission());
+        serviceWith(clock).complete(CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(0).missionType()).isEqualTo("ATTENDANCE");
+        assertThat(commands.get(1).missionType()).isEqualTo("LIKE");
+        assertThat(commands.get(0).missionKey()).isNotEqualTo(commands.get(1).missionKey());
+    }
+
+    @Test
+    void 좋아요_미션도_동일_요청_재시도시_ALREADY_PROCESSED를_반환한다() {
+        // 이슈 2: "취소 후 재좋아요해도 추가 지급 차단"은 별도 취소 API 없이 이 EARN
+        // 재시도 판정(findExisting/earn 가드)만으로 이미 처리된다 — 미션 유형과
+        // 무관하게 동일 메커니즘임을 좋아요로도 확인한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 좋아요_취소_후_같은_날_다시_좋아요하면_다른_requestId여도_DUPLICATE_MISSION이다() {
+        // FR-P1-013: 취소는 서버에 알리지 않으므로(별도 취소 API 없음) "재좋아요"는
+        // 새 버튼 클릭, 즉 새 requestId로 오는 완료 요청과 같다. findExisting()은
+        // 다른 requestId라 NOT_FOUND를 반환하고, earn()의 Redis Guard가 같은 날
+        // 이미 SET된 상태를 보고 DUPLICATE_MISSION을 반환해야 한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.DUPLICATE_MISSION));
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.DUPLICATE_MISSION);
     }
 
     @Test
@@ -291,7 +373,8 @@ class MissionCompletionServiceTest {
 
     @ParameterizedTest
     @EnumSource(value = EarnResultCode.class, names = {
-            "DUPLICATE_MISSION", "REQUEST_ID_CONFLICT", "EARN_PROCESSING_FAILED", "EARN_STATUS_UNKNOWN"
+            "DUPLICATE_MISSION", "REQUEST_ID_CONFLICT", "EARN_PROCESSING_FAILED", "EARN_STATUS_UNKNOWN",
+            "BALANCE_MAINTENANCE"
     })
     void EARN_실패_결과코드는_대응하는_MissionErrorCode_예외로_변환된다(EarnResultCode code) {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
