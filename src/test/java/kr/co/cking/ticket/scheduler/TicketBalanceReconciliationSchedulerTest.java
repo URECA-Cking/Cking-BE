@@ -16,10 +16,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.SliceImpl;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -259,7 +261,8 @@ class TicketBalanceReconciliationSchedulerTest {
 
     @Test
     void 잔액이_여러_Slice에_나뉘어도_모든_페이지를_검사한다() {
-        Pageable first = PageRequest.of(0, 500);
+        // 실제 Slice는 요청 Pageable의 정렬을 유지한다.
+        Pageable first = PageRequest.of(0, 500, Sort.by("id.memberId", "id.creatorId"));
         UserTicketBalance a = UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build();
         UserTicketBalance b = UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build();
         when(userTicketBalanceRepository.findAllBy(any(Pageable.class)))
@@ -270,7 +273,13 @@ class TicketBalanceReconciliationSchedulerTest {
 
         scheduler.reconcile();
 
-        verify(userTicketBalanceRepository, times(2)).findAllBy(any(Pageable.class));
+        ArgumentCaptor<Pageable> pageables = ArgumentCaptor.forClass(Pageable.class);
+        verify(userTicketBalanceRepository, times(2)).findAllBy(pageables.capture());
+        assertThat(pageables.getAllValues()).extracting(Pageable::getPageNumber).containsExactly(0, 1);
+        assertThat(pageables.getAllValues()).extracting(Pageable::getPageSize).containsOnly(500);
+        assertThat(pageables.getAllValues())
+                .extracting(pageable -> pageable.getSort().toList().stream().map(Sort.Order::getProperty).toList())
+                .containsOnly(List.of("id.memberId", "id.creatorId"));
         verify(valueOperations).get(TicketRedisKeys.balance(10L, 1L));
         verify(valueOperations).get(TicketRedisKeys.balance(10L, 2L));
     }
