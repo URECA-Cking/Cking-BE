@@ -1,5 +1,6 @@
 package kr.co.cking.redraw.application;
 
+import java.util.Objects;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
@@ -51,7 +52,7 @@ public class RedrawRequestCreateService {
     private RedrawRequest returnExistingOrThrow(RedrawRequest existing, RedrawRequestCreateCommand command) {
         if (!existing.getRequestedBy().equals(command.userId())
                 || !existing.getEventId().equals(command.eventId())
-                || !existing.getReason().equals(command.reason())) {
+                || !Objects.equals(existing.getReason(), command.reason())) {
             throw new BusinessException(RedrawErrorCode.IDEMPOTENCY_CONFLICT);
         }
         return existing;

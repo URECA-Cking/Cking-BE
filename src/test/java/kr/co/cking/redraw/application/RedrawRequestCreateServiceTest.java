@@ -135,6 +135,19 @@ class RedrawRequestCreateServiceTest {
         verifyNoInteractions(persistenceService);
     }
 
+    /** 레거시 요청의 null 사유는 NPE가 아닌 멱등성 충돌로 처리한다. */
+    @Test
+    void 기존_요청의_null_사유는_IDEMPOTENCY_CONFLICT다() {
+        RedrawRequest existing = request(100L, null);
+        when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.create(command(REASON)))
+                .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.IDEMPOTENCY_CONFLICT);
+
+        verifyNoInteractions(persistenceService);
+    }
+
     /** 존재하지 않는 Member는 멱등 조회나 결원 계산 전에 차단한다. */
     @Test
     void 존재하지_않는_관리자_Member는_생성을_시도하지_않는다() {
