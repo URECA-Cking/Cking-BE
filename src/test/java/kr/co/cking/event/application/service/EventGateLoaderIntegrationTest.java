@@ -31,7 +31,8 @@ class EventGateLoaderIntegrationTest {
     @BeforeEach
     @AfterEach
     void cleanUp() {
-        redisTemplate.delete(List.of(EntryRedisKeys.status(EVENT_ID), EntryRedisKeys.endAt(EVENT_ID)));
+        redisTemplate.delete(List.of(
+                EntryRedisKeys.status(EVENT_ID), EntryRedisKeys.endAt(EVENT_ID), EntryRedisKeys.cutoff(EVENT_ID)));
     }
 
     private Event event(Instant endAt) {
@@ -59,5 +60,16 @@ class EventGateLoaderIntegrationTest {
         eventGateLoader.load(event(Instant.parse("2099-01-01T00:00:00Z")));
 
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(EVENT_ID))).isEqualTo("CLOSED");
+    }
+
+    @Test
+    void barrier가_cutoff를_확정했으면_status가_유실돼도_stale한_OPEN으로_다시_열지_않는다() {
+        // barrier 실행 후 status 키만 eviction으로 사라진 상태에서 stale한 DB OPEN 조회값으로 복원을 시도한다.
+        redisTemplate.opsForValue().set(EntryRedisKeys.cutoff(EVENT_ID), "1-0");
+
+        eventGateLoader.load(event(Instant.parse("2099-01-01T00:00:00Z")));
+
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(EVENT_ID))).isNull();
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.endAt(EVENT_ID))).isNull();
     }
 }

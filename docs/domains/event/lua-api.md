@@ -10,7 +10,7 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | 키 | 타입 | 용도 |
 | --- | --- | --- |
 | `event:status:{eventId}` | STRING | `OPEN`이면 응모 허용, 그 외 값이면 차단. `EventGateLoader`가 `open()` 커밋 직후(및 스케줄러 틱마다 키가 없을 때) `OPEN`으로 적재하고, `EventCutoffBarrier`가 마감 시작 시 `CLOSED`로 갱신 |
-| `event:endat:{eventId}` | STRING | 마감 시각(epoch millis). `open()` 시점에 `EventGateLoader`가 `status`보다 먼저 적재, 불변. 키가 없을 때만 쓰므로 `CLOSED` Gate를 다시 열지 않음. 진행 중 OPEN 이벤트의 유실 키는 `EventLifecycleScheduler`가 DB 기준으로 복원 |
+| `event:endat:{eventId}` | STRING | 마감 시각(epoch millis). `open()` 시점에 `EventGateLoader`가 `status`보다 먼저 적재, 불변. 키가 없을 때만 쓰고, `event:cutoff`가 있으면(마감 barrier 실행 후) 적재를 건너뛰어 stale한 DB 조회값으로 `CLOSED` Gate를 다시 열지 않음(`event-gate-load.lua`). 진행 중 OPEN 이벤트의 유실 키는 `EventLifecycleScheduler`가 DB 기준으로 복원 |
 | `event:cutoff:{eventId}` | STRING | 시스템2가 확정한 마감 barrier Stream ID. 재시도 시 같은 값을 재사용 |
 | `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 응모권 잔액 |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
