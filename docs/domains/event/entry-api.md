@@ -22,18 +22,18 @@
 
 ### 결과코드와 HTTP 상태
 
-Lua 결과코드 10종은 `EntryErrorCode`가 HTTP 상태로 매핑한다. 취합 v1.5.4 §5.4가 "구체 매핑값은 구현 시 확정"으로 남긴 값이며, 아래 표가 확정본이다. 응답 본문은 공통 응답 봉투를 따른다.
+Lua 결과코드 10종 중 실패 8종은 `EntryErrorCode`가 HTTP 상태로 매핑하고, 성공 2종(`SUCCESS`, `DUPLICATE_REPLAY`)은 Controller가 HTTP 200으로 응답한다. 취합 v1.5.4 §5.4가 "구체 매핑값은 구현 시 확정"으로 남긴 값이며, 아래 표가 확정본이다. 응답 본문은 공통 응답 봉투를 따른다.
 
 | 결과코드 | HTTP | 의미 | 클라이언트 처리 |
 | --- | --- | --- | --- |
 | `SUCCESS` | 200 | 이번 요청에서 차감과 Stream 발행 완료 | - |
 | `DUPLICATE_REPLAY` | 200 | 동일 `requestId`의 기존 성공 결과 재사용. 실패가 아니며 `SUCCESS`와 같은 응답 스키마 | - |
 | `INVALID_TICKET_COUNT` | 400 | Lua가 방어적으로 거른 잘못된 응모 수량 | 요청 수정 |
-| `EVENT_NOT_OPEN` | 409 | OPEN 이전 등 응모 가능한 상태가 아님 | 시작 후 재시도 |
-| `EVENT_CLOSED` | 409 | 마감 이후. `EVENT_NOT_OPEN`과 구분한다 | 재시도 무의미 |
+| `EVENT_NOT_OPEN` | 409 | Gate 값이 `OPEN`이 아님. 마감 barrier가 Gate를 `CLOSED`로 바꾼 뒤(마감 진행 중·이후) 발생한다 | 재시도 무의미 |
+| `EVENT_CLOSED` | 409 | Gate는 `OPEN`이지만 `endAt`을 지남(마감 배치가 Gate를 닫기 전) | 재시도 무의미 |
 | `INSUFFICIENT_BALANCE` | 409 | 응모권 잔액 부족 | 잔액 확인 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 동일 `requestId`에 다른 요청 내용 | 새 `requestId` |
-| `GATE_NOT_LOADED` | 503 | Gate 키 미적재. OPEN으로 간주하지 않는다 | 잠시 후 재시도 |
+| `GATE_NOT_LOADED` | 503 | Gate 키 미적재(OPEN 전이 전이거나 Redis 유실). OPEN으로 간주하지 않는다 | 잠시 후 재시도 |
 | `BALANCE_NOT_LOADED` | 503 | 잔액 키 미적재. 0으로 간주하지 않는다 | 잠시 후 재시도 |
 | `SYSTEM_ERROR` | 500 | 내부 오류. Redis 타임아웃도 포함 | 동일 `requestId`로 재시도 |
 
