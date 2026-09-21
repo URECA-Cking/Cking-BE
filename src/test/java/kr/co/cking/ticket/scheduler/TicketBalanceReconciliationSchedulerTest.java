@@ -2,6 +2,7 @@ package kr.co.cking.ticket.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -18,11 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.QueryTimeoutException;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Slice;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.domain.SliceImpl;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.RedisSystemException;
@@ -140,9 +137,10 @@ class TicketBalanceReconciliationSchedulerTest {
 
     @Test
     void 특정_key의_Redis_값이_숫자가_아니어도_나머지_key_검사를_계속한다() {
-        when(userTicketBalanceRepository.findAllBy(any(Pageable.class))).thenReturn(slice(List.of(
+        when(userTicketBalanceRepository.findNextBatch(anyLong(), anyLong(), any(Pageable.class)))
+                .thenReturn(List.of(
                 UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
-                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build())));
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn("not-a-number");
         givenRedisValue(2L, 10L, "3");
 
@@ -174,9 +172,10 @@ class TicketBalanceReconciliationSchedulerTest {
 
     @Test
     void Redis_연결_자체가_실패하면_이번_주기를_중단하고_WARN_한_번만_남긴다() {
-        when(userTicketBalanceRepository.findAllBy(any(Pageable.class))).thenReturn(slice(List.of(
+        when(userTicketBalanceRepository.findNextBatch(anyLong(), anyLong(), any(Pageable.class)))
+                .thenReturn(List.of(
                 UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
-                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build())));
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L)))
                 .thenThrow(new RedisConnectionFailureException("connection refused"));
 
@@ -192,8 +191,9 @@ class TicketBalanceReconciliationSchedulerTest {
         givenRedisValue(1L, 10L, "3");
         scheduler.reconcile();
 
-        when(userTicketBalanceRepository.findAllBy(any(Pageable.class))).thenReturn(slice(List.of(
-                UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build())));
+        when(userTicketBalanceRepository.findNextBatch(anyLong(), anyLong(), any(Pageable.class)))
+                .thenReturn(List.of(
+                UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build()));
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L)))
                 .thenThrow(new RedisConnectionFailureException("connection refused"));
         scheduler.reconcile();
@@ -211,9 +211,10 @@ class TicketBalanceReconciliationSchedulerTest {
 
     @Test
     void WRONGTYPE처럼_원인이_RedisCommandExecutionException이면_key_단위_오류로_다음_key를_계속_검사한다() {
-        when(userTicketBalanceRepository.findAllBy(any(Pageable.class))).thenReturn(slice(List.of(
+        when(userTicketBalanceRepository.findNextBatch(anyLong(), anyLong(), any(Pageable.class)))
+                .thenReturn(List.of(
                 UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
-                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build())));
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenThrow(
                 new RedisSystemException("Error in execution", new RedisCommandExecutionException("WRONGTYPE")));
         givenRedisValue(2L, 10L, "3");
@@ -227,9 +228,10 @@ class TicketBalanceReconciliationSchedulerTest {
 
     @Test
     void RedisSystemException의_원인이_일반_RedisException이면_연결장애로_보고_다음_key를_검사하지_않는다() {
-        when(userTicketBalanceRepository.findAllBy(any(Pageable.class))).thenReturn(slice(List.of(
+        when(userTicketBalanceRepository.findNextBatch(anyLong(), anyLong(), any(Pageable.class)))
+                .thenReturn(List.of(
                 UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build(),
-                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build())));
+                UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build()));
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenThrow(
                 new RedisSystemException("Redis exception", new RedisException("Connection closed")));
 
@@ -260,37 +262,36 @@ class TicketBalanceReconciliationSchedulerTest {
     }
 
     @Test
-    void 잔액이_여러_Slice에_나뉘어도_모든_페이지를_검사한다() {
-        // 실제 Slice는 요청 Pageable의 정렬을 유지한다.
-        Pageable first = PageRequest.of(0, 500, Sort.by("id.memberId", "id.creatorId"));
-        UserTicketBalance a = UserTicketBalance.builder().memberId(1L).creatorId(10L).balance(5L).build();
-        UserTicketBalance b = UserTicketBalance.builder().memberId(2L).creatorId(10L).balance(7L).build();
-        when(userTicketBalanceRepository.findAllBy(any(Pageable.class)))
-                .thenReturn(new SliceImpl<>(List.of(a), first, true))
-                .thenReturn(new SliceImpl<>(List.of(b), first.next(), false));
-        givenRedisValue(1L, 10L, "5");
-        givenRedisValue(2L, 10L, "7");
+    void 한_배치가_가득_차면_마지막_키_이후부터_다음_배치를_조회한다() {
+        List<UserTicketBalance> full = new java.util.ArrayList<>();
+        for (long memberId = 1; memberId <= 500; memberId++) {
+            full.add(UserTicketBalance.builder().memberId(memberId).creatorId(10L).balance(5L).build());
+        }
+        UserTicketBalance next = UserTicketBalance.builder().memberId(501L).creatorId(10L).balance(7L).build();
+        when(userTicketBalanceRepository.findNextBatch(anyLong(), anyLong(), any(Pageable.class)))
+                .thenReturn(full)
+                .thenReturn(List.of(next));
+        givenRedisValue(501L, 10L, "7");
 
         scheduler.reconcile();
 
+        ArgumentCaptor<Long> memberIds = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> creatorIds = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<Pageable> pageables = ArgumentCaptor.forClass(Pageable.class);
-        verify(userTicketBalanceRepository, times(2)).findAllBy(pageables.capture());
-        assertThat(pageables.getAllValues()).extracting(Pageable::getPageNumber).containsExactly(0, 1);
+        verify(userTicketBalanceRepository, times(2))
+                .findNextBatch(memberIds.capture(), creatorIds.capture(), pageables.capture());
+        // 첫 조회는 처음부터, 두 번째는 첫 배치의 마지막 키(500, 10) 이후부터 읽는다.
+        assertThat(memberIds.getAllValues()).containsExactly(Long.MIN_VALUE, 500L);
+        assertThat(creatorIds.getAllValues()).containsExactly(Long.MIN_VALUE, 10L);
+        assertThat(pageables.getAllValues()).extracting(Pageable::getPageNumber).containsOnly(0);
         assertThat(pageables.getAllValues()).extracting(Pageable::getPageSize).containsOnly(500);
-        assertThat(pageables.getAllValues())
-                .extracting(pageable -> pageable.getSort().toList().stream().map(Sort.Order::getProperty).toList())
-                .containsOnly(List.of("id.memberId", "id.creatorId"));
-        verify(valueOperations).get(TicketRedisKeys.balance(10L, 1L));
-        verify(valueOperations).get(TicketRedisKeys.balance(10L, 2L));
-    }
-
-    private static Slice<UserTicketBalance> slice(List<UserTicketBalance> balances) {
-        return new SliceImpl<>(balances);
+        verify(valueOperations).get(TicketRedisKeys.balance(10L, 501L));
     }
 
     private void givenBalance(Long memberId, Long creatorId, Long balance) {
-        when(userTicketBalanceRepository.findAllBy(any(Pageable.class))).thenReturn(slice(List.of(
-                UserTicketBalance.builder().memberId(memberId).creatorId(creatorId).balance(balance).build())));
+        when(userTicketBalanceRepository.findNextBatch(anyLong(), anyLong(), any(Pageable.class)))
+                .thenReturn(List.of(
+                UserTicketBalance.builder().memberId(memberId).creatorId(creatorId).balance(balance).build()));
     }
 
     private void givenRedisValue(Long memberId, Long creatorId, String value) {

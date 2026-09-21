@@ -8,8 +8,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Slice;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -51,11 +49,13 @@ public class TicketBalanceReconciliationScheduler {
 
     @Scheduled(fixedDelayString = "${cking.ticket.reconciliation-interval-ms:300000}")
     public void reconcile() {
-        Pageable page = PageRequest.of(0, PAGE_SIZE, Sort.by("id.memberId", "id.creatorId"));
-        Slice<UserTicketBalance> slice;
+        Pageable limit = PageRequest.of(0, PAGE_SIZE);
+        Long lastMemberId = Long.MIN_VALUE;
+        Long lastCreatorId = Long.MIN_VALUE;
+        List<UserTicketBalance> batch;
         do {
-            slice = userTicketBalanceRepository.findAllBy(page);
-            for (UserTicketBalance balance : slice) {
+            batch = userTicketBalanceRepository.findNextBatch(lastMemberId, lastCreatorId, limit);
+            for (UserTicketBalance balance : batch) {
                 BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
                 try {
                     check(key, balance.getBalance());
@@ -75,8 +75,12 @@ public class TicketBalanceReconciliationScheduler {
                     failKey(key, e);
                 }
             }
-            page = slice.nextPageable();
-        } while (slice.hasNext());
+            if (!batch.isEmpty()) {
+                UserTicketBalance last = batch.get(batch.size() - 1);
+                lastMemberId = last.getMemberId();
+                lastCreatorId = last.getCreatorId();
+            }
+        } while (batch.size() == PAGE_SIZE);
     }
 
     private void abortCycle(Exception e) {
