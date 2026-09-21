@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Future;
 import java.util.concurrent.Executors;
@@ -219,7 +220,10 @@ class DeadStreamReplayServiceIntegrationTest {
             assertThat(finalState.isUnresolved()).isFalse();
             assertThat(firstResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
             assertThat(secondResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
-            assertThat(firstResult.getResolvedAt()).isEqualTo(secondResult.getResolvedAt());
+            // 먼저 커밋한 요청은 메모리의 Instant(Linux는 나노초)를, 나중 요청은 DB(DATETIME(6), 마이크로초)에서 읽은 값을
+            // 돌려받으므로 DB 정밀도로 맞춰 비교한다.
+            assertThat(firstResult.getResolvedAt().truncatedTo(ChronoUnit.MICROS)).isEqualTo(finalState.getResolvedAt());
+            assertThat(secondResult.getResolvedAt().truncatedTo(ChronoUnit.MICROS)).isEqualTo(finalState.getResolvedAt());
             assertThat(eventEntryRepository.findByRequestId(requestId)).isPresent();
         } finally {
             pool.shutdownNow();
