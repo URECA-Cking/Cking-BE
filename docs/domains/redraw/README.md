@@ -1,0 +1,46 @@
+# Redraw 도메인
+
+## 책임
+
+- `DECLINED` 또는 `DISQUALIFIED` Winner로 생긴 결원을 재추첨 요청으로 고정한다.
+- 요청 생성 시 최초 `INITIAL` Drawing과 실제 결원을 서버에서 결정한다.
+- 같은 결원이 둘 이상의 진행 중 요청에 포함되지 않도록 보장한다.
+
+이 도메인은 Event·Drawing·Winner Entity를 직접 수정하지 않는다. 생성 전 상태 조회는 각 도메인의
+조회 경계를 통해 수행하며, 이후 승인·실행은 별도 API가 책임진다.
+
+## 요청 상태
+
+| 상태 | 의미 | 결원 점유 |
+| --- | --- | --- |
+| `REQUESTED` | 관리자 검토 대기 | 점유함 |
+| `APPROVED` | 실행 가능 | 점유함 |
+| `REJECTED` | 요청 거절 | 점유하지 않음 |
+
+실행 상태는 `PENDING`, `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED`이며, 생성 시에는 항상
+`PENDING`이다. 진행 중 요청은 `REQUESTED` 또는 `APPROVED`이면서 `executionStatus = PENDING`인
+요청이다. 이 요청에 연결된 Winner는 새 요청의 결원 후보에서 제외한다.
+
+## 생성 불변조건
+
+- 요청자는 존재하는 `ADMIN` Member여야 한다.
+- Event는 삭제되지 않은 `PUBLISHED` 상태여야 한다.
+- Event의 `drawNo = 0`, `drawType = INITIAL` Drawing이 원본 Drawing이다. 클라이언트는 원본
+  Drawing ID나 결원 수를 전달하지 않는다.
+- 원본 INITIAL Drawing의 Winner 중 현재 운영 상태가 `DECLINED` 또는 `DISQUALIFIED`인 Winner만
+  결원 후보가 된다.
+- 후보가 하나도 없으면 요청을 만들지 않는다.
+- 생성 시점에 선정한 Winner ID 목록을 `redraw_request_vacancy`에 저장한다. 이후 Winner 상태가
+  바뀌어도 요청의 결원 수와 대상은 변하지 않는다.
+
+## 동시성과 멱등성
+
+- 생성 명령은 Event 행을 비관적 쓰기 잠금으로 조회한 뒤 결원·점유를 계산한다. 같은 Event의
+  요청 생성은 직렬화되어 결원 중복 점유가 발생하지 않는다.
+- `idempotencyKey`는 1~100자의 UUID 표준 문자열이며 전역 unique다.
+- 같은 키로 같은 `userId`, `eventId`, 정규화한 `reason`을 재요청하면 기존 RedrawRequest를 반환한다.
+  하나라도 다르면 `IDEMPOTENCY_CONFLICT`로 거부한다.
+- 서로 다른 Event에서 같은 키가 동시에 들어와 unique 제약이 충돌하면 저장 후 기존 요청을 다시
+  조회하고, 본문이 다르면 `IDEMPOTENCY_CONFLICT`를 반환한다.
+
+DB 구조와 unique·foreign key 제약의 정본은 `src/main/resources/db/migration/`이다.
