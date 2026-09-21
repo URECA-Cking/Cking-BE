@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Set;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.drawing.domain.Drawing;
-import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.event.application.EventDrawingQueryService;
@@ -68,7 +67,7 @@ class RedrawRequestCreationPersistenceService {
     /** Event의 최초 INITIAL Drawing을 조회하고 유형 불일치 데이터도 명확히 차단한다. */
     private Drawing findOriginalInitialDrawing(Long eventId) {
         Drawing drawing = drawingRepository.findByEventIdAndDrawNo(eventId, INITIAL_DRAW_NO)
-                .orElseThrow(() -> new BusinessException(DrawingErrorCode.DRAWING_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(RedrawErrorCode.INVALID_STATE));
         if (drawing.getDrawType() != DrawingType.INITIAL) {
             throw new BusinessException(RedrawErrorCode.INVALID_STATE);
         }

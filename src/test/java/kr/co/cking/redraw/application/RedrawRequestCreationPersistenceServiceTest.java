@@ -108,6 +108,20 @@ class RedrawRequestCreationPersistenceServiceTest {
                 redrawRequestRepository, redrawRequestVacancyRepository);
     }
 
+    /** 최초 INITIAL Drawing이 없으면 Event 단위 명령의 상태 위반으로 차단한다. */
+    @Test
+    void INITIAL_Drawing이_없으면_INVALID_STATE다() {
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(EVENT_ID))
+                .thenReturn(new EventDrawingSource(EVENT_ID, EventStatus.PUBLISHED, null));
+        when(drawingRepository.findByEventIdAndDrawNo(EVENT_ID, 0)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(command()))
+                .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.INVALID_STATE);
+
+        verifyNoInteractions(redrawVacancyCandidateRepository,
+                redrawRequestRepository, redrawRequestVacancyRepository);
+    }
+
     /** 미점유 DECLINED·DISQUALIFIED Winner가 없으면 빈 요청을 저장하지 않는다. */
     @Test
     void 결원이_없으면_NO_REDRAW_VACANCY다() {
