@@ -43,6 +43,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 테스트 프로필 설정을 모든 테스트 컨텍스트에 추가해 Hikari 연결 수를 제한한다.
+	systemProperty 'spring.config.additional-location', 'optional:classpath:/application-test.yml'
 
 	testLogging {
 		events "passed", "skipped", "failed"
