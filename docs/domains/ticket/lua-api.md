@@ -101,7 +101,7 @@ Guard 자체가 idem보다 먼저 만료되는 경우는 없다 — 같은 `EX` 
 
 이 확인은 **일일 Guard 검사보다 먼저** 실행된다(SPEND가 idem·guard 재현 직후, Balance 확인 이전에 락을 보는 것과 같은 자리). 그래서 보정 중에 새 `requestId` + 같은 Business Key(같은 미션·같은 날)로 요청이 오면, 원래라면 `DUPLICATE_MISSION`(409)이 될 요청도 `BALANCE_MAINTENANCE`(503)로 먼저 걸린다. 재시도하면 락 해제 후 실제 판정(`DUPLICATE_MISSION` 또는 성공)으로 수렴하므로 정합성 문제는 아니다.
 
-락 키를 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 `TicketCompensationService` 쪽 로직(`TicketMaintenanceLock`, issue #174/PR #176)은 이 변경에 포함되지 않았다 - 별도 PR에서 진행하며, 두 PR이 모두 머지된 뒤 이슈 #172를 닫는다. `TicketRedisKeys.maintenance(creatorId, userId)`가 두 PR이 공유하는 키 빌더다.
+락을 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 쪽은 `TicketCompensationService`/`TicketMaintenanceLock`이다(issue #174). `TicketRedisKeys.maintenance(creatorId, userId)`가 Lua와 보정 서비스가 공유하는 키 빌더다.
 
 ## `findExisting()` — read-only 조회 Contract (issue #125)
 

@@ -52,7 +52,7 @@ ticketCount 검증
 
 idem·guard 재현 분기(이미 끝난 요청의 replay)를 통과한 **신규 차감 요청만** `ticket:maint:{creatorId}:{userId}` 존재 여부를 확인한다. 락이 있으면 `{ 'BALANCE_MAINTENANCE' }`를 반환한다(HTTP 503) - SPEND/EARN이 동일한 코드·HTTP 상태를 쓰기로 합의했다. 락이 풀린 뒤 같은 요청으로 재시도하면 정상 처리된다.
 
-락 키를 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 `TicketCompensationService` 쪽 로직(`TicketMaintenanceLock`, issue #174/PR #176)은 이 변경에 포함되지 않았다 - 별도 PR에서 진행하며, 두 PR이 모두 머지된 뒤 이슈 #172를 닫는다. `TicketRedisKeys.maintenance(creatorId, userId)`가 두 PR이 공유하는 키 빌더다.
+락을 실제로 SET/DEL하고 보정 전 미반영 Stream·PEL·Dead Stream 메시지를 확인하는 쪽은 `TicketCompensationService`/`TicketMaintenanceLock`이다(issue #174). `TicketRedisKeys.maintenance(creatorId, userId)`가 Lua와 보정 서비스가 공유하는 키 빌더다.
 
 ## DECRBY·XADD 실패 시 보상
 
