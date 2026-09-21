@@ -291,7 +291,8 @@ class MissionCompletionServiceTest {
 
     @ParameterizedTest
     @EnumSource(value = EarnResultCode.class, names = {
-            "DUPLICATE_MISSION", "REQUEST_ID_CONFLICT", "EARN_PROCESSING_FAILED", "EARN_STATUS_UNKNOWN"
+            "DUPLICATE_MISSION", "REQUEST_ID_CONFLICT", "EARN_PROCESSING_FAILED", "EARN_STATUS_UNKNOWN",
+            "BALANCE_MAINTENANCE"
     })
     void EARN_실패_결과코드는_대응하는_MissionErrorCode_예외로_변환된다(EarnResultCode code) {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);

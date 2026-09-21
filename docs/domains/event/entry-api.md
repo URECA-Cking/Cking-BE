@@ -22,7 +22,7 @@
 
 ### 결과코드와 HTTP 상태
 
-Lua 결과코드 10종 중 실패 8종은 `EntryErrorCode`가 HTTP 상태로 매핑하고, 성공 2종(`SUCCESS`, `DUPLICATE_REPLAY`)은 Controller가 HTTP 200으로 응답한다. 취합 v1.5.4 §5.4가 "구체 매핑값은 구현 시 확정"으로 남긴 값이며, 아래 표가 확정본이다. 응답 본문은 공통 응답 봉투를 따른다.
+Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `EntryErrorCode`가 HTTP 상태로 매핑하고, 성공 2종(`SUCCESS`, `DUPLICATE_REPLAY`)은 Controller가 HTTP 200으로 응답한다. 취합 v1.5.4 §5.4가 "구체 매핑값은 구현 시 확정"으로 남긴 값이며, 아래 표가 확정본이다. 응답 본문은 공통 응답 봉투를 따른다.
 
 | 결과코드 | HTTP | 의미 | 클라이언트 처리 |
 | --- | --- | --- | --- |
@@ -35,11 +35,12 @@ Lua 결과코드 10종 중 실패 8종은 `EntryErrorCode`가 HTTP 상태로 매
 | `IDEMPOTENCY_CONFLICT` | 409 | 동일 `requestId`에 다른 요청 내용 | 새 `requestId` |
 | `GATE_NOT_LOADED` | 503 | Gate 키 미적재(OPEN 전이 전이거나 Redis 유실). OPEN으로 간주하지 않는다 | 잠시 후 재시도 |
 | `BALANCE_NOT_LOADED` | 503 | 잔액 키 미적재. 0으로 간주하지 않는다 | 잠시 후 재시도 |
+| `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(issue #172) | 잠시 후 동일 `requestId`로 재시도 |
 | `SYSTEM_ERROR` | 500 | 내부 오류. Redis 타임아웃도 포함 | 동일 `requestId`로 재시도 |
 
 1~100 범위를 벗어난 `ticketCount`나 UUID 형식이 아닌 `requestId`는 Lua에 도달하기 전에 Controller가 공통 `VALIDATION_FAILED`(400)로 거절한다.
 
-`GATE_NOT_LOADED`·`BALANCE_NOT_LOADED`·`SYSTEM_ERROR`는 동일 `requestId`로 재시도해도 이중 차감이 없다. 재시도 결과와 타임아웃 처리는 [응모 Lua API](lua-api.md#redis-타임아웃과-system_error)를 따른다.
+`GATE_NOT_LOADED`·`BALANCE_NOT_LOADED`·`BALANCE_MAINTENANCE`·`SYSTEM_ERROR`는 동일 `requestId`로 재시도해도 이중 차감이 없다. 재시도 결과와 타임아웃 처리는 [응모 Lua API](lua-api.md#redis-타임아웃과-system_error)를 따른다.
 
 ## GET /api/events/{eventId}/entries/me
 

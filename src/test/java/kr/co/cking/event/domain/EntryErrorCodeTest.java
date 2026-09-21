@@ -32,6 +32,7 @@ class EntryErrorCodeTest {
         assertThat(EntryErrorCode.IDEMPOTENCY_CONFLICT.status()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(EntryErrorCode.GATE_NOT_LOADED.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         assertThat(EntryErrorCode.BALANCE_NOT_LOADED.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(EntryErrorCode.BALANCE_MAINTENANCE.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         assertThat(EntryErrorCode.SYSTEM_ERROR.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }
