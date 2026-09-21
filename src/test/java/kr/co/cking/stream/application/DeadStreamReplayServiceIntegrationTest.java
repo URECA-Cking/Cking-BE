@@ -2,6 +2,7 @@ package kr.co.cking.stream.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -220,10 +221,10 @@ class DeadStreamReplayServiceIntegrationTest {
             assertThat(finalState.isUnresolved()).isFalse();
             assertThat(firstResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
             assertThat(secondResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
-            // 먼저 커밋한 요청은 메모리의 Instant(Linux는 나노초)를, 나중 요청은 DB(DATETIME(6), 마이크로초)에서 읽은 값을
-            // 돌려받으므로 DB 정밀도로 맞춰 비교한다.
-            assertThat(firstResult.getResolvedAt().truncatedTo(ChronoUnit.MICROS)).isEqualTo(finalState.getResolvedAt());
-            assertThat(secondResult.getResolvedAt().truncatedTo(ChronoUnit.MICROS)).isEqualTo(finalState.getResolvedAt());
+            // 먼저 커밋한 요청은 메모리의 Instant(Linux는 나노초)를, 나중 요청은 DB(DATETIME(6))에서 읽은 값을 돌려받는다.
+            // MySQL은 소수부를 잘라내지 않고 반올림하므로 1마이크로초 오차까지 같은 값으로 본다.
+            assertThat(firstResult.getResolvedAt()).isCloseTo(finalState.getResolvedAt(), within(1, ChronoUnit.MICROS));
+            assertThat(secondResult.getResolvedAt()).isCloseTo(finalState.getResolvedAt(), within(1, ChronoUnit.MICROS));
             assertThat(eventEntryRepository.findByRequestId(requestId)).isPresent();
         } finally {
             pool.shutdownNow();
