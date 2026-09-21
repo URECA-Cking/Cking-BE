@@ -8,6 +8,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import kr.co.cking.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ class RedrawRequestCreateConcurrencyIntegrationTest {
     private static final long DRAWING_ID = 98601L;
     private static final long WINNER_ID = 98701L;
     private static final String IDEMPOTENCY_KEY = "d2719c4a-1f9b-4dc4-a656-9a4bb37d8e70";
+    private static final String SECOND_IDEMPOTENCY_KEY = "e3829e5b-2f0c-5ed5-b767-ab5ac48e9f81";
 
     @Autowired
     private RedrawRequestCreateService redrawRequestCreateService;
@@ -83,8 +85,12 @@ class RedrawRequestCreateConcurrencyIntegrationTest {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Future<RedrawRequestCreateResult> first = executor.submit(() -> createAfterSignal(ready, start));
-            Future<RedrawRequestCreateResult> second = executor.submit(() -> createAfterSignal(ready, start));
+            Future<RedrawRequestCreateResult> first = executor.submit(
+                    () -> createAfterSignal(ready, start, IDEMPOTENCY_KEY)
+            );
+            Future<RedrawRequestCreateResult> second = executor.submit(
+                    () -> createAfterSignal(ready, start, IDEMPOTENCY_KEY)
+            );
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
 
@@ -99,13 +105,46 @@ class RedrawRequestCreateConcurrencyIntegrationTest {
         }
     }
 
-    /** 시작 신호 뒤 동일 본문·멱등 키로 생성 명령을 실행한다. */
-    private RedrawRequestCreateResult createAfterSignal(CountDownLatch ready, CountDownLatch start) throws InterruptedException {
+    /** 서로 다른 멱등 키의 동시 요청도 같은 Winner 결원을 중복 점유하지 못하게 한다. */
+    @Test
+    void 다른_멱등_키의_동시_요청은_결원을_한번만_점유한다() throws Exception {
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<String> first = executor.submit(() -> createOrReturnError(ready, start, IDEMPOTENCY_KEY));
+            Future<String> second = executor.submit(() -> createOrReturnError(ready, start, SECOND_IDEMPOTENCY_KEY));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder("SUCCESS", "NO_REDRAW_VACANCY");
+            assertThat(redrawRequestCount()).isEqualTo(1);
+            assertThat(vacancyCount()).isEqualTo(1);
+        }
+    }
+
+    /** 시작 신호 뒤 지정한 멱등 키로 생성 명령을 실행한다. */
+    private RedrawRequestCreateResult createAfterSignal(
+            CountDownLatch ready,
+            CountDownLatch start,
+            String idempotencyKey
+    ) throws InterruptedException {
         ready.countDown();
         start.await();
         return redrawRequestCreateService.create(new RedrawRequestCreateCommand(
-                ADMIN_ID, EVENT_ID, "당첨자 포기에 따른 재추첨", IDEMPOTENCY_KEY
+                ADMIN_ID, EVENT_ID, "당첨자 포기에 따른 재추첨", idempotencyKey
         ));
+    }
+
+    /** 병렬 생성 결과를 성공 또는 도메인 오류 코드 문자열로 변환한다. */
+    private String createOrReturnError(CountDownLatch ready, CountDownLatch start, String idempotencyKey)
+            throws InterruptedException {
+        try {
+            createAfterSignal(ready, start, idempotencyKey);
+            return "SUCCESS";
+        } catch (BusinessException exception) {
+            return exception.getErrorCode().code();
+        }
     }
 
     /** Event에 생성된 RedrawRequest 수를 반환한다. */
@@ -113,6 +152,16 @@ class RedrawRequestCreateConcurrencyIntegrationTest {
         return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM redraw_request WHERE event_id = ?", Integer.class, EVENT_ID
         );
+    }
+
+    /** Event에 확정된 RedrawRequestVacancy 행 수를 반환한다. */
+    private int vacancyCount() {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM redraw_request_vacancy vacancy
+                JOIN redraw_request request ON request.id = vacancy.redraw_request_id
+                WHERE request.event_id = ?
+                """, Integer.class, EVENT_ID);
     }
 
     /** 외래 키 의존성의 역순으로 테스트 fixture를 정리한다. */
