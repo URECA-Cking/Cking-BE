@@ -65,14 +65,15 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
             assertThat(results).containsExactlyInAnyOrder("SUCCESS", "INVALID_STATE");
             assertThat(winnerManagementRepository.findByWinnerId(fixture.winnerId()).orElseThrow().getStatus())
                     .isEqualTo(WinnerManagementStatus.RECEIVED);
-            List<WinnerStatusHistory> histories = winnerStatusHistoryRepository.findAll().stream()
-                    .filter(history -> history.getWinnerManagementId().equals(fixture.winnerManagementId()))
-                    .toList();
+            List<WinnerStatusHistory> histories = winnerStatusHistoryRepository
+                    .findByWinnerManagementIdOrderByCreatedAtAsc(fixture.winnerManagementId());
             assertThat(histories).hasSize(1);
             assertThat(histories.getFirst().getChangedBy()).isEqualTo(fixture.adminId());
             assertThat(histories.getFirst().getCreatedAt()).isNotNull();
         } finally {
             executor.shutdownNow();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            cleanup(fixture);
         }
     }
 
@@ -140,7 +141,30 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
                 "applied_ticket_count", 1
         ));
         WinnerManagement management = winnerManagementRepository.saveAndFlush(WinnerManagement.selected(winnerId));
-        return new Fixture(admin.getMemberId(), winnerId, management.getId());
+        return new Fixture(
+                admin.getMemberId(),
+                winnerMember.getMemberId(),
+                creatorId,
+                eventId,
+                snapshotId,
+                seedId,
+                drawingId,
+                winnerId,
+                management.getId()
+        );
+    }
+
+    /** 테스트 fixture가 남긴 데이터를 외래 키 의존성의 역순으로 삭제한다. */
+    private void cleanup(Fixture fixture) {
+        jdbcTemplate.update("delete from winner_status_history where winner_management_id = ?", fixture.winnerManagementId);
+        jdbcTemplate.update("delete from winner_management where id = ?", fixture.winnerManagementId);
+        jdbcTemplate.update("delete from winner where id = ?", fixture.winnerId);
+        jdbcTemplate.update("delete from drawing where id = ?", fixture.drawingId);
+        jdbcTemplate.update("delete from draw_snapshot where id = ?", fixture.snapshotId);
+        jdbcTemplate.update("delete from draw_seed where id = ?", fixture.seedId);
+        jdbcTemplate.update("delete from event where event_id = ?", fixture.eventId);
+        jdbcTemplate.update("delete from creator where creator_id = ?", fixture.creatorId);
+        jdbcTemplate.update("delete from member where member_id in (?, ?)", fixture.adminId, fixture.winnerMemberId);
     }
 
     /** 지정한 테이블에 테스트 데이터를 저장하고 자동 생성된 기본 키를 반환한다. */
@@ -158,6 +182,12 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
     private static class Fixture {
 
         private final Long adminId;
+        private final Long winnerMemberId;
+        private final Long creatorId;
+        private final Long eventId;
+        private final Long snapshotId;
+        private final Long seedId;
+        private final Long drawingId;
         private final Long winnerId;
         private final Long winnerManagementId;
 
