@@ -63,7 +63,9 @@ class EntrySpendServiceIntegrationTest {
             "req-guard-stuck",
             "req-guard-conflict",
             "req-decrby-fail",
-            "req-guard-ttl"
+            "req-guard-ttl",
+            "req-maintenance-lock",
+            "req-maintenance-lock-replay"
     );
 
     @BeforeEach
@@ -73,6 +75,7 @@ class EntrySpendServiceIntegrationTest {
                 EntryRedisKeys.status(EVENT_ID),
                 EntryRedisKeys.endAt(EVENT_ID),
                 EntryRedisKeys.balance(CREATOR_ID, USER_ID),
+                EntryRedisKeys.maintenanceLock(CREATOR_ID, USER_ID),
                 STREAM_KEY
         ));
 
@@ -411,5 +414,42 @@ class EntrySpendServiceIntegrationTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    // issue #172: 수동 보정(resyncRedisToDb) 중에는 신규 차감을 막아야 한다.
+    // BALANCE_MAINTENANCE(HTTP 503)는 EntrySpendResultCode에 추가될 새 코드다 -
+    // TicketCompensationService 쪽 PR이 그 enum 값과 HTTP 매핑을 추가하기 전까지는
+    // 이 테스트가 컴파일되지 않는다(합의된 순서).
+    @Test
+    void 수동_보정_락이_걸려있으면_BALANCE_MAINTENANCE를_반환하고_잔액을_건드리지_않는다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+        redisTemplate.opsForValue().set(EntryRedisKeys.maintenanceLock(CREATOR_ID, USER_ID), "locked");
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("10");
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.idem("req-maintenance-lock"))).isFalse();
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.spendGuard("req-maintenance-lock"))).isFalse();
+    }
+
+    // 이미 성공한 요청의 replay는 보정 락과 무관하게 기존 결과를 그대로 재현해야 한다 -
+    // idem/guard 확인이 락 확인보다 먼저 실행되므로 replay는 락에 막히지 않는다.
+    @Test
+    void 수동_보정_락이_걸려있어도_이미_완료된_요청은_DUPLICATE_REPLAY로_재현된다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult first =
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2);
+        redisTemplate.opsForValue().set(EntryRedisKeys.maintenanceLock(CREATOR_ID, USER_ID), "locked");
+
+        EntrySpendResult retry =
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2);
+
+        assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(retry.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
+        assertThat(retry.streamId()).isEqualTo(first.streamId());
     }
 }
