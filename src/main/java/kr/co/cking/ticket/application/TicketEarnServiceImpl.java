@@ -74,7 +74,8 @@ public class TicketEarnServiceImpl implements TicketEarnService {
                             TicketRedisKeys.earnGuard(
                                     command.userId(), command.missionType(), command.creatorId(), periodKeyGuardFormat
                             ),
-                            TicketRedisKeys.balance(command.creatorId(), command.userId())
+                            TicketRedisKeys.balance(command.creatorId(), command.userId()),
+                            TicketRedisKeys.maintenanceLock(command.creatorId(), command.userId())
                     ),
                     String.valueOf(command.amount()),
                     fingerprint,
