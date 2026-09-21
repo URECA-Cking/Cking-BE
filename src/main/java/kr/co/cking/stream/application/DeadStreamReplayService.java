@@ -36,10 +36,13 @@ public class DeadStreamReplayService {
     private final TicketSpendLedgerService ticketSpendLedgerService;
     private final ObjectMapper objectMapper;
 
-    /** 이미 RESOLVED인 메시지는 다시 적용하지 않고 현재 상태를 그대로 반환한다(상태 기반 멱등). */
+    /**
+     * 이미 RESOLVED인 메시지는 다시 적용하지 않고 현재 상태를 그대로 반환한다(상태 기반 멱등). 행을 잠근 뒤 상태를
+     * 검사하므로 동시 요청은 하나만 적용하고 나머지는 처음 처리한 결과를 그대로 받는다.
+     */
     @Transactional
     public DeadStreamMessage replay(Long deadStreamMessageId, Long resolvedBy) {
-        DeadStreamMessage message = deadStreamMessageRepository.findById(deadStreamMessageId)
+        DeadStreamMessage message = deadStreamMessageRepository.findByIdForUpdate(deadStreamMessageId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         if (!message.isUnresolved()) {
             return message;

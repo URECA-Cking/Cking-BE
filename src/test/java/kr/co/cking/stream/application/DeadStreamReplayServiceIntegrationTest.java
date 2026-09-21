@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Future;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.CountDownLatch;
 import java.util.Map;
 import java.util.UUID;
 
@@ -167,6 +172,58 @@ class DeadStreamReplayServiceIntegrationTest {
 
         DeadStreamMessage resolved = deadStreamMessageRepository.findById(saved.getId()).orElseThrow();
         assertThat(resolved.isUnresolved()).isFalse();
+    }
+
+    @Test
+    void 같은_메시지를_동시에_replay해도_한_번만_적용하고_처음_처리자를_유지한다() throws Exception {
+        String requestId = UUID.randomUUID().toString();
+        Map<String, String> fields = Map.of(
+                "eventId", String.valueOf(eventId),
+                "userId", String.valueOf(MEMBER_ID),
+                "creatorId", String.valueOf(CREATOR_ID),
+                "requestId", requestId,
+                "ticketCount", "3"
+        );
+        DeadStreamMessage saved = deadStreamMessageRepository.save(DeadStreamMessage.builder()
+                .sourceStreamId("1236-0")
+                .streamType(DeadStreamType.SPEND)
+                .payload(objectMapper.writeValueAsString(fields))
+                .requestId(requestId)
+                .eventId(eventId)
+                .memberId(MEMBER_ID)
+                .failureReason("테스트 유도 실패")
+                .retryCount(6)
+                .lastFailedAt(Instant.now())
+                .resolutionStatus(DeadStreamResolutionStatus.UNRESOLVED)
+                .createdAt(Instant.now())
+                .build());
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<DeadStreamMessage> first = pool.submit(() -> {
+                start.await();
+                return deadStreamReplayService.replay(saved.getId(), RESOLVED_BY);
+            });
+            Future<DeadStreamMessage> second = pool.submit(() -> {
+                start.await();
+                return deadStreamReplayService.replay(saved.getId(), OWNER_MEMBER_ID);
+            });
+            start.countDown();
+
+            DeadStreamMessage firstResult = first.get(30, TimeUnit.SECONDS);
+            DeadStreamMessage secondResult = second.get(30, TimeUnit.SECONDS);
+
+            // 둘 다 예외 없이 끝나고, 나중에 들어온 요청은 먼저 처리한 관리자의 결과를 그대로 받는다.
+            DeadStreamMessage finalState = deadStreamMessageRepository.findById(saved.getId()).orElseThrow();
+            assertThat(finalState.isUnresolved()).isFalse();
+            assertThat(firstResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
+            assertThat(secondResult.getResolvedBy()).isEqualTo(finalState.getResolvedBy());
+            assertThat(firstResult.getResolvedAt()).isEqualTo(secondResult.getResolvedAt());
+            assertThat(eventEntryRepository.findByRequestId(requestId)).isPresent();
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test

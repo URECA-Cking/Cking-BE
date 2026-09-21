@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -76,6 +75,5 @@ class DeadStreamAdminServiceTest {
         InOrder inOrder = inOrder(memberQueryService, replayService);
         inOrder.verify(memberQueryService).validateAdmin(ADMIN_ID);
         inOrder.verify(replayService).replay(5L, ADMIN_ID);
-        verify(memberQueryService).validateAdmin(ADMIN_ID);
     }
 }
