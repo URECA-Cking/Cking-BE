@@ -16,6 +16,8 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
 
+Gate 복원은 10초 틱마다 OPEN 이벤트 전체를 조회한다. 복원 주기와 조회 범위·페이징 기준은 2차 MVP에서 팀 합의로 확정한다(#149).
+
 Gate 키 구조는 `데이터 구조.md` §2 확정 스키마를 따른다(Hash가 아니라 String 2개로 분리).
 
 `event:status`는 Redis Gate 값이고 DB Event 상태가 아니다. DB는 시스템2가

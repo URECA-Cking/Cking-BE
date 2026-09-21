@@ -78,6 +78,8 @@ public class EventLifecycleScheduler {
     /**
      * 기동 직후, Redis 유실·eviction, OPEN 직후 적재 실패로 Gate 키가 없는 진행 중 Event를 DB 기준으로 복원한다
      * (취합v1.5.4 §2.4). 종료 시각이 지난 Event는 곧 마감되므로 제외하고, 이미 있는 키는 덮어쓰지 않는다.
+     *
+     * <p>ponytail: 매 틱 OPEN 전체 조회는 소수 이벤트 전제다. 복원 주기·조회 범위·페이징은 2차 MVP에서 팀 합의로 확정한다(#149).
      */
     private void restoreOpenGates() {
         for (Event event : eventRepository.findByStatus(EventStatus.OPEN)) {
