@@ -12,10 +12,11 @@ class WinnerStatusHistoryTest {
     @Test
     void 변경_주체와_사유가_없는_상태_이력을_만들_수_있다() {
         WinnerStatusHistory history = WinnerStatusHistory.create(
-                1L, WinnerManagementStatus.DECLINED, null, null
+                1L, WinnerManagementStatus.SELECTED, WinnerManagementStatus.DECLINED, null, null
         );
 
         assertThat(history.getWinnerManagementId()).isEqualTo(1L);
+        assertThat(history.getPreviousStatus()).isEqualTo(WinnerManagementStatus.SELECTED);
         assertThat(history.getStatus()).isEqualTo(WinnerManagementStatus.DECLINED);
         assertThat(history.getReason()).isNull();
         assertThat(history.getChangedBy()).isNull();
@@ -24,7 +25,9 @@ class WinnerStatusHistoryTest {
     /** 상태 이력은 상태값 없이 생성할 수 없다. */
     @Test
     void status가_null이면_상태_이력을_만들_수_없다() {
-        assertThatNullPointerException().isThrownBy(() -> WinnerStatusHistory.create(1L, null, null, null))
+        assertThatNullPointerException().isThrownBy(
+                () -> WinnerStatusHistory.create(1L, WinnerManagementStatus.SELECTED, null, null)
+        )
                 .withMessage("status");
     }
 
@@ -32,7 +35,9 @@ class WinnerStatusHistoryTest {
     @Test
     void 변경_주체가_0_이하면_상태_이력을_만들_수_없다() {
         assertThatIllegalArgumentException().isThrownBy(
-                () -> WinnerStatusHistory.create(1L, WinnerManagementStatus.DECLINED, "사유", 0L)
+                () -> WinnerStatusHistory.create(
+                        1L, WinnerManagementStatus.SELECTED, WinnerManagementStatus.DECLINED, "사유", 0L
+                )
         ).withMessage("changedBy는 양수여야 합니다.");
     }
 
@@ -42,7 +47,7 @@ class WinnerStatusHistoryTest {
         String reason = "가".repeat(500);
 
         WinnerStatusHistory history = WinnerStatusHistory.create(
-                1L, WinnerManagementStatus.DECLINED, reason, 1L
+                1L, WinnerManagementStatus.SELECTED, WinnerManagementStatus.DECLINED, reason, 1L
         );
 
         assertThat(history.getReason()).isEqualTo(reason);
@@ -52,7 +57,9 @@ class WinnerStatusHistoryTest {
     @Test
     void 사유가_501자이면_상태_이력을_만들_수_없다() {
         assertThatIllegalArgumentException().isThrownBy(
-                () -> WinnerStatusHistory.create(1L, WinnerManagementStatus.DECLINED, "가".repeat(501), 1L)
+                () -> WinnerStatusHistory.create(
+                        1L, WinnerManagementStatus.SELECTED, WinnerManagementStatus.DECLINED, "가".repeat(501), 1L
+                )
         ).withMessage("reason은 500자 이하여야 합니다.");
     }
 }

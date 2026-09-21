@@ -65,7 +65,7 @@ class WinnerDeclineConcurrencyIntegrationTest {
             assertThat(winnerManagementRepository.findByWinnerId(fixture.winnerId()).orElseThrow().getStatus())
                     .isEqualTo(WinnerManagementStatus.DECLINED);
             List<WinnerStatusHistory> histories = winnerStatusHistoryRepository
-                    .findByWinnerManagementIdOrderByCreatedAtAsc(fixture.winnerManagementId());
+                    .findByWinnerManagementIdOrderByCreatedAtAscIdAsc(fixture.winnerManagementId());
             assertThat(histories).hasSize(1);
             assertThat(histories.getFirst().getChangedBy()).isEqualTo(fixture.memberId());
             assertThat(histories.getFirst().getCreatedAt()).isNotNull();
