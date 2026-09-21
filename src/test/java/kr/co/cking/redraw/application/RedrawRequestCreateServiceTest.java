@@ -83,6 +83,18 @@ class RedrawRequestCreateServiceTest {
         assertThat(result.created()).isFalse();
     }
 
+    /** 잠금 획득 뒤 발견한 다른 본문 요청은 멱등성 충돌로 차단한다. */
+    @Test
+    void 잠금_후_발견한_다른_본문의_기존_요청이면_IDEMPOTENCY_CONFLICT다() {
+        RedrawRequest existing = request(100L, "다른 사유");
+        when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
+        when(persistenceService.create(new RedrawRequestCreateCommand(ADMIN_ID, EVENT_ID, REASON, IDEMPOTENCY_KEY)))
+                .thenReturn(RedrawRequestCreationOutcome.existing(existing));
+
+        assertThatThrownBy(() -> service.create(command(REASON)))
+                .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.IDEMPOTENCY_CONFLICT);
+    }
+
     /** 같은 키와 같은 본문은 새 결원 계산 없이 기존 요청을 멱등 재사용한다. */
     @Test
     void 같은_키와_같은_본문은_기존_RedrawRequest를_반환한다() {
