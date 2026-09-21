@@ -3,7 +3,6 @@ package kr.co.cking.winner.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -28,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /** Winner 상태 이력 조회의 역할별 접근 제어와 응답 변환을 검증한다. */
 @ExtendWith(MockitoExtension.class)
@@ -91,7 +91,7 @@ class WinnerStatusHistoryQueryServiceTest {
     /** ADMIN은 다른 사용자가 소유한 Winner의 상태 이력도 조회할 수 있다. */
     @Test
     void ADMIN은_모든_Winner_상태_이력을_조회한다() {
-        Winner winner = mock(Winner.class);
+        Winner winner = winner(3L);
         WinnerManagement management = management(300L);
         when(memberQueryService.getRole(ADMIN_ID)).thenReturn(MemberRole.ADMIN);
         when(winnerRepository.findById(WINNER_ID)).thenReturn(Optional.of(winner));
@@ -145,7 +145,7 @@ class WinnerStatusHistoryQueryServiceTest {
     /** Winner에 연결된 운영 정보가 없으면 이력을 조회하지 않는다. */
     @Test
     void 운영_정보가_없으면_WINNER_MANAGEMENT_NOT_FOUND이다() {
-        Winner winner = mock(Winner.class);
+        Winner winner = winner(USER_ID);
         when(memberQueryService.getRole(ADMIN_ID)).thenReturn(MemberRole.ADMIN);
         when(winnerRepository.findById(WINNER_ID)).thenReturn(Optional.of(winner));
         when(winnerManagementRepository.findByWinnerId(WINNER_ID)).thenReturn(Optional.empty());
@@ -156,21 +156,21 @@ class WinnerStatusHistoryQueryServiceTest {
         verifyNoInteractions(winnerStatusHistoryRepository);
     }
 
-    /** Winner를 지정한 소유자 정보로 반환하는 테스트 double을 만든다. */
+    /** 테스트용 불변 Winner를 만들고 식별자를 설정한다. */
     private Winner winner(Long memberId) {
-        Winner winner = mock(Winner.class);
-        when(winner.getMemberId()).thenReturn(memberId);
+        Winner winner = Winner.create(10L, 20L, memberId, 1, 3L);
+        ReflectionTestUtils.setField(winner, "id", WINNER_ID);
         return winner;
     }
 
-    /** WinnerManagement 식별자를 반환하는 테스트 double을 만든다. */
+    /** 테스트용 SELECTED 운영 정보를 만들고 식별자를 설정한다. */
     private WinnerManagement management(Long managementId) {
-        WinnerManagement management = mock(WinnerManagement.class);
-        when(management.getId()).thenReturn(managementId);
+        WinnerManagement management = WinnerManagement.selected(WINNER_ID);
+        ReflectionTestUtils.setField(management, "id", managementId);
         return management;
     }
 
-    /** 상태 이력 응답 변환을 검증할 테스트 double을 만든다. */
+    /** 테스트용 상태 이력을 만들고 조회 응답에 필요한 식별자·시각을 설정한다. */
     private WinnerStatusHistory history(
             Long historyId,
             WinnerManagementStatus previousStatus,
@@ -178,13 +178,11 @@ class WinnerStatusHistoryQueryServiceTest {
             String reason,
             Long changedBy
     ) {
-        WinnerStatusHistory history = mock(WinnerStatusHistory.class);
-        when(history.getId()).thenReturn(historyId);
-        when(history.getPreviousStatus()).thenReturn(previousStatus);
-        when(history.getStatus()).thenReturn(status);
-        when(history.getReason()).thenReturn(reason);
-        when(history.getChangedBy()).thenReturn(changedBy);
-        when(history.getCreatedAt()).thenReturn(Instant.parse("2026-09-21T01:00:00Z"));
+        WinnerStatusHistory history = WinnerStatusHistory.create(
+                300L, previousStatus, status, reason, changedBy
+        );
+        ReflectionTestUtils.setField(history, "id", historyId);
+        ReflectionTestUtils.setField(history, "createdAt", Instant.parse("2026-09-21T01:00:00Z"));
         return history;
     }
 }
