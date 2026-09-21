@@ -38,6 +38,14 @@ class RedrawRepositoryJpaTest {
         long disqualifiedWinnerId = insertWinner(
                 fixture.eventId(), fixture.initialDrawingId(), 2, WinnerManagementStatus.DISQUALIFIED);
         insertWinner(fixture.eventId(), fixture.initialDrawingId(), 3, WinnerManagementStatus.SELECTED);
+        long otherEventId = insertEvent(fixture.creatorId(), fixture.adminId());
+        long otherEventDrawingId = insertInitialDrawing(
+                otherEventId,
+                insertSnapshot(otherEventId),
+                insertSeed(),
+                fixture.adminId()
+        );
+        insertWinner(otherEventId, otherEventDrawingId, 1, WinnerManagementStatus.DECLINED);
 
         List<Long> winnerIds = redrawVacancyCandidateRepository.findVacancyWinnerIds(
                 fixture.eventId(),
@@ -92,7 +100,7 @@ class RedrawRepositoryJpaTest {
         long eventId = insertEvent(creatorId, adminId);
         long snapshotId = insertSnapshot(eventId);
         long initialDrawingId = insertInitialDrawing(eventId, snapshotId, insertSeed(), adminId);
-        return new Fixture(adminId, eventId, initialDrawingId);
+        return new Fixture(adminId, creatorId, eventId, initialDrawingId);
     }
 
     private long insertMember(String name, String role) {
@@ -232,6 +240,6 @@ class RedrawRepositoryJpaTest {
         return id.longValue();
     }
 
-    private record Fixture(long adminId, long eventId, long initialDrawingId) {
+    private record Fixture(long adminId, long creatorId, long eventId, long initialDrawingId) {
     }
 }
