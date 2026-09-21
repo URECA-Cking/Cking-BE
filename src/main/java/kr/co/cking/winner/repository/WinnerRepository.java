@@ -19,7 +19,8 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
      */
     @Query("""
             select new kr.co.cking.winner.repository.PublicWinnerProjection(
-                w.id, w.drawingId, d.drawNo, d.drawType, w.memberId, w.rankInDrawing
+                w.id, w.drawingId, d.drawNo, d.drawType, w.memberId, w.rankInDrawing,
+                w.prizeKey, w.prizeDisplayName, w.prizePriority
             )
             from Winner w
             join kr.co.cking.drawing.domain.Drawing d on d.id = w.drawingId

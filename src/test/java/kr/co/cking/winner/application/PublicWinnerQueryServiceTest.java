@@ -65,6 +65,12 @@ class PublicWinnerQueryServiceTest {
         assertThat(result.winners()).extracting(PublicWinnerResult::drawNo).containsExactly(0, 1);
         assertThat(result.winners()).extracting(PublicWinnerResult::drawType)
                 .containsExactly(DrawingType.INITIAL, DrawingType.REDRAW);
+        assertThat(result.winners()).extracting(PublicWinnerResult::prizeKey)
+                .containsExactly("FIRST", "SECOND");
+        assertThat(result.winners()).extracting(PublicWinnerResult::prizeDisplayName)
+                .containsExactly("1등 상품", "2등 상품");
+        assertThat(result.winners()).extracting(PublicWinnerResult::prizePriority)
+                .containsExactly(1, 2);
     }
 
     @Test
@@ -109,6 +115,10 @@ class PublicWinnerQueryServiceTest {
             Long memberId,
             int rankInDrawing
     ) {
-        return new PublicWinnerProjection(winnerId, drawingId, drawNo, drawType, memberId, rankInDrawing);
+        String prizeKey = drawType == DrawingType.INITIAL ? "FIRST" : "SECOND";
+        String prizeName = drawType == DrawingType.INITIAL ? "1등 상품" : "2등 상품";
+        int prizePriority = drawType == DrawingType.INITIAL ? 1 : 2;
+        return new PublicWinnerProjection(winnerId, drawingId, drawNo, drawType, memberId, rankInDrawing,
+                prizeKey, prizeName, prizePriority);
     }
 }
