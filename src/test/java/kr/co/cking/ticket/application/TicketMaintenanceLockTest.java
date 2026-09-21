@@ -29,7 +29,7 @@ class TicketMaintenanceLockTest {
     @BeforeEach
     @AfterEach
     void cleanUp() {
-        redisTemplate.delete(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID));
+        redisTemplate.delete(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID));
         redisTemplate.delete(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID));
     }
 
@@ -39,7 +39,7 @@ class TicketMaintenanceLockTest {
 
         assertThat(token).isNotNull();
         assertThat(lock.acquire(CREATOR_ID, MEMBER_ID)).isNull();
-        Long ttlSeconds = redisTemplate.getExpire(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID));
+        Long ttlSeconds = redisTemplate.getExpire(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID));
         assertThat(ttlSeconds).isBetween(55L, 60L);
     }
 
@@ -48,10 +48,10 @@ class TicketMaintenanceLockTest {
         String token = lock.acquire(CREATOR_ID, MEMBER_ID);
 
         lock.release(CREATOR_ID, MEMBER_ID, "other-token");
-        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID))).isTrue();
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID))).isTrue();
 
         lock.release(CREATOR_ID, MEMBER_ID, token);
-        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID))).isFalse();
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID))).isFalse();
         assertThat(lock.acquire(CREATOR_ID, MEMBER_ID)).isNotNull();
     }
 
@@ -70,7 +70,7 @@ class TicketMaintenanceLockTest {
     void lock이_만료되거나_해제되면_잔액을_덮어쓰지_않는다() {
         String token = lock.acquire(CREATOR_ID, MEMBER_ID);
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID), "3");
-        redisTemplate.expire(TicketRedisKeys.maintenanceLock(CREATOR_ID, MEMBER_ID), Duration.ofMillis(1));
+        redisTemplate.expire(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID), Duration.ofMillis(1));
         sleepQuietly(50);
 
         assertThat(lock.setBalanceIfHeld(CREATOR_ID, MEMBER_ID, token, 10L)).isFalse();

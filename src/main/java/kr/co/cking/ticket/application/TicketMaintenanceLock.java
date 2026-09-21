@@ -39,19 +39,19 @@ public class TicketMaintenanceLock {
     public String acquire(Long creatorId, Long memberId) {
         String token = UUID.randomUUID().toString();
         Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(TicketRedisKeys.maintenanceLock(creatorId, memberId), token, LEASE);
+                .setIfAbsent(TicketRedisKeys.maintenance(creatorId, memberId), token, LEASE);
         return Boolean.TRUE.equals(acquired) ? token : null;
     }
 
     public void release(Long creatorId, Long memberId, String token) {
-        redisTemplate.execute(RELEASE, List.of(TicketRedisKeys.maintenanceLock(creatorId, memberId)), token);
+        redisTemplate.execute(RELEASE, List.of(TicketRedisKeys.maintenance(creatorId, memberId)), token);
     }
 
     /** token이 아직 lock의 소유자일 때만 Redis 잔액을 덮어쓴다. 소유하지 않으면 false. */
     public boolean setBalanceIfHeld(Long creatorId, Long memberId, String token, long balance) {
         Long written = redisTemplate.execute(
                 SET_IF_HELD,
-                List.of(TicketRedisKeys.maintenanceLock(creatorId, memberId), EntryRedisKeys.balance(creatorId, memberId)),
+                List.of(TicketRedisKeys.maintenance(creatorId, memberId), EntryRedisKeys.balance(creatorId, memberId)),
                 token, String.valueOf(balance));
         return Long.valueOf(1L).equals(written);
     }
