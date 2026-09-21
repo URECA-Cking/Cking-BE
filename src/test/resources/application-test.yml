@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    hikari:
+      # 다수의 Spring 테스트 컨텍스트가 동시에 생성해도 MySQL 연결 한도를 넘지 않도록 제한한다.
+      maximum-pool-size: 3
