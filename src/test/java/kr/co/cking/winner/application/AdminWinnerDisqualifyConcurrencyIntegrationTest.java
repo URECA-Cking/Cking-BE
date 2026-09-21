@@ -26,12 +26,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
 
-/** 관리자 수령 완료 명령의 동일 Winner 동시 실행을 실제 DB 잠금으로 검증한다. */
+/** 관리자 자격 박탈 명령의 동일 Winner 동시 실행을 실제 DB 잠금으로 검증한다. */
 @SpringBootTest
-class AdminWinnerReceiveConcurrencyIntegrationTest {
+class AdminWinnerDisqualifyConcurrencyIntegrationTest {
+
+    private static final String REASON = "이벤트 참여 조건을 충족하지 않았습니다.";
 
     @Autowired
-    private AdminWinnerReceiveService adminWinnerReceiveService;
+    private AdminWinnerDisqualifyService adminWinnerDisqualifyService;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -45,16 +47,16 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
-    /** 같은 Winner에 대한 동시 수령 완료 요청 중 하나만 전이·이력 저장에 성공한다. */
+    /** 같은 Winner에 대한 동시 자격 박탈 요청 중 하나만 전이·이력 저장에 성공한다. */
     @Test
-    void 동시_수령_완료는_하나만_RECEIVED로_전이하고_이력도_한_건만_저장한다() throws Exception {
+    void 동시_자격_박탈은_하나만_DISQUALIFIED로_전이하고_이력도_한_건만_저장한다() throws Exception {
         Fixture fixture = fixture();
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
 
         try {
-            Future<String> first = executor.submit(() -> executeReceive(start, fixture));
-            Future<String> second = executor.submit(() -> executeReceive(start, fixture));
+            Future<String> first = executor.submit(() -> executeDisqualify(start, fixture));
+            Future<String> second = executor.submit(() -> executeDisqualify(start, fixture));
             start.countDown();
 
             List<String> results = List.of(
@@ -64,10 +66,11 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
 
             assertThat(results).containsExactlyInAnyOrder("SUCCESS", "INVALID_STATE");
             assertThat(winnerManagementRepository.findByWinnerId(fixture.winnerId()).orElseThrow().getStatus())
-                    .isEqualTo(WinnerManagementStatus.RECEIVED);
+                    .isEqualTo(WinnerManagementStatus.DISQUALIFIED);
             List<WinnerStatusHistory> histories = winnerStatusHistoryRepository
                     .findByWinnerManagementIdOrderByCreatedAtAsc(fixture.winnerManagementId());
             assertThat(histories).hasSize(1);
+            assertThat(histories.getFirst().getReason()).isEqualTo(REASON);
             assertThat(histories.getFirst().getChangedBy()).isEqualTo(fixture.adminId());
             assertThat(histories.getFirst().getCreatedAt()).isNotNull();
         } finally {
@@ -77,11 +80,11 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
         }
     }
 
-    /** 병렬 수령 완료 결과를 성공 또는 도메인 오류 코드로 변환한다. */
-    private String executeReceive(CountDownLatch start, Fixture fixture) throws InterruptedException {
+    /** 병렬 자격 박탈 결과를 성공 또는 도메인 오류 코드로 변환한다. */
+    private String executeDisqualify(CountDownLatch start, Fixture fixture) throws InterruptedException {
         start.await();
         try {
-            adminWinnerReceiveService.receive(fixture.winnerId(), fixture.adminId());
+            adminWinnerDisqualifyService.disqualify(fixture.winnerId(), fixture.adminId(), REASON);
             return "SUCCESS";
         } catch (BusinessException exception) {
             return exception.getErrorCode().code();
@@ -90,8 +93,8 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
 
     /** 실제 FK 제약을 만족하는 관리자·SELECTED Winner·운영 정보를 저장한다. */
     private Fixture fixture() {
-        Member admin = memberRepository.saveAndFlush(new Member("동시 수령 관리자", null, null, MemberRole.ADMIN));
-        Member winnerMember = memberRepository.saveAndFlush(new Member("동시 수령 당첨자", null, null, MemberRole.USER));
+        Member admin = memberRepository.saveAndFlush(new Member("동시 자격 박탈 관리자", null, null, MemberRole.ADMIN));
+        Member winnerMember = memberRepository.saveAndFlush(new Member("동시 자격 박탈 당첨자", null, null, MemberRole.USER));
         long creatorId = insert("creator", "creator_id", Map.of(
                 "member_id", admin.getMemberId(),
                 "name", "동시성 테스트 크리에이터"
@@ -177,7 +180,7 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
                 .longValue();
     }
 
-    /** 동시 수령 완료 검증에 필요한 관리자·Winner·운영 정보 식별자를 묶는다. */
+    /** 동시 자격 박탈 검증에 필요한 관리자·Winner·운영 정보 식별자를 묶는다. */
     @RequiredArgsConstructor
     private static class Fixture {
 
@@ -191,12 +194,12 @@ class AdminWinnerReceiveConcurrencyIntegrationTest {
         private final Long winnerId;
         private final Long winnerManagementId;
 
-        /** 수령 완료를 요청할 관리자 Member 식별자를 반환한다. */
+        /** 자격 박탈을 요청할 관리자 Member 식별자를 반환한다. */
         private Long adminId() {
             return adminId;
         }
 
-        /** 동시에 수령 완료할 Winner 식별자를 반환한다. */
+        /** 동시에 자격 박탈할 Winner 식별자를 반환한다. */
         private Long winnerId() {
             return winnerId;
         }

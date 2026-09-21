@@ -49,4 +49,25 @@ class WinnerManagementTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", WinnerErrorCode.INVALID_STATE);
     }
+
+    /** SELECTED Winner는 관리자가 자격 박탈하면 DISQUALIFIED 종결 상태로 전이한다. */
+    @Test
+    void SELECTED_Winner는_자격_박탈하면_DISQUALIFIED가_된다() {
+        WinnerManagement management = WinnerManagement.selected(1L);
+
+        management.disqualify();
+
+        assertThat(management.getStatus()).isEqualTo(WinnerManagementStatus.DISQUALIFIED);
+    }
+
+    /** DISQUALIFIED 종결 상태에서는 어떤 상태 변경도 다시 수행할 수 없다. */
+    @Test
+    void DISQUALIFIED_종결_상태에서는_자격_박탈을_다시_수행할_수_없다() {
+        WinnerManagement management = WinnerManagement.selected(1L);
+        management.disqualify();
+
+        assertThatThrownBy(management::disqualify)
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", WinnerErrorCode.INVALID_STATE);
+    }
 }
