@@ -210,6 +210,8 @@ MySQL과 Redis Container가 실행 중이어야 합니다.
 ./gradlew test
 ```
 
+테스트 태스크는 `src/test/resources/application-test.yml`을 추가로 읽어 HikariCP의 최대 연결 수를 3으로 제한합니다. 이 설정은 테스트 실행에만 적용되며, 로컬·개발·운영 애플리케이션의 연결 풀 설정에는 영향을 주지 않습니다.
+
 ---
 
 # 7. Docker 종료
