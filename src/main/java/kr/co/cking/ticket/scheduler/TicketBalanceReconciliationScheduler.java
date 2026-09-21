@@ -6,6 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -37,6 +39,9 @@ public class TicketBalanceReconciliationScheduler {
     /** 이 횟수(연속 주기) 이상 반복된 불일치만 지속 불일치로 판단한다. */
     private static final int PERSISTENT_MISMATCH_THRESHOLD = 2;
 
+    /** 한 번에 메모리에 올리는 잔액 행 수. 전량 로드를 피하려는 값이며 성능 튜닝 대상은 아니다. */
+    private static final int PAGE_SIZE = 500;
+
     private final UserTicketBalanceRepository userTicketBalanceRepository;
     private final StringRedisTemplate redisTemplate;
 
@@ -44,26 +49,38 @@ public class TicketBalanceReconciliationScheduler {
 
     @Scheduled(fixedDelayString = "${cking.ticket.reconciliation-interval-ms:300000}")
     public void reconcile() {
-        for (UserTicketBalance balance : userTicketBalanceRepository.findAll()) {
-            BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
-            try {
-                check(key, balance.getBalance());
-            } catch (RedisConnectionFailureException | QueryTimeoutException e) {
-                abortCycle(e);
-                return;
-            } catch (RedisSystemException e) {
-                // WRONGTYPE 등 명령 실행 오류(원인이 RedisCommandExecutionException)만 key 단위
-                // 문제다. 그 외(연결 종료 등 일반 RedisException)는 Redis 통신 장애로 본다.
-                if (e.getCause() instanceof RedisCommandExecutionException) {
-                    failKey(key, e);
-                } else {
+        Pageable limit = PageRequest.of(0, PAGE_SIZE);
+        Long lastMemberId = Long.MIN_VALUE;
+        Long lastCreatorId = Long.MIN_VALUE;
+        List<UserTicketBalance> batch;
+        do {
+            batch = userTicketBalanceRepository.findNextBatch(lastMemberId, lastCreatorId, limit);
+            for (UserTicketBalance balance : batch) {
+                BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
+                try {
+                    check(key, balance.getBalance());
+                } catch (RedisConnectionFailureException | QueryTimeoutException e) {
                     abortCycle(e);
                     return;
+                } catch (RedisSystemException e) {
+                    // WRONGTYPE 등 명령 실행 오류(원인이 RedisCommandExecutionException)만 key 단위
+                    // 문제다. 그 외(연결 종료 등 일반 RedisException)는 Redis 통신 장애로 본다.
+                    if (e.getCause() instanceof RedisCommandExecutionException) {
+                        failKey(key, e);
+                    } else {
+                        abortCycle(e);
+                        return;
+                    }
+                } catch (Exception e) {
+                    failKey(key, e);
                 }
-            } catch (Exception e) {
-                failKey(key, e);
             }
-        }
+            if (!batch.isEmpty()) {
+                UserTicketBalance last = batch.get(batch.size() - 1);
+                lastMemberId = last.getMemberId();
+                lastCreatorId = last.getCreatorId();
+            }
+        } while (batch.size() == PAGE_SIZE);
     }
 
     private void abortCycle(Exception e) {
