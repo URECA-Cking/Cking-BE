@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 /** RedrawRequest 생성의 권한·입력·멱등 재시도 계약을 검증한다. */
 @ExtendWith(MockitoExtension.class)
@@ -79,6 +80,46 @@ class RedrawRequestCreateServiceTest {
         assertThat(result.redrawRequestId()).isEqualTo(100L);
         assertThat(result.created()).isFalse();
         verifyNoInteractions(persistenceService);
+    }
+
+    /** 저장 충돌 후 커밋된 동일 요청을 다시 읽으면 멱등 재사용으로 복구한다. */
+    @Test
+    void 저장_충돌_후_동일_본문의_기존_요청을_재사용한다() {
+        RedrawRequest existing = request(100L, REASON);
+        when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty(), Optional.of(existing));
+        when(persistenceService.create(new RedrawRequestCreateCommand(ADMIN_ID, EVENT_ID, REASON, IDEMPOTENCY_KEY)))
+                .thenThrow(new DataIntegrityViolationException("uk_redraw_idempotency"));
+
+        RedrawRequestCreateResult result = service.create(command(REASON));
+
+        assertThat(result.redrawRequestId()).isEqualTo(100L);
+        assertThat(result.created()).isFalse();
+    }
+
+    /** 저장 충돌 후 발견한 요청의 본문이 다르면 멱등성 충돌로 차단한다. */
+    @Test
+    void 저장_충돌_후_다른_본문의_기존_요청이면_IDEMPOTENCY_CONFLICT다() {
+        RedrawRequest existing = request(100L, "다른 사유");
+        when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty(), Optional.of(existing));
+        when(persistenceService.create(new RedrawRequestCreateCommand(ADMIN_ID, EVENT_ID, REASON, IDEMPOTENCY_KEY)))
+                .thenThrow(new DataIntegrityViolationException("uk_redraw_idempotency"));
+
+        assertThatThrownBy(() -> service.create(command(REASON)))
+                .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.IDEMPOTENCY_CONFLICT);
+    }
+
+    /** 저장 충돌 후 요청을 조회하지 못하면 원인을 확정할 수 없어 동시성 충돌로 알린다. */
+    @Test
+    void 저장_충돌_후_기존_요청을_찾지_못하면_CONCURRENT_COMMAND다() {
+        when(redrawRequestRepository.findByIdempotencyKey(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(persistenceService.create(new RedrawRequestCreateCommand(ADMIN_ID, EVENT_ID, REASON, IDEMPOTENCY_KEY)))
+                .thenThrow(new DataIntegrityViolationException("uk_redraw_idempotency"));
+
+        assertThatThrownBy(() -> service.create(command(REASON)))
+                .hasFieldOrPropertyWithValue("errorCode", RedrawErrorCode.CONCURRENT_COMMAND);
     }
 
     /** 같은 키에 Event·요청자·사유 중 하나가 다르면 멱등성 충돌로 차단한다. */
