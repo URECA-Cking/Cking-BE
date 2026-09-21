@@ -27,6 +27,7 @@
 - [Event](domains/event/README.md): 이벤트 조회·응모·마감의 외부 API와 내부 마감 계약
 - [Ticket](domains/ticket/README.md): 응모권 조회·EARN·정합성 보정 계약
 - [Stream](domains/stream/README.md): EARN·SPEND Consumer, PEL 회수, Dead Stream replay 계약
+- [Winner](domains/winner/README.md): Winner 불변 원본과 운영 상태 전이·동시성 계약
 - [Winner API](domains/winner/api.md): 공개 Winner 조회 API 계약
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
 - [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계

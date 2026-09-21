@@ -15,7 +15,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** 관리자 Winner 수령 완료 HTTP 경계의 입력 검증과 오류 응답을 검증한다. */
+/** 관리자 Winner 수령 완료와 자격 박탈 HTTP 경계의 입력 검증과 오류 응답을 검증한다. */
 @WebMvcTest(AdminWinnerController.class)
 class AdminWinnerControllerTest {
 
