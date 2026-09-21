@@ -74,6 +74,10 @@ public class EntrySpendServiceImpl implements EntrySpendService {
             );
         } catch (DataAccessException e) {
             // Lua는 DECRBY/XADD 실패 시 잔액과 guard를 정리한 뒤 오류를 반환한다.
+            // 타임아웃(QueryTimeoutException)도 여기서 SYSTEM_ERROR가 된다. 이때 Lua는 이미 차감을 끝냈을 수
+            // 있지만 결과 코드 10종에 "처리 여부 불명"이 없어 새 코드를 만들 수 없다(EARN은
+            // EARN_STATUS_UNKNOWN이 별도로 있다). 클라이언트가 동일 requestId로 재시도하면
+            // DUPLICATE_REPLAY 또는 SUCCESS로 수렴한다 - docs/domains/event/lua-api.md 참고.
             log.error(
                     "응모 Lua 실행 중 Redis 접근에 실패했습니다. eventId={}, userId={}, requestId={}",
                     eventId, userId, requestId, e

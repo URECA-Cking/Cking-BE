@@ -85,6 +85,17 @@ guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 �
 
 `fingerprint`는 클라이언트가 보내지 않는다. `EntrySpendServiceImpl`이 `eventId+userId+ticketCount`를 SHA-256으로 해시해서 계산한다(FR-P2-029).
 
+## Redis 타임아웃과 SYSTEM_ERROR
+
+SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다. `DataAccessException`을 모두 `SYSTEM_ERROR`(HTTP 500)로 반환한다. 결과 코드 10종에 "처리 여부 불명" 코드가 없고, 새 코드를 만들면 명세(취합 v1.5.4 §5.4) 계약 위반이기 때문이다.
+
+타임아웃이면 Lua가 이미 차감·XADD·idem 저장까지 끝냈을 수 있다. 클라이언트는 `SYSTEM_ERROR`를 받으면 **새 `requestId`를 만들지 않고 동일 `requestId`와 동일 payload로 재시도**한다.
+
+- 이미 처리됐다면 idem(없으면 guard)이 `DUPLICATE_REPLAY`로 기존 성공 결과를 반환한다. 재차감은 없다.
+- 처리되지 않았다면 정상 요청으로 `SUCCESS`가 된다.
+
+처리 여부를 먼저 확인하려면 `GET /api/events/{eventId}/entries/me`를 쓸 수 있으나, Consumer가 DB에 반영하기 전에는 보이지 않으므로 확인 수단이 아니라 참고용이다.
+
 ## 통합 테스트
 
 파일: `src/test/java/kr/co/cking/event/application/service/EntrySpendServiceIntegrationTest.java`
