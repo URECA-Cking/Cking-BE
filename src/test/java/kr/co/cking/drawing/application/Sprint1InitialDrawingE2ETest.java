@@ -143,6 +143,7 @@ class Sprint1InitialDrawingE2ETest {
                 WHERE winner.event_id = ?
                 """, eventId);
         jdbcTemplate.update("DELETE FROM winner WHERE event_id = ?", eventId);
+        jdbcTemplate.update("DELETE h FROM draw_attempt_history h JOIN drawing d ON h.drawing_id = d.id WHERE d.event_id = ?", eventId);
         jdbcTemplate.update("DELETE FROM drawing WHERE event_id = ?", eventId);
         seedIds.forEach(seedRepository::deleteById);
         jdbcTemplate.update("""

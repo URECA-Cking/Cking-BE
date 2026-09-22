@@ -161,6 +161,33 @@ public class Drawing {
         this.attemptCount++;
     }
 
+    /** 저장된 확정 입력을 그대로 사용하는 재시도를 시작한다. */
+    public void retry(Instant startedAt) {
+        if (status != DrawingStatus.FAILED) {
+            throw new BusinessException(DrawingErrorCode.INVALID_STATE);
+        }
+        if (startedAt == null) {
+            throw new IllegalArgumentException("startedAt은 필수입니다.");
+        }
+
+        this.status = DrawingStatus.RUNNING;
+        this.outputPayload = null;
+        this.resultHash = null;
+        this.completedAt = null;
+        this.attemptCount++;
+    }
+
+    /** 실행 중 오류가 발생한 Drawing을 재시도 가능한 실패 상태로 전이한다. */
+    public void fail() {
+        if (status != DrawingStatus.RUNNING) {
+            throw new BusinessException(DrawingErrorCode.INVALID_STATE);
+        }
+        this.status = DrawingStatus.FAILED;
+        this.outputPayload = null;
+        this.resultHash = null;
+        this.completedAt = null;
+    }
+
     /** 추첨 결과 Hash와 Payload를 저장하고 실행을 완료한다. */
     public void complete(String canonicalOutput, String resultHash, Instant completedAt) {
         if (status != DrawingStatus.RUNNING) {

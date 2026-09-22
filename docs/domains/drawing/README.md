@@ -127,6 +127,20 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 
 상태는 `READY`, `RUNNING`, `FAILED`, `COMPLETED`를 사용하고 공개 상태는 `PRIVATE`, `PUBLIC`을 사용한다. INITIAL 실행은 `READY → RUNNING → COMPLETED`로 전이한다.
 
+### Retry와 중단 복구
+
+- Retry는 `FAILED → RUNNING → COMPLETED/FAILED`만 허용하며 기존 Drawing, Snapshot, Seed,
+  후보·상품 알고리즘 버전과 `winnerCount`를 바꾸지 않는다.
+- 시작 Transaction에서 Drawing 행을 잠그고 `RUNNING` 전이와 `draw_attempt_history`의 `STARTED`를
+  먼저 확정한다. 결과 Transaction은 Winner, WinnerManagement, Hash, Drawing 완료와 후속 상태를
+  원자적으로 저장한다.
+- 결과 Transaction이 실패하면 전체 부분 결과를 Rollback하고 별도 Transaction에서 Drawing `FAILED`와
+  Attempt의 실패 단계·코드·메시지·종료 시각을 저장한다.
+- Snapshot Hash 또는 보존된 Input Hash 불일치, 후보 부족 등 입력 단계 실패는 비재시도 실패로 분류한다.
+- 설정 시간보다 오래 `RUNNING`인 Attempt는 행 잠금 후 상태와 시작 시각을 재검증하고
+  `SERVER_INTERRUPTED`로 종결한 뒤 일반 Retry 경로로 복구한다.
+- 복구 설정은 `cking.drawing.recovery-stale-after`와 `cking.drawing.recovery-interval-ms`로 조정한다.
+
 ### Winner
 
 - Event, Drawing, Member를 각각 ID로 참조한다.

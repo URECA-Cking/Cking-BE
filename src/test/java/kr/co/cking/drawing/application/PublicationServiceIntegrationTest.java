@@ -169,6 +169,7 @@ class PublicationServiceIntegrationTest {
     private void cleanUp() {
         jdbcTemplate.update("DELETE n FROM notification n JOIN winner w ON n.winner_id = w.id WHERE w.drawing_id = ?", DRAWING_ID);
         jdbcTemplate.update("DELETE FROM winner WHERE drawing_id = ?", DRAWING_ID);
+        jdbcTemplate.update("DELETE FROM draw_attempt_history WHERE drawing_id = ?", DRAWING_ID);
         jdbcTemplate.update("DELETE FROM drawing WHERE id = ?", DRAWING_ID);
         jdbcTemplate.update("DELETE FROM draw_snapshot WHERE id = ?", SNAPSHOT_ID);
         jdbcTemplate.update("DELETE FROM event WHERE event_id = ?", EVENT_ID);
