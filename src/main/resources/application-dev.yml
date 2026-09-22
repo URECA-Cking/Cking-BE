@@ -10,3 +10,9 @@ spring:
       # compose 안에서는 서비스명이 곧 호스트명이다.
       host: ${REDIS_HOST:redis}
       port: 6379
+
+server:
+  # ALB가 HTTPS를 종료하고 앱에는 HTTP로 전달한다. X-Forwarded-* 헤더를 신뢰해야
+  # 앱이 만드는 URL(Swagger 서버 주소, 리다이렉트 등)이 https로 나온다.
+  # 8080은 ALB 보안 그룹에서만 열려 있어 헤더를 위조해 보낼 수 없다.
+  forward-headers-strategy: framework
