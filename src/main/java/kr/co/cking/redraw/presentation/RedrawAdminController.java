@@ -10,6 +10,8 @@ import kr.co.cking.redraw.application.RedrawRequestCreateResult;
 import kr.co.cking.redraw.application.RedrawRequestCreateService;
 import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
 import kr.co.cking.redraw.application.RedrawRequestDetailResult;
+import kr.co.cking.redraw.application.RedrawRequestReviewResult;
+import kr.co.cking.redraw.application.RedrawRequestReviewService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +32,7 @@ public class RedrawAdminController {
 
     private final RedrawRequestCreateService redrawRequestCreateService;
     private final RedrawRequestDetailQueryService redrawRequestDetailQueryService;
+    private final RedrawRequestReviewService redrawRequestReviewService;
 
     /** 관리자가 공개 Event의 미점유 결원을 서버 계산으로 확정한 RedrawRequest를 생성한다. */
     @Operation(
@@ -61,5 +64,37 @@ public class RedrawAdminController {
             @RequestParam @Positive Long userId
     ) {
         return ApiResponse.success(redrawRequestDetailQueryService.getDetail(redrawRequestId, userId));
+    }
+
+    /** 관리자가 검토 대기 RedrawRequest를 승인하고 실행 대기 상태를 유지한다. */
+    @Operation(
+            summary = "RedrawRequest 승인",
+            description = "관리자만 REQUESTED 재추첨 요청을 APPROVED로 전이합니다. 실행 상태는 PENDING으로 유지하며, "
+                    + "동시 심사는 하나만 완료되고 나머지는 상태 오류로 거부됩니다."
+    )
+    @PostMapping("/api/admin/redraw-requests/{redrawRequestId}/approve")
+    public ApiResponse<RedrawRequestReviewResponse> approveRedrawRequest(
+            @PathVariable @Positive Long redrawRequestId,
+            @Valid @RequestBody RedrawRequestApproveRequest request
+    ) {
+        RedrawRequestReviewResult result = redrawRequestReviewService.approve(request.userId(), redrawRequestId);
+        return ApiResponse.success(RedrawRequestReviewResponse.from(result));
+    }
+
+    /** 관리자가 검토 대기 RedrawRequest를 거절하고 사유를 심사 이력에 기록한다. */
+    @Operation(
+            summary = "RedrawRequest 거절",
+            description = "관리자만 REQUESTED 재추첨 요청을 REJECTED로 전이하고 필수 거절 사유와 심사 정보를 기록합니다. "
+                    + "동시 심사는 하나만 완료되고 나머지는 상태 오류로 거부됩니다."
+    )
+    @PostMapping("/api/admin/redraw-requests/{redrawRequestId}/reject")
+    public ApiResponse<RedrawRequestReviewResponse> rejectRedrawRequest(
+            @PathVariable @Positive Long redrawRequestId,
+            @Valid @RequestBody RedrawRequestRejectRequest request
+    ) {
+        RedrawRequestReviewResult result = redrawRequestReviewService.reject(
+                request.userId(), redrawRequestId, request.rejectReason()
+        );
+        return ApiResponse.success(RedrawRequestReviewResponse.from(result));
     }
 }

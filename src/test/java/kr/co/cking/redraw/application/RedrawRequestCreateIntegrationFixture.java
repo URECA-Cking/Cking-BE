@@ -20,6 +20,9 @@ abstract class RedrawRequestCreateIntegrationFixture {
     protected RedrawRequestCreateService redrawRequestCreateService;
 
     @Autowired
+    protected RedrawRequestReviewService redrawRequestReviewService;
+
+    @Autowired
     protected JdbcTemplate jdbcTemplate;
 
     private Long adminId;
@@ -117,6 +120,11 @@ abstract class RedrawRequestCreateIntegrationFixture {
     /** 공유 DB의 잔존 요청과 충돌하지 않는 테스트 전용 멱등 키를 발급한다. */
     protected String newIdempotencyKey() {
         return UUID.randomUUID().toString();
+    }
+
+    /** fixture가 만든 관리자 Member ID를 심사 명령에 제공한다. */
+    protected Long adminId() {
+        return adminId;
     }
 
     /** fixture Event에 생성된 RedrawRequest 수를 반환한다. */
