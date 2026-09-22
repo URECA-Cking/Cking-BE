@@ -28,14 +28,10 @@ import kr.co.cking.drawing.domain.hash.DrawInputHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawInputV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
-import kr.co.cking.drawing.domain.prize.AllocatedPrize;
-import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
-import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
-import kr.co.cking.drawing.domain.prize.PrizeAllocationInput;
-import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionSource;
+import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.event.application.EventDrawingQueryService;
 import kr.co.cking.event.application.dto.EventDrawingSource;
 import kr.co.cking.event.domain.EventStatus;
@@ -73,7 +69,6 @@ class DefaultRedrawDrawingExecutionServiceTest {
     @Mock private WinnerRepository winnerRepository;
     @Mock private WinnerManagementRepository winnerManagementRepository;
     @Mock private RedrawExclusionRepository redrawExclusionRepository;
-    @Mock private PrizeAllocationEngine prizeAllocationEngine;
 
     private DefaultRedrawDrawingExecutionService service;
 
@@ -87,18 +82,19 @@ class DefaultRedrawDrawingExecutionServiceTest {
         );
     }
 
-    /** 상품 Snapshot REDRAW는 V2 Hash와 배정 상품을 Winner에 함께 저장한다. */
+    /** 상품 Snapshot REDRAW는 전체 상품 풀을 다시 추첨하지 않고 결원 Winner의 상품을 승계한다. */
     @Test
     @SuppressWarnings("unchecked")
-    void 상품_Snapshot_REDRAW는_V2_Hash와_Winner_상품_필드를_저장한다() {
-        PrizeValue prize = new PrizeValue(501L, "FIRST", "1등 상품", 1, 100L, 1);
+    void 상품_Snapshot_REDRAW는_고정_결원_Winner의_상품을_승계한다() {
+        PrizeValue firstPrize = new PrizeValue(501L, "FIRST", "1등 상품", 1, 100L, 1);
+        PrizeValue secondPrize = new PrizeValue(502L, "SECOND", "2등 상품", 2, 1L, 1);
         VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(50L, 10L, 1, "WEIGHTED", "WEIGHTED_V1",
-                List.of(new CandidateValue(101L, 1L), new CandidateValue(102L, 2L)), List.of(prize));
+                List.of(new CandidateValue(101L, 1L), new CandidateValue(102L, 2L)), List.of(firstPrize, secondPrize));
         Drawing initial = completedInitial(snapshot);
         DefaultRedrawDrawingExecutionService productService = new DefaultRedrawDrawingExecutionService(
                 drawingRepository, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine,
                 new DrawInputHashGenerator(), new DrawResultHashGenerator(), new DrawInputV2HashGenerator(),
-                new DrawResultV2HashGenerator(), prizeAllocationEngine, winnerRepository,
+                new DrawResultV2HashGenerator(), winnerRepository,
                 winnerManagementRepository, redrawExclusionRepository,
                 Clock.fixed(Instant.parse("2026-09-22T00:00:00Z"), ZoneOffset.UTC)
         );
@@ -109,6 +105,8 @@ class DefaultRedrawDrawingExecutionServiceTest {
         when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
         when(winnerRepository.findRedrawExclusionSourcesByEventId(10L))
                 .thenReturn(List.of(new RedrawExclusionSource(101L, WinnerManagementStatus.SELECTED)));
+        when(winnerRepository.findRedrawVacancyPrizeSourcesByRequestId(REQUEST_ID))
+                .thenReturn(List.of(new RedrawVacancyPrizeSource(101L, secondPrize.snapshotPrizeId())));
         when(drawingSeedService.createForRedraw(40L)).thenReturn(new PersistedDrawingSeed(
                 41L, kr.co.cking.drawing.domain.seed.DrawingSeed.from("01".repeat(32))));
         when(drawingRepository.findTopByEventIdOrderByDrawNoDesc(10L)).thenReturn(Optional.of(initial));
@@ -120,10 +118,6 @@ class DefaultRedrawDrawingExecutionServiceTest {
         DrawOutput output = new DrawOutput(DrawingAlgorithmVersion.WEIGHTED_V1,
                 List.of(new DrawWinner(102L, 1, 2L)));
         when(drawingEngine.draw(any(DrawInput.class))).thenReturn(output);
-        when(prizeAllocationEngine.allocate(any(PrizeAllocationInput.class))).thenReturn(new PrizeAllocationOutput(
-                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1,
-                List.of(new AllocatedPrize(102L, 1, prize))
-        ));
         when(winnerRepository.saveAllAndFlush(any())).thenAnswer(invocation -> {
             List<Winner> winners = invocation.getArgument(0);
             ReflectionTestUtils.setField(winners.getFirst(), "id", 50L);
@@ -132,15 +126,12 @@ class DefaultRedrawDrawingExecutionServiceTest {
 
         productService.execute(REQUEST_ID, ADMIN_ID, INITIAL_DRAWING_ID, 1);
 
-        ArgumentCaptor<PrizeAllocationInput> allocationInput = ArgumentCaptor.forClass(PrizeAllocationInput.class);
-        verify(prizeAllocationEngine).allocate(allocationInput.capture());
-        assertThat(allocationInput.getValue().prizes()).containsExactly(prize);
         ArgumentCaptor<List<Winner>> winners = ArgumentCaptor.forClass(List.class);
         verify(winnerRepository).saveAllAndFlush(winners.capture());
         Winner savedWinner = winners.getValue().getFirst();
         assertThat(savedWinner.getSnapshotId()).isEqualTo(snapshot.snapshotId());
-        assertThat(savedWinner.getSnapshotPrizeId()).isEqualTo(prize.snapshotPrizeId());
-        assertThat(savedWinner.getPrizeKey()).isEqualTo("FIRST");
+        assertThat(savedWinner.getSnapshotPrizeId()).isEqualTo(secondPrize.snapshotPrizeId());
+        assertThat(savedWinner.getPrizeKey()).isEqualTo("SECOND");
         ArgumentCaptor<Drawing> redraw = ArgumentCaptor.forClass(Drawing.class);
         verify(drawingRepository).saveAndFlush(redraw.capture());
         assertThat(redraw.getValue().getInputPayload()).startsWith("CKING_DRAW_INPUT_V2\n");

@@ -27,6 +27,13 @@
   차감한다. 소진된 상품은 이후 선택에서 제외한다.
 - 상품 가중치를 후보 선정 엔진에 전달하지 않는다.
 
+### REDRAW 상품 승계
+
+REDRAW는 `vacancyCount`만큼 전체 후보 풀에서 새 Winner를 선정하지만, 상품을 다시 추첨하지 않는다.
+`redraw_request_vacancy`에 고정한 결원 Winner의 상품을 해당 행의 생성 순서대로 새 Winner의 `rank ASC`에
+승계한다. 따라서 REDRAW의 상품 풀은 Snapshot 전체 재고가 아니라 고정 결원의 상품별 수량이며, 이 풀을
+V2 Input Hash에 기록한다.
+
 ## 결정성과 검증
 
 상품 배정은 Drawing Seed에 `CKING_PRIZE_ALLOCATION_V1` 도메인을 더해 SHA-256으로 파생한

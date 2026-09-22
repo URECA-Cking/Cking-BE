@@ -13,6 +13,7 @@ import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
+import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVerificationFailureCode;
 import kr.co.cking.drawing.domain.DrawingVerificationHistory;
 import kr.co.cking.drawing.domain.DrawingVerificationStatus;
@@ -35,6 +36,7 @@ import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawingExclusionQueryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.DrawingVerificationHistoryRepository;
+import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
@@ -117,12 +119,13 @@ public class DrawingVerificationService {
         VerifiedSnapshot snapshot = snapshotIntegrityService.verifyForReplay(drawing.getSnapshotId());
         evidence.snapshotHashMatched = true;
         requireDrawingContract(drawing, snapshot);
+        List<PrizeValue> prizes = prizesFor(drawing, snapshot);
 
         Set<Long> exclusions = Set.copyOf(exclusionRepository.findMemberIdsByDrawingId(drawing.getId()));
         DrawingSeed originalSeed = drawingSeedService.reuseForRetry(drawing.getSeedId()).seed();
         DrawInput originalInput = toInput(drawing, snapshot, originalSeed, exclusions);
 
-        DrawingHash originalInputHash = generateInputHash(originalInput, snapshot);
+        DrawingHash originalInputHash = generateInputHash(originalInput, snapshot, prizes);
         evidence.inputHashMatched = Objects.equals(drawing.getInputHash(), originalInputHash.value())
                 && Objects.equals(drawing.getInputPayload(), originalInputHash.canonicalPayload());
         if (!evidence.inputHashMatched) {
@@ -139,7 +142,7 @@ public class DrawingVerificationService {
                 algorithmVersion,
                 storedWinners.stream().map(this::toDrawWinner).toList()
         );
-        PrizeAllocationOutput storedPrizeOutput = snapshot.prizes().isEmpty()
+        PrizeAllocationOutput storedPrizeOutput = prizes.isEmpty()
                 ? null
                 : toStoredPrizeOutput(drawing, snapshot, storedWinners);
         DrawingHash storedResultHash = generateResultHash(
@@ -168,7 +171,7 @@ public class DrawingVerificationService {
 
         DrawOutput deterministicOutput = drawingEngine.draw(originalInput);
         PrizeAllocationOutput deterministicPrizeOutput = allocatePrizes(
-                originalSeed, snapshot, deterministicOutput);
+                drawing, originalSeed, snapshot, deterministicOutput, prizes);
         DrawingHash deterministicResultHash = generateResultHash(
                 originalInputHash.value(), deterministicOutput, deterministicPrizeOutput);
         evidence.algorithmMatched = deterministicOutput.algorithmVersion() == algorithmVersion;
@@ -188,7 +191,7 @@ public class DrawingVerificationService {
         evidence.replaySeed = replaySeed;
         DrawInput replayInput = toInput(drawing, snapshot, replaySeed, exclusions);
         DrawOutput replayOutput = drawingEngine.draw(replayInput);
-        allocatePrizes(replaySeed, snapshot, replayOutput);
+        allocatePrizes(drawing, replaySeed, snapshot, replayOutput, prizes);
         evidence.captureReplay(replayInput, replayOutput);
 
         if (!evidence.replayContractMatched()) {
@@ -201,9 +204,11 @@ public class DrawingVerificationService {
     }
 
     private void requireDrawingContract(Drawing drawing, VerifiedSnapshot snapshot) {
+        boolean winnerCountMatched = drawing.getDrawType() == DrawingType.REDRAW
+                || drawing.getWinnerCount() == snapshot.winnerCount();
         boolean matched = Objects.equals(drawing.getSnapshotId(), snapshot.snapshotId())
                 && Objects.equals(drawing.getEventId(), snapshot.eventId())
-                && drawing.getWinnerCount() == snapshot.winnerCount()
+                && winnerCountMatched
                 && Objects.equals(drawing.getDrawMethod(), snapshot.drawMethod())
                 && Objects.equals(drawing.getAlgorithmVersion(), snapshot.algorithmVersion())
                 && Objects.equals(drawing.getPrizeAlgorithmVersion(), snapshot.prizeAlgorithmVersion());
@@ -233,12 +238,12 @@ public class DrawingVerificationService {
         );
     }
 
-    private DrawingHash generateInputHash(DrawInput input, VerifiedSnapshot snapshot) {
-        if (snapshot.prizes().isEmpty()) {
+    private DrawingHash generateInputHash(DrawInput input, VerifiedSnapshot snapshot, List<PrizeValue> prizes) {
+        if (prizes.isEmpty()) {
             return inputHashGenerator.generate(input);
         }
         return inputV2HashGenerator.generate(
-                input, snapshot.prizeAlgorithmVersion(), snapshot.prizes());
+                input, snapshot.prizeAlgorithmVersion(), prizes);
     }
 
     private DrawingHash generateResultHash(
@@ -253,19 +258,73 @@ public class DrawingVerificationService {
     }
 
     private PrizeAllocationOutput allocatePrizes(
+            Drawing drawing,
             DrawingSeed seed,
             VerifiedSnapshot snapshot,
-            DrawOutput output
+            DrawOutput output,
+            List<PrizeValue> prizes
     ) {
-        if (snapshot.prizes().isEmpty()) {
+        if (prizes.isEmpty()) {
             return null;
+        }
+        if (drawing.getDrawType() == DrawingType.REDRAW) {
+            List<DrawWinner> winners = output.winners().stream()
+                    .sorted(java.util.Comparator.comparingInt(DrawWinner::rank))
+                    .toList();
+            List<AllocatedPrize> allocations = IntStream.range(0, winners.size())
+                    .mapToObj(index -> new AllocatedPrize(winners.get(index).memberId(), winners.get(index).rank(),
+                            inheritedPrizes(drawing, snapshot).get(index)))
+                    .toList();
+            return new PrizeAllocationOutput(
+                    PrizeAllocationAlgorithmVersion.from(snapshot.prizeAlgorithmVersion()), allocations);
         }
         return prizeAllocationEngine.allocate(new PrizeAllocationInput(
                 seed,
                 snapshot.prizeAlgorithmVersion(),
                 output.winners(),
-                snapshot.prizes()
+                prizes
         ));
+    }
+
+    private List<PrizeValue> prizesFor(Drawing drawing, VerifiedSnapshot snapshot) {
+        if (drawing.getDrawType() != DrawingType.REDRAW) {
+            return snapshot.prizes();
+        }
+        return toPrizePool(inheritedPrizes(drawing, snapshot));
+    }
+
+    private List<PrizeValue> inheritedPrizes(Drawing drawing, VerifiedSnapshot snapshot) {
+        if (snapshot.prizes().isEmpty()) {
+            return List.of();
+        }
+        List<RedrawVacancyPrizeSource> sources = winnerRepository
+                .findRedrawVacancyPrizeSourcesByRequestId(drawing.getRedrawRequestId());
+        if (sources.size() != drawing.getWinnerCount()) {
+            throw storedResultFailure("REDRAW 결원과 승계 상품 원본 수가 일치하지 않습니다.");
+        }
+        Map<Long, PrizeValue> prizesById = snapshot.prizes().stream()
+                .filter(prize -> prize.snapshotPrizeId() != null)
+                .collect(Collectors.toMap(PrizeValue::snapshotPrizeId, java.util.function.Function.identity()));
+        return sources.stream().map(source -> {
+            PrizeValue prize = prizesById.get(source.snapshotPrizeId());
+            if (prize == null) {
+                throw storedResultFailure("고정 결원 Winner의 상품이 공식 Snapshot과 일치하지 않습니다.");
+            }
+            return prize;
+        }).toList();
+    }
+
+    private List<PrizeValue> toPrizePool(List<PrizeValue> inheritedPrizes) {
+        Map<Long, Long> quantities = inheritedPrizes.stream().collect(Collectors.groupingBy(
+                PrizeValue::snapshotPrizeId, java.util.LinkedHashMap::new, Collectors.counting()));
+        return quantities.entrySet().stream().map(entry -> {
+            PrizeValue prize = inheritedPrizes.stream()
+                    .filter(value -> value.snapshotPrizeId().equals(entry.getKey()))
+                    .findFirst()
+                    .orElseThrow();
+            return new PrizeValue(prize.snapshotPrizeId(), prize.prizeKey(), prize.displayName(), prize.priority(),
+                    prize.weight(), Math.toIntExact(entry.getValue()));
+        }).toList();
     }
 
     private PrizeAllocationOutput toStoredPrizeOutput(

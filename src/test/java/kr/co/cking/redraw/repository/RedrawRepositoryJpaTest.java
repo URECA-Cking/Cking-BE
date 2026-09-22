@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.UUID;
 import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import kr.co.cking.redraw.domain.RedrawRequestStatus;
+import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
+import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -25,6 +27,9 @@ class RedrawRepositoryJpaTest {
 
     @Autowired
     private RedrawRequestVacancyRepository redrawRequestVacancyRepository;
+
+    @Autowired
+    private WinnerRepository winnerRepository;
 
     @Autowired
     private EntityManager entityManager;
@@ -91,6 +96,23 @@ class RedrawRepositoryJpaTest {
         ));
 
         assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(requestedWinnerId, approvedWinnerId);
+    }
+
+    /** 고정 결원 Winner의 상품 원본은 RedrawRequestVacancy 생성 순서대로 조회한다. */
+    @Test
+    void 고정_결원_Winner의_상품_원본을_결원_순서대로_조회한다() {
+        Fixture fixture = fixture();
+        long firstWinnerId = insertWinner(fixture.eventId(), fixture.initialDrawingId(), 1, WinnerManagementStatus.DECLINED);
+        long secondWinnerId = insertWinner(fixture.eventId(), fixture.initialDrawingId(), 2, WinnerManagementStatus.DISQUALIFIED);
+        long redrawRequestId = insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING);
+        insertVacancy(redrawRequestId, secondWinnerId);
+        insertVacancy(redrawRequestId, firstWinnerId);
+
+        List<RedrawVacancyPrizeSource> sources = winnerRepository
+                .findRedrawVacancyPrizeSourcesByRequestId(redrawRequestId);
+
+        assertThat(sources).extracting(RedrawVacancyPrizeSource::winnerId)
+                .containsExactly(secondWinnerId, firstWinnerId);
     }
 
     /** JPA 조회 테스트에 필요한 Event와 최초 Drawing을 저장한다. */

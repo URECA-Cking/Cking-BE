@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
@@ -23,12 +24,11 @@ import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawingHash;
 import kr.co.cking.drawing.domain.prize.AllocatedPrize;
-import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
-import kr.co.cking.drawing.domain.prize.PrizeAllocationInput;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionSource;
+import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.event.application.EventDrawingQueryService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
@@ -54,7 +54,6 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
     private final DrawResultHashGenerator resultHashGenerator;
     private final DrawInputV2HashGenerator inputV2HashGenerator;
     private final DrawResultV2HashGenerator resultV2HashGenerator;
-    private final PrizeAllocationEngine prizeAllocationEngine;
     private final WinnerRepository winnerRepository;
     private final WinnerManagementRepository winnerManagementRepository;
     private final RedrawExclusionRepository redrawExclusionRepository;
@@ -75,8 +74,7 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
             Clock clock
     ) {
         this(drawingRepository, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine, inputHashGenerator,
-                resultHashGenerator, new DrawInputV2HashGenerator(), new DrawResultV2HashGenerator(),
-                new kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine(), winnerRepository,
+                resultHashGenerator, new DrawInputV2HashGenerator(), new DrawResultV2HashGenerator(), winnerRepository,
                 winnerManagementRepository, redrawExclusionRepository, clock);
     }
 
@@ -115,17 +113,15 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
                 .toList());
         DrawInput input = new DrawInput(initial.getEventId(), snapshot.snapshotId(), snapshot.snapshotHash(), seed.seed(),
                 initial.getAlgorithmVersion(), vacancyCount, snapshot.candidates(), excluded);
-        boolean hasPrizes = !snapshot.prizes().isEmpty();
+        List<PrizeValue> inheritedPrizes = inheritedPrizes(snapshot, requestId, vacancyCount);
+        boolean hasPrizes = !inheritedPrizes.isEmpty();
         DrawingHash inputHash = hasPrizes
-                ? inputV2HashGenerator.generate(input, snapshot.prizeAlgorithmVersion(), snapshot.prizes())
+                ? inputV2HashGenerator.generate(input, snapshot.prizeAlgorithmVersion(), toPrizePool(inheritedPrizes))
                 : inputHashGenerator.generate(input);
         redraw.start(inputHash.canonicalPayload(), inputHash.value(), clock.instant());
         DrawOutput output = drawingEngine.draw(input);
         validateOutput(input, output);
-        PrizeAllocationOutput prizeOutput = hasPrizes
-                ? prizeAllocationEngine.allocate(new PrizeAllocationInput(seed.seed(), snapshot.prizeAlgorithmVersion(),
-                        output.winners(), snapshot.prizes()))
-                : null;
+        PrizeAllocationOutput prizeOutput = hasPrizes ? inheritPrizes(snapshot, output, inheritedPrizes) : null;
         DrawingHash resultHash = hasPrizes
                 ? resultV2HashGenerator.generate(inputHash.value(), output, prizeOutput)
                 : resultHashGenerator.generate(inputHash.value(), output);
@@ -149,6 +145,64 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
         if (!actualRanks.equals(expectedRanks)) {
             throw new IllegalStateException("REDRAW 결과의 Rank가 연속적이지 않습니다.");
         }
+    }
+
+    /** 고정 결원 순서의 상품을 새 당첨자 rank 순서로 그대로 승계한다. */
+    private PrizeAllocationOutput inheritPrizes(
+            VerifiedSnapshot snapshot,
+            DrawOutput output,
+            List<PrizeValue> inheritedPrizes
+    ) {
+        if (output.winners().size() != inheritedPrizes.size()) {
+            throw new IllegalStateException("REDRAW 결원 수와 승계 상품 수가 일치하지 않습니다.");
+        }
+        List<DrawWinner> winners = output.winners().stream()
+                .sorted(Comparator.comparingInt(DrawWinner::rank))
+                .toList();
+        List<AllocatedPrize> allocations = IntStream.range(0, winners.size())
+                .mapToObj(index -> new AllocatedPrize(winners.get(index).memberId(), winners.get(index).rank(),
+                        inheritedPrizes.get(index)))
+                .toList();
+        return new PrizeAllocationOutput(
+                kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion.from(snapshot.prizeAlgorithmVersion()),
+                allocations
+        );
+    }
+
+    /** 고정 결원 Winner의 상품을 공식 Snapshot 값으로 복원한다. */
+    private List<PrizeValue> inheritedPrizes(VerifiedSnapshot snapshot, Long requestId, int vacancyCount) {
+        if (snapshot.prizes().isEmpty()) {
+            return List.of();
+        }
+        List<RedrawVacancyPrizeSource> sources = winnerRepository
+                .findRedrawVacancyPrizeSourcesByRequestId(requestId);
+        if (sources.size() != vacancyCount) {
+            throw new IllegalStateException("REDRAW 결원과 승계 상품 원본 수가 일치하지 않습니다.");
+        }
+        Map<Long, PrizeValue> prizesById = snapshot.prizes().stream()
+                .filter(prize -> prize.snapshotPrizeId() != null)
+                .collect(Collectors.toMap(PrizeValue::snapshotPrizeId, java.util.function.Function.identity()));
+        return sources.stream().map(source -> {
+            PrizeValue prize = prizesById.get(source.snapshotPrizeId());
+            if (prize == null) {
+                throw new IllegalStateException("고정 결원 Winner의 상품이 공식 Snapshot과 일치하지 않습니다.");
+            }
+            return prize;
+        }).toList();
+    }
+
+    /** Hash 입력에는 고정 결원에서 승계할 상품별 수량만 포함한다. */
+    private List<PrizeValue> toPrizePool(List<PrizeValue> inheritedPrizes) {
+        Map<Long, Long> quantities = inheritedPrizes.stream().collect(Collectors.groupingBy(
+                PrizeValue::snapshotPrizeId, java.util.LinkedHashMap::new, Collectors.counting()));
+        return quantities.entrySet().stream().map(entry -> {
+            PrizeValue prize = inheritedPrizes.stream()
+                    .filter(value -> value.snapshotPrizeId().equals(entry.getKey()))
+                    .findFirst()
+                    .orElseThrow();
+            return new PrizeValue(prize.snapshotPrizeId(), prize.prizeKey(), prize.displayName(), prize.priority(),
+                    prize.weight(), Math.toIntExact(entry.getValue()));
+        }).toList();
     }
 
     private List<Winner> toWinners(
