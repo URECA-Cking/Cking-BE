@@ -71,20 +71,28 @@ public class EventCommandService {
         eventPublisher.publishEvent(new EventOpenedEvent(eventId));
     }
 
-    /** 초기 추첨이 완료된 CLOSED Event를 추첨 완료 상태로 전이한다. */
+    /**
+     * 초기 추첨이 완료된 CLOSED Event를 추첨 완료 상태로 전이한다(FR-P2-025).
+     *
+     * <p>CLOSED·DRAW_COMPLETED·PUBLISHED는 모두 공개 조회 대상이라 cache:event에 올라갈 수 있다
+     * - 수동 마감(endAt 이전 마감)된 Event는 이 전이 시점에도 캐시 엔트리가 살아 있으므로,
+     * 마감 전이와 동일하게 무효화 이벤트를 발행한다.
+     */
     public void completeDrawing(Long eventId) {
         execute(eventId, event -> {
             event.completeDrawing();
             return null;
         });
+        eventPublisher.publishEvent(new EventClosingStateChangedEvent(eventId));
     }
 
-    /** 추첨이 완료된 Event를 시스템4 결과 공개 흐름에서 공개 상태로 전이한다. */
+    /** 추첨이 완료된 Event를 시스템4 결과 공개 흐름에서 공개 상태로 전이한다(FR-P2-025 무효화 포함). */
     public void publish(Long eventId) {
         execute(eventId, event -> {
             event.publish(clock.instant());
             return null;
         });
+        eventPublisher.publishEvent(new EventClosingStateChangedEvent(eventId));
     }
 
     /** 잠금 상태의 승인 대기 Event를 심사 이력 처리 후 거절 상태로 전이한다. */
