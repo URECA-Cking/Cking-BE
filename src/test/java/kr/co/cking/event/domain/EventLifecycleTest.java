@@ -61,7 +61,7 @@ class EventLifecycleTest {
                 Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
                 1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
 
-        event.delete();
+        event.delete(Instant.parse("2026-09-15T00:00:00Z"));
 
         assertThat(event.getDeletedAt()).isNotNull();
     }
@@ -75,7 +75,7 @@ class EventLifecycleTest {
         event.requestApproval();
         event.reject();
 
-        event.delete();
+        event.delete(Instant.parse("2026-09-15T00:00:00Z"));
 
         assertThat(event.getDeletedAt()).isNotNull();
     }
@@ -88,7 +88,7 @@ class EventLifecycleTest {
                 1, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000");
         event.requestApproval();
 
-        assertThatThrownBy(event::delete)
+        assertThatThrownBy(() -> event.delete(Instant.now()))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(EventErrorCode.INVALID_STATE);
@@ -267,7 +267,7 @@ class EventLifecycleTest {
         given(eventRepository.findByEventId(1L)).willReturn(java.util.Optional.of(event));
         EventCommandService eventCommandService = newEventCommandService(eventRepository);
 
-        eventCommandService.reject(1L, "일정 확인 필요");
+        eventCommandService.reject(1L, e -> null);
         eventCommandService.changeToDraft(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);

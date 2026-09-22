@@ -19,8 +19,6 @@ import kr.co.cking.event.domain.EventStatus;
 
 public interface EventRepository extends JpaRepository<Event, Long> {
 
-    Page<Event> findByDeletedAtIsNull(Pageable pageable);
-
     boolean existsByEventIdAndDeletedAtIsNull(Long eventId);
 
     Optional<Event> findByRequestId(String requestId);

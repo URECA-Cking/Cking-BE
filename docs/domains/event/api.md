@@ -175,7 +175,7 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 { "userId": 1, "rejectReason": "거절 사유" }
 ```
 
-거절 사유는 null·blank·trim 후 빈 문자열을 허용하지 않는다. 현재 PENDING 승인 요청을 REJECTED로 기록한 뒤 `EventCommandService.reject(eventId, reason)`로 Event를 REJECTED로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "REJECTED" }`다.
+거절 사유는 null·blank·trim 후 빈 문자열을 허용하지 않는다. `EventCommandService.reject(eventId, beforeTransition)`이 Event를 잠근 상태에서 현재 PENDING 승인 요청을 REJECTED로 기록(사유 포함)한 뒤 Event를 REJECTED로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "REJECTED" }`다.
 
 ## 오류와 검증
 

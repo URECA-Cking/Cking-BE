@@ -5,7 +5,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -162,7 +161,7 @@ public class EventLifecycleScheduler {
             if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
                 undrainedTicks.remove(eventId);
                 eventCommandService.completeClosing(eventId);
-                officialSnapshotService.createIfAbsent(eventId);
+                createSnapshot(eventId);
                 return;
             }
             int ticks = undrainedTicks.merge(eventId, 1, Integer::sum);
@@ -172,6 +171,19 @@ public class EventLifecycleScheduler {
             }
         } catch (RuntimeException e) {
             log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);
+        }
+    }
+
+    /**
+     * CLOSED 확정 뒤 실패해도 CLOSED를 되돌리지 않는다. 이 스케줄러는 CLOSING만 조회하므로 여기서는
+     * 재시도되지 않는다. CLOSED인데 Snapshot이 없는 Event의 복구는 시스템3 누락 복구 스케줄러(FR-P3-034,
+     * T3-02)의 몫이며 아직 구현되지 않았다.
+     */
+    private void createSnapshot(Long eventId) {
+        try {
+            officialSnapshotService.createIfAbsent(eventId);
+        } catch (RuntimeException e) {
+            log.error("이벤트는 CLOSED로 확정됐지만 공식 Snapshot 생성에 실패했습니다. eventId={}", eventId, e);
         }
     }
 }

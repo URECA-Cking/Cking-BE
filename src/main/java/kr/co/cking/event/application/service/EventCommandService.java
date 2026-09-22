@@ -82,14 +82,9 @@ public class EventCommandService {
     /** 추첨이 완료된 Event를 시스템4 결과 공개 흐름에서 공개 상태로 전이한다. */
     public void publish(Long eventId) {
         execute(eventId, event -> {
-            event.publish();
+            event.publish(clock.instant());
             return null;
         });
-    }
-
-    /** 승인 대기 Event를 거절 상태로 전이한다. */
-    public void reject(Long eventId, String reason) {
-        reject(eventId, event -> null);
     }
 
     /** 잠금 상태의 승인 대기 Event를 심사 이력 처리 후 거절 상태로 전이한다. */
@@ -125,7 +120,7 @@ public class EventCommandService {
     public void delete(Long eventId, Consumer<Event> authorize) {
         execute(eventId, event -> {
             authorize.accept(event);
-            event.delete();
+            event.delete(clock.instant());
             return null;
         });
     }
