@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class DrawAttemptHistoryTest {
 
@@ -20,13 +22,23 @@ class DrawAttemptHistoryTest {
         assertThat(history.getFinishedAt()).isEqualTo(STARTED_AT.plusSeconds(1));
     }
 
-    @Test
-    void 입력_검증_실패는_재시도할_수_없다() {
+    @ParameterizedTest
+    @ValueSource(strings = {"NON_RETRYABLE_FAILURE", "SNAPSHOT_HASH_MISMATCH", "INSUFFICIENT_CANDIDATES"})
+    void 확정적인_비재시도_실패코드는_재시도할_수_없다(String failureCode) {
         DrawAttemptHistory history = DrawAttemptHistory.started(1L, 1, 3L, STARTED_AT);
-        history.fail(DrawingFailureStage.INPUT_VERIFICATION, "SNAPSHOT_HASH_MISMATCH", "불일치",
+        history.fail(DrawingFailureStage.INPUT_VERIFICATION, failureCode, "불일치",
                 STARTED_AT.plusSeconds(1));
 
         assertThat(history.isRetryable()).isFalse();
+    }
+
+    @Test
+    void 입력_검증_단계의_일시적인_시스템_오류는_재시도할_수_있다() {
+        DrawAttemptHistory history = DrawAttemptHistory.started(1L, 1, 3L, STARTED_AT);
+        history.fail(DrawingFailureStage.INPUT_VERIFICATION, "SYSTEM_ERROR", "DB timeout",
+                STARTED_AT.plusSeconds(1));
+
+        assertThat(history.isRetryable()).isTrue();
     }
 
     @Test

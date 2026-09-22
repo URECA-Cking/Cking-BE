@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
+import java.util.Set;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,6 +29,12 @@ import lombok.NoArgsConstructor;
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DrawAttemptHistory {
+
+    private static final Set<String> NON_RETRYABLE_FAILURE_CODES = Set.of(
+            "NON_RETRYABLE_FAILURE",
+            "SNAPSHOT_HASH_MISMATCH",
+            "INSUFFICIENT_CANDIDATES"
+    );
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -123,13 +130,10 @@ public class DrawAttemptHistory {
                 "서버 중단으로 실행이 완료되지 않아 복구 대상으로 전환했습니다.", finishedAt);
     }
 
-    /** 같은 확정 입력으로 다시 실행할 수 없는 입력 단계 실패인지 반환한다. */
+    /** 실패 단계와 무관하게 같은 확정 입력으로 해결할 수 없는 코드만 Retry를 차단한다. */
     public boolean isRetryable() {
         return status == DrawAttemptStatus.FAILED
-                && failureStage != DrawingFailureStage.INPUT_VERIFICATION
-                && !"NON_RETRYABLE_FAILURE".equals(failureCode)
-                && !"SNAPSHOT_HASH_MISMATCH".equals(failureCode)
-                && !"INSUFFICIENT_CANDIDATES".equals(failureCode);
+                && !NON_RETRYABLE_FAILURE_CODES.contains(failureCode);
     }
 
     private void requireStarted() {

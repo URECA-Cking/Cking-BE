@@ -74,6 +74,20 @@ class DrawingRetryPreparationServiceTest {
     }
 
     @Test
+    void 입력_검증_단계의_일시적인_시스템_오류는_Retry를_시작한다() {
+        Drawing drawing = failedDrawing(1);
+        DrawAttemptHistory history = DrawAttemptHistory.started(10L, 1, 1L, NOW.minusSeconds(10));
+        history.fail(DrawingFailureStage.INPUT_VERIFICATION, "SYSTEM_ERROR", "DB timeout", NOW);
+        when(drawingRepository.findByIdForRetry(10L)).thenReturn(Optional.of(drawing));
+        when(attemptRepository.findFirstByDrawingIdOrderByAttemptNoDesc(10L)).thenReturn(Optional.of(history));
+
+        DrawingRetryRequest result = service.prepare(10L, 1L);
+
+        assertThat(result).isEqualTo(new DrawingRetryRequest(10L, 2));
+        assertThat(drawing.getStatus()).isEqualTo(DrawingStatus.RUNNING);
+    }
+
+    @Test
     void RUNNING_Drawing의_동시_Retry는_거부한다() {
         Drawing drawing = failedDrawing(1);
         drawing.retry(NOW);
