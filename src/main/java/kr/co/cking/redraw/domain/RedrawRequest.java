@@ -57,6 +57,15 @@ public class RedrawRequest {
     @Column(name = "requested_at", nullable = false, updatable = false)
     private Instant requestedAt;
 
+    @Column(name = "reviewed_by")
+    private Long reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
+    @Column(name = "reject_reason", length = 500)
+    private String rejectReason;
+
     /** 새 요청을 검토 대기·실행 대기 상태로 만들고 서버가 산출한 결원 수를 고정한다. */
     public static RedrawRequest requested(
             Long eventId,
