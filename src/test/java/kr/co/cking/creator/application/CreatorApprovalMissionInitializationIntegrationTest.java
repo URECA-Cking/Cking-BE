@@ -49,7 +49,6 @@ class CreatorApprovalMissionInitializationIntegrationTest {
     private MissionRepository missionRepository;
 
     private final List<Long> memberIds = new ArrayList<>();
-    private final List<Long> creatorIds = new ArrayList<>();
     private final List<Long> applicationIds = new ArrayList<>();
 
     /** 승인에 성공하면 Creator와 상시 활성 기본 미션 두 개를 함께 저장한다. */
@@ -60,7 +59,6 @@ class CreatorApprovalMissionInitializationIntegrationTest {
         creatorApplicationService.approve(fixture.adminId(), fixture.applicationId());
 
         Creator creator = creatorRepository.findByMemberId(fixture.applicantId()).orElseThrow();
-        creatorIds.add(creator.getCreatorId());
         List<Mission> missions = missionRepository.findByCreatorIdAndTypeIn(
                 creator.getCreatorId(), List.of(MissionType.ATTENDANCE, MissionType.LIKE)
         );
@@ -92,12 +90,17 @@ class CreatorApprovalMissionInitializationIntegrationTest {
                 .isEqualTo(CreatorApplicationStatus.PENDING);
     }
 
-    /** 테스트가 만든 연관 데이터를 외래 키 역순으로 제거하고 Repository spy 상태를 초기화한다. */
+    /** 테스트 실패 여부와 관계없이 Member 기준으로 연관 데이터를 외래 키 역순으로 제거한다. */
     @AfterEach
     void cleanUp() {
         reset(missionRepository);
-        creatorIds.forEach(creatorId -> jdbcTemplate.update("DELETE FROM mission WHERE creator_id = ?", creatorId));
-        creatorIds.forEach(creatorId -> jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", creatorId));
+        memberIds.forEach(memberId -> {
+            jdbcTemplate.update(
+                    "DELETE FROM mission WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
+                    memberId
+            );
+            jdbcTemplate.update("DELETE FROM creator WHERE member_id = ?", memberId);
+        });
         applicationIds.forEach(applicationId -> jdbcTemplate.update(
                 "DELETE FROM creator_application WHERE id = ?", applicationId));
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId));

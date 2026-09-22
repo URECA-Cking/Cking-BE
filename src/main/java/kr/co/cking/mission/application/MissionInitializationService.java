@@ -55,12 +55,13 @@ public class MissionInitializationService {
     }
 
     /**
+     * 기존 Creator 백필 한 건을 독립 트랜잭션으로 초기화한다.
+     *
      * {@link MissionBackfillRunner} 전용 진입점. 반드시 그 클래스처럼 스프링이 관리하는
      * 다른 빈에서, 프록시를 거쳐 호출해야 {@code REQUIRES_NEW}가 실제로 적용된다 —
      * 같은 클래스 안에서 이 메서드를 self-invocation하면 프록시를 우회해 조용히
      * 무시된다.
      */
-    /** 기존 Creator 백필 한 건을 독립 트랜잭션으로 초기화한다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void initializeCreatorInNewTransaction(Long creatorId) {
         initializeDefaultMissions(creatorId);
