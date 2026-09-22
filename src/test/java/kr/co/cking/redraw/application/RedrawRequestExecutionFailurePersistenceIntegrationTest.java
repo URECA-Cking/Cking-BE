@@ -66,8 +66,7 @@ class RedrawRequestExecutionFailurePersistenceIntegrationTest extends RedrawRequ
         public RedrawDrawingExecutionResult execute(
                 Long redrawRequestId, Long adminId, Long originalDrawingId, int vacancyCount
         ) {
-            throw new RedrawExecutionInfrastructureInitializationFailureException("시스템3 실행 실패") {
-            };
+            throw new RedrawExecutionInfrastructureInitializationFailureException("시스템3 실행 실패");
         }
     }
 

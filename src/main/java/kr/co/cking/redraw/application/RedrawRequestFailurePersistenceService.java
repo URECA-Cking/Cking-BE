@@ -31,12 +31,15 @@ class RedrawRequestFailurePersistenceService {
                 failureCodeOf(exception), exception.getMessage()));
     }
 
-    /** 감사 이력 저장이 예외 클래스명 길이 때문에 실패하지 않도록 DB 컬럼 한계로 제한한다. */
-    private static String failureCodeOf(RuntimeException exception) {
-        String name = exception.getClass().getSimpleName();
-        if (name.isBlank()) {
-            Class<?> superclass = exception.getClass().getSuperclass();
-            name = superclass == null ? UNKNOWN_RUNTIME_EXCEPTION : superclass.getSimpleName();
+    /**
+     * 익명 예외는 명명된 상위 클래스를 찾아 코드로 쓰고, 찾지 못하면 기본값을 쓴 뒤 DB 컬럼 한계로 제한한다.
+     */
+    static String failureCodeOf(RuntimeException exception) {
+        Class<?> exceptionClass = exception.getClass();
+        String name = exceptionClass.getSimpleName();
+        while (name.isBlank() && exceptionClass.getSuperclass() != null) {
+            exceptionClass = exceptionClass.getSuperclass();
+            name = exceptionClass.getSimpleName();
         }
         if (name.isBlank()) {
             name = UNKNOWN_RUNTIME_EXCEPTION;
