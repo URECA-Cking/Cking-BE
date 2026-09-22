@@ -46,4 +46,21 @@ public record EventSummary(
                 event.getPrizeConfigs().stream().map(PrizeResult::from).toList()
         );
     }
+
+    /** 목록 캐시(CachedEventPage)에서 읽을 때 쓴다 — displayStatus는 캐시 시점이 아니라 now로 새로 계산한다. */
+    public static EventSummary from(CachedEvent event, Instant now) {
+        return new EventSummary(
+                event.eventId(),
+                event.creatorId(),
+                event.title(),
+                event.startAt(),
+                event.endAt(),
+                event.status(),
+                DisplayStatus.of(event.status(), event.endAt(), now),
+                event.winnerCount(),
+                event.drawMethod(),
+                event.prizeAlgorithmVersion(),
+                event.prizes().stream().map(PrizeResult::from).toList()
+        );
+    }
 }
