@@ -20,6 +20,7 @@ import kr.co.cking.redraw.domain.RedrawRequestVacancy;
 import kr.co.cking.redraw.repository.RedrawExecutionHistoryRepository;
 import kr.co.cking.redraw.repository.RedrawRequestRepository;
 import kr.co.cking.redraw.repository.RedrawRequestVacancyRepository;
+import kr.co.cking.snapshot.domain.SnapshotErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -108,6 +109,24 @@ class RedrawRequestExecutionTransactionServiceTest {
         assertThat(request.getExecutionStatus()).isEqualTo(RedrawExecutionStatus.INSUFFICIENT_CANDIDATES);
         assertThat(request.getCompletedAt()).isNotNull();
         verify(historyRepository).save(any());
+    }
+
+    /** 시스템3 내부의 업무 예외는 실행 전 요청 검증 오류와 구분해 호출자에게 전달한다. */
+    @Test
+    void 시스템3_업무_예외는_실행_실패_표식_예외로_전환한다() {
+        RedrawRequest request = approvedRequest();
+        BusinessException snapshotFailure = new BusinessException(SnapshotErrorCode.SNAPSHOT_HASH_MISMATCH);
+        when(redrawRequestRepository.findByIdForUpdate(REDRAW_REQUEST_ID)).thenReturn(Optional.of(request));
+        when(vacancyRepository.findAllByRedrawRequestIdOrderByIdAsc(REDRAW_REQUEST_ID))
+                .thenReturn(java.util.List.of(mock(RedrawRequestVacancy.class)));
+        when(redrawDrawingExecutionService.execute(REDRAW_REQUEST_ID, ADMIN_ID, 30L, 1))
+                .thenThrow(snapshotFailure);
+
+        assertThatThrownBy(() -> service.execute(ADMIN_ID, REDRAW_REQUEST_ID))
+                .isInstanceOf(RedrawDrawingExecutionBusinessFailureException.class)
+                .satisfies(exception -> assertThat(exception.getCause()).isSameAs(snapshotFailure));
+
+        verifyNoInteractions(historyRepository);
     }
 
     /** 고정 결원 수와 저장된 결원 수가 다르면 시스템3 실행 전에 차단한다. */

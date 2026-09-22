@@ -37,8 +37,13 @@ class RedrawRequestExecutionTransactionService {
             throw new BusinessException(RedrawErrorCode.INVALID_STATE);
         }
 
-        RedrawDrawingExecutionResult result = redrawDrawingExecutionService.execute(
-                redrawRequestId, adminId, request.getOriginalDrawingId(), request.getVacancyCount());
+        RedrawDrawingExecutionResult result;
+        try {
+            result = redrawDrawingExecutionService.execute(
+                    redrawRequestId, adminId, request.getOriginalDrawingId(), request.getVacancyCount());
+        } catch (BusinessException exception) {
+            throw new RedrawDrawingExecutionBusinessFailureException(exception);
+        }
         if (result.insufficientCandidates()) {
             request.markInsufficientCandidates();
             historyRepository.save(RedrawExecutionHistory.of(redrawRequestId,
@@ -48,5 +53,20 @@ class RedrawRequestExecutionTransactionService {
         request.markExecuted();
         historyRepository.save(RedrawExecutionHistory.of(redrawRequestId, RedrawExecutionStatus.EXECUTED, null, null));
         return new RedrawRequestExecutionResult(redrawRequestId, RedrawExecutionStatus.EXECUTED, result.drawingId());
+    }
+}
+
+/** 시스템3 실행 중 발생한 업무 예외를 실행 전 요청 검증 예외와 구분한다. */
+class RedrawDrawingExecutionBusinessFailureException extends RuntimeException {
+
+    private final BusinessException businessException;
+
+    RedrawDrawingExecutionBusinessFailureException(BusinessException businessException) {
+        super(businessException);
+        this.businessException = businessException;
+    }
+
+    BusinessException businessException() {
+        return businessException;
     }
 }

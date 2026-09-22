@@ -202,6 +202,8 @@
 #### 성공 응답
 
 후보가 충분하면 `EXECUTED`와 생성한 REDRAW Drawing ID를, 부족하면 `INSUFFICIENT_CANDIDATES`와 `null`을 반환한다.
+시스템3 실행 단계에서 실패하면 `FAILED`와 `null`을 반환하고 실패 이력을 남긴다. 권한·요청 상태·결원 수의
+실행 전 검증 오류만 아래 오류 응답으로 반환한다.
 
 ```json
 {

@@ -71,8 +71,8 @@
   고정된 결원 Winner의 상품만 결원 확정 순서대로 새 Winner의 rank에 승계한다. 전체 Snapshot 상품 풀을 다시 배정하지 않으며,
   승계 상품별 수량은 V2 Input Hash에 포함하고 새 Winner에 보존한다.
 - 실행 종료 시 `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED` 중 하나와 `completedAt`을 기록하고
-  `redraw_execution_history`에 결과를 남긴다. 시스템3 실행의 기술적 실패는 실행 Transaction을 먼저
-  Rollback한 뒤 별도 `REQUIRES_NEW` Transaction에서 `FAILED`와 이력을 확정한다. 실패·후보 부족은
-  결원 수를 변경하지 않는다.
+  `redraw_execution_history`에 결과를 남긴다. 시스템3 호출 뒤 발생한 RuntimeException과 BusinessException은
+  실행 Transaction을 먼저 Rollback한 뒤 별도 `REQUIRES_NEW` Transaction에서 `FAILED`와 이력을 확정한다.
+  시스템3 호출 전의 권한·요청 상태·결원 수 검증 오류는 API 오류로 반환한다. 실패·후보 부족은 결원 수를 변경하지 않는다.
 
 DB 구조와 unique·foreign key 제약의 정본은 `src/main/resources/db/migration/`이다.

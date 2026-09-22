@@ -1,5 +1,6 @@
 package kr.co.cking.redraw.application;
 
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.redraw.domain.RedrawErrorCode;
 import kr.co.cking.redraw.domain.RedrawExecutionHistory;
 import kr.co.cking.redraw.domain.RedrawExecutionStatus;
@@ -32,9 +33,12 @@ class RedrawRequestFailurePersistenceService {
     }
 
     /**
-     * 익명 예외는 명명된 상위 클래스를 찾아 코드로 쓰고, 찾지 못하면 기본값을 쓴 뒤 DB 컬럼 한계로 제한한다.
+     * 업무 예외는 오류 코드를, 익명 예외는 명명된 상위 클래스를 코드로 쓰고 DB 컬럼 한계로 제한한다.
      */
     static String failureCodeOf(RuntimeException exception) {
+        if (exception instanceof BusinessException businessException) {
+            return truncate(businessException.getErrorCode().code());
+        }
         Class<?> exceptionClass = exception.getClass();
         String name = exceptionClass.getSimpleName();
         while (name.isBlank() && exceptionClass.getSuperclass() != null) {
@@ -44,6 +48,10 @@ class RedrawRequestFailurePersistenceService {
         if (name.isBlank()) {
             name = UNKNOWN_RUNTIME_EXCEPTION;
         }
-        return name.substring(0, Math.min(name.length(), FAILURE_CODE_MAX_LENGTH));
+        return truncate(name);
+    }
+
+    private static String truncate(String value) {
+        return value.substring(0, Math.min(value.length(), FAILURE_CODE_MAX_LENGTH));
     }
 }
