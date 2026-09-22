@@ -14,7 +14,7 @@ import kr.co.cking.drawing.domain.DrawingFailureStage;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.repository.DrawAttemptHistoryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
-import kr.co.cking.redraw.repository.RedrawRequestRepository;
+import kr.co.cking.redraw.application.RedrawDrawingLifecycleService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -27,7 +27,7 @@ class DrawingFailurePersistenceServiceTest {
 
     @Mock DrawingRepository drawingRepository;
     @Mock DrawAttemptHistoryRepository attemptRepository;
-    @Mock RedrawRequestRepository redrawRequestRepository;
+    @Mock RedrawDrawingLifecycleService redrawLifecycleService;
     @Mock Drawing drawing;
 
     @Test
@@ -38,7 +38,8 @@ class DrawingFailurePersistenceServiceTest {
         when(drawing.getAttemptCount()).thenReturn(2);
         when(attemptRepository.findByDrawingIdAndAttemptNo(10L, 2)).thenReturn(Optional.of(attempt));
         DrawingFailurePersistenceService service = new DrawingFailurePersistenceService(
-                drawingRepository, attemptRepository, redrawRequestRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+                drawingRepository, attemptRepository, redrawLifecycleService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
 
         service.recordFailure(new DrawingRetryRequest(10L, 2), DrawingFailureStage.DRAWING_ENGINE,
                 "SYSTEM_ERROR", "engine down");
@@ -56,7 +57,8 @@ class DrawingFailurePersistenceServiceTest {
         when(drawing.getStatus()).thenReturn(DrawingStatus.RUNNING);
         when(attemptRepository.findFirstByDrawingIdOrderByAttemptNoDesc(10L)).thenReturn(Optional.of(attempt));
         DrawingFailurePersistenceService service = new DrawingFailurePersistenceService(
-                drawingRepository, attemptRepository, redrawRequestRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+                drawingRepository, attemptRepository, redrawLifecycleService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
 
         boolean interrupted = service.markInterrupted(10L, NOW.minusSeconds(600));
 

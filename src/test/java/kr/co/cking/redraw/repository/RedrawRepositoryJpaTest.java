@@ -78,9 +78,9 @@ class RedrawRepositoryJpaTest {
                 .containsExactly(WinnerManagementStatus.SELECTED, WinnerManagementStatus.DECLINED);
     }
 
-    /** 진행 중 요청과 EXECUTED 요청의 Winner를 점유 목록으로 반환한다. */
+    /** 진행 중·Retry 대기·EXECUTED 요청의 Winner를 점유 목록으로 반환한다. */
     @Test
-    void 진행_중_또는_실행_완료된_요청이_점유한_Winner를_조회한다() {
+    void 진행_중_Retry_대기_또는_실행_완료된_요청이_점유한_Winner를_조회한다() {
         Fixture fixture = fixture();
         long requestedWinnerId = insertWinner(
                 fixture.eventId(), fixture.initialDrawingId(), 1, WinnerManagementStatus.DECLINED);
@@ -124,7 +124,8 @@ class RedrawRepositoryJpaTest {
                 requestedWinnerId, approvedWinnerId, rejectedWinnerId, executedWinnerId, failedWinnerId, insufficientWinnerId
         ));
 
-        assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(requestedWinnerId, approvedWinnerId, executedWinnerId);
+        assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(
+                requestedWinnerId, approvedWinnerId, executedWinnerId, failedWinnerId);
     }
 
     /** 고정 결원 Winner의 상품 원본은 RedrawRequestVacancy 생성 순서대로 조회한다. */

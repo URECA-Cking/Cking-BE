@@ -26,8 +26,9 @@ import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawAttemptHistoryRepository;
 import kr.co.cking.drawing.repository.DrawingExclusionQueryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
 import kr.co.cking.event.application.service.EventCommandService;
-import kr.co.cking.redraw.repository.RedrawRequestRepository;
+import kr.co.cking.redraw.application.RedrawDrawingLifecycleService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
@@ -47,12 +48,13 @@ class DrawingRetryExecutionServiceTest {
     @Mock SnapshotIntegrityService snapshotIntegrityService;
     @Mock DrawingSeedService drawingSeedService;
     @Mock DrawingExclusionQueryRepository exclusionRepository;
+    @Mock RedrawDrawingQueryRepository redrawQueryRepository;
     @Mock DrawingEngine drawingEngine;
     @Mock PrizeAllocationEngine prizeAllocationEngine;
     @Mock WinnerRepository winnerRepository;
     @Mock WinnerManagementRepository winnerManagementRepository;
     @Mock EventCommandService eventCommandService;
-    @Mock RedrawRequestRepository redrawRequestRepository;
+    @Mock RedrawDrawingLifecycleService redrawLifecycleService;
     @Mock Drawing drawing;
 
     @Test
@@ -81,9 +83,10 @@ class DrawingRetryExecutionServiceTest {
         when(exclusionRepository.findMemberIdsByDrawingId(10L)).thenReturn(List.of());
         DrawingRetryExecutionService service = new DrawingRetryExecutionService(
                 drawingRepository, attemptRepository, snapshotIntegrityService, drawingSeedService,
-                exclusionRepository, drawingEngine, prizeAllocationEngine, new DrawInputHashGenerator(),
+                exclusionRepository, redrawQueryRepository, drawingEngine, prizeAllocationEngine,
+                new DrawInputHashGenerator(),
                 new DrawInputV2HashGenerator(), new DrawResultHashGenerator(), new DrawResultV2HashGenerator(),
-                winnerRepository, winnerManagementRepository, eventCommandService, redrawRequestRepository,
+                winnerRepository, winnerManagementRepository, eventCommandService, redrawLifecycleService,
                 Clock.fixed(now, ZoneOffset.UTC));
 
         assertThatThrownBy(() -> service.execute(new DrawingRetryRequest(10L, 2)))
