@@ -181,6 +181,22 @@ class RedrawAdminControllerTest {
         verifyNoInteractions(redrawRequestReviewService);
     }
 
+    /** 거절 경로 식별자와 요청 본문의 관리자 식별자를 각각 독립적으로 검증한다. */
+    @Test
+    void 유효하지_않은_거절_식별자는_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/admin/redraw-requests/0/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"rejectReason\":\"사유\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":0,\"rejectReason\":\"사유\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(redrawRequestReviewService);
+    }
+
     /** 거절 사유가 비어 있거나 500자를 초과하면 Service 호출 전에 차단한다. */
     @Test
     void 유효하지_않은_거절_사유는_VALIDATION_FAILED를_반환한다() throws Exception {
