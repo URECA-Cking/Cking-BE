@@ -22,7 +22,20 @@
 /oauth/callback?code=...
 ```
 
-Access JWT와 Refresh Token을 redirect URL에 포함하지 않는다.
+실패 또는 사용자의 로그인 취소도 같은 callback으로 redirect한다.
+
+```text
+/oauth/callback?error=<oauth-error>
+```
+
+| `error` 값 | 상황 | Frontend 처리 |
+| --- | --- | --- |
+| `access_denied` | 사용자가 Provider 로그인 또는 동의를 취소·거부함 | 취소 안내 후 로그인 화면으로 이동 |
+| `provider_error` | Provider가 인증에 실패했거나 사용자 정보를 정상적으로 반환하지 않음 | 재시도 안내 |
+| `login_processing_failed` | Cking이 OAuth 사용자 정규화·Member 연결을 완료하지 못함 | 재시도 안내; 반복되면 고객 지원 경로 안내 |
+
+Redirect URL에는 성공 시 `code` 또는 실패 시 `error` 중 하나만 넣는다. Access JWT, Refresh Token,
+Provider 원문 오류와 내부 예외 상세는 redirect URL에 포함하지 않는다.
 
 ## Token 교환
 
