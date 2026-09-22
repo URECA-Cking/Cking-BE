@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
+import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.RedrawExclusion;
 import kr.co.cking.drawing.domain.RedrawExclusionReason;
 import kr.co.cking.drawing.domain.DrawingType;
@@ -28,6 +29,7 @@ import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionSource;
+import kr.co.cking.event.application.EventDrawingQueryService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.domain.PrizeValue;
@@ -44,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecutionService {
     private final DrawingRepository drawingRepository;
+    private final EventDrawingQueryService eventDrawingQueryService;
     private final SnapshotIntegrityService snapshotIntegrityService;
     private final DrawingSeedService drawingSeedService;
     private final DrawingEngine drawingEngine;
@@ -60,6 +63,7 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
     /** 기존 V1 단위 테스트와 상품 없는 REDRAW 경로를 위한 호환 생성자다. */
     public DefaultRedrawDrawingExecutionService(
             DrawingRepository drawingRepository,
+            EventDrawingQueryService eventDrawingQueryService,
             SnapshotIntegrityService snapshotIntegrityService,
             DrawingSeedService drawingSeedService,
             DrawingEngine drawingEngine,
@@ -70,7 +74,7 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
             RedrawExclusionRepository redrawExclusionRepository,
             Clock clock
     ) {
-        this(drawingRepository, snapshotIntegrityService, drawingSeedService, drawingEngine, inputHashGenerator,
+        this(drawingRepository, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine, inputHashGenerator,
                 resultHashGenerator, new DrawInputV2HashGenerator(), new DrawResultV2HashGenerator(),
                 new kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine(), winnerRepository,
                 winnerManagementRepository, redrawExclusionRepository, clock);
@@ -82,9 +86,12 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
     public RedrawDrawingExecutionResult execute(Long requestId, Long adminId, Long originalDrawingId, int vacancyCount) {
         Drawing initial = drawingRepository.findById(originalDrawingId)
                 .orElseThrow(() -> new BusinessException(DrawingErrorCode.INVALID_STATE));
-        if (initial.getDrawType() != DrawingType.INITIAL || drawingRepository.findByRedrawRequestId(requestId).isPresent()) {
+        if (initial.getDrawType() != DrawingType.INITIAL || initial.getStatus() != DrawingStatus.COMPLETED
+                || drawingRepository.findByRedrawRequestId(requestId).isPresent()) {
             throw new BusinessException(DrawingErrorCode.INVALID_STATE);
         }
+        // 같은 Event의 서로 다른 REDRAW 요청도 최신 회차 계산부터 생성까지 직렬화한다.
+        eventDrawingQueryService.getDrawingSourceForUpdate(initial.getEventId());
         VerifiedSnapshot snapshot = snapshotIntegrityService.verifyForDrawing(initial.getEventId());
         if (!initial.getSnapshotId().equals(snapshot.snapshotId())) {
             throw new BusinessException(DrawingErrorCode.INVALID_STATE);

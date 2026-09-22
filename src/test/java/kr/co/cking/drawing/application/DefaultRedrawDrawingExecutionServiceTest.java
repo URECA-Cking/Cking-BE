@@ -1,8 +1,10 @@
 package kr.co.cking.drawing.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
@@ -10,8 +12,11 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.drawing.domain.Drawing;
+import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingSnapshotContract;
+import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.RedrawExclusion;
 import kr.co.cking.drawing.domain.RedrawExclusionReason;
 import kr.co.cking.drawing.domain.engine.DrawInput;
@@ -31,6 +36,9 @@ import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionSource;
+import kr.co.cking.event.application.EventDrawingQueryService;
+import kr.co.cking.event.application.dto.EventDrawingSource;
+import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
@@ -58,6 +66,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
     private static final long REDRAW_DRAWING_ID = 30L;
 
     @Mock private DrawingRepository drawingRepository;
+    @Mock private EventDrawingQueryService eventDrawingQueryService;
     @Mock private SnapshotIntegrityService snapshotIntegrityService;
     @Mock private DrawingSeedService drawingSeedService;
     @Mock private DrawingEngine drawingEngine;
@@ -71,7 +80,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
     @BeforeEach
     void setUp() {
         service = new DefaultRedrawDrawingExecutionService(
-                drawingRepository, snapshotIntegrityService, drawingSeedService, drawingEngine,
+                drawingRepository, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine,
                 new DrawInputHashGenerator(), new DrawResultHashGenerator(), winnerRepository,
                 winnerManagementRepository, redrawExclusionRepository,
                 Clock.fixed(Instant.parse("2026-09-22T00:00:00Z"), ZoneOffset.UTC)
@@ -85,10 +94,9 @@ class DefaultRedrawDrawingExecutionServiceTest {
         PrizeValue prize = new PrizeValue(501L, "FIRST", "1등 상품", 1, 100L, 1);
         VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(50L, 10L, 1, "WEIGHTED", "WEIGHTED_V1",
                 List.of(new CandidateValue(101L, 1L), new CandidateValue(102L, 2L)), List.of(prize));
-        Drawing initial = Drawing.createInitial(DrawingSnapshotContract.from(snapshot), 40L, ADMIN_ID);
-        ReflectionTestUtils.setField(initial, "id", INITIAL_DRAWING_ID);
+        Drawing initial = completedInitial(snapshot);
         DefaultRedrawDrawingExecutionService productService = new DefaultRedrawDrawingExecutionService(
-                drawingRepository, snapshotIntegrityService, drawingSeedService, drawingEngine,
+                drawingRepository, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine,
                 new DrawInputHashGenerator(), new DrawResultHashGenerator(), new DrawInputV2HashGenerator(),
                 new DrawResultV2HashGenerator(), prizeAllocationEngine, winnerRepository,
                 winnerManagementRepository, redrawExclusionRepository,
@@ -96,6 +104,8 @@ class DefaultRedrawDrawingExecutionServiceTest {
         );
         when(drawingRepository.findById(INITIAL_DRAWING_ID)).thenReturn(Optional.of(initial));
         when(drawingRepository.findByRedrawRequestId(REQUEST_ID)).thenReturn(Optional.empty());
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
+                .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
         when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
         when(winnerRepository.findRedrawExclusionSourcesByEventId(10L))
                 .thenReturn(List.of(new RedrawExclusionSource(101L, WinnerManagementStatus.SELECTED)));
@@ -142,10 +152,11 @@ class DefaultRedrawDrawingExecutionServiceTest {
     @SuppressWarnings("unchecked")
     void REDRAW_생성_트랜잭션에서_모든_제외_Member와_사유를_저장한다() {
         VerifiedSnapshot snapshot = snapshot();
-        Drawing initial = Drawing.createInitial(DrawingSnapshotContract.from(snapshot), 40L, ADMIN_ID);
-        ReflectionTestUtils.setField(initial, "id", INITIAL_DRAWING_ID);
+        Drawing initial = completedInitial(snapshot);
         when(drawingRepository.findById(INITIAL_DRAWING_ID)).thenReturn(Optional.of(initial));
         when(drawingRepository.findByRedrawRequestId(REQUEST_ID)).thenReturn(Optional.empty());
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
+                .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
         when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
         when(winnerRepository.findRedrawExclusionSourcesByEventId(10L)).thenReturn(List.of(
                 new RedrawExclusionSource(101L, WinnerManagementStatus.SELECTED),
@@ -182,6 +193,63 @@ class DefaultRedrawDrawingExecutionServiceTest {
         ArgumentCaptor<DrawInput> input = ArgumentCaptor.forClass(DrawInput.class);
         verify(drawingEngine).draw(input.capture());
         assertThat(input.getValue().excludedMemberIds()).containsExactlyInAnyOrder(101L, 103L, 104L);
+    }
+
+    /** 완료되지 않은 원본 INITIAL Drawing은 Event 잠금과 시스템3 실행 전에 거부한다. */
+    @Test
+    void 완료되지_않은_원본_INITIAL_Drawing은_INVALID_STATE다() {
+        Drawing initial = Drawing.createInitial(DrawingSnapshotContract.from(snapshot()), 40L, ADMIN_ID);
+        ReflectionTestUtils.setField(initial, "id", INITIAL_DRAWING_ID);
+        when(drawingRepository.findById(INITIAL_DRAWING_ID)).thenReturn(Optional.of(initial));
+
+        assertThatThrownBy(() -> service.execute(REQUEST_ID, ADMIN_ID, INITIAL_DRAWING_ID, 1))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(DrawingErrorCode.INVALID_STATE);
+
+        verifyNoInteractions(eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine);
+    }
+
+    /** 실제 Event 잠금은 최신 회차 조회와 REDRAW Drawing 생성보다 먼저 수행된다. */
+    @Test
+    void Event_잠금_후_최신_회차를_계산한다() {
+        VerifiedSnapshot snapshot = snapshot();
+        Drawing initial = completedInitial(snapshot);
+        when(drawingRepository.findById(INITIAL_DRAWING_ID)).thenReturn(Optional.of(initial));
+        when(drawingRepository.findByRedrawRequestId(REQUEST_ID)).thenReturn(Optional.empty());
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
+                .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
+        when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
+        when(winnerRepository.findRedrawExclusionSourcesByEventId(10L)).thenReturn(List.of());
+        when(drawingSeedService.createForRedraw(40L))
+                .thenReturn(new PersistedDrawingSeed(41L, kr.co.cking.drawing.domain.seed.DrawingSeed.from("01".repeat(32))));
+        when(drawingRepository.findTopByEventIdOrderByDrawNoDesc(10L)).thenReturn(Optional.of(initial));
+        when(drawingRepository.saveAndFlush(any(Drawing.class))).thenAnswer(invocation -> {
+            Drawing redraw = invocation.getArgument(0);
+            ReflectionTestUtils.setField(redraw, "id", REDRAW_DRAWING_ID);
+            return redraw;
+        });
+        when(drawingEngine.draw(any(DrawInput.class))).thenReturn(new DrawOutput(
+                DrawingAlgorithmVersion.WEIGHTED_V1, List.of(new DrawWinner(101L, 1, 1L))));
+        when(winnerRepository.saveAllAndFlush(any())).thenAnswer(invocation -> {
+            List<Winner> winners = invocation.getArgument(0);
+            ReflectionTestUtils.setField(winners.getFirst(), "id", 50L);
+            return winners;
+        });
+
+        service.execute(REQUEST_ID, ADMIN_ID, INITIAL_DRAWING_ID, 1);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(eventDrawingQueryService, drawingRepository);
+        order.verify(eventDrawingQueryService).getDrawingSourceForUpdate(10L);
+        order.verify(drawingRepository).findTopByEventIdOrderByDrawNoDesc(10L);
+        order.verify(drawingRepository).saveAndFlush(any(Drawing.class));
+    }
+
+    private Drawing completedInitial(VerifiedSnapshot snapshot) {
+        Drawing initial = Drawing.createInitial(DrawingSnapshotContract.from(snapshot), 40L, ADMIN_ID);
+        ReflectionTestUtils.setField(initial, "id", INITIAL_DRAWING_ID);
+        ReflectionTestUtils.setField(initial, "status", DrawingStatus.COMPLETED);
+        return initial;
     }
 
     private VerifiedSnapshot snapshot() {

@@ -64,9 +64,11 @@
   검증하며, 불일치하면 시스템3 실행을 호출하지 않고 `INVALID_STATE`로 거부한다.
 - 시스템4는 상태 검증·이력 기록만 수행하고 시스템3 `RedrawDrawingExecutionService`에 전체 재추첨을 위임한다.
   DrawingEngine·Snapshot 저장소·Seed를 직접 다루지 않는다.
-- 시스템3은 원본 INITIAL Snapshot과 `drawMethod`·`algorithmVersion`을 재사용하고 Event의 모든 기존 Winner를
-후보에서 제외한다. 후보가 부족하면 Drawing을 생성하지 않는다. 상품 Snapshot이 있으면 INITIAL과 같은
-V2 Input/Result Hash와 상품 배정 알고리즘을 사용하고, 배정 상품 정보를 새 Winner에 보존한다.
+- 시스템3은 `COMPLETED` 원본 INITIAL Drawing만 사용하며, Event 행을 잠근 뒤 최신 `drawNo`를 계산하고
+  REDRAW Drawing을 생성해 같은 Event의 서로 다른 요청도 회차 충돌 없이 직렬화한다. 원본 INITIAL Snapshot과
+  `drawMethod`·`algorithmVersion`을 재사용하고 Event의 모든 기존 Winner를 후보에서 제외한다. 후보가 부족하면
+  Drawing을 생성하지 않는다. 상품 Snapshot이 있으면 INITIAL과 같은 V2 Input/Result Hash와 상품 배정 알고리즘을
+  사용하고, 배정 상품 정보를 새 Winner에 보존한다.
 - 실행 종료 시 `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED` 중 하나를 기록하고
   `redraw_execution_history`에 결과를 남긴다. 시스템3 실행의 기술적 실패는 실행 Transaction을 먼저
   Rollback한 뒤 별도 `REQUIRES_NEW` Transaction에서 `FAILED`와 이력을 확정한다. 실패·후보 부족은
