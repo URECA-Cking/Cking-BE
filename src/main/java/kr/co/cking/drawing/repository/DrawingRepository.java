@@ -1,6 +1,7 @@
 package kr.co.cking.drawing.repository;
 
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import kr.co.cking.drawing.domain.Drawing;
@@ -29,13 +30,19 @@ public interface DrawingRepository extends JpaRepository<Drawing, Long> {
 
     boolean existsByEventIdAndDrawNo(Long eventId, int drawNo);
 
-    /**
-     * Event 행 잠금 뒤 최신 상태를 현재 읽기로 확인한다. 일반 일관 읽기는 준비 Transaction 시작 시점의 Snapshot을
-     * 볼 수 있어, 다른 REDRAW가 방금 `RUNNING`으로 전이한 사실을 놓칠 수 있다.
-     */
+    /** Event 잠금 뒤 같은 Event REDRAW의 실행·Retry 대기 상태를 현재 읽기로 확인한다. */
     @Lock(LockModeType.PESSIMISTIC_READ)
-    @Query("select d from Drawing d where d.eventId = :eventId and d.status = :status")
-    List<Drawing> findAllByEventIdAndStatusForUpdate(Long eventId, DrawingStatus status);
+    @Query("""
+            select d
+            from Drawing d
+            where d.eventId = :eventId
+              and d.drawType = kr.co.cking.drawing.domain.DrawingType.REDRAW
+              and d.status in :statuses
+            """)
+    List<Drawing> findAllRedrawByEventIdAndStatusInForUpdate(
+            Long eventId,
+            Collection<DrawingStatus> statuses
+    );
 
     /** 동시 공개 요청을 직렬화해야 하는 명령 경로(공개) 전용 조회. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

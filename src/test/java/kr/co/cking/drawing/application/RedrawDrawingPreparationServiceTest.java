@@ -11,6 +11,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.drawing.domain.DrawAttemptHistory;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
@@ -43,6 +44,9 @@ class RedrawDrawingPreparationServiceTest {
     @Mock DrawInputHashGenerator inputHashGenerator;
     @Mock DrawInputV2HashGenerator inputV2HashGenerator;
     @Mock Drawing initial;
+    @Mock Drawing runningRedraw;
+    @Mock Drawing failedRedraw;
+    @Mock DrawAttemptHistory failedAttempt;
 
     private RedrawDrawingPreparationService service;
 
@@ -69,8 +73,31 @@ class RedrawDrawingPreparationServiceTest {
 
     @Test
     void 같은_Event의_RUNNING_REDRAW가_있으면_후속_요청은_입력을_고정하지_않는다() {
-        when(drawingRepository.findAllByEventIdAndStatusForUpdate(10L, DrawingStatus.RUNNING))
-                .thenReturn(List.of(initial));
+        when(drawingRepository.findAllRedrawByEventIdAndStatusInForUpdate(
+                10L, List.of(DrawingStatus.RUNNING, DrawingStatus.FAILED)))
+                .thenReturn(List.of(runningRedraw));
+        when(runningRedraw.getStatus()).thenReturn(DrawingStatus.RUNNING);
+
+        assertConcurrentCommand();
+
+        verifyNoInteractions(attemptRepository);
+    }
+
+    @Test
+    void Retry_가능한_FAILED_REDRAW가_있으면_후속_요청은_입력을_고정하지_않는다() {
+        when(drawingRepository.findAllRedrawByEventIdAndStatusInForUpdate(
+                10L, List.of(DrawingStatus.RUNNING, DrawingStatus.FAILED)))
+                .thenReturn(List.of(failedRedraw));
+        when(failedRedraw.getStatus()).thenReturn(DrawingStatus.FAILED);
+        when(failedRedraw.getId()).thenReturn(40L);
+        when(attemptRepository.findFirstByDrawingIdOrderByAttemptNoDesc(40L))
+                .thenReturn(Optional.of(failedAttempt));
+        when(failedAttempt.isRetryable()).thenReturn(true);
+
+        assertConcurrentCommand();
+    }
+
+    private void assertConcurrentCommand() {
 
         assertThatThrownBy(() -> service.prepare(30L, 1L, 20L, 1))
                 .isInstanceOf(BusinessException.class)
@@ -79,6 +106,6 @@ class RedrawDrawingPreparationServiceTest {
 
         verify(eventDrawingQueryService).getDrawingSourceForUpdate(10L);
         verifyNoInteractions(snapshotIntegrityService, drawingSeedService, redrawExclusionRepository,
-                redrawQueryRepository, attemptRepository, inputHashGenerator, inputV2HashGenerator);
+                redrawQueryRepository, inputHashGenerator, inputV2HashGenerator);
     }
 }

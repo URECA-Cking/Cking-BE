@@ -19,8 +19,9 @@
 
 실행 상태는 `PENDING`, `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED`이며, 생성 시에는 항상
 `PENDING`이다. `REQUESTED` 또는 `APPROVED`이면서 `executionStatus = PENDING`인 요청은 결원을 임시 점유한다.
-보존된 `FAILED` REDRAW Drawing이 있는 `FAILED` 요청은 기존 Drawing Retry가 끝날 때까지, `EXECUTED` 요청은
-영구히 결원을 점유하므로 해당 Winner는 새 요청의 결원 후보에서 제외한다. Drawing을 만들기 전 입력 검증에 실패한
+보존된 **Retry 가능한** `FAILED` REDRAW Drawing이 있는 요청은 기존 Drawing Retry가 끝날 때까지, `EXECUTED`
+요청은 영구히 결원을 점유하므로 해당 Winner는 새 요청의 결원 후보에서 제외한다. `NON_RETRYABLE_FAILURE` 등으로
+종결된 FAILED Drawing은 후속 REDRAW의 결원 점유와 입력 확정을 막지 않는다. Drawing을 만들기 전 입력 검증에 실패한
 요청은 `PENDING`으로 남아 재실행할 수 있으므로 역시 점유를 유지한다. `REJECTED`,
 `INSUFFICIENT_CANDIDATES` 요청의 결원만 다시 사용할 수 있다.
 
@@ -75,9 +76,10 @@
 - 시스템3은 새 REDRAW의 Drawing·Seed·제외 명단·Input Hash/Payload·첫 Attempt를 짧은 준비
   Transaction으로 먼저 확정한다. 이후 엔진 또는 결과 저장이 실패하면 준비 데이터는 유지하고 Drawing과
   RedrawRequest를 `FAILED`로 변경해 기존 `drawingId`와 `seedId`로 Retry할 수 있게 한다.
-- 같은 Event에 `RUNNING` Drawing이 있으면 다른 RedrawRequest는 Snapshot·제외 명단·Seed를 새로 확정하지 않고
-  `CONCURRENT_COMMAND`로 거부한다. 실행 중인 Drawing이 종결된 뒤 같은 실행 API로 다시 요청하면 최신 Winner를
-  반영해 준비한다.
+- 같은 Event에 `RUNNING` 또는 Retry 가능한 `FAILED` REDRAW Drawing이 있으면 다른 RedrawRequest는
+  Snapshot·제외 명단·Seed를 새로 확정하지 않고 `CONCURRENT_COMMAND`로 거부한다. 이는 저장된 제외 명단을
+  재사용하는 Retry보다 후속 REDRAW Winner가 먼저 확정되는 것을 막는다. 해당 Drawing이 성공 또는 비재시도 실패로
+  종결된 뒤 같은 실행 API로 다시 요청하면 최신 Winner를 반영해 준비한다.
 - Retry는 `POST /api/admin/drawings/{drawingId}/retry`를 사용한다. 기존 Snapshot·Seed·알고리즘·결원 수와
   제외 명단을 재사용하며, 상품이 있으면 최초 실행과 동일한 고정 결원 상품을 rank 순서로 승계한다.
 - 실행 종료 시 `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED` 중 하나와 `completedAt`을 기록하고

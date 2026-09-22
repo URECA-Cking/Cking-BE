@@ -68,8 +68,7 @@ class RedrawDrawingPreparationService {
         if (existing != null) {
             return existing(existing);
         }
-        if (!drawingRepository.findAllByEventIdAndStatusForUpdate(initial.getEventId(), DrawingStatus.RUNNING)
-                .isEmpty()) {
+        if (hasRunningOrRetryableFailedRedraw(initial.getEventId())) {
             throw new BusinessException(DrawingErrorCode.CONCURRENT_COMMAND);
         }
 
@@ -125,6 +124,21 @@ class RedrawDrawingPreparationService {
                     RedrawDrawingExecutionResult.failed(drawing.getId()));
             case READY -> throw new BusinessException(DrawingErrorCode.CONCURRENT_COMMAND);
         };
+    }
+
+    /**
+     * 저장된 제외 명단으로 Retry할 수 있는 FAILED REDRAW가 있으면 후속 REDRAW의 Winner 확정을 막는다.
+     * 그렇지 않으면 후속 결과가 Retry 후보에 새로 들어가 확정 입력을 더 이상 재현할 수 없게 된다.
+     */
+    private boolean hasRunningOrRetryableFailedRedraw(Long eventId) {
+        return drawingRepository.findAllRedrawByEventIdAndStatusInForUpdate(
+                        eventId, List.of(DrawingStatus.RUNNING, DrawingStatus.FAILED))
+                .stream()
+                .anyMatch(drawing -> drawing.getStatus() == DrawingStatus.RUNNING
+                        || attemptRepository.findFirstByDrawingIdOrderByAttemptNoDesc(drawing.getId())
+                        .map(DrawAttemptHistory::isRetryable)
+                        // 이력이 유실된 FAILED Drawing은 안전을 위해 운영자 확인 전까지 후속 확정을 막는다.
+                        .orElse(true));
     }
 
     private List<PrizeValue> inheritedPrizes(

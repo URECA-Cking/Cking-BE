@@ -34,6 +34,26 @@ public interface RedrawRequestVacancyRepository extends JpaRepository<RedrawRequ
                           from kr.co.cking.drawing.domain.Drawing drawing
                           where drawing.redrawRequestId = request.id
                             and drawing.status = kr.co.cking.drawing.domain.DrawingStatus.FAILED
+                            and (
+                                not exists (
+                                    select history.id
+                                    from kr.co.cking.drawing.domain.DrawAttemptHistory history
+                                    where history.drawingId = drawing.id
+                                      and history.attemptNo = drawing.attemptCount
+                                )
+                                or exists (
+                                    select history.id
+                                    from kr.co.cking.drawing.domain.DrawAttemptHistory history
+                                    where history.drawingId = drawing.id
+                                      and history.attemptNo = drawing.attemptCount
+                                      and history.status = kr.co.cking.drawing.domain.DrawAttemptStatus.FAILED
+                                      and history.failureCode not in (
+                                          'NON_RETRYABLE_FAILURE',
+                                          'SNAPSHOT_HASH_MISMATCH',
+                                          'INSUFFICIENT_CANDIDATES'
+                                      )
+                                )
+                            )
                       )
                   )
                   or request.executionStatus = kr.co.cking.redraw.domain.RedrawExecutionStatus.EXECUTED

@@ -227,5 +227,5 @@ Drawing이 종결된 뒤 같은 실행 API로 다시 요청할 수 있다.
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 없음 |
 | `INVALID_STATE` | 요청이 APPROVED·PENDING이 아니거나 고정 결원 행 수가 불일치함 |
-| `CONCURRENT_COMMAND` | 같은 Event의 다른 REDRAW Drawing이 `RUNNING`이어서 새 입력을 확정할 수 없음 |
+| `CONCURRENT_COMMAND` | 같은 Event의 다른 REDRAW Drawing이 `RUNNING`이거나 Retry 가능한 `FAILED` 상태여서 새 입력을 확정할 수 없음 |
 | `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot 재검증에 실패함 |

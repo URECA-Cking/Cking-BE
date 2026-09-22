@@ -96,6 +96,8 @@ class RedrawRepositoryJpaTest {
                 fixture.eventId(), fixture.initialDrawingId(), 6, WinnerManagementStatus.DISQUALIFIED);
         long failedWithoutDrawingWinnerId = insertWinner(
                 fixture.eventId(), fixture.initialDrawingId(), 7, WinnerManagementStatus.DECLINED);
+        long nonRetryableFailedWinnerId = insertWinner(
+                fixture.eventId(), fixture.initialDrawingId(), 8, WinnerManagementStatus.DISQUALIFIED);
 
         insertVacancy(
                 insertRedrawRequest(fixture, RedrawRequestStatus.REQUESTED, RedrawExecutionStatus.PENDING),
@@ -115,7 +117,7 @@ class RedrawRepositoryJpaTest {
         );
         long failedRequestId = insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.FAILED);
         insertVacancy(failedRequestId, failedWinnerId);
-        insertFailedRedrawDrawing(fixture, failedRequestId);
+        insertFailedAttempt(insertFailedRedrawDrawing(fixture, failedRequestId, 1), "SYSTEM_ERROR");
         insertVacancy(
                 insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.INSUFFICIENT_CANDIDATES),
                 insufficientWinnerId
@@ -124,10 +126,15 @@ class RedrawRepositoryJpaTest {
                 insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.FAILED),
                 failedWithoutDrawingWinnerId
         );
+        long nonRetryableFailedRequestId = insertRedrawRequest(
+                fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.FAILED);
+        insertVacancy(nonRetryableFailedRequestId, nonRetryableFailedWinnerId);
+        insertFailedAttempt(
+                insertFailedRedrawDrawing(fixture, nonRetryableFailedRequestId, 2), "NON_RETRYABLE_FAILURE");
 
         List<Long> occupiedWinnerIds = redrawRequestVacancyRepository.findOccupiedWinnerIds(List.of(
                 requestedWinnerId, approvedWinnerId, rejectedWinnerId, executedWinnerId, failedWinnerId,
-                insufficientWinnerId, failedWithoutDrawingWinnerId
+                insufficientWinnerId, failedWithoutDrawingWinnerId, nonRetryableFailedWinnerId
         ));
 
         assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(
@@ -236,24 +243,43 @@ class RedrawRepositoryJpaTest {
         return lastInsertId();
     }
 
-    private void insertFailedRedrawDrawing(Fixture fixture, long redrawRequestId) {
+    private long insertFailedRedrawDrawing(Fixture fixture, long redrawRequestId, int drawNo) {
         entityManager.createNativeQuery("""
                         INSERT INTO drawing (
                             event_id, draw_no, draw_type, original_drawing_id, redraw_request_id,
                             snapshot_id, seed_id, draw_method, algorithm_version, prize_algorithm_version,
-                            winner_count, status, visibility, requested_by
+                            winner_count, status, visibility, requested_by, attempt_count
                         ) VALUES (
-                            :eventId, 1, 'REDRAW', :originalDrawingId, :redrawRequestId,
+                            :eventId, :drawNo, 'REDRAW', :originalDrawingId, :redrawRequestId,
                             :snapshotId, :seedId, 'WEIGHTED', 'WEIGHTED_V1', 'PRIZE_WEIGHTED_V1',
-                            1, 'FAILED', 'PRIVATE', :requestedBy
+                            1, 'FAILED', 'PRIVATE', :requestedBy, 1
                         )
                         """)
                 .setParameter("eventId", fixture.eventId())
+                .setParameter("drawNo", drawNo)
                 .setParameter("originalDrawingId", fixture.initialDrawingId())
                 .setParameter("redrawRequestId", redrawRequestId)
                 .setParameter("snapshotId", fixture.snapshotId())
                 .setParameter("seedId", insertSeed())
                 .setParameter("requestedBy", fixture.adminId())
+                .executeUpdate();
+        return lastInsertId();
+    }
+
+    private void insertFailedAttempt(long drawingId, String failureCode) {
+        entityManager.createNativeQuery("""
+                        INSERT INTO draw_attempt_history (
+                            drawing_id, attempt_no, status, failure_stage, failure_code,
+                            started_at, finished_at
+                        ) VALUES (
+                            :drawingId, 1, 'FAILED', 'RESULT_PERSISTENCE', :failureCode,
+                            :startedAt, :finishedAt
+                        )
+                        """)
+                .setParameter("drawingId", drawingId)
+                .setParameter("failureCode", failureCode)
+                .setParameter("startedAt", Instant.parse("2026-09-16T00:00:00Z"))
+                .setParameter("finishedAt", Instant.parse("2026-09-16T00:00:01Z"))
                 .executeUpdate();
     }
 
