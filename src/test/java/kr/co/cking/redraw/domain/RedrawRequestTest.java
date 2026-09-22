@@ -51,13 +51,40 @@ class RedrawRequestTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    /** 이미 승인 또는 거절된 요청은 다시 심사하면 도메인 상태 오류를 반환한다. */
+    /** 이미 승인 또는 거절된 요청은 어떤 심사 명령으로도 다시 상태 전이할 수 없다. */
     @Test
     void 이미_심사된_요청은_INVALID_STATE다() {
-        RedrawRequest request = requested();
-        request.approve(REVIEWER_ID);
+        RedrawRequest approvedRequest = requested();
+        approvedRequest.approve(REVIEWER_ID);
+        assertInvalidState(() -> approvedRequest.approve(REVIEWER_ID));
+        assertInvalidState(() -> approvedRequest.reject(REVIEWER_ID, "사유"));
 
-        assertThatThrownBy(() -> request.reject(REVIEWER_ID, "사유"))
+        RedrawRequest rejectedRequest = requested();
+        rejectedRequest.reject(REVIEWER_ID, "사유");
+        assertInvalidState(() -> rejectedRequest.approve(REVIEWER_ID));
+        assertInvalidState(() -> rejectedRequest.reject(REVIEWER_ID, "사유"));
+    }
+
+    /** null·0·음수 심사자 ID는 승인과 거절 모두에서 도메인 불변식을 위반한다. */
+    @Test
+    void 유효하지_않은_심사자_ID는_IllegalArgumentException이다() {
+        assertThatThrownBy(() -> requested().approve(null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> requested().approve(0L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> requested().approve(-1L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> requested().reject(null, "사유"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> requested().reject(0L, "사유"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> requested().reject(-1L, "사유"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** 이미 심사된 요청에 대한 명령이 도메인 상태 오류를 반환하는지 검증한다. */
+    private void assertInvalidState(Runnable command) {
+        assertThatThrownBy(command::run)
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(RedrawErrorCode.INVALID_STATE);
