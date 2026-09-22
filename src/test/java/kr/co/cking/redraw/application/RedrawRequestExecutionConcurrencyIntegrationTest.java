@@ -28,7 +28,7 @@ class RedrawRequestExecutionConcurrencyIntegrationTest extends RedrawRequestCrea
     private RedrawRequestExecutionService redrawRequestExecutionService;
 
     @Test
-    void 동시_실행은_한_건만_EXECUTED와_이력을_저장하고_나머지는_INVALID_STATE다() throws Exception {
+    void 동시_실행은_Drawing을_중복_생성하지_않고_같은_EXECUTED_결과를_반환한다() throws Exception {
         Long redrawRequestId = redrawRequestCreateService.create(command(newIdempotencyKey())).redrawRequestId();
         redrawRequestReviewService.approve(adminId(), redrawRequestId);
         CountDownLatch ready = new CountDownLatch(2);
@@ -40,7 +40,7 @@ class RedrawRequestExecutionConcurrencyIntegrationTest extends RedrawRequestCrea
             start.countDown();
 
             assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
-                    .containsExactlyInAnyOrder("EXECUTED", "INVALID_STATE");
+                    .containsExactly("EXECUTED", "EXECUTED");
         }
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT execution_status FROM redraw_request WHERE id = ?", String.class, redrawRequestId

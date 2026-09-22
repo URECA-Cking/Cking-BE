@@ -84,7 +84,7 @@ class RedrawRequestCreationPersistenceService {
         return drawing;
     }
 
-    /** 결원 후보에서 진행 중 또는 실행 완료 요청이 이미 점유한 Winner를 빼고 생성 대상만 반환한다. */
+    /** 결원 후보에서 진행 중·Retry 대기·실행 완료 요청이 점유한 Winner를 빼고 생성 대상만 반환한다. */
     private List<Long> findUnoccupiedVacancyWinnerIds(Long eventId, Long originalDrawingId) {
         List<Long> candidateWinnerIds = redrawVacancyCandidateRepository.findVacancyWinnerIds(
                 eventId, originalDrawingId, VACANCY_STATUSES

@@ -1,13 +1,15 @@
 package kr.co.cking.redraw.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import kr.co.cking.redraw.domain.RedrawExecutionStatus;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.snapshot.domain.SnapshotErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-/** 시스템3 Snapshot 무결성 실패가 REDRAW 생성 롤백과 요청 실패 이력으로 종결되는지 검증한다. */
+/** Drawing 생성 전 Snapshot 무결성 실패는 요청을 PENDING으로 남기는지 검증한다. */
 @SpringBootTest
 class RedrawRequestExecutionSnapshotFailureIntegrationTest extends RedrawRequestCreateIntegrationFixture {
 
@@ -15,7 +17,7 @@ class RedrawRequestExecutionSnapshotFailureIntegrationTest extends RedrawRequest
     private RedrawRequestExecutionService redrawRequestExecutionService;
 
     @Test
-    void Snapshot_Hash_불일치면_REDRAW_결과를_롤백하고_FAILED_이력을_저장한다() {
+    void Snapshot_Hash_불일치면_REDRAW_생성없이_요청은_PENDING으로_남는다() {
         Long redrawRequestId = redrawRequestCreateService.create(command(newIdempotencyKey())).redrawRequestId();
         redrawRequestReviewService.approve(adminId(), redrawRequestId);
         jdbcTemplate.update("""
@@ -25,13 +27,13 @@ class RedrawRequestExecutionSnapshotFailureIntegrationTest extends RedrawRequest
                 WHERE request.id = ?
                 """, "b".repeat(64), redrawRequestId);
 
-        RedrawRequestExecutionResult result = redrawRequestExecutionService.execute(adminId(), redrawRequestId);
-
-        assertThat(result).isEqualTo(new RedrawRequestExecutionResult(
-                redrawRequestId, RedrawExecutionStatus.FAILED, null));
+        assertThatThrownBy(() -> redrawRequestExecutionService.execute(adminId(), redrawRequestId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(SnapshotErrorCode.SNAPSHOT_HASH_MISMATCH);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT execution_status FROM redraw_request WHERE id = ?", String.class, redrawRequestId
-        )).isEqualTo("FAILED");
+        )).isEqualTo("PENDING");
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM drawing WHERE redraw_request_id = ?", Integer.class, redrawRequestId
         )).isZero();
@@ -42,7 +44,7 @@ class RedrawRequestExecutionSnapshotFailureIntegrationTest extends RedrawRequest
                 WHERE drawing.redraw_request_id = ?
                 """, Integer.class, redrawRequestId)).isZero();
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT failure_code FROM redraw_execution_history WHERE redraw_request_id = ?", String.class, redrawRequestId
-        )).isEqualTo("SNAPSHOT_HASH_MISMATCH");
+                "SELECT COUNT(*) FROM redraw_execution_history WHERE redraw_request_id = ?", Integer.class, redrawRequestId
+        )).isZero();
     }
 }

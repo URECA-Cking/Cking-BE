@@ -32,9 +32,10 @@ import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawAttemptHistoryRepository;
 import kr.co.cking.drawing.repository.DrawingExclusionQueryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
+import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.event.application.service.EventCommandService;
-import kr.co.cking.redraw.domain.RedrawRequest;
-import kr.co.cking.redraw.repository.RedrawRequestRepository;
+import kr.co.cking.redraw.application.RedrawDrawingLifecycleService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.domain.PrizeValue;
@@ -56,6 +57,7 @@ class DrawingRetryExecutionService {
     private final SnapshotIntegrityService snapshotIntegrityService;
     private final DrawingSeedService drawingSeedService;
     private final DrawingExclusionQueryRepository exclusionRepository;
+    private final RedrawDrawingQueryRepository redrawQueryRepository;
     private final DrawingEngine drawingEngine;
     private final PrizeAllocationEngine prizeAllocationEngine;
     private final DrawInputHashGenerator inputHashGenerator;
@@ -65,7 +67,7 @@ class DrawingRetryExecutionService {
     private final WinnerRepository winnerRepository;
     private final WinnerManagementRepository winnerManagementRepository;
     private final EventCommandService eventCommandService;
-    private final RedrawRequestRepository redrawRequestRepository;
+    private final RedrawDrawingLifecycleService redrawLifecycleService;
     private final Clock clock;
 
     @Transactional
@@ -90,8 +92,10 @@ class DrawingRetryExecutionService {
                 () -> Set.copyOf(exclusionRepository.findMemberIdsByDrawingId(drawing.getId())));
         DrawInput input = stage(DrawingFailureStage.INPUT_VERIFICATION,
                 () -> createAndValidateInput(drawing, snapshot, seed, exclusions));
+        List<PrizeValue> executionPrizes = stage(DrawingFailureStage.INPUT_VERIFICATION,
+                () -> resolveExecutionPrizes(drawing, snapshot));
         DrawingHash inputHash = stage(DrawingFailureStage.INPUT_VERIFICATION,
-                () -> generateAndValidateInputHash(drawing, snapshot, input));
+                () -> generateAndValidateInputHash(drawing, snapshot, input, executionPrizes));
 
         DrawOutput output = stage(DrawingFailureStage.DRAWING_ENGINE, () -> drawingEngine.draw(input));
         stage(DrawingFailureStage.DRAWING_ENGINE, () -> {
@@ -99,7 +103,7 @@ class DrawingRetryExecutionService {
             return null;
         });
         PrizeAllocationOutput prizeOutput = stage(DrawingFailureStage.PRIZE_ALLOCATION,
-                () -> allocatePrizes(snapshot, seed, output));
+                () -> allocatePrizes(drawing, snapshot, seed, output, executionPrizes));
         DrawingHash resultHash = stage(DrawingFailureStage.RESULT_PERSISTENCE,
                 () -> generateResultHash(snapshot, inputHash, output, prizeOutput));
 
@@ -156,11 +160,15 @@ class DrawingRetryExecutionService {
     private DrawingHash generateAndValidateInputHash(
             Drawing drawing,
             VerifiedSnapshot snapshot,
-            DrawInput input
+            DrawInput input,
+            List<PrizeValue> executionPrizes
     ) {
-        DrawingHash generated = snapshot.prizes().isEmpty()
+        List<PrizeValue> inputPrizePool = drawing.getDrawType() == DrawingType.REDRAW
+                ? toPrizePool(executionPrizes)
+                : executionPrizes;
+        DrawingHash generated = inputPrizePool.isEmpty()
                 ? inputHashGenerator.generate(input)
-                : inputV2HashGenerator.generate(input, drawing.getPrizeAlgorithmVersion(), snapshot.prizes());
+                : inputV2HashGenerator.generate(input, drawing.getPrizeAlgorithmVersion(), inputPrizePool);
         if (drawing.getInputHash() == null || drawing.getInputPayload() == null
                 || !drawing.getInputHash().equals(generated.value())
                 || !drawing.getInputPayload().equals(generated.canonicalPayload())) {
@@ -170,13 +178,21 @@ class DrawingRetryExecutionService {
     }
 
     private PrizeAllocationOutput allocatePrizes(
+            Drawing drawing,
             VerifiedSnapshot snapshot,
             PersistedDrawingSeed seed,
-            DrawOutput output
+            DrawOutput output,
+            List<PrizeValue> executionPrizes
     ) {
-        return snapshot.prizes().isEmpty() ? null : prizeAllocationEngine.allocate(
+        if (executionPrizes.isEmpty()) {
+            return null;
+        }
+        if (drawing.getDrawType() == DrawingType.REDRAW) {
+            return inheritPrizes(snapshot, output, executionPrizes);
+        }
+        return prizeAllocationEngine.allocate(
                 new PrizeAllocationInput(seed.seed(), snapshot.prizeAlgorithmVersion(),
-                        output.winners(), snapshot.prizes()));
+                        output.winners(), executionPrizes));
     }
 
     private DrawingHash generateResultHash(
@@ -185,7 +201,7 @@ class DrawingRetryExecutionService {
             DrawOutput output,
             PrizeAllocationOutput prizeOutput
     ) {
-        return snapshot.prizes().isEmpty()
+        return prizeOutput == null
                 ? resultHashGenerator.generate(inputHash.value(), output)
                 : resultV2HashGenerator.generate(inputHash.value(), output, prizeOutput);
     }
@@ -276,9 +292,63 @@ class DrawingRetryExecutionService {
             eventCommandService.completeDrawing(drawing.getEventId());
             return;
         }
-        RedrawRequest request = redrawRequestRepository.findByIdForUpdate(drawing.getRedrawRequestId())
-                .orElseThrow(() -> new IllegalStateException("REDRAW 요청을 찾을 수 없습니다."));
-        request.completeExecution(clock.instant());
+        redrawLifecycleService.complete(drawing.getRedrawRequestId(), clock.instant());
+    }
+
+    /** REDRAW는 Snapshot 전체 상품이 아니라 요청이 고정한 결원 상품만 rank 순으로 승계한다. */
+    private List<PrizeValue> resolveExecutionPrizes(Drawing drawing, VerifiedSnapshot snapshot) {
+        if (drawing.getDrawType() == DrawingType.INITIAL || snapshot.prizes().isEmpty()) {
+            return snapshot.prizes();
+        }
+        List<RedrawVacancyPrizeSource> sources = redrawQueryRepository
+                .findVacancyPrizeSourcesByRequestId(drawing.getRedrawRequestId());
+        if (sources.size() != drawing.getWinnerCount()) {
+            throw new BusinessException(DrawingErrorCode.NON_RETRYABLE_FAILURE);
+        }
+        Map<Long, PrizeValue> prizesById = snapshot.prizes().stream()
+                .collect(Collectors.toMap(PrizeValue::snapshotPrizeId, prize -> prize));
+        return sources.stream().map(source -> {
+            PrizeValue prize = prizesById.get(source.snapshotPrizeId());
+            if (prize == null) {
+                throw new BusinessException(DrawingErrorCode.NON_RETRYABLE_FAILURE);
+            }
+            return prize;
+        }).toList();
+    }
+
+    private PrizeAllocationOutput inheritPrizes(
+            VerifiedSnapshot snapshot,
+            DrawOutput output,
+            List<PrizeValue> inheritedPrizes
+    ) {
+        if (output.winners().size() != inheritedPrizes.size()) {
+            throw new BusinessException(DrawingErrorCode.NON_RETRYABLE_FAILURE);
+        }
+        List<DrawWinner> winners = output.winners().stream()
+                .sorted(Comparator.comparingInt(DrawWinner::rank))
+                .toList();
+        List<AllocatedPrize> allocations = java.util.stream.IntStream.range(0, winners.size())
+                .mapToObj(index -> new AllocatedPrize(
+                        winners.get(index).memberId(), winners.get(index).rank(), inheritedPrizes.get(index)))
+                .toList();
+        return new PrizeAllocationOutput(
+                kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion.from(
+                        snapshot.prizeAlgorithmVersion()),
+                allocations);
+    }
+
+    private List<PrizeValue> toPrizePool(List<PrizeValue> inheritedPrizes) {
+        Map<Long, Long> quantities = inheritedPrizes.stream().collect(Collectors.groupingBy(
+                PrizeValue::snapshotPrizeId, java.util.LinkedHashMap::new, Collectors.counting()));
+        return quantities.entrySet().stream().map(entry -> {
+            PrizeValue prize = inheritedPrizes.stream()
+                    .filter(value -> value.snapshotPrizeId().equals(entry.getKey()))
+                    .findFirst()
+                    .orElseThrow();
+            return new PrizeValue(
+                    prize.snapshotPrizeId(), prize.prizeKey(), prize.displayName(), prize.priority(),
+                    prize.weight(), Math.toIntExact(entry.getValue()));
+        }).toList();
     }
 
     private <T> T stage(DrawingFailureStage stage, Supplier<T> action) {

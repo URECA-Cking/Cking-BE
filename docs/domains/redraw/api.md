@@ -202,8 +202,13 @@
 #### 성공 응답
 
 후보가 충분하면 `EXECUTED`와 생성한 REDRAW Drawing ID를, 부족하면 `INSUFFICIENT_CANDIDATES`와 `null`을 반환한다.
-시스템3 실행 단계에서 실패하면 `FAILED`와 `null`을 반환하고 실패 이력을 남긴다. 권한·요청 상태·결원 수의
-실행 전 검증 오류만 아래 오류 응답으로 반환한다.
+REDRAW Drawing 준비 이후 시스템3 실행 단계에서 실패하면 `FAILED`와 보존된 REDRAW Drawing ID를 반환하고
+실패 이력을 남긴다. Snapshot 검증, 같은 Event의 다른 REDRAW 실행 중, 입력 확정처럼 Drawing 생성 이전에 발생한
+오류는 성공 응답으로 바꾸지 않고 API 오류로 반환하며 요청은 `APPROVED + PENDING`으로 유지된다. 실행 중인
+Drawing이 종결된 뒤 같은 실행 API로 다시 요청할 수 있다.
+
+실패 응답의 `redrawDrawingId`가 존재하면 관리자는
+`POST /api/admin/drawings/{drawingId}/retry`로 같은 Drawing과 Seed를 재사용해 실행한다.
 
 ```json
 {
@@ -222,3 +227,5 @@
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 없음 |
 | `INVALID_STATE` | 요청이 APPROVED·PENDING이 아니거나 고정 결원 행 수가 불일치함 |
+| `CONCURRENT_COMMAND` | 같은 Event의 다른 REDRAW Drawing이 `RUNNING`이거나 Retry 가능한 `FAILED` 상태여서 새 입력을 확정할 수 없음 |
+| `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot 재검증에 실패함 |

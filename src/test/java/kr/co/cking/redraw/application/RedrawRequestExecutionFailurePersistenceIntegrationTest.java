@@ -1,10 +1,9 @@
 package kr.co.cking.redraw.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import kr.co.cking.drawing.application.RedrawDrawingExecutionResult;
 import kr.co.cking.drawing.application.RedrawDrawingExecutionService;
-import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -14,7 +13,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 시스템3 실행 Tx가 롤백돼도 실패 상태와 이력이 독립적으로 커밋되는지 검증한다. */
+/** Drawing을 만들기 전 실패는 요청을 PENDING으로 유지해 실행 API로 재시도할 수 있는지 검증한다. */
 @SpringBootTest
 @Import(RedrawRequestExecutionFailurePersistenceIntegrationTest.FailingRedrawExecutionConfiguration.class)
 class RedrawRequestExecutionFailurePersistenceIntegrationTest extends RedrawRequestCreateIntegrationFixture {
@@ -23,29 +22,21 @@ class RedrawRequestExecutionFailurePersistenceIntegrationTest extends RedrawRequ
     private RedrawRequestExecutionService redrawRequestExecutionService;
 
     @Test
-    void 시스템3_실행_예외가_같은_물리_트랜잭션을_rollbackOnly로_만들어도_FAILED와_이력은_저장된다() {
+    void Drawing_생성_전_시스템3_실행_예외는_요청을_PENDING으로_유지한다() {
         Long redrawRequestId = redrawRequestCreateService.create(command(newIdempotencyKey())).redrawRequestId();
         redrawRequestReviewService.approve(adminId(), redrawRequestId);
 
-        RedrawRequestExecutionResult result = redrawRequestExecutionService.execute(adminId(), redrawRequestId);
-
-        assertThat(result.executionStatus()).isEqualTo(RedrawExecutionStatus.FAILED);
-        assertThat(result.redrawDrawingId()).isNull();
+        assertThatThrownBy(() -> redrawRequestExecutionService.execute(adminId(), redrawRequestId))
+                .isInstanceOf(RedrawExecutionInfrastructureInitializationFailureException.class);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT execution_status FROM redraw_request WHERE id = ?", String.class, redrawRequestId
-        )).isEqualTo("FAILED");
+        )).isEqualTo("PENDING");
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT completed_at FROM redraw_request WHERE id = ?", java.sql.Timestamp.class, redrawRequestId
-        )).isNotNull();
+        )).isNull();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM redraw_execution_history WHERE redraw_request_id = ?", Integer.class, redrawRequestId
-        )).isOne();
-        String failureCode = jdbcTemplate.queryForObject(
-                "SELECT failure_code FROM redraw_execution_history WHERE redraw_request_id = ?", String.class, redrawRequestId
-        );
-        assertThat(failureCode).hasSize(50)
-                .isEqualTo(RedrawExecutionInfrastructureInitializationFailureException.class.getSimpleName()
-                        .substring(0, 50));
+        )).isZero();
     }
 
     /** 내부 REQUIRED 실행이 런타임 예외로 같은 물리 트랜잭션을 rollback-only로 만든다. */
@@ -63,7 +54,7 @@ class RedrawRequestExecutionFailurePersistenceIntegrationTest extends RedrawRequ
 
         @Override
         @Transactional
-        public RedrawDrawingExecutionResult execute(
+        public kr.co.cking.drawing.application.RedrawDrawingExecutionResult execute(
                 Long redrawRequestId, Long adminId, Long originalDrawingId, int vacancyCount
         ) {
             throw new RedrawExecutionInfrastructureInitializationFailureException("시스템3 실행 실패");

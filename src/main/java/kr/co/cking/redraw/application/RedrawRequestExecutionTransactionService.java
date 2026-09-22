@@ -2,7 +2,6 @@ package kr.co.cking.redraw.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.drawing.application.RedrawDrawingExecutionResult;
-import kr.co.cking.drawing.application.RedrawDrawingExecutionService;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.redraw.domain.RedrawErrorCode;
 import kr.co.cking.redraw.domain.RedrawExecutionHistory;
@@ -15,43 +14,70 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 승인된 RedrawRequest를 실행 트랜잭션 안에서 검증하고 정상 결과를 저장한다. */
+/** REDRAW 요청 검증과 후보 부족 종결을 짧은 Transaction으로 처리한다. */
 @Service
 @RequiredArgsConstructor
 class RedrawRequestExecutionTransactionService {
+
     private final MemberQueryService memberQueryService;
     private final RedrawRequestRepository redrawRequestRepository;
     private final RedrawRequestVacancyRepository vacancyRepository;
     private final RedrawExecutionHistoryRepository historyRepository;
-    private final RedrawDrawingExecutionService redrawDrawingExecutionService;
 
-    /** 시스템3 실행 예외는 호출자까지 전파해 이 트랜잭션 전체를 롤백한다. */
-    @Transactional
-    public RedrawRequestExecutionResult execute(Long adminId, Long redrawRequestId) {
+    /** 장시간 실행 전에 관리자·요청 상태·고정 결원을 검증하고 Transaction 잠금을 해제한다. */
+    @Transactional(readOnly = true)
+    public RedrawExecutionCommand prepare(Long adminId, Long redrawRequestId) {
         memberQueryService.validateAdmin(adminId);
-        RedrawRequest request = redrawRequestRepository.findByIdForUpdate(redrawRequestId)
+        RedrawRequest request = redrawRequestRepository.findById(redrawRequestId)
                 .orElseThrow(() -> new BusinessException(RedrawErrorCode.REDRAW_REQUEST_NOT_FOUND));
         request.validateExecutable();
-        int actualVacancies = vacancyRepository.findAllByRedrawRequestIdOrderByIdAsc(redrawRequestId).size();
+        int actualVacancies = vacancyRepository
+                .findAllByRedrawRequestIdOrderByIdAsc(redrawRequestId)
+                .size();
         if (actualVacancies != request.getVacancyCount()) {
             throw new BusinessException(RedrawErrorCode.INVALID_STATE);
         }
+        return new RedrawExecutionCommand(
+                redrawRequestId, adminId, request.getOriginalDrawingId(), request.getVacancyCount());
+    }
 
-        RedrawDrawingExecutionResult result;
-        try {
-            result = redrawDrawingExecutionService.execute(
-                    redrawRequestId, adminId, request.getOriginalDrawingId(), request.getVacancyCount());
-        } catch (BusinessException exception) {
-            throw new RedrawDrawingExecutionBusinessFailureException(exception);
+    /** 시스템3 종결 결과를 멱등하게 RedrawRequest와 감사 이력에 반영한다. */
+    @Transactional
+    public RedrawRequestExecutionResult complete(
+            RedrawExecutionCommand command,
+            RedrawDrawingExecutionResult result
+    ) {
+        RedrawRequest request = redrawRequestRepository.findByIdForUpdate(command.redrawRequestId())
+                .orElseThrow(() -> new BusinessException(RedrawErrorCode.REDRAW_REQUEST_NOT_FOUND));
+        if (result.failed()) {
+            if (request.getExecutionStatus() != RedrawExecutionStatus.FAILED) {
+                throw new BusinessException(RedrawErrorCode.INVALID_STATE);
+            }
+            return new RedrawRequestExecutionResult(
+                    command.redrawRequestId(), RedrawExecutionStatus.FAILED, result.drawingId());
         }
         if (result.insufficientCandidates()) {
-            request.markInsufficientCandidates();
-            historyRepository.save(RedrawExecutionHistory.of(redrawRequestId,
-                    RedrawExecutionStatus.INSUFFICIENT_CANDIDATES, null, null));
-            return new RedrawRequestExecutionResult(redrawRequestId, RedrawExecutionStatus.INSUFFICIENT_CANDIDATES, null);
+            if (request.getExecutionStatus() == RedrawExecutionStatus.PENDING) {
+                request.markInsufficientCandidates();
+                historyRepository.save(RedrawExecutionHistory.of(
+                        command.redrawRequestId(), RedrawExecutionStatus.INSUFFICIENT_CANDIDATES, null, null));
+            } else if (request.getExecutionStatus() != RedrawExecutionStatus.INSUFFICIENT_CANDIDATES) {
+                throw new BusinessException(RedrawErrorCode.INVALID_STATE);
+            }
+            return new RedrawRequestExecutionResult(
+                    command.redrawRequestId(), RedrawExecutionStatus.INSUFFICIENT_CANDIDATES, null);
         }
-        request.markExecuted();
-        historyRepository.save(RedrawExecutionHistory.of(redrawRequestId, RedrawExecutionStatus.EXECUTED, null, null));
-        return new RedrawRequestExecutionResult(redrawRequestId, RedrawExecutionStatus.EXECUTED, result.drawingId());
+
+        // 실제 구현은 Drawing 결과 Transaction 안에서 이미 EXECUTED로 바꾼다.
+        // 대체 구현·테스트 Double은 이 경계에서 같은 계약을 완성한다.
+        if (request.getExecutionStatus() == RedrawExecutionStatus.PENDING) {
+            request.markExecuted();
+            historyRepository.save(RedrawExecutionHistory.of(
+                    command.redrawRequestId(), RedrawExecutionStatus.EXECUTED, null, null));
+        } else if (request.getExecutionStatus() != RedrawExecutionStatus.EXECUTED) {
+            throw new BusinessException(RedrawErrorCode.INVALID_STATE);
+        }
+        return new RedrawRequestExecutionResult(
+                command.redrawRequestId(), RedrawExecutionStatus.EXECUTED, result.drawingId());
     }
 }

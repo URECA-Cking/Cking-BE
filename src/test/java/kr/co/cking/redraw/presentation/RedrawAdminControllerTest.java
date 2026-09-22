@@ -185,6 +185,20 @@ class RedrawAdminControllerTest {
         verify(redrawRequestExecutionService).execute(1L, 30L);
     }
 
+    /** 실행 실패 응답은 관리자가 같은 Drawing을 Retry할 수 있도록 보존 ID를 노출한다. */
+    @Test
+    void REDRAW_실패_응답은_Retry할_Drawing_ID를_반환한다() throws Exception {
+        when(redrawRequestExecutionService.execute(1L, 30L))
+                .thenReturn(new RedrawRequestExecutionResult(30L, RedrawExecutionStatus.FAILED, 40L));
+
+        mockMvc.perform(post("/api/admin/redraw-requests/30/execute")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.executionStatus").value("FAILED"))
+                .andExpect(jsonPath("$.data.redrawDrawingId").value(40));
+    }
+
     /** 승인 경로 식별자와 요청 본문의 관리자 식별자를 각각 독립적으로 검증한다. */
     @Test
     void 유효하지_않은_승인_식별자는_VALIDATION_FAILED를_반환한다() throws Exception {

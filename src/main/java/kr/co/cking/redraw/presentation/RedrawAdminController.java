@@ -105,7 +105,8 @@ public class RedrawAdminController {
     @Operation(
             summary = "REDRAW 실행",
             description = "관리자만 APPROVED·PENDING 요청을 한 번 실행할 수 있습니다. 고정 결원과 실제 결원 행을 재검증한 뒤 "
-                    + "시스템3 REDRAW 실행 서비스에 위임하며, 후보 부족·실패 결과도 실행 이력으로 남깁니다."
+                    + "시스템3 REDRAW 실행 서비스에 위임합니다. 실행 실패 시 보존된 Drawing ID와 실패 이력을 반환하며, "
+                    + "해당 Drawing은 Drawing Retry API로 재실행할 수 있습니다."
     )
     @PostMapping("/api/admin/redraw-requests/{redrawRequestId}/execute")
     public ApiResponse<RedrawRequestExecutionResponse> executeRedrawRequest(

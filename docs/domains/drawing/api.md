@@ -36,13 +36,14 @@
 
 - 요청자는 존재하는 `ADMIN` Member여야 하고 Drawing은 `FAILED` 상태여야 한다.
 - 기존 `drawingId`, `snapshotId`, `seedId`, 후보·상품 알고리즘 버전, `winnerCount`를 재사용한다.
+- REDRAW Retry는 저장된 제외 명단과 RedrawRequest가 고정한 결원 상품을 재사용하며 상품을 다시 추첨하지 않는다.
 - Drawing 행을 비관적으로 잠근 뒤 상태를 재검증하여 동시 Retry 중 하나만 `RUNNING`으로 전이한다.
 - Snapshot 무결성, 보존된 입력 Hash, 후보 수를 엔진 호출 전에 검증한다. 같은 입력으로 해결되지 않는 실패는
   `NON_RETRYABLE_FAILURE`로 차단한다.
 - 실행 시작 상태와 Attempt 이력을 먼저 확정하고, Winner·WinnerManagement·Result Hash·Drawing 완료와
   Event 또는 RedrawRequest 후속 상태는 별도 단일 Transaction으로 저장한다.
 - 결과 Transaction 실패 시 부분 결과를 Rollback하고 별도 Transaction에서 Drawing `FAILED`와 실패 단계,
-  코드, 메시지, 종료 시각을 보존한다.
+  코드, 메시지, 종료 시각을 보존한다. REDRAW는 RedrawRequest `FAILED`와 실행 이력도 함께 보존한다.
 - 설정 시간보다 오래 `RUNNING`인 Attempt는 복구기가 `SERVER_INTERRUPTED`로 종결한 뒤 같은 Retry 경로로 실행한다.
 
 | 코드 | 조건 |
