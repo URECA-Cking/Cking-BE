@@ -43,13 +43,18 @@ DB의 `UNIQUE(draw_snapshot.event_id)`는 애플리케이션 잠금 외의 최�
 
 - `CLOSED`이고 `closedAt`이 복구 유예 시간 이상 지난 Event만 조회한다.
 - 공식 Snapshot이 없는 Event를 `closedAt ASC, eventId ASC` 순서로 한정된 개수만 조회한다.
+- 실패는 `snapshot_recovery_failure`에 기록하고 다음 시도 시각을 1분부터 지수적으로 늦춘다. 최대
+  대기 시간은 1시간이며, 성공하면 실패 기록을 제거한다. 반복 실패 Event가 배치를 독점하지 않도록
+  다음 시도 시각이 지나지 않은 Event는 조회에서 제외한다.
 - 대상별로 `OfficialSnapshotService.createIfAbsent(eventId)`를 호출해 기존 잠금·멱등 계약을 재사용한다.
-- 한 Event의 복구 실패는 로그에 `eventId`와 예외를 남기고 다음 Event 처리를 계속한다.
+- 한 Event의 복구 실패는 업무 오류·입력 오류·시스템 오류로 구분해 `eventId`, 오류 코드와 함께 로그를
+  남기고 다음 Event 처리를 계속한다.
 - 기본 실행 주기와 유예 시간은 각각 1분이며, 한 번에 최대 100건을 처리한다.
 
 설정은 `cking.snapshot.recovery.interval-ms`, `cking.snapshot.recovery.grace-period`,
-`cking.snapshot.recovery.batch-size`로 조정한다. Scheduler의 최초 실행도 설정한 주기만큼 지연해 정상 마감
-직후의 Snapshot 생성 경로와 불필요하게 경합하지 않는다.
+`cking.snapshot.recovery.batch-size`로 조정한다. `grace-period`는 1초 이상 1시간 이하여야 한다. Scheduler의
+최초 실행도 설정한 주기만큼 지연해 정상 마감 직후의 Snapshot 생성 경로와 불필요하게 경합하지 않는다.
+복구 작업은 전용 단일 스레드 Scheduler에서 실행하므로 다른 도메인의 정기 작업을 지연시키지 않는다.
 
 ### `SnapshotIntegrityService.verifyForDrawing(Long eventId)`
 

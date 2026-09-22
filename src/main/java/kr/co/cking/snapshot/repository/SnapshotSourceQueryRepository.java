@@ -10,7 +10,11 @@ public interface SnapshotSourceQueryRepository {
 
     Optional<SnapshotEventSource> findEventForUpdate(Long eventId);
 
-    List<Long> findMissingOfficialSnapshotEventIds(Instant closedBefore, int limit);
+    List<Long> findMissingOfficialSnapshotEventIds(
+            Instant closedBefore,
+            Instant retryableBefore,
+            int limit
+    );
 
     List<CandidateValue> findCandidates(Long eventId);
 

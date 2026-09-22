@@ -34,6 +34,9 @@ class JdbcSnapshotSourceQueryRepositoryTest {
     private OfficialSnapshotService officialSnapshotService;
 
     @Autowired
+    private SnapshotRecoveryFailureRepository failureRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
@@ -60,16 +63,29 @@ class JdbcSnapshotSourceQueryRepositoryTest {
 
     @Test
     void CLOSED_유예시간과_Snapshot_존재여부를_적용해_오래된_Event부터_조회한다() {
-        List<Long> eventIds = sourceQueryRepository.findMissingOfficialSnapshotEventIds(CLOSED_BEFORE, 10);
+        List<Long> eventIds = sourceQueryRepository.findMissingOfficialSnapshotEventIds(
+                CLOSED_BEFORE, CLOSED_BEFORE, 10);
 
         assertThat(eventIds).containsExactly(FIRST_OLD_EVENT_ID, SECOND_OLD_EVENT_ID, BOUNDARY_EVENT_ID);
     }
 
     @Test
     void 설정한_배치_크기만큼만_조회한다() {
-        List<Long> eventIds = sourceQueryRepository.findMissingOfficialSnapshotEventIds(CLOSED_BEFORE, 2);
+        List<Long> eventIds = sourceQueryRepository.findMissingOfficialSnapshotEventIds(
+                CLOSED_BEFORE, CLOSED_BEFORE, 2);
 
         assertThat(eventIds).containsExactly(FIRST_OLD_EVENT_ID, SECOND_OLD_EVENT_ID);
+    }
+
+    @Test
+    void 실패_백오프_시간이_지나지_않은_Event는_복구_대상에서_제외한다() {
+        failureRepository.recordFailure(
+                FIRST_OLD_EVENT_ID, CLOSED_BEFORE, "SYSTEM_ERROR", "일시적 DB 장애");
+
+        List<Long> eventIds = sourceQueryRepository.findMissingOfficialSnapshotEventIds(
+                CLOSED_BEFORE, CLOSED_BEFORE, 10);
+
+        assertThat(eventIds).containsExactly(SECOND_OLD_EVENT_ID, BOUNDARY_EVENT_ID);
     }
 
     private void insertEvent(long eventId, String status, Instant closedAt, int requestNumber) {
@@ -94,6 +110,8 @@ class JdbcSnapshotSourceQueryRepositoryTest {
     }
 
     private void cleanUp() {
+        jdbcTemplate.update("DELETE FROM snapshot_recovery_failure WHERE event_id BETWEEN ? AND ?",
+                FIRST_OLD_EVENT_ID, SNAPSHOT_EXISTS_EVENT_ID);
         jdbcTemplate.update("""
                 DELETE candidate
                 FROM draw_snapshot_candidate candidate

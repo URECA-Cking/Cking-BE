@@ -19,6 +19,7 @@ import kr.co.cking.snapshot.domain.DrawSnapshot;
 import kr.co.cking.snapshot.domain.DrawSnapshotCandidate;
 import kr.co.cking.snapshot.repository.DrawSnapshotCandidateRepository;
 import kr.co.cking.snapshot.repository.DrawSnapshotRepository;
+import kr.co.cking.snapshot.repository.SnapshotRecoveryFailureRepository;
 import kr.co.cking.snapshot.repository.SnapshotSourceQueryRepository;
 import kr.co.cking.snapshot.scheduler.SnapshotRecoveryScheduler;
 import org.junit.jupiter.api.AfterEach;
@@ -149,10 +150,13 @@ class OfficialSnapshotServiceIntegrationTest {
     void 정상_마감_호출과_복구_Scheduler가_경합해도_Snapshot은_하나만_존재한다() throws Exception {
         Instant now = Instant.parse("2026-09-22T03:00:00Z");
         SnapshotSourceQueryRepository recoveryQuery = mock(SnapshotSourceQueryRepository.class);
-        when(recoveryQuery.findMissingOfficialSnapshotEventIds(now.minus(Duration.ofMinutes(1)), 100))
+        when(recoveryQuery.findMissingOfficialSnapshotEventIds(
+                now.minus(Duration.ofMinutes(1)), now, 100))
                 .thenReturn(List.of(EVENT_ID));
+        SnapshotRecoveryFailureRepository recoveryFailureRepository = mock(SnapshotRecoveryFailureRepository.class);
         SnapshotRecoveryScheduler recoveryScheduler = new SnapshotRecoveryScheduler(
                 recoveryQuery,
+                recoveryFailureRepository,
                 service,
                 Clock.fixed(now, ZoneOffset.UTC),
                 Duration.ofMinutes(1),
