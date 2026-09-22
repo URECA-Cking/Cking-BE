@@ -31,6 +31,7 @@ class RedrawRequestExecutionTransactionService {
         memberQueryService.validateAdmin(adminId);
         RedrawRequest request = redrawRequestRepository.findByIdForUpdate(redrawRequestId)
                 .orElseThrow(() -> new BusinessException(RedrawErrorCode.REDRAW_REQUEST_NOT_FOUND));
+        request.validateExecutable();
         int actualVacancies = vacancyRepository.findAllByRedrawRequestIdOrderByIdAsc(redrawRequestId).size();
         if (actualVacancies != request.getVacancyCount()) {
             throw new BusinessException(RedrawErrorCode.INVALID_STATE);

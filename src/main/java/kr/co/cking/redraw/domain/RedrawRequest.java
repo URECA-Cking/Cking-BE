@@ -117,6 +117,11 @@ public class RedrawRequest {
         rejectReason = reason.strip();
     }
 
+    /** 시스템3 실행을 요청하기 전에 승인·실행 대기 상태인지 검증한다. */
+    public void validateExecutable() {
+        requireExecutable();
+    }
+
     /** 승인된 요청의 실행 성공 결과를 고정하고 연결된 REDRAW Drawing을 기록한다. */
     public void markExecuted() {
         requireExecutable();

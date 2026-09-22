@@ -60,7 +60,8 @@
 
 - 실행자는 존재하는 `ADMIN` Member여야 하며, `APPROVED`와 `PENDING` 조합의 요청만 한 번 실행할 수 있다.
 - 실행 명령은 RedrawRequest 행을 비관적 쓰기 잠금으로 읽고, 고정 `vacancyCount`와
-  `redraw_request_vacancy` 행 수를 다시 비교한다.
+  `redraw_request_vacancy` 행 수를 다시 비교한다. 잠금 조회 직후 `APPROVED`와 `PENDING` 조합을
+  검증하며, 불일치하면 시스템3 실행을 호출하지 않고 `INVALID_STATE`로 거부한다.
 - 시스템4는 상태 검증·이력 기록만 수행하고 시스템3 `RedrawDrawingExecutionService`에 전체 재추첨을 위임한다.
   DrawingEngine·Snapshot 저장소·Seed를 직접 다루지 않는다.
 - 시스템3은 원본 INITIAL Snapshot과 `drawMethod`·`algorithmVersion`을 재사용하고 Event의 모든 기존 Winner를
