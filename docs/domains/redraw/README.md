@@ -33,6 +33,16 @@
 - 생성 시점에 선정한 Winner ID 목록을 `redraw_request_vacancy`에 저장한다. 이후 Winner 상태가
   바뀌어도 요청의 결원 수와 대상은 변하지 않는다.
 
+## 심사 상태 전이
+
+- 존재하는 `ADMIN` Member만 심사할 수 있다.
+- 승인·거절은 `REQUESTED` 상태의 요청에만 가능하다. 승인하면 `APPROVED`가 되고
+  `executionStatus`는 `PENDING`으로 유지한다. 거절하면 `REJECTED`가 된다.
+- 승인·거절 모두 `reviewedBy`와 `reviewedAt`을 저장한다. 거절은 공백 제거 후 1~500자의
+  `rejectReason`을 반드시 저장하고, 승인은 `rejectReason`을 비워 둔다.
+- 심사 명령은 대상 `RedrawRequest` 행을 비관적 쓰기 잠금으로 조회한다. 동시에 도착한 승인·거절은
+  한 명령만 상태 전이를 완료하며, 나머지는 잠금 해제 후 `INVALID_STATE`로 거부한다.
+
 ## 동시성과 멱등성
 
 - 생성 명령은 Event 행을 비관적 쓰기 잠금으로 조회한 뒤 결원·점유를 계산한다. 같은 Event의
@@ -43,5 +53,7 @@
 - 서로 다른 Event에서 같은 키가 동시에 들어와 unique 제약이 충돌하면 저장 후 기존 요청을 다시
   조회한다. 기존 요청을 찾지 못하면 `CONCURRENT_COMMAND`, 본문이 다르면 `IDEMPOTENCY_CONFLICT`를
   반환한다.
+- 심사 명령은 멱등 API가 아니다. 최초 심사만 상태를 변경하고, 이후의 재시도와 반대 심사 명령은
+  `INVALID_STATE`를 반환한다.
 
 DB 구조와 unique·foreign key 제약의 정본은 `src/main/resources/db/migration/`이다.

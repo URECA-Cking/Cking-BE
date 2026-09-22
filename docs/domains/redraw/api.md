@@ -107,3 +107,78 @@
 | `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 존재하지 않음 |
+
+## 관리자 RedrawRequest 승인
+
+### `POST /api/admin/redraw-requests/{id}/approve`
+
+관리자가 검토 대기 중인 RedrawRequest를 실행 가능 상태로 승인한다.
+
+#### 요청
+
+- Path Variable: `id` (`Long`, 양수, 필수)
+- Body: `userId` (`Long`, 양수, 필수, 호출 관리자)
+
+```json
+{ "userId": 1 }
+```
+
+#### 성공 응답
+
+`200 OK`로 심사된 요청 정보를 반환한다. `status`는 `APPROVED`이며 `executionStatus`는 계속
+`PENDING`이다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {
+    "redrawRequestId": 10,
+    "status": "APPROVED",
+    "executionStatus": "PENDING",
+    "reviewedBy": 1,
+    "reviewedAt": "2026-09-22T01:00:00Z",
+    "rejectReason": null
+  },
+  "message": null
+}
+```
+
+#### 오류
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | 경로 또는 `userId`가 양수가 아님 |
+| `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
+| `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
+| `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 존재하지 않음 |
+| `INVALID_STATE` | 대상 요청이 `REQUESTED`가 아니거나 동시 심사에서 먼저 처리됨 |
+
+## 관리자 RedrawRequest 거절
+
+### `POST /api/admin/redraw-requests/{id}/reject`
+
+관리자가 검토 대기 중인 RedrawRequest를 거절하고 사유를 기록한다.
+
+#### 요청
+
+- Path Variable: `id` (`Long`, 양수, 필수)
+- Body: `userId` (`Long`, 양수, 필수, 호출 관리자), `rejectReason` (공백 제거 후 1~500자, 필수)
+
+```json
+{ "userId": 1, "rejectReason": "결원 확인이 필요합니다." }
+```
+
+#### 성공 응답
+
+`200 OK`로 심사된 요청 정보를 반환한다. `status`는 `REJECTED`, `executionStatus`는 `PENDING`이며,
+`reviewedBy`, `reviewedAt`, `rejectReason`이 저장된다.
+
+#### 오류
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | 경로·`userId`가 양수가 아니거나 거절 사유가 비어 있거나 500자를 초과함 |
+| `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
+| `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
+| `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 존재하지 않음 |
+| `INVALID_STATE` | 대상 요청이 `REQUESTED`가 아니거나 동시 심사에서 먼저 처리됨 |
