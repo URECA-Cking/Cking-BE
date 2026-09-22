@@ -20,7 +20,14 @@ import kr.co.cking.drawing.domain.engine.DrawWinner;
 import kr.co.cking.drawing.domain.engine.DrawingAlgorithmVersion;
 import kr.co.cking.drawing.domain.engine.DrawingEngine;
 import kr.co.cking.drawing.domain.hash.DrawInputHashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawInputV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
+import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
+import kr.co.cking.drawing.domain.prize.AllocatedPrize;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationInput;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionSource;
@@ -28,6 +35,7 @@ import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import kr.co.cking.snapshot.domain.CandidateValue;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
@@ -56,6 +64,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
     @Mock private WinnerRepository winnerRepository;
     @Mock private WinnerManagementRepository winnerManagementRepository;
     @Mock private RedrawExclusionRepository redrawExclusionRepository;
+    @Mock private PrizeAllocationEngine prizeAllocationEngine;
 
     private DefaultRedrawDrawingExecutionService service;
 
@@ -67,6 +76,65 @@ class DefaultRedrawDrawingExecutionServiceTest {
                 winnerManagementRepository, redrawExclusionRepository,
                 Clock.fixed(Instant.parse("2026-09-22T00:00:00Z"), ZoneOffset.UTC)
         );
+    }
+
+    /** 상품 Snapshot REDRAW는 V2 Hash와 배정 상품을 Winner에 함께 저장한다. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void 상품_Snapshot_REDRAW는_V2_Hash와_Winner_상품_필드를_저장한다() {
+        PrizeValue prize = new PrizeValue(501L, "FIRST", "1등 상품", 1, 100L, 1);
+        VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(50L, 10L, 1, "WEIGHTED", "WEIGHTED_V1",
+                List.of(new CandidateValue(101L, 1L), new CandidateValue(102L, 2L)), List.of(prize));
+        Drawing initial = Drawing.createInitial(DrawingSnapshotContract.from(snapshot), 40L, ADMIN_ID);
+        ReflectionTestUtils.setField(initial, "id", INITIAL_DRAWING_ID);
+        DefaultRedrawDrawingExecutionService productService = new DefaultRedrawDrawingExecutionService(
+                drawingRepository, snapshotIntegrityService, drawingSeedService, drawingEngine,
+                new DrawInputHashGenerator(), new DrawResultHashGenerator(), new DrawInputV2HashGenerator(),
+                new DrawResultV2HashGenerator(), prizeAllocationEngine, winnerRepository,
+                winnerManagementRepository, redrawExclusionRepository,
+                Clock.fixed(Instant.parse("2026-09-22T00:00:00Z"), ZoneOffset.UTC)
+        );
+        when(drawingRepository.findById(INITIAL_DRAWING_ID)).thenReturn(Optional.of(initial));
+        when(drawingRepository.findByRedrawRequestId(REQUEST_ID)).thenReturn(Optional.empty());
+        when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
+        when(winnerRepository.findRedrawExclusionSourcesByEventId(10L))
+                .thenReturn(List.of(new RedrawExclusionSource(101L, WinnerManagementStatus.SELECTED)));
+        when(drawingSeedService.createForRedraw(40L)).thenReturn(new PersistedDrawingSeed(
+                41L, kr.co.cking.drawing.domain.seed.DrawingSeed.from("01".repeat(32))));
+        when(drawingRepository.findTopByEventIdOrderByDrawNoDesc(10L)).thenReturn(Optional.of(initial));
+        when(drawingRepository.saveAndFlush(any(Drawing.class))).thenAnswer(invocation -> {
+            Drawing redraw = invocation.getArgument(0);
+            ReflectionTestUtils.setField(redraw, "id", REDRAW_DRAWING_ID);
+            return redraw;
+        });
+        DrawOutput output = new DrawOutput(DrawingAlgorithmVersion.WEIGHTED_V1,
+                List.of(new DrawWinner(102L, 1, 2L)));
+        when(drawingEngine.draw(any(DrawInput.class))).thenReturn(output);
+        when(prizeAllocationEngine.allocate(any(PrizeAllocationInput.class))).thenReturn(new PrizeAllocationOutput(
+                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1,
+                List.of(new AllocatedPrize(102L, 1, prize))
+        ));
+        when(winnerRepository.saveAllAndFlush(any())).thenAnswer(invocation -> {
+            List<Winner> winners = invocation.getArgument(0);
+            ReflectionTestUtils.setField(winners.getFirst(), "id", 50L);
+            return winners;
+        });
+
+        productService.execute(REQUEST_ID, ADMIN_ID, INITIAL_DRAWING_ID, 1);
+
+        ArgumentCaptor<PrizeAllocationInput> allocationInput = ArgumentCaptor.forClass(PrizeAllocationInput.class);
+        verify(prizeAllocationEngine).allocate(allocationInput.capture());
+        assertThat(allocationInput.getValue().prizes()).containsExactly(prize);
+        ArgumentCaptor<List<Winner>> winners = ArgumentCaptor.forClass(List.class);
+        verify(winnerRepository).saveAllAndFlush(winners.capture());
+        Winner savedWinner = winners.getValue().getFirst();
+        assertThat(savedWinner.getSnapshotId()).isEqualTo(snapshot.snapshotId());
+        assertThat(savedWinner.getSnapshotPrizeId()).isEqualTo(prize.snapshotPrizeId());
+        assertThat(savedWinner.getPrizeKey()).isEqualTo("FIRST");
+        ArgumentCaptor<Drawing> redraw = ArgumentCaptor.forClass(Drawing.class);
+        verify(drawingRepository).saveAndFlush(redraw.capture());
+        assertThat(redraw.getValue().getInputPayload()).startsWith("CKING_DRAW_INPUT_V2\n");
+        assertThat(redraw.getValue().getOutputPayload()).startsWith("CKING_DRAW_RESULT_V2\n");
     }
 
     /** 기존 Winner별 제외 사유를 REDRAW 입력·영속 행에 같은 순서로 확정한다. */
