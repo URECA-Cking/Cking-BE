@@ -174,7 +174,11 @@ public class EventLifecycleScheduler {
         }
     }
 
-    /** CLOSED 확정 뒤 실패해도 CLOSED를 되돌리지 않는다. Snapshot 누락 복구 스케줄러가 보완한다. */
+    /**
+     * CLOSED 확정 뒤 실패해도 CLOSED를 되돌리지 않는다. 이 스케줄러는 CLOSING만 조회하므로 여기서는
+     * 재시도되지 않는다. CLOSED인데 Snapshot이 없는 Event의 복구는 시스템3 누락 복구 스케줄러(FR-P3-034,
+     * T3-02)의 몫이며 아직 구현되지 않았다.
+     */
     private void createSnapshot(Long eventId) {
         try {
             officialSnapshotService.createIfAbsent(eventId);
