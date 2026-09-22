@@ -202,8 +202,12 @@
 #### 성공 응답
 
 후보가 충분하면 `EXECUTED`와 생성한 REDRAW Drawing ID를, 부족하면 `INSUFFICIENT_CANDIDATES`와 `null`을 반환한다.
-시스템3 실행 단계에서 실패하면 `FAILED`와 `null`을 반환하고 실패 이력을 남긴다. 권한·요청 상태·결원 수의
+REDRAW Drawing 준비 이후 시스템3 실행 단계에서 실패하면 `FAILED`와 보존된 REDRAW Drawing ID를 반환하고
+실패 이력을 남긴다. 준비 이전 입력 검증 실패는 Drawing이 없으므로 ID가 `null`이다. 권한·요청 상태·결원 수의
 실행 전 검증 오류만 아래 오류 응답으로 반환한다.
+
+실패 응답의 `redrawDrawingId`가 존재하면 관리자는
+`POST /api/admin/drawings/{drawingId}/retry`로 같은 Drawing과 Seed를 재사용해 실행한다.
 
 ```json
 {
