@@ -108,9 +108,7 @@ public class RedrawRequest {
     /** 검토 대기 요청을 거절하고 검토자·검토 시각·거절 사유를 기록한다. */
     public void reject(Long reviewerId, String reason) {
         requirePositive(reviewerId, "reviewerId");
-        if (reason == null || reason.isBlank()) {
-            throw new BusinessException(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
-        }
+        requireValidRejectReason(reason);
         requireRequested();
         status = RedrawRequestStatus.REJECTED;
         reviewedBy = reviewerId;
@@ -122,6 +120,13 @@ public class RedrawRequest {
     private void requireRequested() {
         if (status != RedrawRequestStatus.REQUESTED) {
             throw new BusinessException(RedrawErrorCode.INVALID_STATE);
+        }
+    }
+
+    /** Service가 정규화·검증한 거절 사유가 도메인 저장 한계를 만족하는지 방어한다. */
+    private void requireValidRejectReason(String reason) {
+        if (reason == null || reason.isBlank() || reason.length() > 500) {
+            throw new IllegalArgumentException("rejectReason은 공백이 아니며 500자 이하여야 합니다.");
         }
     }
 }

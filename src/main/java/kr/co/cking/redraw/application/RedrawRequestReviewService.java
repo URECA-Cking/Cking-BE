@@ -1,6 +1,7 @@
 package kr.co.cking.redraw.application;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.redraw.domain.RedrawErrorCode;
 import kr.co.cking.redraw.domain.RedrawRequest;
@@ -28,10 +29,20 @@ public class RedrawRequestReviewService {
 
     /** 관리자가 검토 대기 RedrawRequest를 거절하고 사유를 포함한 심사 결과를 반환한다. */
     public RedrawRequestReviewResult reject(Long adminId, Long redrawRequestId, String rejectReason) {
+        String normalizedRejectReason = validateAndNormalizeRejectReason(rejectReason);
         memberQueryService.validateAdmin(adminId);
         RedrawRequest request = findForReview(redrawRequestId);
-        request.reject(adminId, rejectReason);
+        request.reject(adminId, normalizedRejectReason);
         return RedrawRequestReviewResult.from(request);
+    }
+
+    /** 잠금 획득 전에 거절 사유를 정규화하고 1~500자 범위인지 검증한다. */
+    private String validateAndNormalizeRejectReason(String rejectReason) {
+        String normalizedRejectReason = rejectReason == null ? null : rejectReason.strip();
+        if (normalizedRejectReason == null || normalizedRejectReason.isEmpty() || normalizedRejectReason.length() > 500) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        return normalizedRejectReason;
     }
 
     /** 동시 심사를 직렬화할 잠금으로 대상 RedrawRequest를 조회한다. */
