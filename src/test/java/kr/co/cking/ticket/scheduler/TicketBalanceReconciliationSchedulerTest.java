@@ -108,8 +108,20 @@ class TicketBalanceReconciliationSchedulerTest {
     }
 
     @Test
-    void Redis_키가_없으면_불일치로_취급하지_않는다() {
+    void Redis_키가_없고_DB_잔액이_있으면_유실로_보고_즉시_WARN을_남긴다() {
         givenBalance(1L, 10L, 5L);
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn(null);
+
+        scheduler.reconcile();
+
+        assertThat(logAppender.list).hasSize(1)
+                .allMatch(event -> event.getLevel() == Level.WARN
+                        && event.getFormattedMessage().contains("Redis Balance 키가 없습니다"));
+    }
+
+    @Test
+    void Redis_키가_없어도_DB_잔액이_0이면_로그를_남기지_않는다() {
+        givenBalance(1L, 10L, 0L);
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn(null);
 
         scheduler.reconcile();
