@@ -30,6 +30,8 @@ OPEN
 
 Drain은 요청 스레드에서 기다리지 않는다. 조건이 아직 충족되지 않거나 Redis/DB 조회가 실패하면 Event는 CLOSING으로 남고 다음 10초 틱에서 재확인한다. 재기동 뒤에도 CLOSING Event와 저장된 cutoff를 다시 찾아 같은 방식으로 재개한다.
 
+**FR-11b(Drain 재시도 간격·최대 대기시간, 시스템2 자율 결정 항목)**: 재시도 간격은 별도로 두지 않고 10초 tick 자체를 재시도 간격으로 쓴다. 연속 미완료 30틱(약 5분)마다 WARN을, 180틱(약 30분)부터는 같은 주기로 ERROR를 남겨 "정상 지연"과 "사실상 멈춘 상태"를 로그 레벨로 구분한다. 어느 경우에도 CLOSED로 강제 전환하지 않는다 — 이 시점부터는 로그를 보고 Dead Stream 확인·수동 replay 등 운영자 개입이 필요하다는 뜻이다. 30분 임계값은 실측 부하 테스트(NFR-06) 전의 잠정값이며, `cking.event.drain-warn-every-ticks`/`cking.event.drain-error-after-ticks` 프로퍼티로 배포 없이 재조정할 수 있다(tick 간격 `cking.event.lifecycle-interval-ms`도 동일 패턴). ERROR 로그의 경과 시간은 "30분" 고정 문구가 아니라 `틱 수 × lifecycle-interval-ms`로 계산하므로, tick 간격을 바꿔도 로그 문구는 실제 경과 시간과 어긋나지 않는다.
+
 ## Snapshot 호출
 
 Drain이 끝나면 먼저 CLOSED를 Commit한 뒤 Snapshot 생성을 요청한다. Snapshot 생성 실패는 로그로 남지만 CLOSED 상태를 되돌리지 않는다. Snapshot 서비스가 CLOSED 상태와 기존 Snapshot을 다시 검증해 멱등성을 보장한다.

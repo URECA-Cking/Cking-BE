@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import kr.co.cking.event.application.service.EventCommandService;
 import kr.co.cking.event.application.service.EventClosingService;
@@ -182,6 +183,42 @@ class EventLifecycleSchedulerTest {
         scheduler.run();
         assertThat(countWarnings(output)).isEqualTo(1);
         assertThat(output.getAll()).contains("연속 미완료 틱=30");
+    }
+
+    /** FR-11b: 180틱(약 30분)부터는 같은 30틱 주기로 WARN 대신 ERROR를 남긴다. */
+    @Test
+    void Drain이_180틱_연속_끝나지_않으면_경고가_ERROR로_올라간다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        runTicks(170);
+        assertThat(output.getAll()).doesNotContain("30분 넘게");
+
+        runTicks(10);
+        assertThat(output.getAll()).contains("30분 넘게").contains("연속 미완료 틱=180");
+    }
+
+    @Test
+    void Drain_ERROR도_30틱마다_반복된다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        runTicks(210);
+
+        assertThat(output.getAll().split("분 넘게", -1).length - 1).isEqualTo(2);
+        assertThat(output.getAll()).contains("30분 넘게").contains("35분 넘게");
+    }
+
+    /** 리뷰 반영: tick 간격이 기본값(10초)이 아니면 "N분 넘게" 문구도 그 간격 기준으로 달라져야 한다. */
+    @Test
+    void ERROR_로그의_경과시간은_고정문구가_아니라_실제_tick_간격_기준으로_계산된다(CapturedOutput output) {
+        ReflectionTestUtils.setField(scheduler, "lifecycleIntervalMs", 5_000L);
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        runTicks(180);
+
+        assertThat(output.getAll()).contains("15분 넘게").doesNotContain("30분 넘게");
     }
 
     private void givenClosingEvent() {
