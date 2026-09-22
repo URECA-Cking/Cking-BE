@@ -129,15 +129,20 @@ Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600;
 | `INVALID_ACCESS_TOKEN` | 401 | Access JWT의 서명·형식·claim이 유효하지 않음 | Refresh하지 않고 현재 인증 상태를 폐기한 뒤 로그인 |
 | `EXPIRED_ACCESS_TOKEN` | 401 | Access JWT가 만료됨 | Refresh를 한 번 시도하고, 실패하면 로그인 |
 | `INVALID_LOGIN_CODE` | 401 | Login Code가 유효하지 않음 | OAuth 로그인을 처음부터 다시 시작 |
-| `EXPIRED_LOGIN_CODE` | 401 | Login Code의 60초 TTL이 지남 | OAuth 로그인을 처음부터 다시 시작 |
+| `EXPIRED_LOGIN_CODE` | 401 | 보존된 만료 메타데이터로 Login Code의 60초 TTL 경과가 확인됨 | OAuth 로그인을 처음부터 다시 시작 |
 | `CONSUMED_LOGIN_CODE` | 401 | Login Code가 이미 교환에 성공해 소비됨 | OAuth 로그인을 처음부터 다시 시작 |
 | `INVALID_REFRESH_TOKEN` | 401 | Refresh Token의 형식·Hash 또는 활성 Redis 기록이 유효하지 않음 | 현재 인증 상태를 폐기하고 로그인 |
-| `EXPIRED_REFRESH_TOKEN` | 401 | Refresh Token의 14일 TTL이 지남 | 현재 인증 상태를 폐기하고 로그인 |
+| `EXPIRED_REFRESH_TOKEN` | 401 | 보존된 만료 메타데이터로 Refresh Token의 14일 TTL 경과가 확인됨 | 현재 인증 상태를 폐기하고 로그인 |
 | `REVOKED_REFRESH_TOKEN` | 401 | Logout 또는 rotation으로 Refresh Token이 폐기됨 | 현재 인증 상태를 폐기하고 로그인 |
 | `FORBIDDEN` | 403 | 인증되었지만 endpoint 권한이 부족함 | Refresh하지 않고 권한 없음으로 처리 |
 
 Login Code와 Refresh Token은 소비·폐기 뒤에도 남은 원래 TTL 동안 상태를 식별할 수 있어야 한다.
-그래야 `INVALID`, `EXPIRED`, `CONSUMED`/`REVOKED` 오류 코드를 계약대로 구분할 수 있다.
+소비·폐기 상태 기록이 있으면 각각 `CONSUMED_LOGIN_CODE`, `REVOKED_REFRESH_TOKEN`을 반환한다.
+
+활성 Redis 기록과 상태 기록이 모두 없으면, 자연 만료 후 모든 기록이 삭제된 경우까지 포함해
+`INVALID_LOGIN_CODE` 또는 `INVALID_REFRESH_TOKEN`을 반환한다. opaque token만으로는 그 토큰이
+처음부터 유효하지 않았는지 자연 만료됐는지 알 수 없기 때문이다. `EXPIRED_*`는 별도 만료
+메타데이터가 남아 만료 사실을 확인할 수 있을 때만 반환하며, 이 메타데이터가 없을 때 만료를 추정하지 않는다.
 
 `POST /api/auth/token`의 Login Code 소비와 `POST /api/auth/refresh`의 Refresh Token rotation은
 동시 요청에서도 각각 한 번만 성공하도록 원자적으로 처리한다.
