@@ -27,3 +27,7 @@ SPEND·EARN은 Redis 잔액을 먼저 바꾸고 Consumer가 DB에 나중에 반�
 SPEND·EARN Lua도 같은 lock을 확인해 lock이 걸린 동안 새 차감·적립을 `BALANCE_MAINTENANCE`(HTTP 503)로 거부하므로([lua-api.md](lua-api.md) 참고, issue #172), 1~4번과 함께 조회부터 덮어쓰기까지 사이에 들어오는 새 SPEND·EARN도 막는다. lock 키는 `TicketRedisKeys.maintenance(creatorId, userId)`를 Lua와 보정 서비스가 함께 쓴다.
 
 지속 불일치가 운영자 확인으로 확정됐을 때만 `TicketCompensationService.resyncRedisToDb()`를 호출한다. 이 서비스는 기존 Ledger를 수정하지 않고 `COMPENSATE` Ledger를 append-only로 남긴 뒤 Redis를 DB 값으로 재동기화한다. Redis 키가 없으면 DB 값을 쓰되 기준이 없으므로 delta 0의 감사 Ledger를 남긴다.
+
+### 호출 진입점(#207)
+
+`resyncRedisToDb()`는 서비스 메서드라 직접 호출할 외부 API가 없었다(#178 Dead Stream 관리자 API와 같은 상황). `POST /api/admin/tickets/resync`(`userId`(ADMIN), `memberId`, `creatorId`, `reason`)가 `TicketAdminService.resync()`를 통해 이 서비스를 호출한다. ADMIN 검증 후 대상 Balance가 없으면 `RESOURCE_NOT_FOUND`(404), lock 충돌은 `CONCURRENT_COMMAND`(409), 미반영 메시지가 있으면 `INVALID_STATE`(409)를 그대로 응답하며, 성공하면 재동기화 후 현재 잔액을 반환한다.
