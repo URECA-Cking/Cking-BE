@@ -29,8 +29,8 @@ public class RedrawRequestReviewService {
 
     /** 관리자가 검토 대기 RedrawRequest를 거절하고 사유를 포함한 심사 결과를 반환한다. */
     public RedrawRequestReviewResult reject(Long adminId, Long redrawRequestId, String rejectReason) {
-        String normalizedRejectReason = validateAndNormalizeRejectReason(rejectReason);
         memberQueryService.validateAdmin(adminId);
+        String normalizedRejectReason = validateAndNormalizeRejectReason(rejectReason);
         RedrawRequest request = findForReview(redrawRequestId);
         request.reject(adminId, normalizedRejectReason);
         return RedrawRequestReviewResult.from(request);

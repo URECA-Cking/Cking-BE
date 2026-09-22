@@ -88,24 +88,26 @@ class RedrawRequestReviewServiceTest {
                 .isEqualTo(RedrawErrorCode.INVALID_STATE);
     }
 
-    /** 거절 사유가 비어 있으면 잠금을 잡거나 상태를 바꾸지 않고 입력 오류로 거부한다. */
+    /** 거절 사유가 비어 있으면 관리자 검증 후 잠금을 잡지 않고 입력 오류로 거부한다. */
     @Test
     void 빈_거절_사유는_잠금_획득_전_VALIDATION_FAILED다() {
         assertThatThrownBy(() -> service.reject(ADMIN_ID, REDRAW_REQUEST_ID, " "))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
-        verifyNoInteractions(memberQueryService, redrawRequestRepository);
+        verify(memberQueryService).validateAdmin(ADMIN_ID);
+        verifyNoInteractions(redrawRequestRepository);
     }
 
-    /** 500자를 초과한 거절 사유는 잠금을 잡거나 상태를 바꾸지 않고 입력 오류로 거부한다. */
+    /** 500자를 초과한 거절 사유는 관리자 검증 후 잠금을 잡지 않고 입력 오류로 거부한다. */
     @Test
     void 거절_사유가_500자를_초과하면_잠금_획득_전_VALIDATION_FAILED다() {
         assertThatThrownBy(() -> service.reject(ADMIN_ID, REDRAW_REQUEST_ID, "가".repeat(501)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
-        verifyNoInteractions(memberQueryService, redrawRequestRepository);
+        verify(memberQueryService).validateAdmin(ADMIN_ID);
+        verifyNoInteractions(redrawRequestRepository);
     }
 
     /** 존재하지 않는 요청은 Redraw 도메인의 요청 없음 오류로 반환한다. */
