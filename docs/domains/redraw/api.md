@@ -183,3 +183,40 @@
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 존재하지 않음 |
 | `INVALID_STATE` | 대상 요청이 `REQUESTED`가 아니거나 동시 심사에서 먼저 처리됨 |
+
+## 관리자 REDRAW 실행
+
+### `POST /api/admin/redraw-requests/{redrawRequestId}/execute`
+
+승인된 요청을 실행한다. 시스템4는 요청 상태와 고정 결원을 다시 검증한 뒤 시스템3의 전체 REDRAW 실행 서비스에만 위임한다.
+
+#### 요청
+
+- Path Variable: `redrawRequestId` (`Long`, 양수, 필수)
+- Body: `userId` (`Long`, 양수, 필수, 호출 관리자)
+
+```json
+{ "userId": 1 }
+```
+
+#### 성공 응답
+
+후보가 충분하면 `EXECUTED`와 생성한 REDRAW Drawing ID를, 부족하면 `INSUFFICIENT_CANDIDATES`와 `null`을 반환한다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": { "redrawRequestId": 10, "executionStatus": "EXECUTED", "redrawDrawingId": 40 },
+  "message": null
+}
+```
+
+#### 오류
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | 경로 또는 `userId`가 양수가 아님 |
+| `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
+| `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
+| `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 없음 |
+| `INVALID_STATE` | 요청이 APPROVED·PENDING이 아니거나 고정 결원 행 수가 불일치함 |
