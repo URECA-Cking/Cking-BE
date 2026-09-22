@@ -124,6 +124,9 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 - `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion` 일치는 DB 복합 FK로도 강제한다. REDRAW의 `winnerCount`는 결원 수이므로 Snapshot 원본 당첨자 수와 다를 수 있다.
 - `prizeAlgorithmVersion`도 Snapshot에서 Drawing으로 복제하고 DB 복합 FK로 일치를 강제한다.
 - 동시 명령 감지를 위해 `version`을 낙관적 락 필드로 사용한다.
+- REDRAW는 후보에서 제외한 모든 기존 Winner의 Member ID와 당시 운영 상태를 `redraw_exclusion`에
+  저장한다. `SELECTED`·`RECEIVED`는 `ALREADY_WINNER`, `DECLINED`와 `DISQUALIFIED`는 동명 사유로
+  보존하며, 이 명단은 Input Hash와 재현 검증의 제외 입력에 사용한다.
 
 상태는 `READY`, `RUNNING`, `FAILED`, `COMPLETED`를 사용하고 공개 상태는 `PRIVATE`, `PUBLIC`을 사용한다. INITIAL 실행은 `READY → RUNNING → COMPLETED`로 전이한다.
 
@@ -150,6 +153,7 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 - `WinnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(drawingId)`: 추첨 결과 순위 조회
 - `WinnerRepository.existsByEventIdAndMemberId(eventId, memberId)`: Event 내 중복 당첨 확인
 - `WinnerManagementRepository.findByWinnerId(winnerId)`: Winner 운영 상태 조회
+- `RedrawExclusionRepository.saveAll(exclusions)`: REDRAW Drawing 생성 Transaction 안에서 제외 명단·사유 저장
 
 DB 구조와 제약조건의 정본은 `src/main/resources/db/migration/`이다.
 

@@ -1,10 +1,13 @@
 package kr.co.cking.drawing.application;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.Set;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
+import kr.co.cking.drawing.domain.RedrawExclusion;
+import kr.co.cking.drawing.domain.RedrawExclusionReason;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.engine.DrawInput;
 import kr.co.cking.drawing.domain.engine.DrawOutput;
@@ -13,6 +16,8 @@ import kr.co.cking.drawing.domain.hash.DrawInputHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawingHash;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.drawing.repository.RedrawExclusionRepository;
+import kr.co.cking.drawing.repository.RedrawExclusionSource;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.winner.domain.Winner;
@@ -35,6 +40,7 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
     private final DrawResultHashGenerator resultHashGenerator;
     private final WinnerRepository winnerRepository;
     private final WinnerManagementRepository winnerManagementRepository;
+    private final RedrawExclusionRepository redrawExclusionRepository;
     private final Clock clock;
 
     /** 원본 INITIAL Snapshot으로 전체 후보를 재추첨하고 기존 Winner는 모두 후보에서 제외한다. */
@@ -50,7 +56,11 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
         if (!initial.getSnapshotId().equals(snapshot.snapshotId())) {
             throw new BusinessException(DrawingErrorCode.INVALID_STATE);
         }
-        Set<Long> excluded = Set.copyOf(winnerRepository.findMemberIdsByEventId(initial.getEventId()));
+        List<RedrawExclusionSource> exclusionSources = winnerRepository
+                .findRedrawExclusionSourcesByEventId(initial.getEventId());
+        Set<Long> excluded = exclusionSources.stream()
+                .map(RedrawExclusionSource::memberId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         long eligibleCount = snapshot.candidates().stream().filter(candidate -> !excluded.contains(candidate.memberId())).count();
         if (eligibleCount < vacancyCount) {
             return RedrawDrawingExecutionResult.noCandidates();
@@ -58,6 +68,10 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
         PersistedDrawingSeed seed = drawingSeedService.createForRedraw(initial.getSeedId());
         int drawNo = drawingRepository.findTopByEventIdOrderByDrawNoDesc(initial.getEventId()).orElseThrow().getDrawNo() + 1;
         Drawing redraw = drawingRepository.saveAndFlush(Drawing.createRedraw(initial, drawNo, requestId, seed.seedId(), vacancyCount, adminId));
+        redrawExclusionRepository.saveAll(exclusionSources.stream()
+                .map(source -> RedrawExclusion.of(redraw.getId(), source.memberId(),
+                        RedrawExclusionReason.from(source.managementStatus())))
+                .toList());
         DrawInput input = new DrawInput(initial.getEventId(), snapshot.snapshotId(), snapshot.snapshotHash(), seed.seed(),
                 initial.getAlgorithmVersion(), vacancyCount, snapshot.candidates(), excluded);
         DrawingHash inputHash = inputHashGenerator.generate(input);
