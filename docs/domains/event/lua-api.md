@@ -126,3 +126,9 @@ SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다
 - idem 키가 유실돼도 guard가 DUPLICATE_REPLAY로 막고(streamId/balance 없이) 잔액을 다시 깎지 않는지 (issue #106)
 - idem 없이 guard만 있으면 DUPLICATE_REPLAY를, guard의 fingerprint가 다르면 IDEMPOTENCY_CONFLICT를 반환하는지 (issue #106)
 - endAt이 idemTtl보다 먼 이벤트에서도 guard TTL이 idemTtl을 넘겨 endAt까지 유지되는지 (issue #106)
+
+## NFR-06 부하 테스트
+
+`EntrySpendLoadTest`(`@Tag("load")`)가 서로 다른 사용자 300명의 동시 응모를 실측해 TPS·p50/p95/p99·오류율을 로그로 남기고, §15.1 불변식(Redis Balance 음수 없음, requestId당 SPEND 1회, Entry·Ledger 중복 없음)을 검증한다. 기본 `./gradlew test`에는 포함하지 않고 `./gradlew loadTest`로 따로 돌린다 — 매 커밋마다 돌릴 상관관계 테스트가 아니라 필요할 때 확인하는 성능 측정용이다.
+
+로컬 실측(2026-09-22, 300 동시 요청): TPS 7500, p50 24ms / p95 30ms / p99 31ms, 오류율 0%. 참고용 1회 측정치이며 SLA로 확정한 값은 아니다.

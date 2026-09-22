@@ -42,7 +42,11 @@ dependencies {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		// 부하 테스트(NFR-06)는 수백 건 동시 요청 + Consumer Drain 대기가 있어 매 빌드마다
+		// 돌리지 않는다. 별도로 필요할 때 ./gradlew loadTest로 실행한다.
+		excludeTags 'load'
+	}
 	// 테스트 프로필 설정을 모든 테스트 컨텍스트에 추가해 Hikari 연결 수를 제한한다.
 	systemProperty 'spring.config.additional-location', 'optional:classpath:/application-test.yml'
 
@@ -50,6 +54,21 @@ tasks.named('test') {
 		events "passed", "skipped", "failed"
 		exceptionFormat "full"
 		showStandardStreams = false
+	}
+}
+
+tasks.register('loadTest', Test) {
+	group = 'verification'
+	description = 'NFR-06 응모 Lua 동시성 부하 테스트만 실행한다(TPS·p95·p99·오류율 로그 확인용).'
+	useJUnitPlatform {
+		includeTags 'load'
+	}
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	systemProperty 'spring.config.additional-location', 'optional:classpath:/application-test.yml'
+	testLogging {
+		events "passed", "skipped", "failed", "standard_out"
+		exceptionFormat "full"
 	}
 }
 
