@@ -46,9 +46,9 @@
 | 40 | 외부 | Winner | USER/ADMIN | GET | `/api/winners/{winnerId}/history` | 상태 이력 | - |
 | 41 | 외부 | Redraw | ADMIN | POST | `/api/admin/events/{eventId}/redraw-requests` | RedrawRequest 생성 | `idempotencyKey` |
 | 42 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests/{redrawRequestId}` | Redraw 상세 | - |
-| 43 | 외부 | Redraw | ADMIN | POST | `/api/admin/redraw-requests/{id}/approve` | 승인 | 상태 기반 |
-| 44 | 외부 | Redraw | ADMIN | POST | `/api/admin/redraw-requests/{id}/reject` | 거절 | 상태 기반 |
-| 45 | 외부 | Redraw | ADMIN | POST | `/api/admin/redraw-requests/{id}/execute` | REDRAW 실행 | 상태 기반 |
+| 43 | 외부 | Redraw | ADMIN | POST | `/api/admin/redraw-requests/{redrawRequestId}/approve` | 승인 | 상태 기반 |
+| 44 | 외부 | Redraw | ADMIN | POST | `/api/admin/redraw-requests/{redrawRequestId}/reject` | 거절 | 상태 기반 |
+| 45 | 외부 | Redraw | ADMIN | POST | `/api/admin/redraw-requests/{redrawRequestId}/execute` | REDRAW 실행 | 상태 기반 |
 | 46 | 외부 | Notification | USER | GET | `/api/me/notifications` | 내 알림 | - |
 | 47 | 외부 | Notification | USER | PATCH | `/api/me/notifications/{notificationId}/read` | 알림 읽음 | 상태 기반 |
 | 48 | 외부 | Verification | ADMIN | POST | `/api/admin/drawings/{drawingId}/verify` | 추첨 재현 검증 실행 | 상태 기반 |
