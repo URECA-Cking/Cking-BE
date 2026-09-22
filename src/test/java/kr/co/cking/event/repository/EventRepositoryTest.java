@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.time.Instant;
 
@@ -28,6 +29,7 @@ class EventRepositoryTest {
 
     private static final Instant START = Instant.parse("2026-09-10T00:00:00Z");
     private static final Instant END = Instant.parse("2026-09-20T00:00:00Z");
+    private static final Sort EVENT_LIST_SORT = Sort.by(Sort.Direction.DESC, "createdAt", "eventId");
 
     @Test
     void displayStatus로_필터링한다() {
@@ -117,15 +119,41 @@ class EventRepositoryTest {
         assertThat(noFilter.getContent()).hasSize(1).allMatch(e -> e.getStatus() == EventStatus.SCHEDULED);
     }
 
-    private void persistEvent(long creatorId, long memberId, EventStatus status, Instant endAt, Instant deletedAt) {
-        persistEventBetween(creatorId, memberId, status, START, endAt, deletedAt);
+    /**
+     * creatorId=null인 전체 목록 경로 보호. 로컬 DB에 다른 테스트가 남긴 행이 있어도 깨지지 않도록
+     * 개수가 아니라 이 테스트가 만든 행의 포함·제외 여부로 검증한다(서비스와 같은 최신 생성 순 정렬이라 첫 페이지에 온다).
+     */
+    @Test
+    void creatorId가_null이면_전체_크리에이터에서_삭제_및_승인전_이벤트를_제외하고_조회한다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        long otherMemberId = insertMember();
+        long otherCreatorId = insertCreator(otherMemberId);
+        Event visible = persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, null);
+        Event otherVisible = persistEvent(otherCreatorId, memberId, EventStatus.SCHEDULED, END, null);
+        Event deleted = persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END,
+                Instant.parse("2026-09-01T00:00:00Z"));
+        Event draft = persistEvent(creatorId, memberId, EventStatus.DRAFT, END, null);
+        entityManager.flush();
+        entityManager.clear();
+        Instant now = Instant.parse("2026-09-15T00:00:00Z");
+
+        var ids = eventRepository.search(null, (DisplayStatus) null, now, PageRequest.of(0, 50, EVENT_LIST_SORT)).getContent()
+                .stream().map(Event::getEventId).toList();
+
+        assertThat(ids).contains(visible.getEventId(), otherVisible.getEventId())
+                .doesNotContain(deleted.getEventId(), draft.getEventId());
+    }
+
+    private Event persistEvent(long creatorId, long memberId, EventStatus status, Instant endAt, Instant deletedAt) {
+        return persistEventBetween(creatorId, memberId, status, START, endAt, deletedAt);
     }
 
     private void persistEventBetween(long creatorId, long memberId, EventStatus status, Instant startAt, Instant endAt) {
         persistEventBetween(creatorId, memberId, status, startAt, endAt, null);
     }
 
-    private void persistEventBetween(long creatorId, long memberId, EventStatus status, Instant startAt, Instant endAt,
+    private Event persistEventBetween(long creatorId, long memberId, EventStatus status, Instant startAt, Instant endAt,
                                       Instant deletedAt) {
         Event event = Event.builder()
                 .creatorId(creatorId)
@@ -146,6 +174,7 @@ class EventRepositoryTest {
                     .setParameter("id", event.getEventId())
                     .executeUpdate();
         }
+        return event;
     }
 
     private long insertMember() {
