@@ -13,6 +13,8 @@ import kr.co.cking.redraw.application.RedrawRequestCreateResult;
 import kr.co.cking.redraw.application.RedrawRequestCreateService;
 import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
 import kr.co.cking.redraw.application.RedrawRequestDetailResult;
+import kr.co.cking.redraw.application.RedrawRequestReviewResult;
+import kr.co.cking.redraw.application.RedrawRequestReviewService;
 import kr.co.cking.redraw.application.RedrawVacancyWinnerResult;
 import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import kr.co.cking.redraw.domain.RedrawRequestStatus;
@@ -39,6 +41,9 @@ class RedrawAdminControllerTest {
 
     @MockitoBean
     private RedrawRequestDetailQueryService redrawRequestDetailQueryService;
+
+    @MockitoBean
+    private RedrawRequestReviewService redrawRequestReviewService;
 
     /** 새 RedrawRequest는 서버가 결정한 원본·결원 정보를 201 응답으로 반환한다. */
     @Test
@@ -125,6 +130,55 @@ class RedrawAdminControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
+    /** 관리자는 승인 API로 REQUESTED 요청을 APPROVED·PENDING 상태로 전이한다. */
+    @Test
+    void 관리자는_RedrawRequest를_승인한다() throws Exception {
+        when(redrawRequestReviewService.approve(1L, 30L)).thenReturn(review(RedrawRequestStatus.APPROVED, null));
+
+        mockMvc.perform(post("/api/admin/redraw-requests/30/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.redrawRequestId").value(30))
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.executionStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.reviewedBy").value(1))
+                .andExpect(jsonPath("$.data.rejectReason").doesNotExist());
+        verify(redrawRequestReviewService).approve(1L, 30L);
+    }
+
+    /** 관리자는 거절 API로 필수 사유를 전달해 REJECTED 상태로 전이한다. */
+    @Test
+    void 관리자는_RedrawRequest를_거절한다() throws Exception {
+        when(redrawRequestReviewService.reject(1L, 30L, "결원 확인이 필요합니다."))
+                .thenReturn(review(RedrawRequestStatus.REJECTED, "결원 확인이 필요합니다."));
+
+        mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"rejectReason\":\" 결원 확인이 필요합니다. \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.executionStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.rejectReason").value("결원 확인이 필요합니다."));
+        verify(redrawRequestReviewService).reject(1L, 30L, "결원 확인이 필요합니다.");
+    }
+
+    /** 거절 사유가 없거나 심사 식별자가 양수가 아니면 Service 호출 전에 차단한다. */
+    @Test
+    void 유효하지_않은_심사_요청은_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/admin/redraw-requests/0/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"rejectReason\":\" \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
     /** 테스트 요청 JSON은 클라이언트 입력에 허용한 세 필드만 담는다. */
     private String requestBody() {
         return "{\"userId\":1,\"reason\":\"당첨자 포기에 따른 재추첨\",\"idempotencyKey\":\""
@@ -146,6 +200,14 @@ class RedrawAdminControllerTest {
                 RedrawRequestStatus.APPROVED, RedrawExecutionStatus.EXECUTED,
                 "당첨자 포기에 따른 재추첨", 1L, Instant.parse("2026-09-20T00:00:00Z"),
                 2L, Instant.parse("2026-09-20T01:00:00Z"), null
+        );
+    }
+
+    /** 테스트용 승인 또는 거절 심사 결과를 만든다. */
+    private RedrawRequestReviewResult review(RedrawRequestStatus status, String rejectReason) {
+        return new RedrawRequestReviewResult(
+                30L, status, RedrawExecutionStatus.PENDING, 1L,
+                Instant.parse("2026-09-20T01:00:00Z"), rejectReason
         );
     }
 }
