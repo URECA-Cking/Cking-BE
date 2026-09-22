@@ -16,3 +16,11 @@ server:
   # 앱이 만드는 URL(Swagger 서버 주소, 리다이렉트 등)이 https로 나온다.
   # 8080은 ALB 보안 그룹에서만 열려 있어 헤더를 위조해 보낼 수 없다.
   forward-headers-strategy: framework
+
+cking:
+  cors:
+    allowed-origins: https://dev.cking.co.kr
+  docs:
+    # 개발 서버는 인터넷에 공개되어 있다. 값이 주입되지 않으면 문서가 무방비로 열리는 대신 기동에 실패한다.
+    username: ${DOCS_USERNAME}
+    password: ${DOCS_PASSWORD}
