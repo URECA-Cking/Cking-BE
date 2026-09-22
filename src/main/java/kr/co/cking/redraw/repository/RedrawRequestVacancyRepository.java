@@ -10,6 +10,9 @@ import org.springframework.data.repository.query.Param;
 /** RedrawRequest가 점유한 결원의 저장과 진행 중 점유 조회를 담당한다. */
 public interface RedrawRequestVacancyRepository extends JpaRepository<RedrawRequestVacancy, Long> {
 
+    /** 특정 요청이 생성 시점에 확정한 결원을 생성 순서대로 조회한다. */
+    List<RedrawRequestVacancy> findAllByRedrawRequestIdOrderByIdAsc(Long redrawRequestId);
+
     /** 진행 중 REQUESTED·APPROVED 요청이 이미 점유한 Winner ID만 조회한다. */
     @Query("""
             select vacancy.winnerId

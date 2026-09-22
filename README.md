@@ -4,10 +4,7 @@
 
 **API 문서 (Swagger UI)**
 
-| 환경 | 주소 |
-|---|---|
-| 로컬 | http://localhost:8080/swagger-ui/index.html |
-| 개발 서버 | http://{개발 서버 주소}:8080/swagger-ui/index.html |
+애플리케이션 실행 후 http://localhost:8080/swagger-ui/index.html 에서 확인합니다.
 
 ## 목차
 

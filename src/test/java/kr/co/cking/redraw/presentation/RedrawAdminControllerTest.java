@@ -3,6 +3,7 @@ package kr.co.cking.redraw.presentation;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -10,8 +11,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import kr.co.cking.redraw.application.RedrawRequestCreateCommand;
 import kr.co.cking.redraw.application.RedrawRequestCreateResult;
 import kr.co.cking.redraw.application.RedrawRequestCreateService;
+import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
+import kr.co.cking.redraw.application.RedrawRequestDetailResult;
+import kr.co.cking.redraw.application.RedrawVacancyWinnerResult;
 import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import kr.co.cking.redraw.domain.RedrawRequestStatus;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -30,6 +36,9 @@ class RedrawAdminControllerTest {
 
     @MockitoBean
     private RedrawRequestCreateService redrawRequestCreateService;
+
+    @MockitoBean
+    private RedrawRequestDetailQueryService redrawRequestDetailQueryService;
 
     /** 새 RedrawRequest는 서버가 결정한 원본·결원 정보를 201 응답으로 반환한다. */
     @Test
@@ -85,6 +94,37 @@ class RedrawAdminControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
+    /** 관리자는 고정 결원과 REDRAW 실행 정보를 포함한 요청 상세를 조회한다. */
+    @Test
+    void 관리자는_RedrawRequest_상세를_조회한다() throws Exception {
+        when(redrawRequestDetailQueryService.getDetail(30L, 1L)).thenReturn(detail());
+
+        mockMvc.perform(get("/api/admin/redraw-requests/30")
+                        .param("userId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.redrawRequestId").value(30))
+                .andExpect(jsonPath("$.data.originalDrawingId").value(20))
+                .andExpect(jsonPath("$.data.redrawDrawingId").value(40))
+                .andExpect(jsonPath("$.data.vacancyCount").value(1))
+                .andExpect(jsonPath("$.data.vacancyWinners[0].winnerId").value(100))
+                .andExpect(jsonPath("$.data.vacancyWinners[0].name").value("당첨자"))
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.executionStatus").value("EXECUTED"))
+                .andExpect(jsonPath("$.data.requestedBy").value(1))
+                .andExpect(jsonPath("$.data.reviewedBy").value(2));
+        verify(redrawRequestDetailQueryService).getDetail(30L, 1L);
+    }
+
+    /** 양수가 아닌 경로·관리자 식별자는 상세 조회 Service 호출 전에 차단한다. */
+    @Test
+    void 유효하지_않은_상세_조회_식별자는_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/admin/redraw-requests/0")
+                        .param("userId", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
     /** 테스트 요청 JSON은 클라이언트 입력에 허용한 세 필드만 담는다. */
     private String requestBody() {
         return "{\"userId\":1,\"reason\":\"당첨자 포기에 따른 재추첨\",\"idempotencyKey\":\""
@@ -95,6 +135,17 @@ class RedrawAdminControllerTest {
     private RedrawRequestCreateResult result(boolean created) {
         return new RedrawRequestCreateResult(
                 30L, 10L, 20L, 2, RedrawRequestStatus.REQUESTED, RedrawExecutionStatus.PENDING, created
+        );
+    }
+
+    /** 테스트용 RedrawRequest 상세 조회 결과를 만든다. */
+    private RedrawRequestDetailResult detail() {
+        return new RedrawRequestDetailResult(
+                30L, 10L, 20L, 40L, 1,
+                List.of(new RedrawVacancyWinnerResult(100L, 3L, "당첨자", 1)),
+                RedrawRequestStatus.APPROVED, RedrawExecutionStatus.EXECUTED,
+                "당첨자 포기에 따른 재추첨", 1L, Instant.parse("2026-09-20T00:00:00Z"),
+                2L, Instant.parse("2026-09-20T01:00:00Z"), null
         );
     }
 }

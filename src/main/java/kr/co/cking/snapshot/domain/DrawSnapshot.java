@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -124,7 +125,7 @@ public class DrawSnapshot {
 
         List<CandidateValue> normalizedCandidates = List.copyOf(candidateValues);
         validateCandidateOrder(normalizedCandidates);
-        List<PrizeValue> normalizedPrizes = normalizePrizes(prizeValues, winnerCount);
+        List<PrizeValue> normalizedPrizes = normalizePrizes(prizeValues, winnerCount, prizeAlgorithmVersion);
 
         DrawSnapshot snapshot = new DrawSnapshot();
         snapshot.eventId = eventId;
@@ -151,7 +152,11 @@ public class DrawSnapshot {
         return snapshot;
     }
 
-    private static List<PrizeValue> normalizePrizes(List<PrizeValue> prizes, int winnerCount) {
+    private static List<PrizeValue> normalizePrizes(
+            List<PrizeValue> prizes,
+            int winnerCount,
+            String prizeAlgorithmVersion
+    ) {
         if (prizes == null) {
             throw new IllegalArgumentException("상품 설정은 필수입니다.");
         }
@@ -166,7 +171,10 @@ public class DrawSnapshot {
                 throw new IllegalArgumentException("상품 식별자는 중복될 수 없습니다.");
             }
             totalQuantity = Math.addExact(totalQuantity, prize.quantity());
-            totalWeight = Math.addExact(totalWeight, prize.weight());
+            if (PrizeAllocationAlgorithmVersion.from(prizeAlgorithmVersion)
+                    == PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1) {
+                totalWeight = Math.addExact(totalWeight, prize.weight());
+            }
         }
         if (!normalized.isEmpty() && totalQuantity < winnerCount) {
             throw new IllegalArgumentException("총 상품 수량은 winnerCount 이상이어야 합니다.");

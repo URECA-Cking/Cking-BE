@@ -2,6 +2,9 @@ package kr.co.cking.snapshot.application;
 
 import java.util.List;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.drawing.domain.engine.DrawingAlgorithmVersion;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
+import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
@@ -17,8 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class OfficialSnapshotService {
-
-    static final String ALGORITHM_VERSION = "WEIGHTED_V1";
 
     private final DrawSnapshotRepository snapshotRepository;
     private final SnapshotSourceQueryRepository sourceQueryRepository;
@@ -55,22 +56,32 @@ public class OfficialSnapshotService {
         List<CandidateValue> candidates = sourceQueryRepository.findCandidates(eventId);
         List<PrizeValue> prizes = java.util.Optional.ofNullable(sourceQueryRepository.findPrizes(eventId))
                 .orElse(List.of());
+        String algorithmVersion = algorithmVersionFor(event.drawMethod()).name();
+        String prizeAlgorithmVersion = PrizeAllocationAlgorithmVersion
+                .from(event.prizeAlgorithmVersion()).name();
         SnapshotHash hash = prizes.isEmpty()
                 ? hashGenerator.generate(new SnapshotHashInput(event.eventId(), event.winnerCount(),
-                        event.drawMethod(), ALGORITHM_VERSION, candidates))
+                        event.drawMethod(), algorithmVersion, candidates))
                 : hashV2Generator.generate(new SnapshotHashV2Input(event.eventId(), event.winnerCount(),
-                        event.drawMethod(), ALGORITHM_VERSION, "PRIZE_WEIGHTED_V1", candidates, prizes));
+                        event.drawMethod(), algorithmVersion, prizeAlgorithmVersion, candidates, prizes));
 
         DrawSnapshot snapshot = DrawSnapshot.create(
                 event.eventId(),
                 event.winnerCount(),
                 event.drawMethod(),
-                ALGORITHM_VERSION,
-                "PRIZE_WEIGHTED_V1",
+                algorithmVersion,
+                prizeAlgorithmVersion,
                 hash.value(),
                 candidates.stream().sorted(CandidateValue.BY_MEMBER_ID).toList(),
                 prizes
         );
         return OfficialSnapshotResult.from(snapshotRepository.saveAndFlush(snapshot));
+    }
+
+    private DrawingAlgorithmVersion algorithmVersionFor(String drawMethod) {
+        return switch (DrawMethod.valueOf(drawMethod)) {
+            case UNIFORM -> DrawingAlgorithmVersion.UNIFORM_V1;
+            case WEIGHTED -> DrawingAlgorithmVersion.WEIGHTED_V1;
+        };
     }
 }

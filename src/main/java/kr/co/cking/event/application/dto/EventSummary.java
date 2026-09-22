@@ -17,12 +17,14 @@ public record EventSummary(
         DisplayStatus displayStatus,
         Integer winnerCount,
         String drawMethod,
+        String prizeAlgorithmVersion,
         List<PrizeResult> prizes
 ) {
 
     public EventSummary(Long eventId, Long creatorId, String title, Instant startAt, Instant endAt, EventStatus status,
                         DisplayStatus displayStatus, Integer winnerCount, String drawMethod) {
-        this(eventId, creatorId, title, startAt, endAt, status, displayStatus, winnerCount, drawMethod, List.of());
+        this(eventId, creatorId, title, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
+                "PRIZE_WEIGHTED_V1", List.of());
     }
 
     public EventSummary {
@@ -40,6 +42,7 @@ public record EventSummary(
                 event.displayStatus(now),
                 event.getWinnerCount(),
                 event.getDrawMethod(),
+                event.getPrizeAlgorithmVersion(),
                 event.getPrizeConfigs().stream().map(PrizeResult::from).toList()
         );
     }

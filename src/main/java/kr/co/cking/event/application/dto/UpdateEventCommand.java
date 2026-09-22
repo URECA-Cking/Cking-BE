@@ -2,6 +2,7 @@ package kr.co.cking.event.application.dto;
 
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.PrizeConfig;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
 
 import java.time.Instant;
 import java.util.List;
@@ -16,10 +17,18 @@ public record UpdateEventCommand(
         Instant endAt,
         int winnerCount,
         DrawMethod drawMethod,
+        PrizeAllocationAlgorithmVersion prizeAlgorithmVersion,
         List<PrizeConfig> prizes
 ) {
     public UpdateEventCommand(Long userId, Long eventId, String title, String description, Instant startAt,
+                              Instant endAt, int winnerCount, DrawMethod drawMethod, List<PrizeConfig> prizes) {
+        this(userId, eventId, title, description, startAt, endAt, winnerCount, drawMethod,
+                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1, prizes);
+    }
+
+    public UpdateEventCommand(Long userId, Long eventId, String title, String description, Instant startAt,
                               Instant endAt, int winnerCount, DrawMethod drawMethod) {
-        this(userId, eventId, title, description, startAt, endAt, winnerCount, drawMethod, List.of());
+        this(userId, eventId, title, description, startAt, endAt, winnerCount, drawMethod,
+                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1, List.of());
     }
 }

@@ -4,6 +4,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
 import kr.co.cking.event.application.dto.CreateEventCommand;
 import kr.co.cking.event.application.dto.UpdateEventCommand;
 import kr.co.cking.event.domain.DrawMethod;
@@ -89,7 +90,7 @@ public class CreatorEventService {
                 command.eventId(),
                 event -> requireOwnership(creator, event),
                 event -> event.update(command.title().trim(), command.description(), command.startAt(), command.endAt(),
-                        command.winnerCount(), command.drawMethod(), command.prizes())
+                        command.winnerCount(), command.drawMethod(), command.prizes(), command.prizeAlgorithmVersion())
         );
     }
 
@@ -120,11 +121,12 @@ public class CreatorEventService {
         if (command.userId() == null || command.requestId() == null || command.requestId().isBlank()
                 || !isCanonicalUuid(command.requestId())
                 || command.title() == null || command.title().isBlank() || command.startAt() == null
-                || command.endAt() == null || command.winnerCount() < 1 || command.drawMethod() != DrawMethod.WEIGHTED
+                || command.endAt() == null || command.winnerCount() < 1 || command.drawMethod() == null
+                || command.prizeAlgorithmVersion() == null
                 || !command.startAt().isBefore(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        validatePrizes(command.prizes(), command.winnerCount());
+        validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());
     }
 
     /** requestId가 UUID의 표준 문자열 형식인지 검증한다. */
@@ -140,13 +142,18 @@ public class CreatorEventService {
     private void validateUpdate(UpdateEventCommand command) {
         if (command.userId() == null || command.eventId() == null || command.title() == null || command.title().isBlank()
                 || command.startAt() == null || command.endAt() == null || command.winnerCount() < 1
-                || command.drawMethod() != DrawMethod.WEIGHTED || !command.startAt().isBefore(command.endAt())) {
+                || command.drawMethod() == null || command.prizeAlgorithmVersion() == null
+                || !command.startAt().isBefore(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        validatePrizes(command.prizes(), command.winnerCount());
+        validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());
     }
 
-    private void validatePrizes(java.util.List<kr.co.cking.event.domain.PrizeConfig> prizes, int winnerCount) {
+    private void validatePrizes(
+            java.util.List<kr.co.cking.event.domain.PrizeConfig> prizes,
+            int winnerCount,
+            PrizeAllocationAlgorithmVersion algorithmVersion
+    ) {
         if (prizes == null) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
@@ -159,7 +166,9 @@ public class CreatorEventService {
                     throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
                 }
                 quantity = Math.addExact(quantity, prize.quantity());
-                weight = Math.addExact(weight, prize.weight());
+                if (algorithmVersion == PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1) {
+                    weight = Math.addExact(weight, prize.weight());
+                }
             }
         } catch (ArithmeticException exception) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
@@ -178,6 +187,7 @@ public class CreatorEventService {
                 && normalizeToMicros(event.getEndAt()).equals(normalizeToMicros(command.endAt()))
                 && event.getWinnerCount() == command.winnerCount()
                 && event.getDrawMethod().equals(command.drawMethod().name())
+                && event.getPrizeAlgorithmVersion().equals(command.prizeAlgorithmVersion().name())
                 && event.getPrizeConfigs().equals(command.prizes().stream()
                         .sorted(java.util.Comparator.comparingInt(kr.co.cking.event.domain.PrizeConfig::priority)
                                 .thenComparing(kr.co.cking.event.domain.PrizeConfig::prizeKey))
