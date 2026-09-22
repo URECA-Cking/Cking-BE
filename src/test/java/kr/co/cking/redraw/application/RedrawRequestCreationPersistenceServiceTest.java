@@ -66,7 +66,7 @@ class RedrawRequestCreationPersistenceServiceTest {
         );
     }
 
-    /** DECLINED·DISQUALIFIED 후보에서 진행 중 요청이 점유한 Winner를 제외해 함께 저장한다. */
+    /** DECLINED·DISQUALIFIED 후보에서 임시·영구 점유 Winner를 제외해 함께 저장한다. */
     @Test
     void 미점유_결원만_선정해_RedrawRequest와_점유목록을_저장한다() {
         Drawing initialDrawing = initialDrawing();
@@ -77,7 +77,7 @@ class RedrawRequestCreationPersistenceServiceTest {
         when(drawingRepository.findByEventIdAndDrawNo(EVENT_ID, 0)).thenReturn(Optional.of(initialDrawing));
         when(redrawVacancyCandidateRepository.findVacancyWinnerIds(eq(EVENT_ID), eq(ORIGINAL_DRAWING_ID), anyList()))
                 .thenReturn(List.of(101L, 102L, 103L));
-        when(redrawRequestVacancyRepository.findOccupiedWinnerIdsInProgress(List.of(101L, 102L, 103L)))
+        when(redrawRequestVacancyRepository.findOccupiedWinnerIds(List.of(101L, 102L, 103L)))
                 .thenReturn(List.of(102L));
         when(redrawRequestRepository.saveAndFlush(any(RedrawRequest.class))).thenReturn(persisted);
 

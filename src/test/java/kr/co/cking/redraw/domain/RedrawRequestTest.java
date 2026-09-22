@@ -89,6 +89,21 @@ class RedrawRequestTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    /** 모든 실행 종료 상태 전이는 완료 시각을 함께 기록한다. */
+    @Test
+    void 실행_종료_상태_전이는_완료_시각을_기록한다() {
+        RedrawRequest executed = approvedRequest();
+        executed.markExecuted();
+        RedrawRequest insufficientCandidates = approvedRequest();
+        insufficientCandidates.markInsufficientCandidates();
+        RedrawRequest failed = approvedRequest();
+        failed.markFailed();
+
+        assertThat(executed.getCompletedAt()).isNotNull();
+        assertThat(insufficientCandidates.getCompletedAt()).isNotNull();
+        assertThat(failed.getCompletedAt()).isNotNull();
+    }
+
     /** 이미 심사된 요청에 대한 명령이 도메인 상태 오류를 반환하는지 검증한다. */
     private void assertInvalidState(Runnable command) {
         assertThatThrownBy(command::run)
@@ -101,5 +116,11 @@ class RedrawRequestTest {
     /** 심사 전 REQUESTED·PENDING 상태의 유효한 RedrawRequest를 만든다. */
     private RedrawRequest requested() {
         return RedrawRequest.requested(10L, 20L, 1, "당첨자 포기", "test-key", REQUESTER_ID);
+    }
+
+    private RedrawRequest approvedRequest() {
+        RedrawRequest request = requested();
+        request.approve(REVIEWER_ID);
+        return request;
     }
 }

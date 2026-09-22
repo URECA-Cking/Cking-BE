@@ -9,15 +9,20 @@ import java.util.List;
 import java.util.UUID;
 import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import kr.co.cking.redraw.domain.RedrawRequestStatus;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
+import kr.co.cking.drawing.repository.RedrawExclusionSource;
+import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.context.annotation.Import;
 
-/** Redraw 후보·점유 JPQL이 MySQL과 Hibernate에서 의도한 결원만 조회하는지 검증한다. */
+/** Redraw 후보·점유·Drawing 전용 조회가 MySQL에서 의도한 결원만 읽는지 검증한다. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = Replace.NONE)
+@Import(RedrawDrawingQueryRepository.class)
 class RedrawRepositoryJpaTest {
 
     @Autowired
@@ -25,6 +30,9 @@ class RedrawRepositoryJpaTest {
 
     @Autowired
     private RedrawRequestVacancyRepository redrawRequestVacancyRepository;
+
+    @Autowired
+    private RedrawDrawingQueryRepository redrawDrawingQueryRepository;
 
     @Autowired
     private EntityManager entityManager;
@@ -56,9 +64,23 @@ class RedrawRepositoryJpaTest {
         assertThat(winnerIds).containsExactly(declinedWinnerId, disqualifiedWinnerId);
     }
 
-    /** REQUESTED·APPROVED이면서 PENDING인 요청의 Winner만 진행 중 점유로 반환한다. */
+    /** REDRAW 제외 명단 원본은 해당 Event의 기존 Winner를 Member ID순으로 읽는다. */
     @Test
-    void 진행_중인_요청이_점유한_Winner만_조회한다() {
+    void REDRAW_제외_명단_원본을_Event의_Winner_순서대로_조회한다() {
+        Fixture fixture = fixture();
+        insertWinner(fixture.eventId(), fixture.initialDrawingId(), 1, WinnerManagementStatus.SELECTED);
+        insertWinner(fixture.eventId(), fixture.initialDrawingId(), 2, WinnerManagementStatus.DECLINED);
+
+        List<RedrawExclusionSource> sources = redrawDrawingQueryRepository
+                .findExclusionSourcesByEventId(fixture.eventId());
+
+        assertThat(sources).extracting(RedrawExclusionSource::managementStatus)
+                .containsExactly(WinnerManagementStatus.SELECTED, WinnerManagementStatus.DECLINED);
+    }
+
+    /** 진행 중 요청과 EXECUTED 요청의 Winner를 점유 목록으로 반환한다. */
+    @Test
+    void 진행_중_또는_실행_완료된_요청이_점유한_Winner를_조회한다() {
         Fixture fixture = fixture();
         long requestedWinnerId = insertWinner(
                 fixture.eventId(), fixture.initialDrawingId(), 1, WinnerManagementStatus.DECLINED);
@@ -68,6 +90,10 @@ class RedrawRepositoryJpaTest {
                 fixture.eventId(), fixture.initialDrawingId(), 3, WinnerManagementStatus.DECLINED);
         long executedWinnerId = insertWinner(
                 fixture.eventId(), fixture.initialDrawingId(), 4, WinnerManagementStatus.DISQUALIFIED);
+        long failedWinnerId = insertWinner(
+                fixture.eventId(), fixture.initialDrawingId(), 5, WinnerManagementStatus.DECLINED);
+        long insufficientWinnerId = insertWinner(
+                fixture.eventId(), fixture.initialDrawingId(), 6, WinnerManagementStatus.DISQUALIFIED);
 
         insertVacancy(
                 insertRedrawRequest(fixture, RedrawRequestStatus.REQUESTED, RedrawExecutionStatus.PENDING),
@@ -85,12 +111,37 @@ class RedrawRepositoryJpaTest {
                 insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.EXECUTED),
                 executedWinnerId
         );
+        insertVacancy(
+                insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.FAILED),
+                failedWinnerId
+        );
+        insertVacancy(
+                insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.INSUFFICIENT_CANDIDATES),
+                insufficientWinnerId
+        );
 
-        List<Long> occupiedWinnerIds = redrawRequestVacancyRepository.findOccupiedWinnerIdsInProgress(List.of(
-                requestedWinnerId, approvedWinnerId, rejectedWinnerId, executedWinnerId
+        List<Long> occupiedWinnerIds = redrawRequestVacancyRepository.findOccupiedWinnerIds(List.of(
+                requestedWinnerId, approvedWinnerId, rejectedWinnerId, executedWinnerId, failedWinnerId, insufficientWinnerId
         ));
 
-        assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(requestedWinnerId, approvedWinnerId);
+        assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(requestedWinnerId, approvedWinnerId, executedWinnerId);
+    }
+
+    /** 고정 결원 Winner의 상품 원본은 RedrawRequestVacancy 생성 순서대로 조회한다. */
+    @Test
+    void 고정_결원_Winner의_상품_원본을_결원_순서대로_조회한다() {
+        Fixture fixture = fixture();
+        long firstWinnerId = insertWinner(fixture.eventId(), fixture.initialDrawingId(), 1, WinnerManagementStatus.DECLINED);
+        long secondWinnerId = insertWinner(fixture.eventId(), fixture.initialDrawingId(), 2, WinnerManagementStatus.DISQUALIFIED);
+        long redrawRequestId = insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING);
+        insertVacancy(redrawRequestId, secondWinnerId);
+        insertVacancy(redrawRequestId, firstWinnerId);
+
+        List<RedrawVacancyPrizeSource> sources = redrawDrawingQueryRepository
+                .findVacancyPrizeSourcesByRequestId(redrawRequestId);
+
+        assertThat(sources).extracting(RedrawVacancyPrizeSource::winnerId)
+                .containsExactly(secondWinnerId, firstWinnerId);
     }
 
     /** JPA 조회 테스트에 필요한 Event와 최초 Drawing을 저장한다. */

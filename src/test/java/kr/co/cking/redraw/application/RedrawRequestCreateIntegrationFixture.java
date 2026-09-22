@@ -78,6 +78,11 @@ abstract class RedrawRequestCreateIntegrationFixture {
     void tearDownFixture() {
         if (eventId != null) {
             jdbcTemplate.update("""
+                    DELETE history FROM redraw_execution_history history
+                    JOIN redraw_request request ON request.id = history.redraw_request_id
+                    WHERE request.event_id = ?
+                    """, eventId);
+            jdbcTemplate.update("""
                     DELETE vacancy FROM redraw_request_vacancy vacancy
                     JOIN redraw_request request ON request.id = vacancy.redraw_request_id
                     WHERE request.event_id = ?

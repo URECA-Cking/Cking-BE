@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.stream.LongStream;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingStatus;
+import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVerificationHistory;
 import kr.co.cking.drawing.domain.DrawingVerificationStatus;
 import kr.co.cking.drawing.domain.engine.DrawInput;
@@ -30,15 +31,21 @@ import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawingHash;
 import kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine;
+import kr.co.cking.drawing.domain.prize.AllocatedPrize;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawingExclusionQueryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.DrawingVerificationHistoryRepository;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
+import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
 import kr.co.cking.snapshot.application.VerifiedSnapshotTestFactory;
 import kr.co.cking.snapshot.domain.CandidateValue;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +71,7 @@ class DrawingVerificationServiceTest {
     @Mock private WinnerRepository winnerRepository;
     @Mock private DrawingVerificationHistoryRepository historyRepository;
     @Mock private DrawingExclusionQueryRepository exclusionRepository;
+    @Mock private RedrawDrawingQueryRepository redrawDrawingQueryRepository;
     @Mock private SnapshotIntegrityService snapshotIntegrityService;
     @Mock private DrawingSeedService drawingSeedService;
     @Mock private DrawingSeedPolicy drawingSeedPolicy;
@@ -83,6 +91,7 @@ class DrawingVerificationServiceTest {
                 winnerRepository,
                 historyRepository,
                 exclusionRepository,
+                redrawDrawingQueryRepository,
                 snapshotIntegrityService,
                 drawingSeedService,
                 drawingSeedPolicy,
@@ -232,6 +241,47 @@ class DrawingVerificationServiceTest {
         assertThat(result.actualWinnerCount()).isNull();
         verify(drawingEngine, never()).draw(any());
         verify(historyRepository).save(any(DrawingVerificationHistory.class));
+    }
+
+    /** REDRAW 재현 검증은 Snapshot 전체 상품 풀이 아닌 고정 결원 상품을 그대로 사용한다. */
+    @Test
+    void REDRAW는_고정_결원_Winner의_상품으로_재현_검증한다() {
+        PrizeValue firstPrize = new PrizeValue(501L, "FIRST", "1등 상품", 1, 100L, 1);
+        PrizeValue secondPrize = new PrizeValue(502L, "SECOND", "2등 상품", 2, 1L, 1);
+        VerifiedSnapshot snapshot = VerifiedSnapshotTestFactory.create(
+                SNAPSHOT_ID, EVENT_ID, 2, "WEIGHTED", "WEIGHTED_V1",
+                List.of(new CandidateValue(1L, 1L), new CandidateValue(2L, 1L), new CandidateValue(3L, 1L)),
+                List.of(firstPrize, secondPrize));
+        DrawingSeed originalSeed = DrawingSeed.from(ORIGINAL_SEED);
+        DrawInput input = input(snapshot, originalSeed, 1);
+        DrawingHash inputHash = inputV2HashGenerator.generate(input, snapshot.prizeAlgorithmVersion(), List.of(secondPrize));
+        DrawOutput output = new DrawOutput(DrawingAlgorithmVersion.WEIGHTED_V1, List.of(new DrawWinner(3L, 1, 1L)));
+        PrizeAllocationOutput prizeOutput = new PrizeAllocationOutput(PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1,
+                List.of(new AllocatedPrize(3L, 1, secondPrize)));
+        DrawingHash resultHash = resultV2HashGenerator.generate(inputHash.value(), output, prizeOutput);
+        Drawing drawing = drawing(1, inputHash, resultHash);
+        when(drawing.getDrawType()).thenReturn(DrawingType.REDRAW);
+        when(drawing.getRedrawRequestId()).thenReturn(50L);
+        Winner storedWinner = winner(3L, 1);
+        when(storedWinner.getSnapshotPrizeId()).thenReturn(secondPrize.snapshotPrizeId());
+        when(storedWinner.getPrizeKey()).thenReturn(secondPrize.prizeKey());
+        when(storedWinner.getPrizeDisplayName()).thenReturn(secondPrize.displayName());
+        when(storedWinner.getPrizePriority()).thenReturn(secondPrize.priority());
+
+        when(drawingRepository.findById(DRAWING_ID)).thenReturn(Optional.of(drawing));
+        when(snapshotIntegrityService.verifyForReplay(SNAPSHOT_ID)).thenReturn(snapshot);
+        when(exclusionRepository.findMemberIdsByDrawingId(DRAWING_ID)).thenReturn(List.of());
+        when(redrawDrawingQueryRepository.findVacancyPrizeSourcesByRequestId(50L))
+                .thenReturn(List.of(new RedrawVacancyPrizeSource(100L, secondPrize.snapshotPrizeId())));
+        when(drawingSeedService.reuseForRetry(SEED_ID)).thenReturn(new PersistedDrawingSeed(SEED_ID, originalSeed));
+        when(winnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(DRAWING_ID)).thenReturn(List.of(storedWinner));
+        when(drawingSeedPolicy.createForVerification(originalSeed)).thenReturn(DrawingSeed.from(REPLAY_SEED));
+        when(drawingEngine.draw(any())).thenReturn(output);
+
+        DrawingVerificationResult result = service.verify(DRAWING_ID, ADMIN_ID);
+
+        assertThat(result.status()).isEqualTo(DrawingVerificationStatus.VERIFIED);
+        verify(redrawDrawingQueryRepository, times(1)).findVacancyPrizeSourcesByRequestId(50L);
     }
 
     private DrawInput input(VerifiedSnapshot snapshot, DrawingSeed seed, int winnerCount) {

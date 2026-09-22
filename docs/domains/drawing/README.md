@@ -104,7 +104,7 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 - `DrawSeed`는 `draw_seed.seed_value`를 32byte 바이너리로 저장하고 `DrawingSeed` 값 객체로 복원한다.
 - `DrawingSeedService.createForInitial()`은 신규 Seed를 저장하고 `seedId`와 `DrawingSeed`를 함께 반환한다.
 - `DrawingSeedService.reuseForRetry(seedId)`는 기존 행을 조회해 재사용하며 신규 Seed 행을 만들지 않는다.
-- `DrawingSeedService.createForRedraw(previousSeedId)`는 이전 Drawing의 Seed와 다른 값을 생성해 신규 행으로 저장한다.
+- `DrawingSeedService.createForRedraw(previousSeedId)`는 Event의 직전 Drawing(두 번째 REDRAW부터는 직전 REDRAW)의 Seed와 다른 값을 생성해 신규 행으로 저장한다.
 - REDRAW 자체의 Retry는 `createForRedraw`가 아니라 `reuseForRetry`를 사용한다.
 - Seed 생성·저장은 `MANDATORY` 전파 속성으로 Drawing 실행 트랜잭션에만 참여한다. 호출자 트랜잭션이 없으면 실행을 거부하며, Drawing·Engine·Winner·Event 전이 실패 시 함께 Rollback한다.
 - 애플리케이션 서비스는 반환된 `seedId`를 `Drawing`에, `DrawingSeed`를 `DrawInput`에 전달한다.
@@ -124,6 +124,9 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 - `snapshotId`, `eventId`, `drawMethod`, `algorithmVersion` 일치는 DB 복합 FK로도 강제한다. REDRAW의 `winnerCount`는 결원 수이므로 Snapshot 원본 당첨자 수와 다를 수 있다.
 - `prizeAlgorithmVersion`도 Snapshot에서 Drawing으로 복제하고 DB 복합 FK로 일치를 강제한다.
 - 동시 명령 감지를 위해 `version`을 낙관적 락 필드로 사용한다.
+- REDRAW는 후보에서 제외한 모든 기존 Winner의 Member ID와 당시 운영 상태를 `redraw_exclusion`에
+  저장한다. `SELECTED`·`RECEIVED`는 `ALREADY_WINNER`, `DECLINED`와 `DISQUALIFIED`는 동명 사유로
+  보존하며, 이 명단은 Input Hash와 재현 검증의 제외 입력에 사용한다.
 
 상태는 `READY`, `RUNNING`, `FAILED`, `COMPLETED`를 사용하고 공개 상태는 `PRIVATE`, `PUBLIC`을 사용한다. INITIAL 실행은 `READY → RUNNING → COMPLETED`로 전이한다.
 
@@ -164,6 +167,7 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 - `WinnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(drawingId)`: 추첨 결과 순위 조회
 - `WinnerRepository.existsByEventIdAndMemberId(eventId, memberId)`: Event 내 중복 당첨 확인
 - `WinnerManagementRepository.findByWinnerId(winnerId)`: Winner 운영 상태 조회
+- `RedrawExclusionRepository.saveAll(exclusions)`: REDRAW Drawing 생성 Transaction 안에서 제외 명단·사유 저장
 
 DB 구조와 제약조건의 정본은 `src/main/resources/db/migration/`이다.
 
