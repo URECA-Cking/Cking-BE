@@ -7,13 +7,13 @@ import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import kr.co.cking.redraw.domain.RedrawRequestStatus;
 
 /** 승인 또는 거절 심사 후 RedrawRequest 상태와 심사 이력을 반환한다. */
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public record RedrawRequestReviewResponse(
         Long redrawRequestId,
         RedrawRequestStatus status,
         RedrawExecutionStatus executionStatus,
         Long reviewedBy,
         Instant reviewedAt,
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         String rejectReason
 ) {
 
