@@ -21,7 +21,7 @@ aws s3 cp "s3://$BUCKET/releases/$TAG/docker-compose.yml" ./docker-compose.yml -
 echo "[2/4] Parameter Store 읽기: $PARAM_PATH"
 # 필요한 값을 이름으로 지정해 하나라도 없으면 여기서 실패한다.
 # 값은 환경변수로만 넘기고 파일·로그에 남기지 않는다.
-for name in DB_HOST DB_USERNAME DB_PASSWORD; do
+for name in DB_HOST DB_USERNAME DB_PASSWORD DOCS_USERNAME DOCS_PASSWORD; do
   value=$(aws ssm get-parameter --region "$REGION" --name "${PARAM_PATH}${name}" \
     --with-decryption --query 'Parameter.Value' --output text)
   export "$name=$value"

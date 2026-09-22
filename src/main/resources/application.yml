@@ -19,3 +19,12 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+
+cking:
+  cors:
+    # 비우면 교차 출처 요청을 허용하지 않는다. 로컬은 Vite 프록시로 같은 출처 요청이 된다.
+    allowed-origins: ""
+  docs:
+    # 비우면 API 문서 인증 필터를 등록하지 않는다.
+    username: ""
+    password: ""

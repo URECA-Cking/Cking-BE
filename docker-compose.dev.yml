@@ -37,6 +37,8 @@ services:
       DB_HOST: ${DB_HOST}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
+      DOCS_USERNAME: ${DOCS_USERNAME}
+      DOCS_PASSWORD: ${DOCS_PASSWORD}
       REDIS_HOST: redis
     logging:
       driver: json-file
