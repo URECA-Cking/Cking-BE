@@ -3,6 +3,7 @@ package kr.co.cking.drawing.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 
 import java.time.Instant;
@@ -15,8 +16,10 @@ import java.util.concurrent.Future;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.drawing.domain.Drawing;
+import kr.co.cking.drawing.domain.DrawAttemptStatus;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingVisibility;
+import kr.co.cking.drawing.repository.DrawAttemptHistoryRepository;
 import kr.co.cking.drawing.repository.DrawSeedRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.event.application.service.EventCommandService;
@@ -54,6 +57,7 @@ class InitialDrawingExecutionIntegrationTest {
     @Autowired private EventRepository eventRepository;
     @Autowired private DrawSnapshotRepository snapshotRepository;
     @MockitoSpyBean private DrawingRepository drawingRepository;
+    @Autowired private DrawAttemptHistoryRepository attemptRepository;
     @Autowired private DrawSeedRepository seedRepository;
     @MockitoSpyBean private WinnerRepository winnerRepository;
     @MockitoSpyBean private WinnerManagementRepository winnerManagementRepository;
@@ -180,7 +184,7 @@ class InitialDrawingExecutionIntegrationTest {
     }
 
     @Test
-    void Event_상태전이가_실패하면_Seed_Drawing_Winner_Management가_모두_Rollback된다() {
+    void Event_상태전이가_실패하면_부분결과를_Rollback하고_FAILED_Drawing과_Attempt를_보존한다() {
         doThrow(new RuntimeException("Event 전이 강제 실패"))
                 .when(eventCommandService).completeDrawing(eventId);
 
@@ -188,12 +192,12 @@ class InitialDrawingExecutionIntegrationTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("강제 실패");
 
-        assertNoDrawingResultPersisted();
+        assertFailedDrawingPreserved();
         assertThat(eventRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventStatus.CLOSED);
     }
 
     @Test
-    void Winner_저장이_실패하면_Seed_Drawing_Event가_모두_Rollback된다() {
+    void Winner_저장이_실패하면_부분결과를_Rollback하고_FAILED_Drawing과_Attempt를_보존한다() {
         doThrow(new RuntimeException("Winner 저장 강제 실패"))
                 .when(winnerRepository).saveAllAndFlush(any());
 
@@ -201,12 +205,12 @@ class InitialDrawingExecutionIntegrationTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("강제 실패");
 
-        assertNoDrawingResultPersisted();
+        assertFailedDrawingPreserved();
         assertThat(eventRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventStatus.CLOSED);
     }
 
     @Test
-    void WinnerManagement_저장이_실패하면_Seed_Drawing_Winner_Event가_모두_Rollback된다() {
+    void WinnerManagement_저장이_실패하면_부분결과를_Rollback하고_FAILED_Drawing과_Attempt를_보존한다() {
         doThrow(new RuntimeException("WinnerManagement 저장 강제 실패"))
                 .when(winnerManagementRepository).saveAllAndFlush(any());
 
@@ -214,20 +218,20 @@ class InitialDrawingExecutionIntegrationTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("강제 실패");
 
-        assertNoDrawingResultPersisted();
+        assertFailedDrawingPreserved();
         assertThat(eventRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventStatus.CLOSED);
     }
 
     @Test
-    void Drawing_완료_저장이_실패하면_Seed_Drawing_Winner_Management_Event가_모두_Rollback된다() {
-        doThrow(new RuntimeException("Drawing 완료 저장 강제 실패"))
+    void Drawing_완료_저장이_실패하면_부분결과를_Rollback하고_FAILED_Drawing과_Attempt를_보존한다() {
+        doNothing().doThrow(new RuntimeException("Drawing 완료 저장 강제 실패"))
                 .when(drawingRepository).flush();
 
         assertThatThrownBy(() -> service.execute(adminId, eventId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("강제 실패");
 
-        assertNoDrawingResultPersisted();
+        assertFailedDrawingPreserved();
         assertThat(eventRepository.findById(eventId).orElseThrow().getStatus()).isEqualTo(EventStatus.CLOSED);
     }
 
@@ -264,8 +268,21 @@ class InitialDrawingExecutionIntegrationTest {
         return member;
     }
 
-    private void assertNoDrawingResultPersisted() {
-        assertThat(drawingRepository.findByEventIdAndDrawNo(eventId, 0)).isEmpty();
+    private void assertFailedDrawingPreserved() {
+        Drawing drawing = drawingRepository.findByEventIdAndDrawNo(eventId, 0).orElseThrow();
+        assertThat(drawing.getStatus()).isEqualTo(DrawingStatus.FAILED);
+        assertThat(drawing.getAttemptCount()).isEqualTo(1);
+        assertThat(drawing.getInputPayload()).isNotBlank();
+        assertThat(drawing.getInputHash()).matches("[0-9a-f]{64}");
+        assertThat(seedRepository.existsById(drawing.getSeedId())).isTrue();
+        assertThat(attemptRepository.findByDrawingIdAndAttemptNo(drawing.getId(), 1))
+                .hasValueSatisfying(attempt -> {
+                    assertThat(attempt.getStatus()).isEqualTo(DrawAttemptStatus.FAILED);
+                    assertThat(attempt.getFailureStage()).isNotNull();
+                    assertThat(attempt.getFailureCode()).isNotBlank();
+                    assertThat(attempt.getFailureMessage()).isNotBlank();
+                    assertThat(attempt.getFinishedAt()).isNotNull();
+                });
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM winner WHERE event_id = ?", Long.class, eventId)).isZero();
         assertThat(jdbcTemplate.queryForObject("""
@@ -274,6 +291,6 @@ class InitialDrawingExecutionIntegrationTest {
                 JOIN winner w ON w.id = wm.winner_id
                 WHERE w.event_id = ?
                 """, Long.class, eventId)).isZero();
-        assertThat(seedRepository.count()).isEqualTo(seedCountBefore);
+        assertThat(seedRepository.count()).isEqualTo(seedCountBefore + 1);
     }
 }

@@ -20,6 +20,10 @@ public class DrawingRetryService {
         return execute(preparationService.prepareRecovery(drawingId));
     }
 
+    DrawingRetryResult executePrepared(DrawingRetryRequest request) {
+        return execute(request);
+    }
+
     private DrawingRetryResult execute(DrawingRetryRequest request) {
         try {
             return executionService.execute(request);

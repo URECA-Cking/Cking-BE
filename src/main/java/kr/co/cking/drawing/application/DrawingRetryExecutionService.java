@@ -75,6 +75,11 @@ class DrawingRetryExecutionService {
         DrawAttemptHistory attempt = attemptRepository
                 .findByDrawingIdAndAttemptNo(request.drawingId(), request.attemptNo())
                 .orElseThrow(() -> new IllegalStateException("Retry Attempt를 찾을 수 없습니다."));
+        if (drawing.getStatus() == DrawingStatus.COMPLETED
+                && drawing.getAttemptCount() == request.attemptNo()
+                && attempt.getStatus() == DrawAttemptStatus.SUCCEEDED) {
+            return DrawingRetryResult.from(drawing);
+        }
         requireRunningAttempt(drawing, attempt, request);
 
         VerifiedSnapshot snapshot = stage(DrawingFailureStage.INPUT_VERIFICATION,
