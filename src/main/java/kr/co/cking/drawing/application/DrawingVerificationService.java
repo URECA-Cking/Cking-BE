@@ -119,7 +119,10 @@ public class DrawingVerificationService {
         VerifiedSnapshot snapshot = snapshotIntegrityService.verifyForReplay(drawing.getSnapshotId());
         evidence.snapshotHashMatched = true;
         requireDrawingContract(drawing, snapshot);
-        List<PrizeValue> prizes = prizesFor(drawing, snapshot);
+        List<PrizeValue> inheritedPrizes = drawing.getDrawType() == DrawingType.REDRAW
+                ? inheritedPrizes(drawing, snapshot)
+                : List.of();
+        List<PrizeValue> prizes = prizesFor(drawing, snapshot, inheritedPrizes);
 
         Set<Long> exclusions = Set.copyOf(exclusionRepository.findMemberIdsByDrawingId(drawing.getId()));
         DrawingSeed originalSeed = drawingSeedService.reuseForRetry(drawing.getSeedId()).seed();
@@ -171,7 +174,7 @@ public class DrawingVerificationService {
 
         DrawOutput deterministicOutput = drawingEngine.draw(originalInput);
         PrizeAllocationOutput deterministicPrizeOutput = allocatePrizes(
-                drawing, originalSeed, snapshot, deterministicOutput, prizes);
+                drawing, originalSeed, snapshot, deterministicOutput, prizes, inheritedPrizes);
         DrawingHash deterministicResultHash = generateResultHash(
                 originalInputHash.value(), deterministicOutput, deterministicPrizeOutput);
         evidence.algorithmMatched = deterministicOutput.algorithmVersion() == algorithmVersion;
@@ -191,7 +194,6 @@ public class DrawingVerificationService {
         evidence.replaySeed = replaySeed;
         DrawInput replayInput = toInput(drawing, snapshot, replaySeed, exclusions);
         DrawOutput replayOutput = drawingEngine.draw(replayInput);
-        allocatePrizes(drawing, replaySeed, snapshot, replayOutput, prizes);
         evidence.captureReplay(replayInput, replayOutput);
 
         if (!evidence.replayContractMatched()) {
@@ -262,7 +264,8 @@ public class DrawingVerificationService {
             DrawingSeed seed,
             VerifiedSnapshot snapshot,
             DrawOutput output,
-            List<PrizeValue> prizes
+            List<PrizeValue> prizes,
+            List<PrizeValue> inheritedPrizes
     ) {
         if (prizes.isEmpty()) {
             return null;
@@ -273,7 +276,7 @@ public class DrawingVerificationService {
                     .toList();
             List<AllocatedPrize> allocations = IntStream.range(0, winners.size())
                     .mapToObj(index -> new AllocatedPrize(winners.get(index).memberId(), winners.get(index).rank(),
-                            inheritedPrizes(drawing, snapshot).get(index)))
+                            inheritedPrizes.get(index)))
                     .toList();
             return new PrizeAllocationOutput(
                     PrizeAllocationAlgorithmVersion.from(snapshot.prizeAlgorithmVersion()), allocations);
@@ -286,11 +289,15 @@ public class DrawingVerificationService {
         ));
     }
 
-    private List<PrizeValue> prizesFor(Drawing drawing, VerifiedSnapshot snapshot) {
+    private List<PrizeValue> prizesFor(
+            Drawing drawing,
+            VerifiedSnapshot snapshot,
+            List<PrizeValue> inheritedPrizes
+    ) {
         if (drawing.getDrawType() != DrawingType.REDRAW) {
             return snapshot.prizes();
         }
-        return toPrizePool(inheritedPrizes(drawing, snapshot));
+        return toPrizePool(inheritedPrizes);
     }
 
     private List<PrizeValue> inheritedPrizes(Drawing drawing, VerifiedSnapshot snapshot) {

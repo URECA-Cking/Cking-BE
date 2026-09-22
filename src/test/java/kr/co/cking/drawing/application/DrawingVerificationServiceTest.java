@@ -278,6 +278,7 @@ class DrawingVerificationServiceTest {
         DrawingVerificationResult result = service.verify(DRAWING_ID, ADMIN_ID);
 
         assertThat(result.status()).isEqualTo(DrawingVerificationStatus.VERIFIED);
+        verify(winnerRepository, times(1)).findRedrawVacancyPrizeSourcesByRequestId(50L);
     }
 
     private DrawInput input(VerifiedSnapshot snapshot, DrawingSeed seed, int winnerCount) {
