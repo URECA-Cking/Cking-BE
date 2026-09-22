@@ -36,6 +36,21 @@ DB의 `UNIQUE(draw_snapshot.event_id)`는 애플리케이션 잠금 외의 최�
 | `SNAPSHOT_NOT_FOUND` | 추첨에 사용할 공식 Snapshot이 없음 |
 | `SNAPSHOT_HASH_MISMATCH` | 저장된 Hash와 재계산한 Hash 또는 집계값이 일치하지 않음 |
 
+### Snapshot 누락 복구
+
+정상 마감 경로는 `CLOSED` Commit 이후 `OfficialSnapshotService.createIfAbsent(eventId)`를 호출한다.
+이 호출이 실패해도 Event를 이전 상태로 되돌리지 않으며, `SnapshotRecoveryScheduler`가 누락을 복구한다.
+
+- `CLOSED`이고 `closedAt`이 복구 유예 시간 이상 지난 Event만 조회한다.
+- 공식 Snapshot이 없는 Event를 `closedAt ASC, eventId ASC` 순서로 한정된 개수만 조회한다.
+- 대상별로 `OfficialSnapshotService.createIfAbsent(eventId)`를 호출해 기존 잠금·멱등 계약을 재사용한다.
+- 한 Event의 복구 실패는 로그에 `eventId`와 예외를 남기고 다음 Event 처리를 계속한다.
+- 기본 실행 주기와 유예 시간은 각각 1분이며, 한 번에 최대 100건을 처리한다.
+
+설정은 `cking.snapshot.recovery.interval-ms`, `cking.snapshot.recovery.grace-period`,
+`cking.snapshot.recovery.batch-size`로 조정한다. Scheduler의 최초 실행도 설정한 주기만큼 지연해 정상 마감
+직후의 Snapshot 생성 경로와 불필요하게 경합하지 않는다.
+
 ### `SnapshotIntegrityService.verifyForDrawing(Long eventId)`
 
 1. Event의 공식 Snapshot을 조회한다.

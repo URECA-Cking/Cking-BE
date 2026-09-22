@@ -104,21 +104,21 @@ FR-P3-016,3조,Drain 조건을 모두 만족한 경우에만 CLOSING → CLOSED�
 FR-P3-017,3조,Drain 실패 또는 타임아웃 시 강제로 CLOSED로 전환하지 않고 CLOSING 상태를 유지해야 한다.,윤희,이벤트 마감,재시도/운영 알림 대상,1차 확정,시작 전,No
 FR-P3-018,3조,CLOSING 상태에서 서버가 재기동되어도 기존 cutoff를 이용해 Drain을 재개할 수 있어야 한다.,윤희,이벤트 마감,장애 복구,1차 확정,시작 전,No
 FR-P3-019,3조,관리자는 이벤트의 마감 상태를 CLOSING/CLOSED로 조회할 수 있어야 한다.,윤희,이벤트 마감,"closing-status API, 진행률·pendingCount 외부 노출 X",1차 확정,시작 전,No
-FR-P3-020,3조,Snapshot은 Event가 CLOSED인 경우에만 생성해야 한다.,윤희,이벤트 마감,OPEN/CLOSING 생성 금지,1차 확정,시작 전,No
-FR-P3-021,3조,CLOSED 확정 후 공식 Snapshot 생성을 트리거해야 한다.,윤희,이벤트 마감,CLOSED Commit과 Snapshot 생성 TX 분리,1차 확정,시작 전,No
-FR-P3-022,3조,동일 사용자의 여러 응모는 사용한 응모권 수를 합산하여 하나의 Candidate로 생성해야 한다.,윤희,이벤트 마감,userId + ticketCount,1차 확정,시작 전,No
-FR-P3-023,3조,ticketCount <= 0인 후보는 Snapshot 대상에서 제외해야 한다.,윤희,이벤트 마감,후보 유효성,1차 확정,시작 전,No
-FR-P3-024,3조,Snapshot Candidate는 항상 동일한 기준으로 정렬해야 한다.,윤희,이벤트 마감,기본 userId ASC,1차 확정,시작 전,No
-FR-P3-025,3조,Event 하나에는 공식 Snapshot이 하나만 존재해야 한다.,윤희,이벤트 마감,UNIQUE(event_id),1차 확정,시작 전,No
-FR-P3-026,3조,동일 Snapshot 생성 요청이 반복·동시 실행되어도 공식 Snapshot은 하나만 생성되어야 한다.,윤희,이벤트 마감,멱등성 + UNIQUE,1차 확정,시작 전,No
-FR-P3-027,3조,생성 완료된 공식 Snapshot과 Candidate는 수정되지 않아야 한다.,윤희,이벤트 마감,Immutable Snapshot,1차 확정,시작 전,No
-FR-P3-028,3조,최초 추첨과 모든 재추첨은 동일한 공식 Snapshot을 사용해야 한다.,윤희,이벤트 마감,재추첨 Snapshot 재생성 금지,1차 확정,시작 전,No
-FR-P3-029,3조,Snapshot 생성 시 후보 및 추첨 조건을 정규화하여 Snapshot Hash를 생성·저장해야 한다.,윤희,이벤트 마감,SHA-256 등,1차 확정,시작 전,No
-FR-P3-030,3조,"Snapshot Hash에는 eventId, userId, ticketCount, winnerCount, drawMethod, algorithmVersion이 포함되어야 한다.",윤희,이벤트 마감,Canonicalization 필요,1차 확정,시작 전,No
-FR-P3-031,3조,추첨 직전 Snapshot Hash를 동일한 정규화 방식으로 재계산하여 저장된 Hash와 비교해야 한다.,성원,이벤트 마감,"윤희가 생성, 성원이 추첨 직전 검증",1차 확정,시작 전,No
-FR-P3-032,3조,Snapshot Hash가 일치하지 않으면 공식 추첨을 실행해서는 안 된다.,성원,이벤트 마감,무결성 검증 실패,1차 확정,시작 전,No
-FR-P3-033,3조,Snapshot Hash 검증 결과와 검증 시각을 기록해야 한다.,성원,이벤트 마감,감사 가능성,1차 확정,시작 전,No
-FR-P3-034,3조,CLOSED 상태인데 Snapshot이 없는 이벤트를 탐색하여 Snapshot 생성을 복구해야 한다.,윤희,이벤트 마감,누락 복구 스케줄러,1차 확정,시작 전,No
+FR-P3-020,3조,Snapshot은 Event가 CLOSED인 경우에만 생성해야 한다.,윤희,이벤트 마감,OPEN/CLOSING 생성 금지,1차 확정,완료,Yes
+FR-P3-021,3조,CLOSED 확정 후 공식 Snapshot 생성을 트리거해야 한다.,윤희,이벤트 마감,CLOSED Commit과 Snapshot 생성 TX 분리,1차 확정,완료,Yes
+FR-P3-022,3조,동일 사용자의 여러 응모는 사용한 응모권 수를 합산하여 하나의 Candidate로 생성해야 한다.,윤희,이벤트 마감,userId + ticketCount,1차 확정,완료,Yes
+FR-P3-023,3조,ticketCount <= 0인 후보는 Snapshot 대상에서 제외해야 한다.,윤희,이벤트 마감,후보 유효성,1차 확정,완료,Yes
+FR-P3-024,3조,Snapshot Candidate는 항상 동일한 기준으로 정렬해야 한다.,윤희,이벤트 마감,기본 userId ASC,1차 확정,완료,Yes
+FR-P3-025,3조,Event 하나에는 공식 Snapshot이 하나만 존재해야 한다.,윤희,이벤트 마감,UNIQUE(event_id),1차 확정,완료,Yes
+FR-P3-026,3조,동일 Snapshot 생성 요청이 반복·동시 실행되어도 공식 Snapshot은 하나만 생성되어야 한다.,윤희,이벤트 마감,멱등성 + UNIQUE,1차 확정,완료,Yes
+FR-P3-027,3조,생성 완료된 공식 Snapshot과 Candidate는 수정되지 않아야 한다.,윤희,이벤트 마감,Immutable Snapshot,1차 확정,완료,Yes
+FR-P3-028,3조,최초 추첨과 모든 재추첨은 동일한 공식 Snapshot을 사용해야 한다.,윤희,이벤트 마감,재추첨 Snapshot 재생성 금지,1차 확정,완료,Yes
+FR-P3-029,3조,Snapshot 생성 시 후보 및 추첨 조건을 정규화하여 Snapshot Hash를 생성·저장해야 한다.,윤희,이벤트 마감,SHA-256 등,1차 확정,완료,Yes
+FR-P3-030,3조,"Snapshot Hash에는 eventId, userId, ticketCount, winnerCount, drawMethod, algorithmVersion이 포함되어야 한다.",윤희,이벤트 마감,Canonicalization 필요,1차 확정,완료,Yes
+FR-P3-031,3조,추첨 직전 Snapshot Hash를 동일한 정규화 방식으로 재계산하여 저장된 Hash와 비교해야 한다.,성원,이벤트 마감,"윤희가 생성, 성원이 추첨 직전 검증",1차 확정,완료,Yes
+FR-P3-032,3조,Snapshot Hash가 일치하지 않으면 공식 추첨을 실행해서는 안 된다.,성원,이벤트 마감,무결성 검증 실패,1차 확정,완료,Yes
+FR-P3-033,3조,Snapshot Hash 검증 결과와 검증 시각을 기록해야 한다.,성원,이벤트 마감,감사 가능성,1차 확정,완료,Yes
+FR-P3-034,3조,CLOSED 상태인데 Snapshot이 없는 이벤트를 탐색하여 Snapshot 생성을 복구해야 한다.,윤희,이벤트 마감,누락 복구 스케줄러,1차 확정,완료,Yes
 FR-P3-035,3조,각 Drawing은 추첨 결과를 결정적으로 재현할 수 있는 Seed를 가져야 한다.,성원,이벤트 마감,Drawing별 Seed,1차 확정,시작 전,No
 FR-P3-036,3조,동일 Drawing의 Retry에서는 Seed를 변경해서는 안 된다.,성원,이벤트 마감,재현성 보장,1차 확정,시작 전,No
 FR-P3-037,3조,추첨 엔진은 DrawInput을 입력받아 DrawOutput을 반환해야 한다.,성원,이벤트 마감,윤희↔성원 계약,1차 확정,시작 전,No
@@ -167,11 +167,11 @@ FR-P3-079,3조,추첨 결과 저장과 Outbox Event 저장을 동일 Transaction
 FR-P3-080,3조,Outbox 이벤트를 Kafka로 전달하여 추첨 결과 후속 처리를 수행해야 한다.,성원,이벤트 마감,Outbox/Kafka 채택 전제,확인 필요,시작 전,No
 FR-P3-081,3조,공개된 추첨 결과 조회를 위한 Read Model을 제공해야 한다.,성원,이벤트 마감,CQRS성 구조가 실제 필요한지 확인,확인 필요,시작 전,No
 FR-P3-082,3조,동일 Snapshot + Seed + Algorithm Version + Exclusion List + winnerCount 입력은 항상 동일 Winner와 Rank를 생성해야 한다.,성원,이벤트 마감,결정적 재현성,1차 확정,시작 전,No
-FR-P3-083,3조,Event당 공식 Snapshot은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,동시 생성 포함,1차 확정,시작 전,No
+FR-P3-083,3조,Event당 공식 Snapshot은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,동시 생성 포함,1차 확정,완료,Yes
 FR-P3-084,3조,Event당 INITIAL Drawing은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,다중 인스턴스 포함,1차 확정,시작 전,No
 FR-P3-085,3조,INITIAL 결과 확정은 Winner·Drawing·ResultHash·Event 상태가 원자적으로 저장되어야 한다.,윤희,이벤트 마감,Transaction invariant,1차 확정,완료,Yes
 FR-P3-086,3조,Gate 차단 이후 승인되는 신규 응모는 0건이어야 한다.,윤희,이벤트 마감,동시성 테스트,1차 확정,시작 전,No
-FR-P3-087,3조,CLOSED 이전 승인 응모의 Snapshot 누락은 0건이어야 한다.,윤희,이벤트 마감,마감/추첨 연결 정합성,1차 확정,시작 전,No
+FR-P3-087,3조,CLOSED 이전 승인 응모의 Snapshot 누락은 0건이어야 한다.,윤희,이벤트 마감,마감/추첨 연결 정합성,1차 확정,완료,Yes
 FR-P3-088,3조,동일 Drawing에서 동일 사용자의 중복 당첨은 0건이어야 한다.,성원,이벤트 마감,알고리즘 검증,1차 확정,시작 전,No
 FR-P3-089,3조,기존 Winner가 재추첨에서 다시 당첨되는 경우는 0건이어야 한다.,윤희/성원,이벤트 마감,후보 필터 + 엔진 검증,1차 확정,시작 전,No
 FR-P3-090,3조,Event의 상품 등급별 식별자·표시명·우선순위·양의 정수 가중치·수량을 DRAFT에서 설정할 수 있어야 한다.,성원,상품 가중치 추첨,event_prize와 생성·수정·조회 API,2차 확정,완료,No
