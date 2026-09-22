@@ -4,7 +4,7 @@
 
 - `DECLINED` 또는 `DISQUALIFIED` Winner로 생긴 결원을 재추첨 요청으로 고정한다.
 - 요청 생성 시 최초 `INITIAL` Drawing과 실제 결원을 서버에서 결정한다.
-- 같은 결원이 둘 이상의 진행 중 요청에 포함되지 않도록 보장한다.
+- 같은 결원이 둘 이상의 진행 중 요청 또는 실행 완료 요청에 포함되지 않도록 보장한다.
 
 이 도메인은 Event·Drawing·Winner Entity를 직접 수정하지 않는다. 생성 전 상태 조회는 각 도메인의
 조회 경계를 통해 수행하며, 이후 승인·실행은 별도 API가 책임진다.
@@ -18,8 +18,9 @@
 | `REJECTED` | 요청 거절 | 점유하지 않음 |
 
 실행 상태는 `PENDING`, `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED`이며, 생성 시에는 항상
-`PENDING`이다. 진행 중 요청은 `REQUESTED` 또는 `APPROVED`이면서 `executionStatus = PENDING`인
-요청이다. 이 요청에 연결된 Winner는 새 요청의 결원 후보에서 제외한다.
+`PENDING`이다. `REQUESTED` 또는 `APPROVED`이면서 `executionStatus = PENDING`인 요청은 결원을 임시 점유한다.
+`EXECUTED` 요청은 결원을 영구 점유하므로, 해당 Winner는 새 요청의 결원 후보에서 제외한다. `REJECTED`,
+`FAILED`, `INSUFFICIENT_CANDIDATES` 요청의 결원은 다시 사용할 수 있다.
 
 ## 생성 불변조건
 

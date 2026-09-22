@@ -78,9 +78,9 @@ class RedrawRepositoryJpaTest {
                 .containsExactly(WinnerManagementStatus.SELECTED, WinnerManagementStatus.DECLINED);
     }
 
-    /** REQUESTED·APPROVED이면서 PENDING인 요청의 Winner만 진행 중 점유로 반환한다. */
+    /** 진행 중 요청과 EXECUTED 요청의 Winner를 점유 목록으로 반환한다. */
     @Test
-    void 진행_중인_요청이_점유한_Winner만_조회한다() {
+    void 진행_중_또는_실행_완료된_요청이_점유한_Winner를_조회한다() {
         Fixture fixture = fixture();
         long requestedWinnerId = insertWinner(
                 fixture.eventId(), fixture.initialDrawingId(), 1, WinnerManagementStatus.DECLINED);
@@ -90,6 +90,10 @@ class RedrawRepositoryJpaTest {
                 fixture.eventId(), fixture.initialDrawingId(), 3, WinnerManagementStatus.DECLINED);
         long executedWinnerId = insertWinner(
                 fixture.eventId(), fixture.initialDrawingId(), 4, WinnerManagementStatus.DISQUALIFIED);
+        long failedWinnerId = insertWinner(
+                fixture.eventId(), fixture.initialDrawingId(), 5, WinnerManagementStatus.DECLINED);
+        long insufficientWinnerId = insertWinner(
+                fixture.eventId(), fixture.initialDrawingId(), 6, WinnerManagementStatus.DISQUALIFIED);
 
         insertVacancy(
                 insertRedrawRequest(fixture, RedrawRequestStatus.REQUESTED, RedrawExecutionStatus.PENDING),
@@ -107,12 +111,20 @@ class RedrawRepositoryJpaTest {
                 insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.EXECUTED),
                 executedWinnerId
         );
+        insertVacancy(
+                insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.FAILED),
+                failedWinnerId
+        );
+        insertVacancy(
+                insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.INSUFFICIENT_CANDIDATES),
+                insufficientWinnerId
+        );
 
-        List<Long> occupiedWinnerIds = redrawRequestVacancyRepository.findOccupiedWinnerIdsInProgress(List.of(
-                requestedWinnerId, approvedWinnerId, rejectedWinnerId, executedWinnerId
+        List<Long> occupiedWinnerIds = redrawRequestVacancyRepository.findOccupiedWinnerIds(List.of(
+                requestedWinnerId, approvedWinnerId, rejectedWinnerId, executedWinnerId, failedWinnerId, insufficientWinnerId
         ));
 
-        assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(requestedWinnerId, approvedWinnerId);
+        assertThat(occupiedWinnerIds).containsExactlyInAnyOrder(requestedWinnerId, approvedWinnerId, executedWinnerId);
     }
 
     /** 고정 결원 Winner의 상품 원본은 RedrawRequestVacancy 생성 순서대로 조회한다. */
