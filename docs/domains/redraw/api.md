@@ -78,7 +78,7 @@
     "eventId": 20,
     "originalDrawingId": 30,
     "redrawDrawingId": 40,
-    "vacancyCount": 2,
+    "vacancyCount": 1,
     "vacancyWinners": [
       { "winnerId": 100, "userId": 300, "name": "홍길동", "rankInDrawing": 1 }
     ],
