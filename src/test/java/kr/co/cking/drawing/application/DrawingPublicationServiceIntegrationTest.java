@@ -268,6 +268,7 @@ class DrawingPublicationServiceIntegrationTest {
     }
 
     private void cleanUp() {
+        jdbcTemplate.update("DELETE FROM draw_attempt_history WHERE drawing_id IN (?, ?)", DRAWING_ID, REDRAW_DRAWING_ID);
         jdbcTemplate.update("DELETE FROM drawing WHERE id = ?", REDRAW_DRAWING_ID);
         jdbcTemplate.update("DELETE FROM redraw_request WHERE id = ?", REDRAW_REQUEST_ID);
         jdbcTemplate.update("DELETE FROM drawing WHERE id = ?", DRAWING_ID);

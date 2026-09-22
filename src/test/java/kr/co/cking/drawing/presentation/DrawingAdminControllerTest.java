@@ -24,6 +24,8 @@ import kr.co.cking.drawing.application.DrawingVerificationService;
 import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import kr.co.cking.drawing.application.InitialDrawingResult;
 import kr.co.cking.drawing.application.PublicationService;
+import kr.co.cking.drawing.application.DrawingRetryResult;
+import kr.co.cking.drawing.application.DrawingRetryService;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
@@ -56,6 +58,33 @@ class DrawingAdminControllerTest {
 
     @MockitoBean
     private DrawingVerificationService drawingVerificationService;
+
+    @MockitoBean
+    private DrawingRetryService drawingRetryService;
+
+    @Test
+    void 관리자는_FAILED_Drawing을_재시도한다() throws Exception {
+        when(drawingRetryService.retry(20L, 1L)).thenReturn(new DrawingRetryResult(
+                20L, 10L, DrawingType.INITIAL, DrawingStatus.COMPLETED, 2, 3));
+
+        mockMvc.perform(post("/api/admin/drawings/20/retry")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.drawingId").value(20))
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.attemptCount").value(2));
+
+        verify(drawingRetryService).retry(20L, 1L);
+    }
+
+    @Test
+    void Retry의_drawingId와_userId는_양수여야_한다() throws Exception {
+        mockMvc.perform(post("/api/admin/drawings/0/retry")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":0}"))
+                .andExpect(status().isBadRequest());
+    }
 
     @Test
     void 관리자는_공통_성공_응답으로_INITIAL_Drawing_실행_결과를_받는다() throws Exception {

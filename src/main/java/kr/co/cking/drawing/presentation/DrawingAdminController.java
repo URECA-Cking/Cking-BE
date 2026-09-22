@@ -15,6 +15,7 @@ import kr.co.cking.drawing.application.DrawingVerificationResult;
 import kr.co.cking.drawing.application.DrawingVerificationService;
 import kr.co.cking.drawing.application.InitialDrawingExecutionService;
 import kr.co.cking.drawing.application.PublicationService;
+import kr.co.cking.drawing.application.DrawingRetryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,6 +35,7 @@ public class DrawingAdminController {
     private final InitialDrawingExecutionService initialDrawingExecutionService;
     private final DrawingAdminQueryService drawingAdminQueryService;
     private final DrawingVerificationService drawingVerificationService;
+    private final DrawingRetryService drawingRetryService;
 
     /** 관리자 요청으로 INITIAL Drawing을 실행하고 완료된 추첨 결과 요약을 반환한다. */
     @Operation(
@@ -103,5 +105,20 @@ public class DrawingAdminController {
     ) {
         return ApiResponse.success(drawingVerificationService.getHistory(
                 drawingId, userId, page, size));
+    }
+
+    /** 실패한 INITIAL 또는 REDRAW Drawing을 저장된 확정 입력 그대로 다시 실행한다. */
+    @Operation(
+            summary = "실패 Drawing 재시도",
+            description = "FAILED Drawing의 Snapshot, Seed, 알고리즘과 winnerCount를 변경하지 않고 재실행합니다."
+    )
+    @PostMapping("/api/admin/drawings/{drawingId}/retry")
+    public ApiResponse<DrawingRetryResponse> retryDrawing(
+            @PathVariable @Positive Long drawingId,
+            @Valid @RequestBody DrawingRetryRequest request
+    ) {
+        return ApiResponse.success(DrawingRetryResponse.from(
+                drawingRetryService.retry(drawingId, request.userId())
+        ));
     }
 }

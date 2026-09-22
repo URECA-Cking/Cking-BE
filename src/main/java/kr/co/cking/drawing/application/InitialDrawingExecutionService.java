@@ -25,6 +25,8 @@ import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationInput;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.drawing.repository.DrawAttemptHistoryRepository;
+import kr.co.cking.drawing.domain.DrawAttemptHistory;
 import kr.co.cking.event.application.EventDrawingQueryService;
 import kr.co.cking.event.application.dto.EventDrawingSource;
 import kr.co.cking.event.application.service.EventCommandService;
@@ -40,9 +42,10 @@ import kr.co.cking.winner.repository.WinnerManagementRepository;
 import kr.co.cking.winner.repository.WinnerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 
-/** INITIAL Drawing 생성부터 Winner와 Event 상태 확정까지의 원자 실행 경계. */
+/** INITIAL 실행 시작은 먼저 보존하고 Winner와 Event 결과는 별도 원자 경계에서 확정한다. */
 @Service
 @RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class InitialDrawingExecutionService {
@@ -64,6 +67,20 @@ public class InitialDrawingExecutionService {
     private final PrizeAllocationEngine prizeAllocationEngine;
     private final EventCommandService eventCommandService;
     private final Clock clock;
+    private final DrawAttemptHistoryRepository attemptRepository;
+
+    private InitialDrawingPreparationService preparationService;
+    private DrawingRetryService retryService;
+
+    /** 애플리케이션 실행 시에는 최초 시작과 결과 저장을 서로 다른 Transaction으로 연결한다. */
+    @Autowired
+    void configureAtomicFailureRecovery(
+            InitialDrawingPreparationService preparationService,
+            DrawingRetryService retryService
+    ) {
+        this.preparationService = preparationService;
+        this.retryService = retryService;
+    }
 
     /** 기존 V1 단위 테스트와 상품이 없는 레거시 Drawing 경로를 위한 호환 생성자다. */
     public InitialDrawingExecutionService(MemberQueryService memberQueryService,
@@ -76,11 +93,48 @@ public class InitialDrawingExecutionService {
                 drawingRepository, winnerRepository, winnerManagementRepository, drawingEngine,
                 inputHashGenerator, resultHashGenerator, new DrawInputV2HashGenerator(),
                 new DrawResultV2HashGenerator(), new kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine(),
-                eventCommandService, clock);
+                eventCommandService, clock, null);
     }
 
-    @Transactional
+    /** 상품 추첨이 있는 기존 단위 테스트와 수동 조립 코드를 위한 호환 생성자다. */
+    public InitialDrawingExecutionService(MemberQueryService memberQueryService,
+            EventDrawingQueryService eventDrawingQueryService, SnapshotIntegrityService snapshotIntegrityService,
+            DrawingSeedService drawingSeedService, DrawingRepository drawingRepository,
+            WinnerRepository winnerRepository, WinnerManagementRepository winnerManagementRepository,
+            DrawingEngine drawingEngine, DrawInputHashGenerator inputHashGenerator,
+            DrawResultHashGenerator resultHashGenerator, DrawInputV2HashGenerator inputV2HashGenerator,
+            DrawResultV2HashGenerator resultV2HashGenerator, PrizeAllocationEngine prizeAllocationEngine,
+            EventCommandService eventCommandService, Clock clock) {
+        this(memberQueryService, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService,
+                drawingRepository, winnerRepository, winnerManagementRepository, drawingEngine,
+                inputHashGenerator, resultHashGenerator, inputV2HashGenerator, resultV2HashGenerator,
+                prizeAllocationEngine, eventCommandService, clock, null);
+    }
+
     public InitialDrawingResult execute(Long adminId, Long eventId) {
+        if (preparationService != null) {
+            InitialDrawingPreparation preparation = prepareInitial(adminId, eventId);
+            if (preparation.isExisting()) {
+                return preparation.existingResult();
+            }
+            DrawingRetryResult result = retryService.executePrepared(preparation.executionRequest());
+            return new InitialDrawingResult(
+                    result.drawingId(), result.eventId(), result.status(), result.winnerCount());
+        }
+        return executeLegacy(adminId, eventId);
+    }
+
+    /** 동시 최초 생성이 유니크 제약에서 경합하면 선행 요청이 확정한 Drawing에 합류한다. */
+    private InitialDrawingPreparation prepareInitial(Long adminId, Long eventId) {
+        try {
+            return preparationService.prepare(adminId, eventId);
+        } catch (DataIntegrityViolationException concurrentInsert) {
+            return preparationService.prepare(adminId, eventId);
+        }
+    }
+
+    /** 직접 생성하는 단위 테스트의 기존 조립 계약을 유지하는 레거시 실행 경로다. */
+    private InitialDrawingResult executeLegacy(Long adminId, Long eventId) {
         memberQueryService.validateAdmin(adminId);
 
         // Event 행 잠금으로 같은 Event의 실행 요청을 직렬화한다.
@@ -107,6 +161,11 @@ public class InitialDrawingExecutionService {
                 ? inputV2HashGenerator.generate(input, snapshot.prizeAlgorithmVersion(), snapshot.prizes())
                 : inputHashGenerator.generate(input);
         drawing.start(inputHash.canonicalPayload(), inputHash.value(), clock.instant());
+        DrawAttemptHistory attempt = DrawAttemptHistory.started(
+                drawing.getId(), drawing.getAttemptCount(), adminId, clock.instant());
+        if (attemptRepository != null) {
+            attemptRepository.saveAndFlush(attempt);
+        }
 
         DrawOutput output = drawingEngine.draw(input);
         validateOutput(input, output);
@@ -120,6 +179,7 @@ public class InitialDrawingExecutionService {
 
         saveWinners(drawing, snapshot, output, prizeOutput);
         drawing.complete(resultHash.canonicalPayload(), resultHash.value(), clock.instant());
+        attempt.succeed(clock.instant());
         drawingRepository.flush();
         eventCommandService.completeDrawing(eventId);
 

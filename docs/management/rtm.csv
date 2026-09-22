@@ -141,12 +141,12 @@ FR-P3-053,3조,동일 Drawing 내 Winner의 rank와 userId가 중복되어서는
 FR-P3-054,3조,추첨 결과를 정규화하여 Result Hash를 생성·저장해야 한다.,성원,이벤트 마감,결과 무결성,1차 확정,시작 전,No
 FR-P3-055,3조,"INITIAL 추첨 완료 시 Winner 전체 저장, Drawing COMPLETED, resultHash 저장, Event CLOSED → DRAW_COMPLETED를 하나의 Transaction으로 처리해야 한다.",윤희,이벤트 마감,핵심 원자성,1차 확정,시작 전,No
 FR-P3-056,3조,INITIAL 결과 저장 중 하나라도 실패하면 전체 결과를 Rollback해야 한다.,윤희,이벤트 마감,부분 Winner 저장 금지,1차 확정,시작 전,No
-FR-P3-057,3조,추첨 실패 시 실패 단계·원인·시각·Retry 횟수를 기록해야 한다.,윤희,이벤트 마감,Attempt History,1차 확정,시작 전,No
-FR-P3-058,3조,일시적인 시스템 장애로 실패한 Drawing은 기존 Drawing으로 Retry할 수 있어야 한다.,윤희,이벤트 마감,새 Drawing 생성 X,1차 확정,시작 전,No
-FR-P3-059,3조,"Drawing Retry 시 Snapshot, Seed, Algorithm Version, winnerCount, Drawing ID를 변경해서는 안 된다.",윤희,이벤트 마감,동일 조건 재실행,1차 확정,시작 전,No
-FR-P3-060,3조,Snapshot Hash 불일치나 후보 부족 등 입력 자체가 유효하지 않은 경우 동일 조건 Retry를 수행하지 않아야 한다.,윤희,이벤트 마감,기술 실패와 비즈니스 실패 구분,1차 확정,시작 전,No
-FR-P3-061,3조,이미 정상 추첨 결과가 존재하는 Drawing에 재실행 요청이 오면 다시 추첨하지 않아야 한다.,윤희,이벤트 마감,중복 실행 방지,1차 확정,시작 전,No
-FR-P3-062,3조,RUNNING 중 서버가 종료된 경우 기존 Drawing을 기준으로 복구할 수 있어야 한다.,윤희,이벤트 마감,장애 복구,1차 확정,시작 전,No
+FR-P3-057,3조,추첨 실패 시 실패 단계·원인·시각·Retry 횟수를 기록해야 한다.,윤희,이벤트 마감,Attempt History,1차 확정,완료,Yes
+FR-P3-058,3조,일시적인 시스템 장애로 실패한 Drawing은 기존 Drawing으로 Retry할 수 있어야 한다.,윤희,이벤트 마감,새 Drawing 생성 X,1차 확정,완료,Yes
+FR-P3-059,3조,"Drawing Retry 시 Snapshot, Seed, Algorithm Version, winnerCount, Drawing ID를 변경해서는 안 된다.",윤희,이벤트 마감,동일 조건 재실행,1차 확정,완료,Yes
+FR-P3-060,3조,Snapshot Hash 불일치나 후보 부족 등 입력 자체가 유효하지 않은 경우 동일 조건 Retry를 수행하지 않아야 한다.,윤희,이벤트 마감,기술 실패와 비즈니스 실패 구분,1차 확정,완료,Yes
+FR-P3-061,3조,이미 정상 추첨 결과가 존재하는 Drawing에 재실행 요청이 오면 다시 추첨하지 않아야 한다.,윤희,이벤트 마감,중복 실행 방지,1차 확정,완료,Yes
+FR-P3-062,3조,RUNNING 중 서버가 종료된 경우 기존 Drawing을 기준으로 복구할 수 있어야 한다.,윤희,이벤트 마감,장애 복구,1차 확정,완료,Yes
 FR-P3-063,3조,완료된 Drawing을 당시 확정된 입력으로 재현 검증할 수 있어야 한다.,성원,이벤트 마감,INITIAL/REDRAW 모두,1차 확정,시작 전,No
 FR-P3-064,3조,"재현 검증에는 Snapshot, Snapshot Hash, Seed, Algorithm Version, Exclusion List, winnerCount를 사용해야 한다.",성원,이벤트 마감,현재 데이터 사용 금지,1차 확정,시작 전,No
 FR-P3-065,3조,"재현 결과의 Snapshot Hash, Input Hash, Winner, Rank, Result Hash를 기존 결과와 비교해야 한다.",성원,이벤트 마감,VERIFIED/FAILED,1차 확정,시작 전,No
@@ -161,7 +161,7 @@ FR-P3-073,3조,새로운 재추첨 Drawing에는 새로운 Seed를 생성해야 
 FR-P3-074,3조,후보 수가 vacancyCount보다 부족하면 REDRAW Drawing을 생성하지 않아야 한다.,윤희,이벤트 마감,부분 재추첨 X,1차 확정,시작 전,No
 FR-P3-075,3조,후보 부족 시 executionStatus=INSUFFICIENT_CANDIDATES로 처리해야 한다.,윤희,이벤트 마감,vacancyCount 임의 감소 X,1차 확정,시작 전,No
 FR-P3-076,3조,동일 RedrawRequest가 동시에 처리되어도 REDRAW Drawing은 하나만 생성되어야 한다.,윤희,이벤트 마감,재추첨 실행 멱등성,1차 확정,시작 전,No
-FR-P3-077,3조,REDRAW Drawing 실패 후 Retry 시 새로운 Drawing이나 Seed를 생성해서는 안 된다.,윤희,이벤트 마감,기존 Drawing 재사용,1차 확정,시작 전,No
+FR-P3-077,3조,REDRAW Drawing 실패 후 Retry 시 새로운 Drawing이나 Seed를 생성해서는 안 된다.,윤희,이벤트 마감,기존 Drawing 재사용,1차 확정,완료,Yes
 FR-P3-078,3조,추첨 완료 결과를 Kafka 이벤트로 발행해야 한다.,성원,이벤트 마감,새 역할분담에 등장,1차 확정,시작 전,No
 FR-P3-079,3조,추첨 결과 저장과 Outbox Event 저장을 동일 Transaction으로 처리해야 한다.,윤희,이벤트 마감,Kafka 채택 시 필요,확인 필요,시작 전,No
 FR-P3-080,3조,Outbox 이벤트를 Kafka로 전달하여 추첨 결과 후속 처리를 수행해야 한다.,성원,이벤트 마감,Outbox/Kafka 채택 전제,확인 필요,시작 전,No
@@ -169,7 +169,7 @@ FR-P3-081,3조,공개된 추첨 결과 조회를 위한 Read Model을 제공해�
 FR-P3-082,3조,동일 Snapshot + Seed + Algorithm Version + Exclusion List + winnerCount 입력은 항상 동일 Winner와 Rank를 생성해야 한다.,성원,이벤트 마감,결정적 재현성,1차 확정,시작 전,No
 FR-P3-083,3조,Event당 공식 Snapshot은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,동시 생성 포함,1차 확정,시작 전,No
 FR-P3-084,3조,Event당 INITIAL Drawing은 정확히 1개만 존재해야 한다.,윤희,이벤트 마감,다중 인스턴스 포함,1차 확정,시작 전,No
-FR-P3-085,3조,INITIAL 결과 확정은 Winner·Drawing·ResultHash·Event 상태가 원자적으로 저장되어야 한다.,윤희,이벤트 마감,Transaction invariant,1차 확정,시작 전,No
+FR-P3-085,3조,INITIAL 결과 확정은 Winner·Drawing·ResultHash·Event 상태가 원자적으로 저장되어야 한다.,윤희,이벤트 마감,Transaction invariant,1차 확정,완료,Yes
 FR-P3-086,3조,Gate 차단 이후 승인되는 신규 응모는 0건이어야 한다.,윤희,이벤트 마감,동시성 테스트,1차 확정,시작 전,No
 FR-P3-087,3조,CLOSED 이전 승인 응모의 Snapshot 누락은 0건이어야 한다.,윤희,이벤트 마감,마감/추첨 연결 정합성,1차 확정,시작 전,No
 FR-P3-088,3조,동일 Drawing에서 동일 사용자의 중복 당첨은 0건이어야 한다.,성원,이벤트 마감,알고리즘 검증,1차 확정,시작 전,No
@@ -179,7 +179,7 @@ FR-P3-091,3조,상품 가중치는 응모자 선정 확률과 CandidateValue.tic
 FR-P3-092,3조,공식 Snapshot은 상품 구성·가중치·수량·상품 알고리즘 버전을 변경 불가능한 입력으로 보존해야 한다.,성원,상품 가중치 추첨,draw_snapshot_prize와 CKING_SNAPSHOT_V2,2차 확정,완료,No
 FR-P3-093,3조,상품 배정은 남은 재고가 있는 상품만 정수 누적 가중치 구간에 포함하고 배정 후 수량을 차감해야 한다.,성원,상품 가중치 추첨,PRIZE_WEIGHTED_V1,2차 확정,완료,No
 FR-P3-094,3조,상품 수량 부족·0 이하 가중치·중복 상품 식별자·가중치 합 overflow를 배정 전에 거부해야 한다.,성원,상품 가중치 추첨,Event·Snapshot·PrizeAllocationInput 검증,2차 확정,완료,No
-FR-P3-095,3조,동일 Drawing Retry는 보존된 상품 설정·Seed·상품 알고리즘 버전으로 동일한 상품 배정을 재현해야 한다.,성원,상품 가중치 추첨,Seed 도메인 분리와 고정 Seed fixture,2차 확정,완료,No
+FR-P3-095,3조,동일 Drawing Retry는 보존된 상품 설정·Seed·상품 알고리즘 버전으로 동일한 상품 배정을 재현해야 한다.,성원,상품 가중치 추첨,Seed 도메인 분리와 고정 Seed fixture,2차 확정,완료,Yes
 FR-P3-096,3조,상품 설정은 Input Hash에 당첨자별 상품 배정은 Result Hash에 포함하되 기존 V1 계약은 변경하지 않아야 한다.,성원,상품 가중치 추첨,CKING_DRAW_INPUT_V2·CKING_DRAW_RESULT_V2,2차 확정,완료,No
 FR-P3-097,3조,당첨자별 배정 상품과 Winner·WinnerManagement·Drawing·Event 상태는 하나의 Transaction으로 확정해야 한다.,성원,상품 가중치 추첨,부분 상품 저장 금지와 Rollback 통합 테스트,2차 확정,완료,No
 FR-P3-098,3조,Event·Snapshot·관리자 결과·PUBLIC 결과 조회에서 상품 정보를 반환해야 한다.,성원,상품 가중치 추첨,상품 조회 응답 확장,2차 확정,완료,No

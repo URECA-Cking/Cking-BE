@@ -28,4 +28,9 @@ public interface DrawingRepository extends JpaRepository<Drawing, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select d from Drawing d where d.id = :id")
     Optional<Drawing> findByIdForPublish(Long id);
+
+    /** Retry와 중단 복구가 동일 Drawing을 동시에 실행하지 않도록 쓰기 잠금으로 조회한다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select d from Drawing d where d.id = :id")
+    Optional<Drawing> findByIdForRetry(Long id);
 }

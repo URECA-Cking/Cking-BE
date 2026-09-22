@@ -89,6 +89,7 @@ abstract class RedrawRequestCreateIntegrationFixture {
             jdbcTemplate.update("DELETE FROM winner WHERE id = ?", winnerId);
         }
         if (drawingId != null) {
+            jdbcTemplate.update("DELETE FROM draw_attempt_history WHERE drawing_id = ?", drawingId);
             jdbcTemplate.update("DELETE FROM drawing WHERE id = ?", drawingId);
         }
         if (snapshotId != null) {

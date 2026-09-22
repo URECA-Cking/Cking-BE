@@ -1,5 +1,60 @@
 # Drawing API
 
+## 관리자 Drawing Retry
+
+### `POST /api/admin/drawings/{drawingId}/retry`
+
+실패한 INITIAL 또는 REDRAW Drawing을 새 Drawing이나 Seed를 만들지 않고 저장된 확정 입력으로 다시 실행한다.
+
+#### 요청
+
+- Path Variable: `drawingId` (`Long`, 양수, 필수)
+- Body: 관리자 `userId` (`Long`, 양수, 필수)
+
+```json
+{ "userId": 1 }
+```
+
+#### 성공 응답
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {
+    "drawingId": 10,
+    "eventId": 20,
+    "drawType": "INITIAL",
+    "status": "COMPLETED",
+    "attemptCount": 2,
+    "winnerCount": 3
+  },
+  "message": null
+}
+```
+
+#### 처리 계약
+
+- 요청자는 존재하는 `ADMIN` Member여야 하고 Drawing은 `FAILED` 상태여야 한다.
+- 기존 `drawingId`, `snapshotId`, `seedId`, 후보·상품 알고리즘 버전, `winnerCount`를 재사용한다.
+- Drawing 행을 비관적으로 잠근 뒤 상태를 재검증하여 동시 Retry 중 하나만 `RUNNING`으로 전이한다.
+- Snapshot 무결성, 보존된 입력 Hash, 후보 수를 엔진 호출 전에 검증한다. 같은 입력으로 해결되지 않는 실패는
+  `NON_RETRYABLE_FAILURE`로 차단한다.
+- 실행 시작 상태와 Attempt 이력을 먼저 확정하고, Winner·WinnerManagement·Result Hash·Drawing 완료와
+  Event 또는 RedrawRequest 후속 상태는 별도 단일 Transaction으로 저장한다.
+- 결과 Transaction 실패 시 부분 결과를 Rollback하고 별도 Transaction에서 Drawing `FAILED`와 실패 단계,
+  코드, 메시지, 종료 시각을 보존한다.
+- 설정 시간보다 오래 `RUNNING`인 Attempt는 복구기가 `SERVER_INTERRUPTED`로 종결한 뒤 같은 Retry 경로로 실행한다.
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | drawingId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | 요청한 Member가 존재하지 않음 |
+| `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
+| `DRAWING_NOT_FOUND` | Drawing이 존재하지 않음 |
+| `INVALID_STATE` | Drawing이 FAILED가 아니거나 지원하지 않는 상태임 |
+| `CONCURRENT_COMMAND` | 다른 Retry 또는 복구가 같은 Drawing을 RUNNING으로 전이함 |
+| `NON_RETRYABLE_FAILURE` | Snapshot·보존 입력 불일치 또는 후보 부족처럼 같은 입력으로 해결할 수 없음 |
+
 ## 관리자 Drawing 공개
 
 ### `POST /api/admin/drawings/{drawingId}/publish`
