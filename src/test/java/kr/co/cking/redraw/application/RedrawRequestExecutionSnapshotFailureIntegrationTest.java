@@ -2,10 +2,7 @@ package kr.co.cking.redraw.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
 import kr.co.cking.redraw.domain.RedrawExecutionStatus;
-import kr.co.cking.snapshot.application.SnapshotHashGenerator;
-import kr.co.cking.snapshot.application.SnapshotHashInput;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,14 +18,12 @@ class RedrawRequestExecutionSnapshotFailureIntegrationTest extends RedrawRequest
     void Snapshot_Hash_불일치면_REDRAW_결과를_롤백하고_FAILED_이력을_저장한다() {
         Long redrawRequestId = redrawRequestCreateService.create(command(newIdempotencyKey())).redrawRequestId();
         redrawRequestReviewService.approve(adminId(), redrawRequestId);
-        long eventId = jdbcTemplate.queryForObject(
-                "SELECT event_id FROM redraw_request WHERE id = ?", Long.class, redrawRequestId
-        );
-        String validHash = new SnapshotHashGenerator().generate(new SnapshotHashInput(
-                eventId, 1, "WEIGHTED", "WEIGHTED_V1", List.of()
-        )).value();
-        jdbcTemplate.update("UPDATE draw_snapshot SET snapshot_hash = ? WHERE event_id = ?", validHash, eventId);
-        jdbcTemplate.update("UPDATE draw_snapshot SET snapshot_hash = ? WHERE event_id = ?", "b".repeat(64), eventId);
+        jdbcTemplate.update("""
+                UPDATE draw_snapshot snapshot
+                JOIN redraw_request request ON request.event_id = snapshot.event_id
+                SET snapshot.snapshot_hash = ?
+                WHERE request.id = ?
+                """, "b".repeat(64), redrawRequestId);
 
         RedrawRequestExecutionResult result = redrawRequestExecutionService.execute(adminId(), redrawRequestId);
 
