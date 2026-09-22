@@ -9,7 +9,7 @@ import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.repository.DrawAttemptHistoryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
-import kr.co.cking.redraw.repository.RedrawRequestRepository;
+import kr.co.cking.redraw.application.RedrawDrawingLifecycleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -22,7 +22,7 @@ public class DrawingFailurePersistenceService {
 
     private final DrawingRepository drawingRepository;
     private final DrawAttemptHistoryRepository attemptRepository;
-    private final RedrawRequestRepository redrawRequestRepository;
+    private final RedrawDrawingLifecycleService redrawLifecycleService;
     private final Clock clock;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -46,7 +46,7 @@ public class DrawingFailurePersistenceService {
 
         drawing.fail();
         attempt.fail(stage, failureCode, truncate(failureMessage), clock.instant());
-        failRedrawRequest(drawing);
+        failRedrawRequest(drawing, failureCode, failureMessage);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -63,14 +63,14 @@ public class DrawingFailurePersistenceService {
         }
         drawing.fail();
         attempt.interrupt(clock.instant());
-        failRedrawRequest(drawing);
+        failRedrawRequest(drawing, "SERVER_INTERRUPTED", "실행 중 서버가 중단되었습니다.");
         return true;
     }
 
-    private void failRedrawRequest(Drawing drawing) {
+    private void failRedrawRequest(Drawing drawing, String failureCode, String failureMessage) {
         if (drawing.getDrawType() == DrawingType.REDRAW && drawing.getRedrawRequestId() != null) {
-            redrawRequestRepository.findByIdForUpdate(drawing.getRedrawRequestId())
-                    .ifPresent(request -> request.failExecution());
+            redrawLifecycleService.fail(
+                    drawing.getRedrawRequestId(), clock.instant(), failureCode, failureMessage);
         }
     }
 

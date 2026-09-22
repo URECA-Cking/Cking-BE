@@ -114,14 +114,17 @@ public class RedrawRequest {
     }
 
     /** REDRAW 결과 Transaction 실패를 별도 실패 기록 Transaction에서 보존한다. */
-    public void failExecution() {
+    public void failExecution(Instant failedAt) {
         if (status != RedrawRequestStatus.APPROVED
                 || (executionStatus != RedrawExecutionStatus.PENDING
                 && executionStatus != RedrawExecutionStatus.FAILED)) {
             throw new IllegalStateException("실패 처리할 수 있는 재추첨 요청이 아닙니다.");
         }
+        if (failedAt == null) {
+            throw new IllegalArgumentException("failedAt은 필수입니다.");
+        }
         executionStatus = RedrawExecutionStatus.FAILED;
-        completedAt = null;
+        completedAt = failedAt;
     }
 
     /** 검토 대기 요청을 승인하고 검토자와 검토 시각을 기록한다. */
