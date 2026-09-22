@@ -87,6 +87,7 @@ class RedrawRequestExecutionTransactionServiceTest {
         assertThat(result).isEqualTo(new RedrawRequestExecutionResult(
                 REDRAW_REQUEST_ID, RedrawExecutionStatus.EXECUTED, 40L));
         assertThat(request.getExecutionStatus()).isEqualTo(RedrawExecutionStatus.EXECUTED);
+        assertThat(request.getCompletedAt()).isNotNull();
         verify(historyRepository).save(any());
     }
 
@@ -105,6 +106,7 @@ class RedrawRequestExecutionTransactionServiceTest {
         assertThat(result).isEqualTo(new RedrawRequestExecutionResult(
                 REDRAW_REQUEST_ID, RedrawExecutionStatus.INSUFFICIENT_CANDIDATES, null));
         assertThat(request.getExecutionStatus()).isEqualTo(RedrawExecutionStatus.INSUFFICIENT_CANDIDATES);
+        assertThat(request.getCompletedAt()).isNotNull();
         verify(historyRepository).save(any());
     }
 

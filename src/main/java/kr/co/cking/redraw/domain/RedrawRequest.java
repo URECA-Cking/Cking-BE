@@ -68,6 +68,9 @@ public class RedrawRequest {
     @Column(name = "reject_reason", length = 500)
     private String rejectReason;
 
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     /** 새 요청을 검토 대기·실행 대기 상태로 만들고 서버가 산출한 결원 수를 고정한다. */
     public static RedrawRequest requested(
             Long eventId,
@@ -126,18 +129,21 @@ public class RedrawRequest {
     public void markExecuted() {
         requireExecutable();
         executionStatus = RedrawExecutionStatus.EXECUTED;
+        completedAt = Instant.now();
     }
 
     /** 후보 부족으로 Drawing을 만들지 못한 실행 결과를 기록한다. */
     public void markInsufficientCandidates() {
         requireExecutable();
         executionStatus = RedrawExecutionStatus.INSUFFICIENT_CANDIDATES;
+        completedAt = Instant.now();
     }
 
     /** 시스템 오류로 끝난 실행 결과를 기록한다. */
     public void markFailed() {
         requireExecutable();
         executionStatus = RedrawExecutionStatus.FAILED;
+        completedAt = Instant.now();
     }
 
     /** 심사 가능한 검토 대기 상태인지 확인하고, 이미 심사된 요청은 거부한다. */

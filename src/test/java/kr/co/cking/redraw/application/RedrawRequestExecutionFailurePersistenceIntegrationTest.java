@@ -35,6 +35,9 @@ class RedrawRequestExecutionFailurePersistenceIntegrationTest extends RedrawRequ
                 "SELECT execution_status FROM redraw_request WHERE id = ?", String.class, redrawRequestId
         )).isEqualTo("FAILED");
         assertThat(jdbcTemplate.queryForObject(
+                "SELECT completed_at FROM redraw_request WHERE id = ?", java.sql.Timestamp.class, redrawRequestId
+        )).isNotNull();
+        assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM redraw_execution_history WHERE redraw_request_id = ?", Integer.class, redrawRequestId
         )).isOne();
         assertThat(jdbcTemplate.queryForObject(
