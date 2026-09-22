@@ -2,6 +2,7 @@ package kr.co.cking.creator.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.domain.CreatorApplicationStatus;
 import kr.co.cking.creator.domain.CreatorErrorCode;
@@ -94,8 +95,8 @@ public class CreatorApplicationService {
             throw new BusinessException(CreatorErrorCode.INVALID_STATE);
         }
         application.approve(adminId);
-        kr.co.cking.creator.domain.Creator creator = creatorRepository.save(
-                new kr.co.cking.creator.domain.Creator(application.getMemberId(), applicant.getName())
+        Creator creator = creatorRepository.save(
+                new Creator(application.getMemberId(), applicant.getName())
         );
         missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
         return application;
