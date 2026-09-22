@@ -2,6 +2,7 @@ package kr.co.cking.redraw.presentation;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -164,19 +165,52 @@ class RedrawAdminControllerTest {
         verify(redrawRequestReviewService).reject(1L, 30L, "결원 확인이 필요합니다.");
     }
 
-    /** 거절 사유가 없거나 심사 식별자가 양수가 아니면 Service 호출 전에 차단한다. */
+    /** 승인 경로 식별자와 요청 본문의 관리자 식별자를 각각 독립적으로 검증한다. */
     @Test
-    void 유효하지_않은_심사_요청은_VALIDATION_FAILED를_반환한다() throws Exception {
+    void 유효하지_않은_승인_식별자는_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/redraw-requests/0/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(post("/api/admin/redraw-requests/30/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":0}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(redrawRequestReviewService);
+    }
+
+    /** 거절 사유가 비어 있거나 500자를 초과하면 Service 호출 전에 차단한다. */
+    @Test
+    void 유효하지_않은_거절_사유는_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":1,\"rejectReason\":\" \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"rejectReason\":\"" + "가".repeat(501) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(redrawRequestReviewService);
+    }
+
+    /** 승인·거절 계약에 없는 JSON 필드는 Service 호출 전에 차단한다. */
+    @Test
+    void 심사_요청의_미정의_필드는_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/admin/redraw-requests/30/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"extraField\":\"value\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"rejectReason\":\"사유\",\"extraField\":\"value\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(redrawRequestReviewService);
     }
 
     /** 테스트 요청 JSON은 클라이언트 입력에 허용한 세 필드만 담는다. */
