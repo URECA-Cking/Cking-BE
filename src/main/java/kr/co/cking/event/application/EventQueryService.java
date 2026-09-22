@@ -3,6 +3,7 @@ package kr.co.cking.event.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.dto.CachedEvent;
+import kr.co.cking.event.application.dto.CachedEventPage;
 import kr.co.cking.event.application.dto.EventDetail;
 import kr.co.cking.event.application.dto.EventSummary;
 import kr.co.cking.event.domain.DisplayStatus;
@@ -13,6 +14,7 @@ import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.application.TicketBalanceQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -33,18 +36,41 @@ public class EventQueryService {
     private final Clock clock;
     private final TicketBalanceQueryService ticketBalanceQueryService;
     private final EventCache eventCache;
+    private final EventListCache eventListCache;
     private final MemberRepository memberRepository;
 
     /**
      * API 명세 §1.7: page=0부터, size 기본 20·최대 100(범위 검증은 컨트롤러에서),
      * 정렬은 createdAt DESC에 eventId DESC를 tie-breaker로 고정한다 — 클라이언트가
      * 정렬을 고를 수 없다.
+     *
+     * <p>FR-P2-003: creatorId·displayStatus·page·size 조합을 키로 캐싱한다(TTL 5초,
+     * endAt 초과 금지 — {@link EventListCache}). displayStatus는 원본 Event가 아니라
+     * 읽는 시점의 now로 매번 다시 계산해서, 캐시 적중 시에도 굳지 않게 한다.
      */
     public Page<EventSummary> getEvents(Long creatorId, DisplayStatus displayStatus, int page, int size) {
         Instant now = clock.instant();
+        return eventListCache.find(creatorId, displayStatus, page, size)
+                .map(cached -> toSummaryPage(cached, page, size, now))
+                .orElseGet(() -> loadAndCacheList(creatorId, displayStatus, page, size, now));
+    }
+
+    private Page<EventSummary> loadAndCacheList(Long creatorId, DisplayStatus displayStatus, int page, int size,
+                                                 Instant now) {
         Pageable pageable = PageRequest.of(page, size, EVENT_LIST_SORT);
-        return eventRepository.search(creatorId, displayStatus, now, pageable)
-                .map(event -> EventSummary.from(event, now));
+        Page<Event> result = eventRepository.search(creatorId, displayStatus, now, pageable);
+        CachedEventPage cached = new CachedEventPage(
+                result.getContent().stream().map(CachedEvent::from).toList(),
+                result.getTotalElements());
+        eventListCache.save(creatorId, displayStatus, page, size, cached);
+        return result.map(event -> EventSummary.from(event, now));
+    }
+
+    private Page<EventSummary> toSummaryPage(CachedEventPage cached, int page, int size, Instant now) {
+        List<EventSummary> summaries = cached.events().stream()
+                .map(event -> EventSummary.from(event, now))
+                .toList();
+        return new PageImpl<>(summaries, PageRequest.of(page, size, EVENT_LIST_SORT), cached.totalElements());
     }
 
     public EventDetail getEvent(Long eventId, Long userId) {
