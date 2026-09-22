@@ -2,8 +2,14 @@ package kr.co.cking.snapshot.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -13,6 +19,9 @@ import kr.co.cking.snapshot.domain.DrawSnapshot;
 import kr.co.cking.snapshot.domain.DrawSnapshotCandidate;
 import kr.co.cking.snapshot.repository.DrawSnapshotCandidateRepository;
 import kr.co.cking.snapshot.repository.DrawSnapshotRepository;
+import kr.co.cking.snapshot.repository.SnapshotRecoveryFailureRepository;
+import kr.co.cking.snapshot.repository.SnapshotSourceQueryRepository;
+import kr.co.cking.snapshot.scheduler.SnapshotRecoveryScheduler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -134,6 +143,47 @@ class OfficialSnapshotServiceIntegrationTest {
 
             assertThat(first.get().snapshotId()).isEqualTo(second.get().snapshotId());
         }
+        assertThat(snapshotRepository.countByEventId(EVENT_ID)).isEqualTo(1L);
+    }
+
+    @Test
+    void 정상_마감_호출과_복구_Scheduler가_경합해도_Snapshot은_하나만_존재한다() throws Exception {
+        Instant now = Instant.parse("2026-09-22T03:00:00Z");
+        SnapshotSourceQueryRepository recoveryQuery = mock(SnapshotSourceQueryRepository.class);
+        when(recoveryQuery.findMissingOfficialSnapshotEventIds(
+                now.minus(Duration.ofMinutes(1)), now, 100))
+                .thenReturn(List.of(EVENT_ID));
+        SnapshotRecoveryFailureRepository recoveryFailureRepository = mock(SnapshotRecoveryFailureRepository.class);
+        SnapshotRecoveryScheduler recoveryScheduler = new SnapshotRecoveryScheduler(
+                recoveryQuery,
+                recoveryFailureRepository,
+                service,
+                Clock.fixed(now, ZoneOffset.UTC),
+                Duration.ofMinutes(1),
+                100
+        );
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<?> normalClose = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return service.createIfAbsent(EVENT_ID);
+            });
+            Future<?> recovery = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                recoveryScheduler.recoverMissingSnapshots();
+                return null;
+            });
+
+            ready.await();
+            start.countDown();
+            normalClose.get();
+            recovery.get();
+        }
+
         assertThat(snapshotRepository.countByEventId(EVENT_ID)).isEqualTo(1L);
     }
 
