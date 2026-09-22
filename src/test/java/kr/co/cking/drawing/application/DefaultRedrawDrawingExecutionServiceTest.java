@@ -29,6 +29,7 @@ import kr.co.cking.drawing.domain.hash.DrawInputV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionSource;
 import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
@@ -69,6 +70,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
     @Mock private WinnerRepository winnerRepository;
     @Mock private WinnerManagementRepository winnerManagementRepository;
     @Mock private RedrawExclusionRepository redrawExclusionRepository;
+    @Mock private RedrawDrawingQueryRepository redrawDrawingQueryRepository;
 
     private DefaultRedrawDrawingExecutionService service;
 
@@ -78,6 +80,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
                 drawingRepository, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine,
                 new DrawInputHashGenerator(), new DrawResultHashGenerator(), winnerRepository,
                 winnerManagementRepository, redrawExclusionRepository,
+                redrawDrawingQueryRepository,
                 Clock.fixed(Instant.parse("2026-09-22T00:00:00Z"), ZoneOffset.UTC)
         );
     }
@@ -96,6 +99,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
                 new DrawInputHashGenerator(), new DrawResultHashGenerator(), new DrawInputV2HashGenerator(),
                 new DrawResultV2HashGenerator(), winnerRepository,
                 winnerManagementRepository, redrawExclusionRepository,
+                redrawDrawingQueryRepository,
                 Clock.fixed(Instant.parse("2026-09-22T00:00:00Z"), ZoneOffset.UTC)
         );
         when(drawingRepository.findById(INITIAL_DRAWING_ID)).thenReturn(Optional.of(initial));
@@ -103,9 +107,9 @@ class DefaultRedrawDrawingExecutionServiceTest {
         when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
                 .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
         when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
-        when(winnerRepository.findRedrawExclusionSourcesByEventId(10L))
+        when(redrawDrawingQueryRepository.findExclusionSourcesByEventId(10L))
                 .thenReturn(List.of(new RedrawExclusionSource(101L, WinnerManagementStatus.SELECTED)));
-        when(winnerRepository.findRedrawVacancyPrizeSourcesByRequestId(REQUEST_ID))
+        when(redrawDrawingQueryRepository.findVacancyPrizeSourcesByRequestId(REQUEST_ID))
                 .thenReturn(List.of(new RedrawVacancyPrizeSource(101L, secondPrize.snapshotPrizeId())));
         when(drawingSeedService.createForRedraw(40L)).thenReturn(new PersistedDrawingSeed(
                 41L, kr.co.cking.drawing.domain.seed.DrawingSeed.from("01".repeat(32))));
@@ -149,7 +153,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
         when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
                 .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
         when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
-        when(winnerRepository.findRedrawExclusionSourcesByEventId(10L)).thenReturn(List.of(
+        when(redrawDrawingQueryRepository.findExclusionSourcesByEventId(10L)).thenReturn(List.of(
                 new RedrawExclusionSource(101L, WinnerManagementStatus.SELECTED),
                 new RedrawExclusionSource(103L, WinnerManagementStatus.DECLINED),
                 new RedrawExclusionSource(104L, WinnerManagementStatus.DISQUALIFIED)
@@ -211,7 +215,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
         when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
                 .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
         when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
-        when(winnerRepository.findRedrawExclusionSourcesByEventId(10L)).thenReturn(List.of());
+        when(redrawDrawingQueryRepository.findExclusionSourcesByEventId(10L)).thenReturn(List.of());
         when(drawingSeedService.createForRedraw(40L))
                 .thenReturn(new PersistedDrawingSeed(41L, kr.co.cking.drawing.domain.seed.DrawingSeed.from("01".repeat(32))));
         when(drawingRepository.findTopByEventIdOrderByDrawNoDesc(10L)).thenReturn(Optional.of(initial));
@@ -248,7 +252,7 @@ class DefaultRedrawDrawingExecutionServiceTest {
         when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
                 .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
         when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
-        when(winnerRepository.findRedrawExclusionSourcesByEventId(10L)).thenReturn(List.of());
+        when(redrawDrawingQueryRepository.findExclusionSourcesByEventId(10L)).thenReturn(List.of());
         when(drawingRepository.findTopByEventIdOrderByDrawNoDesc(10L)).thenReturn(Optional.of(previousRedraw));
         when(drawingSeedService.createForRedraw(41L))
                 .thenReturn(new PersistedDrawingSeed(42L, kr.co.cking.drawing.domain.seed.DrawingSeed.from("02".repeat(32))));

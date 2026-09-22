@@ -26,6 +26,7 @@ import kr.co.cking.drawing.domain.hash.DrawingHash;
 import kr.co.cking.drawing.domain.prize.AllocatedPrize;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionRepository;
 import kr.co.cking.drawing.repository.RedrawExclusionSource;
 import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
@@ -57,6 +58,7 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
     private final WinnerRepository winnerRepository;
     private final WinnerManagementRepository winnerManagementRepository;
     private final RedrawExclusionRepository redrawExclusionRepository;
+    private final RedrawDrawingQueryRepository redrawDrawingQueryRepository;
     private final Clock clock;
 
     /** 기존 V1 단위 테스트와 상품 없는 REDRAW 경로를 위한 호환 생성자다. */
@@ -71,11 +73,12 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
             WinnerRepository winnerRepository,
             WinnerManagementRepository winnerManagementRepository,
             RedrawExclusionRepository redrawExclusionRepository,
+            RedrawDrawingQueryRepository redrawDrawingQueryRepository,
             Clock clock
     ) {
         this(drawingRepository, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService, drawingEngine, inputHashGenerator,
                 resultHashGenerator, new DrawInputV2HashGenerator(), new DrawResultV2HashGenerator(), winnerRepository,
-                winnerManagementRepository, redrawExclusionRepository, clock);
+                winnerManagementRepository, redrawExclusionRepository, redrawDrawingQueryRepository, clock);
     }
 
     /** 원본 INITIAL Snapshot으로 전체 후보를 재추첨하고 기존 Winner는 모두 후보에서 제외한다. */
@@ -94,8 +97,8 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
         if (!initial.getSnapshotId().equals(snapshot.snapshotId())) {
             throw new BusinessException(DrawingErrorCode.INVALID_STATE);
         }
-        List<RedrawExclusionSource> exclusionSources = winnerRepository
-                .findRedrawExclusionSourcesByEventId(initial.getEventId());
+        List<RedrawExclusionSource> exclusionSources = redrawDrawingQueryRepository
+                .findExclusionSourcesByEventId(initial.getEventId());
         Set<Long> excluded = exclusionSources.stream()
                 .map(RedrawExclusionSource::memberId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
@@ -174,8 +177,8 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
         if (snapshot.prizes().isEmpty()) {
             return List.of();
         }
-        List<RedrawVacancyPrizeSource> sources = winnerRepository
-                .findRedrawVacancyPrizeSourcesByRequestId(requestId);
+        List<RedrawVacancyPrizeSource> sources = redrawDrawingQueryRepository
+                .findVacancyPrizeSourcesByRequestId(requestId);
         if (sources.size() != vacancyCount) {
             throw new IllegalStateException("REDRAW 결원과 승계 상품 원본 수가 일치하지 않습니다.");
         }

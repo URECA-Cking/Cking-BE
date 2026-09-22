@@ -38,6 +38,7 @@ import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawingExclusionQueryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.DrawingVerificationHistoryRepository;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
 import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
@@ -70,6 +71,7 @@ class DrawingVerificationServiceTest {
     @Mock private WinnerRepository winnerRepository;
     @Mock private DrawingVerificationHistoryRepository historyRepository;
     @Mock private DrawingExclusionQueryRepository exclusionRepository;
+    @Mock private RedrawDrawingQueryRepository redrawDrawingQueryRepository;
     @Mock private SnapshotIntegrityService snapshotIntegrityService;
     @Mock private DrawingSeedService drawingSeedService;
     @Mock private DrawingSeedPolicy drawingSeedPolicy;
@@ -89,6 +91,7 @@ class DrawingVerificationServiceTest {
                 winnerRepository,
                 historyRepository,
                 exclusionRepository,
+                redrawDrawingQueryRepository,
                 snapshotIntegrityService,
                 drawingSeedService,
                 drawingSeedPolicy,
@@ -268,7 +271,7 @@ class DrawingVerificationServiceTest {
         when(drawingRepository.findById(DRAWING_ID)).thenReturn(Optional.of(drawing));
         when(snapshotIntegrityService.verifyForReplay(SNAPSHOT_ID)).thenReturn(snapshot);
         when(exclusionRepository.findMemberIdsByDrawingId(DRAWING_ID)).thenReturn(List.of());
-        when(winnerRepository.findRedrawVacancyPrizeSourcesByRequestId(50L))
+        when(redrawDrawingQueryRepository.findVacancyPrizeSourcesByRequestId(50L))
                 .thenReturn(List.of(new RedrawVacancyPrizeSource(100L, secondPrize.snapshotPrizeId())));
         when(drawingSeedService.reuseForRetry(SEED_ID)).thenReturn(new PersistedDrawingSeed(SEED_ID, originalSeed));
         when(winnerRepository.findAllByDrawingIdOrderByRankInDrawingAsc(DRAWING_ID)).thenReturn(List.of(storedWinner));
@@ -278,7 +281,7 @@ class DrawingVerificationServiceTest {
         DrawingVerificationResult result = service.verify(DRAWING_ID, ADMIN_ID);
 
         assertThat(result.status()).isEqualTo(DrawingVerificationStatus.VERIFIED);
-        verify(winnerRepository, times(1)).findRedrawVacancyPrizeSourcesByRequestId(50L);
+        verify(redrawDrawingQueryRepository, times(1)).findVacancyPrizeSourcesByRequestId(50L);
     }
 
     private DrawInput input(VerifiedSnapshot snapshot, DrawingSeed seed, int winnerCount) {

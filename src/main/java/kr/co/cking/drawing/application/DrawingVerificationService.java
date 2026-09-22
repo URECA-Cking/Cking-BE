@@ -36,6 +36,7 @@ import kr.co.cking.drawing.domain.seed.DrawingSeed;
 import kr.co.cking.drawing.repository.DrawingExclusionQueryRepository;
 import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.DrawingVerificationHistoryRepository;
+import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
 import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
@@ -66,6 +67,7 @@ public class DrawingVerificationService {
     private final WinnerRepository winnerRepository;
     private final DrawingVerificationHistoryRepository historyRepository;
     private final DrawingExclusionQueryRepository exclusionRepository;
+    private final RedrawDrawingQueryRepository redrawDrawingQueryRepository;
     private final SnapshotIntegrityService snapshotIntegrityService;
     private final DrawingSeedService drawingSeedService;
     private final DrawingSeedPolicy drawingSeedPolicy;
@@ -304,8 +306,8 @@ public class DrawingVerificationService {
         if (snapshot.prizes().isEmpty()) {
             return List.of();
         }
-        List<RedrawVacancyPrizeSource> sources = winnerRepository
-                .findRedrawVacancyPrizeSourcesByRequestId(drawing.getRedrawRequestId());
+        List<RedrawVacancyPrizeSource> sources = redrawDrawingQueryRepository
+                .findVacancyPrizeSourcesByRequestId(drawing.getRedrawRequestId());
         if (sources.size() != drawing.getWinnerCount()) {
             throw storedResultFailure("REDRAW 결원과 승계 상품 원본 수가 일치하지 않습니다.");
         }

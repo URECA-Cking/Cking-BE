@@ -1,8 +1,6 @@
 package kr.co.cking.winner.repository;
 
 import java.util.List;
-import kr.co.cking.drawing.repository.RedrawExclusionSource;
-import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.winner.domain.Winner;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -53,25 +51,4 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
 
     boolean existsByEventIdAndMemberId(Long eventId, Long memberId);
 
-    /** REDRAW 후보 제외에 사용할 Event의 기존 모든 당첨 Member와 당시 운영 상태를 조회한다. */
-    @Query("""
-            select new kr.co.cking.drawing.repository.RedrawExclusionSource(w.memberId, management.status)
-            from Winner w
-            left join kr.co.cking.winner.domain.WinnerManagement management on management.winnerId = w.id
-            where w.eventId = :eventId
-            order by w.memberId asc
-            """)
-    List<RedrawExclusionSource> findRedrawExclusionSourcesByEventId(@Param("eventId") Long eventId);
-
-    /** RedrawRequest가 고정한 결원 Winner의 상품을 결원 확정 순서대로 읽는다. */
-    @Query("""
-            select new kr.co.cking.drawing.repository.RedrawVacancyPrizeSource(w.id, w.snapshotPrizeId)
-            from kr.co.cking.redraw.domain.RedrawRequestVacancy vacancy
-            join Winner w on w.id = vacancy.winnerId
-            where vacancy.redrawRequestId = :redrawRequestId
-            order by vacancy.id asc
-            """)
-    List<RedrawVacancyPrizeSource> findRedrawVacancyPrizeSourcesByRequestId(
-            @Param("redrawRequestId") Long redrawRequestId
-    );
 }
