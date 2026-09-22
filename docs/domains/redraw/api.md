@@ -110,13 +110,13 @@
 
 ## 관리자 RedrawRequest 승인
 
-### `POST /api/admin/redraw-requests/{id}/approve`
+### `POST /api/admin/redraw-requests/{redrawRequestId}/approve`
 
 관리자가 검토 대기 중인 RedrawRequest를 실행 가능 상태로 승인한다.
 
 #### 요청
 
-- Path Variable: `id` (`Long`, 양수, 필수)
+- Path Variable: `redrawRequestId` (`Long`, 양수, 필수)
 - Body: `userId` (`Long`, 양수, 필수, 호출 관리자)
 
 ```json
@@ -155,13 +155,13 @@
 
 ## 관리자 RedrawRequest 거절
 
-### `POST /api/admin/redraw-requests/{id}/reject`
+### `POST /api/admin/redraw-requests/{redrawRequestId}/reject`
 
 관리자가 검토 대기 중인 RedrawRequest를 거절하고 사유를 기록한다.
 
 #### 요청
 
-- Path Variable: `id` (`Long`, 양수, 필수)
+- Path Variable: `redrawRequestId` (`Long`, 양수, 필수)
 - Body: `userId` (`Long`, 양수, 필수, 호출 관리자), `rejectReason` (공백 제거 후 1~500자, 필수)
 
 ```json
