@@ -68,6 +68,10 @@ class RedrawDrawingPreparationService {
         if (existing != null) {
             return existing(existing);
         }
+        if (!drawingRepository.findAllByEventIdAndStatusForUpdate(initial.getEventId(), DrawingStatus.RUNNING)
+                .isEmpty()) {
+            throw new BusinessException(DrawingErrorCode.CONCURRENT_COMMAND);
+        }
 
         VerifiedSnapshot snapshot = snapshotIntegrityService.verifyForDrawing(initial.getEventId());
         if (!initial.getSnapshotId().equals(snapshot.snapshotId())) {
