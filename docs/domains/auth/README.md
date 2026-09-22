@@ -84,7 +84,9 @@ Creator 여부는 JWT claim에 넣지 않는다.
 
 Refresh Token은 JWT가 아닌 opaque random token이다.
 
-- TTL은 14일이며 Redis에는 Hash 기반 key로 저장하고, 클라이언트에는 HttpOnly Cookie로 전달한다.
+- TTL은 14일이며 Redis에는 Hash 기반 key로 저장한다. Refresh Cookie는 `refresh_token`,
+  `Path=/api/auth`, host-only, `HttpOnly`, `Secure`, `SameSite=None`을 사용한다. 세부 외부
+  계약은 [Auth API](api.md#refresh-cookie-계약)를 따른다.
 - Refresh 성공 시 기존 토큰을 폐기하고 새 토큰을 발급한다. 폐기된 토큰은 재사용할 수 없다.
 - Logout은 Redis의 Refresh Token을 폐기하고 Refresh Cookie를 만료시킨다.
 

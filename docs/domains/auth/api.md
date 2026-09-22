@@ -36,7 +36,7 @@ Access JWT와 Refresh Token을 redirect URL에 포함하지 않는다.
 ```
 
 Login Code를 검증하고 원자적으로 한 번 소비한 뒤 `memberId`로 Access Token과 Refresh Token을
-발급한다. 응답은 Access Token 정보만 제공하며 Refresh Token은 HttpOnly Cookie로 전달한다.
+발급한다. 응답은 Access Token 정보만 제공하며 Refresh Token은 [Refresh Cookie 계약](#refresh-cookie-계약)으로 전달한다.
 
 ```json
 {
@@ -46,6 +46,24 @@ Login Code를 검증하고 원자적으로 한 번 소비한 뒤 `memberId`로 A
 }
 ```
 
+### Refresh Cookie 계약
+
+`POST /api/auth/token`과 `POST /api/auth/refresh`는 다음 속성으로 Refresh Token을 설정한다.
+
+```text
+Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600;
+            HttpOnly; Secure; SameSite=None
+```
+
+- Cookie 이름은 `refresh_token`이며, `Domain` 속성을 설정하지 않는 host-only Cookie다.
+- `Path=/api/auth`로 한정해 일반 Cking API 요청에는 Refresh Cookie를 보내지 않는다.
+- `Secure`이므로 HTTPS에서만 전달한다. `SameSite=None`은 Frontend와 API가 cross-site일 수 있는
+  배포 구조에서도 credential Cookie 전달을 허용하기 위한 정책이다.
+- Cookie 기반 Refresh·Logout 요청은 Frontend가 credential을 포함해 전송한다. 인증 구현 시 CORS는
+  허용 origin을 명시하고 credential을 허용하며 `Authorization` header를 허용해야 한다.
+- `POST /api/auth/refresh`와 `POST /api/auth/logout`은 설정된 허용 origin과 일치하는 `Origin`만
+  허용해 Cookie 기반 요청의 CSRF를 방어한다.
+
 ## Token 갱신
 
 ### `POST /api/auth/refresh`
@@ -53,7 +71,8 @@ Login Code를 검증하고 원자적으로 한 번 소비한 뒤 `memberId`로 A
 - 권한: `PUBLIC`
 - HttpOnly Cookie의 Refresh Token을 사용한다. Request Body는 없다.
 - Redis 상태를 확인한 뒤 기존 Refresh Token을 폐기하고 새 Refresh Token과 Access Token을 발급한다.
-- 응답 `data`와 Refresh Cookie의 형식은 [Token 교환](#token-교환)과 같다.
+- 응답 `data`는 [Token 교환](#token-교환)과 같고, 새 Refresh Cookie는
+  [Refresh Cookie 계약](#refresh-cookie-계약)을 따른다.
 
 ## Logout
 
@@ -62,6 +81,8 @@ Login Code를 검증하고 원자적으로 한 번 소비한 뒤 `memberId`로 A
 - 권한: `PUBLIC`
 - HttpOnly Cookie의 Refresh Token이 있으면 Redis에서 제거하고 Refresh Cookie를 만료한다.
 - 이미 만료·폐기되었거나 Cookie가 없는 경우에도 클라이언트 Cookie 만료 처리를 수행한다.
+- Cookie 만료 응답도 `refresh_token`, `Path=/api/auth`, host-only, `HttpOnly`, `Secure`,
+  `SameSite=None`을 동일하게 적용하고 `Max-Age=0`으로 설정한다.
 - 성공 시 `200 OK`와 공통 성공 응답을 반환한다.
 
 ## 현재 사용자 조회
