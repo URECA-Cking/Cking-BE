@@ -50,4 +50,8 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
     );
 
     boolean existsByEventIdAndMemberId(Long eventId, Long memberId);
+
+    /** REDRAW 후보 제외에 사용할 Event의 기존 모든 당첨 Member ID를 조회한다. */
+    @Query("select w.memberId from Winner w where w.eventId = :eventId")
+    List<Long> findMemberIdsByEventId(@Param("eventId") Long eventId);
 }

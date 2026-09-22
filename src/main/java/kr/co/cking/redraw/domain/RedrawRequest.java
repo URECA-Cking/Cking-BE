@@ -117,9 +117,34 @@ public class RedrawRequest {
         rejectReason = reason.strip();
     }
 
+    /** 승인된 요청의 실행 성공 결과를 고정하고 연결된 REDRAW Drawing을 기록한다. */
+    public void markExecuted() {
+        requireExecutable();
+        executionStatus = RedrawExecutionStatus.EXECUTED;
+    }
+
+    /** 후보 부족으로 Drawing을 만들지 못한 실행 결과를 기록한다. */
+    public void markInsufficientCandidates() {
+        requireExecutable();
+        executionStatus = RedrawExecutionStatus.INSUFFICIENT_CANDIDATES;
+    }
+
+    /** 시스템 오류로 끝난 실행 결과를 기록한다. */
+    public void markFailed() {
+        requireExecutable();
+        executionStatus = RedrawExecutionStatus.FAILED;
+    }
+
     /** 심사 가능한 검토 대기 상태인지 확인하고, 이미 심사된 요청은 거부한다. */
     private void requireRequested() {
         if (status != RedrawRequestStatus.REQUESTED) {
+            throw new BusinessException(RedrawErrorCode.INVALID_STATE);
+        }
+    }
+
+    /** 실행 가능한 승인·대기 상태인지 검증해 중복 실행을 차단한다. */
+    private void requireExecutable() {
+        if (status != RedrawRequestStatus.APPROVED || executionStatus != RedrawExecutionStatus.PENDING) {
             throw new BusinessException(RedrawErrorCode.INVALID_STATE);
         }
     }
