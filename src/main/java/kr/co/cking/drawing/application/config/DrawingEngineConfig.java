@@ -1,12 +1,19 @@
 package kr.co.cking.drawing.application.config;
 
+import java.util.Map;
+import kr.co.cking.drawing.domain.engine.DrawingAlgorithmVersion;
 import kr.co.cking.drawing.domain.engine.DrawingEngine;
+import kr.co.cking.drawing.domain.engine.ResolvingDrawingEngine;
+import kr.co.cking.drawing.domain.engine.UniformV1DrawingEngine;
 import kr.co.cking.drawing.domain.engine.WeightedV1DrawingEngine;
 import kr.co.cking.drawing.domain.hash.DrawInputHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultHashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawInputV2HashGenerator;
 import kr.co.cking.drawing.domain.hash.DrawResultV2HashGenerator;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
+import kr.co.cking.drawing.domain.prize.ResolvingPrizeAllocationEngine;
+import kr.co.cking.drawing.domain.prize.UniformPrizeV1AllocationEngine;
 import kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,8 +24,10 @@ public class DrawingEngineConfig {
 
     @Bean
     public DrawingEngine drawingEngine() {
-        // 현재 지원 알고리즘 WEIGHTED_V1의 명시적 조립.
-        return new WeightedV1DrawingEngine();
+        return new ResolvingDrawingEngine(Map.of(
+                DrawingAlgorithmVersion.UNIFORM_V1, new UniformV1DrawingEngine(),
+                DrawingAlgorithmVersion.WEIGHTED_V1, new WeightedV1DrawingEngine()
+        ));
     }
 
     @Bean
@@ -33,7 +42,10 @@ public class DrawingEngineConfig {
 
     @Bean
     public PrizeAllocationEngine prizeAllocationEngine() {
-        return new WeightedPrizeV1AllocationEngine();
+        return new ResolvingPrizeAllocationEngine(Map.of(
+                PrizeAllocationAlgorithmVersion.PRIZE_UNIFORM_V1, new UniformPrizeV1AllocationEngine(),
+                PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1, new WeightedPrizeV1AllocationEngine()
+        ));
     }
 
     @Bean

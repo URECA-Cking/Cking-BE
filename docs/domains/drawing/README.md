@@ -94,52 +94,8 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 
 ## 추첨 엔진 계약
 
-`DrawingEngine`은 `DrawInput`을 받아 `DrawOutput`을 반환하는 순수 추첨 엔진 인터페이스다.
-`WeightedV1DrawingEngine`이 `WEIGHTED_V1` 알고리즘을 구현하며, 새로운 알고리즘은 별도 구현체로 추가한다.
-`DrawOutput`은 당첨자의 `memberId`와 `rank`가 각각 중복되지 않도록 검증한다.
-
-### WEIGHTED_V1
-
-`WEIGHTED_V1`은 응모권 수를 정수 가중치로 사용하여 복원 없이 당첨자를 선정한다.
-
-1. 후보를 `memberId ASC`로 정규화한다.
-2. 제외 대상의 가중치를 추첨 후보군에 포함하지 않는다.
-3. 현재 가중치 합계가 `T`이면 결정적 난수 생성기로 `[0, T)`의 정수를 하나 생성한다.
-4. 해당 정수가 포함된 누적 가중치 구간의 후보를 당첨자로 선정한다.
-5. 선정된 후보의 가중치를 0으로 갱신하여 이후 순위에서 제외한다.
-6. `winnerCount`만큼 반복하며 선정 순서를 Rank로 사용한다.
-
-가중치 정규화에 부동소수점을 사용하지 않는다. 후보 정렬 기준과 난수 소비 횟수를 유지하므로 같은
-Snapshot, Seed, Algorithm Version, Exclusion List, winnerCount는 항상 같은 Winner와 Rank를 만든다.
-
-### 자료구조
-
-누적 가중치의 구간 탐색과 당첨 후보 제거에는 Fenwick Tree를 사용한다.
-
-- 후보군 구성: `O(candidateCount)`
-- 당첨자 1명 선택 및 제거: `O(log candidateCount)`
-- 전체 추첨: `O(candidateCount + winnerCount × log candidateCount)`
-- 추가 공간: `O(candidateCount)`
-
-단일 추첨에 적합한 선형 누적 탐색은 당첨자를 여러 명 선정할 때 매 순위마다 합계 계산과 후보 탐색을
-반복한다. 정적 분포에서 유리한 누적합 이분 탐색, Hopscotch, Alias 방식은 당첨자 제거 후 분포가 매번
-변하는 복원 없는 추첨에서 갱신 또는 재구성이 필요하므로 사용하지 않는다.
-
-## 상품 배정 엔진 계약
-
-사람 선정과 상품 배정은 서로 다른 순수 엔진과 알고리즘 버전을 사용한다.
-
-- `DrawingEngine`의 `WEIGHTED_V1`은 `CandidateValue.ticketCount`만 사용해 당첨자를 선정한다.
-- `PrizeAllocationEngine`의 `PRIZE_WEIGHTED_V1`은 선정 완료된 당첨자와 공식 Snapshot 상품 설정만 입력받는다.
-- 상품 가중치를 Candidate 가중치로 변환하거나 사람 선정 엔진에 전달하지 않는다.
-- 상품 배정은 `priority ASC, prizeKey ASC`, 당첨자는 `rank ASC`로 정규화한다.
-- 남은 수량이 1개 이상인 상품만 누적 정수 가중치 구간에 포함하고, 배정 직후 수량을 1개 차감한다.
-- 총 상품 수량이 당첨자 수보다 작거나, 상품 식별자가 중복되거나, 가중치 합이 `long` 범위를 넘으면 배정 전에 거부한다.
-
-상품 배정용 난수는 Drawing Seed에서 `CKING_PRIZE_ALLOCATION_V1` 도메인 값을 더해 SHA-256으로
-파생한다. 따라서 사람 선정의 난수 소비 횟수와 상품 배정을 분리하면서도 같은 Drawing Retry는 보존된
-Snapshot, Seed, `PRIZE_WEIGHTED_V1`으로 동일한 상품 배정을 재현한다. 별도 Drawing은 새 Seed를 쓸 수
-있지만 공식 Snapshot에 보존된 상품 가중치 자체는 바뀌지 않는다.
+`DrawingEngine`과 `PrizeAllocationEngine`의 알고리즘, 선택 조합, 결정성 및 재고 규칙은
+[추첨 알고리즘 계약](algorithms.md)을 정본으로 한다.
 
 ## 영속성 모델
 
@@ -155,10 +111,8 @@ Snapshot, Seed, `PRIZE_WEIGHTED_V1`으로 동일한 상품 배정을 재현한�
 
 ### 엔진 조립
 
-`WeightedV1DrawingEngine`은 Spring에 의존하지 않는 순수 도메인 구현체로 유지한다.
-`DrawingEngineConfig`가 현재 지원 버전인 `WEIGHTED_V1` 구현체를 `DrawingEngine` Bean으로 등록하며,
-애플리케이션 서비스는 인터페이스를 생성자 주입받는다. 알고리즘이 추가되면 application 계층에서
-`algorithmVersion`별 Resolver 또는 Registry로 확장한다.
+각 구현체는 Spring에 의존하지 않는 순수 도메인 엔진으로 유지한다. `DrawingEngineConfig`는
+후보와 상품 알고리즘을 각각 Registry에 등록하고 Resolver를 어플리케이션 계층에 주입한다.
 
 ### Drawing
 

@@ -2,6 +2,7 @@ package kr.co.cking.drawing.domain.engine;
 
 public enum DrawingAlgorithmVersion {
 
+    UNIFORM_V1,
     WEIGHTED_V1;
 
     public static DrawingAlgorithmVersion from(String value) {

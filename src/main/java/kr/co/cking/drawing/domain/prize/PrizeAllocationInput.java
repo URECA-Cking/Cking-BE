@@ -24,13 +24,16 @@ public record PrizeAllocationInput(
                 .thenComparing(PrizeValue::prizeKey)).toList();
         HashSet<String> keys = new HashSet<>();
         long quantity = 0;
+        PrizeAllocationAlgorithmVersion version = PrizeAllocationAlgorithmVersion.from(algorithmVersion);
         long weight = 0;
         for (PrizeValue prize : prizes) {
             if (!keys.add(prize.prizeKey())) {
                 throw new IllegalArgumentException("상품 식별자는 중복될 수 없습니다.");
             }
             quantity = Math.addExact(quantity, prize.quantity());
-            weight = Math.addExact(weight, prize.weight());
+            if (version == PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1) {
+                weight = Math.addExact(weight, prize.weight());
+            }
         }
         if (quantity < winners.size()) {
             throw new IllegalArgumentException("총 상품 수량이 당첨자 수보다 작습니다.");

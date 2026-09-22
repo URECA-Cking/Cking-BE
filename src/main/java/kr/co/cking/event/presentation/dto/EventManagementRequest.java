@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.PrizeConfig;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
 
 import java.time.Instant;
 import java.util.List;
@@ -29,8 +30,14 @@ public final class EventManagementRequest {
             @NotNull Instant endAt,
             @Min(1) int winnerCount,
             @NotNull DrawMethod drawMethod,
+            PrizeAllocationAlgorithmVersion prizeAlgorithmVersion,
             List<@Valid Prize> prizes
     ) {
+        public Create {
+            prizeAlgorithmVersion = prizeAlgorithmVersion == null
+                    ? PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1 : prizeAlgorithmVersion;
+        }
+
         public List<PrizeConfig> prizeConfigs() {
             return prizes == null ? List.of() : prizes.stream().map(Prize::toConfig).toList();
         }
@@ -47,7 +54,13 @@ public final class EventManagementRequest {
     /** Event 수정 요청의 변경 값을 전달한다. */
     public record Update(@NotNull Long userId, @NotBlank @Size(max = 200) String title, String description,
                          @NotNull Instant startAt, @NotNull Instant endAt, @Min(1) int winnerCount,
-                         @NotNull DrawMethod drawMethod, List<@Valid Prize> prizes) {
+                         @NotNull DrawMethod drawMethod, PrizeAllocationAlgorithmVersion prizeAlgorithmVersion,
+                         List<@Valid Prize> prizes) {
+        public Update {
+            prizeAlgorithmVersion = prizeAlgorithmVersion == null
+                    ? PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1 : prizeAlgorithmVersion;
+        }
+
         public List<PrizeConfig> prizeConfigs() {
             return prizes == null ? List.of() : prizes.stream().map(Prize::toConfig).toList();
         }

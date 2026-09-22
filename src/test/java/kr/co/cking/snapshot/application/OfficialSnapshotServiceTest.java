@@ -13,12 +13,15 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.snapshot.domain.CandidateValue;
 import kr.co.cking.snapshot.domain.DrawSnapshot;
+import kr.co.cking.snapshot.domain.PrizeValue;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
 import kr.co.cking.snapshot.repository.DrawSnapshotRepository;
 import kr.co.cking.snapshot.repository.SnapshotEventSource;
 import kr.co.cking.snapshot.repository.SnapshotSourceQueryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -37,11 +40,15 @@ class OfficialSnapshotServiceTest {
     @Mock
     private SnapshotHashGenerator hashGenerator;
 
+    @Mock
+    private SnapshotHashV2Generator hashV2Generator;
+
     private OfficialSnapshotService service;
 
     @BeforeEach
     void setUp() {
-        service = new OfficialSnapshotService(snapshotRepository, sourceQueryRepository, hashGenerator);
+        service = new OfficialSnapshotService(
+                snapshotRepository, sourceQueryRepository, hashGenerator, hashV2Generator);
     }
 
     @Test
@@ -65,6 +72,36 @@ class OfficialSnapshotServiceTest {
         assertThat(result.totalTicketCount()).isEqualTo(10L);
         assertThat(result.snapshotHash()).isEqualTo(HASH);
         verify(snapshotRepository).saveAndFlush(any(DrawSnapshot.class));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "UNIFORM, PRIZE_UNIFORM_V1, UNIFORM_V1",
+            "UNIFORM, PRIZE_WEIGHTED_V1, UNIFORM_V1",
+            "WEIGHTED, PRIZE_UNIFORM_V1, WEIGHTED_V1",
+            "WEIGHTED, PRIZE_WEIGHTED_V1, WEIGHTED_V1"
+    })
+    void Event의_네_가지_알고리즘_조합을_Snapshot에_확정한다(
+            String drawMethod,
+            String prizeAlgorithmVersion,
+            String expectedAlgorithmVersion
+    ) {
+        when(sourceQueryRepository.findEventForUpdate(10L)).thenReturn(Optional.of(
+                new SnapshotEventSource(10L, EventStatus.CLOSED, 1, drawMethod, prizeAlgorithmVersion)));
+        when(snapshotRepository.findByEventId(10L)).thenReturn(Optional.empty());
+        when(sourceQueryRepository.findCandidates(10L))
+                .thenReturn(List.of(new CandidateValue(1L, 3L)));
+        when(sourceQueryRepository.findPrizes(10L))
+                .thenReturn(List.of(new PrizeValue("A", "A", 1, 1L, 1)));
+        when(hashV2Generator.generate(any())).thenReturn(new SnapshotHash("payload", HASH));
+        when(snapshotRepository.saveAndFlush(any(DrawSnapshot.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        OfficialSnapshotResult result = service.createIfAbsent(10L);
+
+        assertThat(result.drawMethod()).isEqualTo(drawMethod);
+        assertThat(result.algorithmVersion()).isEqualTo(expectedAlgorithmVersion);
+        assertThat(result.prizeAlgorithmVersion()).isEqualTo(prizeAlgorithmVersion);
     }
 
     @Test

@@ -22,7 +22,7 @@ Snapshot은 마감 트랜잭션이 Commit된 뒤 별도 트랜잭션에서 생�
 7. Event 상품 설정을 `priority ASC, prizeKey ASC`로 조회한다.
 8. Snapshot, Candidate, 상품 등급을 한 트랜잭션으로 저장한다.
 
-상품 등급의 식별자, 표시명, priority, 확률 가중치, 수량과 `PRIZE_WEIGHTED_V1` 버전은 공식
+상품 등급의 식별자, 표시명, priority, 확률 가중치, 수량과 Event에서 선택한 상품 알고리즘 버전은 공식
 Snapshot 이후 변경하지 않는다.
 
 DB의 `UNIQUE(draw_snapshot.event_id)`는 애플리케이션 잠금 외의 최종 중복 방어선이다.
@@ -108,7 +108,8 @@ candidates
 {memberId},{ticketCount}
 ```
 
-후보가 없으면 `candidates\n`에서 끝난다. MVP의 `algorithmVersion`은 `WEIGHTED_V1`이다.
+후보가 없으면 `candidates\n`에서 끝난다. `drawMethod=UNIFORM`은 `UNIFORM_V1`,
+`drawMethod=WEIGHTED`는 `WEIGHTED_V1`으로 확정한다.
 
 예시는 다음과 같다.
 
@@ -139,7 +140,7 @@ eventId={eventId}
 winnerCount={winnerCount}
 drawMethod={drawMethod}
 algorithmVersion={algorithmVersion}
-prizeAlgorithmVersion=PRIZE_WEIGHTED_V1
+prizeAlgorithmVersion={prizeAlgorithmVersion}
 candidates
 {memberId},{ticketCount}
 prizes

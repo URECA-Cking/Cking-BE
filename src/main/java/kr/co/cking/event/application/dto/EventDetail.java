@@ -17,6 +17,7 @@ public record EventDetail(
         DisplayStatus displayStatus,
         Integer winnerCount,
         String drawMethod,
+        String prizeAlgorithmVersion,
         long myTicketBalance,
         List<PrizeResult> prizes
 ) {
@@ -25,7 +26,7 @@ public record EventDetail(
                        EventStatus status, DisplayStatus displayStatus, Integer winnerCount, String drawMethod,
                        long myTicketBalance) {
         this(eventId, creatorId, title, description, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
-                myTicketBalance, List.of());
+                "PRIZE_WEIGHTED_V1", myTicketBalance, List.of());
     }
 
     public EventDetail {
@@ -44,6 +45,7 @@ public record EventDetail(
                 DisplayStatus.of(event.status(), event.endAt(), now),
                 event.winnerCount(),
                 event.drawMethod(),
+                event.prizeAlgorithmVersion(),
                 myTicketBalance,
                 event.prizes().stream().map(PrizeResult::from).toList()
         );
