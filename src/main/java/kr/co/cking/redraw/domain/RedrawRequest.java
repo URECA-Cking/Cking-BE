@@ -11,6 +11,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import kr.co.cking.common.exception.BusinessException;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -92,5 +93,35 @@ public class RedrawRequest {
         request.executionStatus = RedrawExecutionStatus.PENDING;
         request.requestedBy = requestedBy;
         return request;
+    }
+
+    /** 검토 대기 요청을 승인하고 검토자와 검토 시각을 기록한다. */
+    public void approve(Long reviewerId) {
+        requirePositive(reviewerId, "reviewerId");
+        requireRequested();
+        status = RedrawRequestStatus.APPROVED;
+        reviewedBy = reviewerId;
+        reviewedAt = Instant.now();
+        rejectReason = null;
+    }
+
+    /** 검토 대기 요청을 거절하고 검토자·검토 시각·거절 사유를 기록한다. */
+    public void reject(Long reviewerId, String reason) {
+        requirePositive(reviewerId, "reviewerId");
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
+        }
+        requireRequested();
+        status = RedrawRequestStatus.REJECTED;
+        reviewedBy = reviewerId;
+        reviewedAt = Instant.now();
+        rejectReason = reason.strip();
+    }
+
+    /** 심사 가능한 검토 대기 상태인지 확인하고, 이미 심사된 요청은 거부한다. */
+    private void requireRequested() {
+        if (status != RedrawRequestStatus.REQUESTED) {
+            throw new BusinessException(RedrawErrorCode.INVALID_STATE);
+        }
     }
 }
