@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import org.junit.jupiter.api.Test;
 
 /** RedrawRequest 심사 상태 전이와 거절 사유 불변식을 검증한다. */
@@ -40,15 +41,21 @@ class RedrawRequestTest {
         assertThat(request.getRejectReason()).isEqualTo("결원 확인이 필요합니다.");
     }
 
-    /** null·공백·500자 초과 거절 사유는 도메인 저장 불변식을 위반한다. */
+    /** null·공백·500자 초과 거절 사유는 공통 입력 검증 오류로 거부한다. */
     @Test
-    void 유효하지_않은_거절_사유는_IllegalArgumentException이다() {
+    void 유효하지_않은_거절_사유는_VALIDATION_FAILED다() {
         assertThatThrownBy(() -> requested().reject(REVIEWER_ID, null))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
         assertThatThrownBy(() -> requested().reject(REVIEWER_ID, " "))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
         assertThatThrownBy(() -> requested().reject(REVIEWER_ID, "가".repeat(501)))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
     }
 
     /** 이미 승인 또는 거절된 요청은 어떤 심사 명령으로도 다시 상태 전이할 수 없다. */

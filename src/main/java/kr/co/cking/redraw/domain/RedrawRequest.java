@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -126,7 +127,7 @@ public class RedrawRequest {
     /** Service가 정규화·검증한 거절 사유가 도메인 저장 한계를 만족하는지 방어한다. */
     private void requireValidRejectReason(String reason) {
         if (reason == null || reason.isBlank() || reason.length() > 500) {
-            throw new IllegalArgumentException("rejectReason은 공백이 아니며 500자 이하여야 합니다.");
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
     }
 }
