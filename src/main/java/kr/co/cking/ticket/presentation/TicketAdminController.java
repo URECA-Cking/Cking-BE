@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.ticket.application.TicketAdminService;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
-import kr.co.cking.ticket.application.dto.TicketResyncRequest;
+import kr.co.cking.ticket.presentation.dto.TicketResyncRequest;
 
 /** #207: 정합성 배치가 지속 불일치를 감지했을 때 운영자가 수동으로 재동기화하는 API. */
 @RestController

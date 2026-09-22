@@ -61,6 +61,19 @@ class TicketAdminControllerTest {
         verifyNoInteractions(ticketAdminService);
     }
 
+    /** ticket_ledger.reason은 VARCHAR(500) — 그보다 길면 DB 저장 단계가 아니라 요청 검증에서 막는다. */
+    @Test
+    void reason이_500자를_넘으면_서비스_호출_없이_400이다() throws Exception {
+        String tooLong = "가".repeat(501);
+
+        mockMvc.perform(post("/api/admin/tickets/resync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"memberId\":2,\"creatorId\":3,\"reason\":\"%s\"}".formatted(tooLong)))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(ticketAdminService);
+    }
+
     @Test
     void ADMIN이_아니면_403이고_보정중_충돌이면_409다() throws Exception {
         when(ticketAdminService.resync(eq(1L), eq(2L), eq(3L), org.mockito.ArgumentMatchers.anyString()))
