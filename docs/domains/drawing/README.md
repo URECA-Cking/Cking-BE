@@ -104,7 +104,7 @@ Event를 `DRAW_COMPLETED → PUBLISHED`로 전이하고, REDRAW는 이미 `PUBLI
 - `DrawSeed`는 `draw_seed.seed_value`를 32byte 바이너리로 저장하고 `DrawingSeed` 값 객체로 복원한다.
 - `DrawingSeedService.createForInitial()`은 신규 Seed를 저장하고 `seedId`와 `DrawingSeed`를 함께 반환한다.
 - `DrawingSeedService.reuseForRetry(seedId)`는 기존 행을 조회해 재사용하며 신규 Seed 행을 만들지 않는다.
-- `DrawingSeedService.createForRedraw(previousSeedId)`는 이전 Drawing의 Seed와 다른 값을 생성해 신규 행으로 저장한다.
+- `DrawingSeedService.createForRedraw(previousSeedId)`는 Event의 직전 Drawing(두 번째 REDRAW부터는 직전 REDRAW)의 Seed와 다른 값을 생성해 신규 행으로 저장한다.
 - REDRAW 자체의 Retry는 `createForRedraw`가 아니라 `reuseForRetry`를 사용한다.
 - Seed 생성·저장은 `MANDATORY` 전파 속성으로 Drawing 실행 트랜잭션에만 참여한다. 호출자 트랜잭션이 없으면 실행을 거부하며, Drawing·Engine·Winner·Event 전이 실패 시 함께 Rollback한다.
 - 애플리케이션 서비스는 반환된 `seedId`를 `Drawing`에, `DrawingSeed`를 `DrawInput`에 전달한다.

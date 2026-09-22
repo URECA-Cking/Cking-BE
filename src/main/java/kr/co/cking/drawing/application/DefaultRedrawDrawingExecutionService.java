@@ -105,8 +105,9 @@ public class DefaultRedrawDrawingExecutionService implements RedrawDrawingExecut
         if (eligibleCount < vacancyCount) {
             return RedrawDrawingExecutionResult.noCandidates();
         }
-        PersistedDrawingSeed seed = drawingSeedService.createForRedraw(initial.getSeedId());
-        int drawNo = drawingRepository.findTopByEventIdOrderByDrawNoDesc(initial.getEventId()).orElseThrow().getDrawNo() + 1;
+        Drawing previousDrawing = drawingRepository.findTopByEventIdOrderByDrawNoDesc(initial.getEventId()).orElseThrow();
+        PersistedDrawingSeed seed = drawingSeedService.createForRedraw(previousDrawing.getSeedId());
+        int drawNo = previousDrawing.getDrawNo() + 1;
         Drawing redraw = drawingRepository.saveAndFlush(Drawing.createRedraw(initial, drawNo, requestId, seed.seedId(), vacancyCount, adminId));
         redrawExclusionRepository.saveAll(exclusionSources.stream()
                 .map(source -> RedrawExclusion.of(redraw.getId(), source.memberId(),

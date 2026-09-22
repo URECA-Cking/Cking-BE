@@ -245,6 +245,43 @@ class DefaultRedrawDrawingExecutionServiceTest {
         order.verify(drawingRepository).saveAndFlush(any(Drawing.class));
     }
 
+    /** 두 번째 REDRAW는 INITIAL이 아니라 직전 REDRAW의 Seed를 기준으로 새 Seed를 생성한다. */
+    @Test
+    void 두_번째_REDRAW는_직전_REDRAW의_Seed를_사용한다() {
+        VerifiedSnapshot snapshot = snapshot();
+        Drawing initial = completedInitial(snapshot);
+        Drawing previousRedraw = Drawing.createRedraw(initial, 1, 11L, 41L, 1, ADMIN_ID);
+        ReflectionTestUtils.setField(previousRedraw, "id", REDRAW_DRAWING_ID);
+        when(drawingRepository.findById(INITIAL_DRAWING_ID)).thenReturn(Optional.of(initial));
+        when(drawingRepository.findByRedrawRequestId(REQUEST_ID)).thenReturn(Optional.empty());
+        when(eventDrawingQueryService.getDrawingSourceForUpdate(10L))
+                .thenReturn(new EventDrawingSource(10L, EventStatus.PUBLISHED, null));
+        when(snapshotIntegrityService.verifyForDrawing(10L)).thenReturn(snapshot);
+        when(winnerRepository.findRedrawExclusionSourcesByEventId(10L)).thenReturn(List.of());
+        when(drawingRepository.findTopByEventIdOrderByDrawNoDesc(10L)).thenReturn(Optional.of(previousRedraw));
+        when(drawingSeedService.createForRedraw(41L))
+                .thenReturn(new PersistedDrawingSeed(42L, kr.co.cking.drawing.domain.seed.DrawingSeed.from("02".repeat(32))));
+        when(drawingRepository.saveAndFlush(any(Drawing.class))).thenAnswer(invocation -> {
+            Drawing redraw = invocation.getArgument(0);
+            ReflectionTestUtils.setField(redraw, "id", 31L);
+            return redraw;
+        });
+        when(drawingEngine.draw(any(DrawInput.class))).thenReturn(new DrawOutput(
+                DrawingAlgorithmVersion.WEIGHTED_V1, List.of(new DrawWinner(101L, 1, 1L))));
+        when(winnerRepository.saveAllAndFlush(any())).thenAnswer(invocation -> {
+            List<Winner> winners = invocation.getArgument(0);
+            ReflectionTestUtils.setField(winners.getFirst(), "id", 51L);
+            return winners;
+        });
+
+        service.execute(REQUEST_ID, ADMIN_ID, INITIAL_DRAWING_ID, 1);
+
+        verify(drawingSeedService).createForRedraw(41L);
+        ArgumentCaptor<Drawing> redraw = ArgumentCaptor.forClass(Drawing.class);
+        verify(drawingRepository).saveAndFlush(redraw.capture());
+        assertThat(redraw.getValue().getDrawNo()).isEqualTo(2);
+    }
+
     private Drawing completedInitial(VerifiedSnapshot snapshot) {
         Drawing initial = Drawing.createInitial(DrawingSnapshotContract.from(snapshot), 40L, ADMIN_ID);
         ReflectionTestUtils.setField(initial, "id", INITIAL_DRAWING_ID);
