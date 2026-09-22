@@ -40,9 +40,12 @@ class RedrawRequestExecutionFailurePersistenceIntegrationTest extends RedrawRequ
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM redraw_execution_history WHERE redraw_request_id = ?", Integer.class, redrawRequestId
         )).isOne();
-        assertThat(jdbcTemplate.queryForObject(
+        String failureCode = jdbcTemplate.queryForObject(
                 "SELECT failure_code FROM redraw_execution_history WHERE redraw_request_id = ?", String.class, redrawRequestId
-        )).isEqualTo(IllegalStateException.class.getSimpleName());
+        );
+        assertThat(failureCode).hasSize(50)
+                .isEqualTo(RedrawExecutionInfrastructureInitializationFailureException.class.getSimpleName()
+                        .substring(0, 50));
     }
 
     /** 내부 REQUIRED 실행이 런타임 예외로 같은 물리 트랜잭션을 rollback-only로 만든다. */
@@ -63,7 +66,13 @@ class RedrawRequestExecutionFailurePersistenceIntegrationTest extends RedrawRequ
         public RedrawDrawingExecutionResult execute(
                 Long redrawRequestId, Long adminId, Long originalDrawingId, int vacancyCount
         ) {
-            throw new IllegalStateException("시스템3 실행 실패");
+            throw new RedrawExecutionInfrastructureInitializationFailureException("시스템3 실행 실패");
+        }
+    }
+
+    static class RedrawExecutionInfrastructureInitializationFailureException extends RuntimeException {
+        RedrawExecutionInfrastructureInitializationFailureException(String message) {
+            super(message);
         }
     }
 }

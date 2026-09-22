@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 class RedrawRequestFailurePersistenceService {
+    private static final int FAILURE_CODE_MAX_LENGTH = 50;
+
     private final RedrawRequestRepository redrawRequestRepository;
     private final RedrawExecutionHistoryRepository historyRepository;
 
@@ -25,6 +27,12 @@ class RedrawRequestFailurePersistenceService {
                 .orElseThrow(() -> new IllegalStateException(RedrawErrorCode.REDRAW_REQUEST_NOT_FOUND.code()));
         request.markFailed();
         historyRepository.save(RedrawExecutionHistory.of(redrawRequestId, RedrawExecutionStatus.FAILED,
-                exception.getClass().getSimpleName(), exception.getMessage()));
+                failureCodeOf(exception), exception.getMessage()));
+    }
+
+    /** 감사 이력 저장이 예외 클래스명 길이 때문에 실패하지 않도록 DB 컬럼 한계로 제한한다. */
+    private static String failureCodeOf(RuntimeException exception) {
+        String name = exception.getClass().getSimpleName();
+        return name.substring(0, Math.min(name.length(), FAILURE_CODE_MAX_LENGTH));
     }
 }
