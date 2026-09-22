@@ -66,6 +66,8 @@
 - 시스템3은 원본 INITIAL Snapshot과 `drawMethod`·`algorithmVersion`을 재사용하고 Event의 모든 기존 Winner를
   후보에서 제외한다. 후보가 부족하면 Drawing을 생성하지 않는다.
 - 실행 종료 시 `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED` 중 하나를 기록하고
-  `redraw_execution_history`에 결과를 남긴다. 실패·후보 부족은 결원 수를 변경하지 않는다.
+  `redraw_execution_history`에 결과를 남긴다. 시스템3 실행의 기술적 실패는 실행 Transaction을 먼저
+  Rollback한 뒤 별도 `REQUIRES_NEW` Transaction에서 `FAILED`와 이력을 확정한다. 실패·후보 부족은
+  결원 수를 변경하지 않는다.
 
 DB 구조와 unique·foreign key 제약의 정본은 `src/main/resources/db/migration/`이다.
