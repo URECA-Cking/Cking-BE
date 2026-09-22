@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -53,11 +54,20 @@ public class EventLifecycleScheduler {
      *
      * <p>FR-11b는 이 구체값을 시스템2가 자율 결정하도록 위임했다. MVP concurrency=1 Consumer
      * 기준 정상 지연은 5분 WARN 안에서 대부분 해소된다고 보고, 30분을 넘기면 실측 부하 테스트
-     * (NFR-06) 이전에도 운영자가 봐야 할 이상 신호로 잡았다. 실측 이후 재조정할 수 있는 잠정값이다.
+     * (NFR-06) 이전에도 운영자가 봐야 할 이상 신호로 잡았다. 실측 이후 재조정할 수 있는 잠정값이라
+     * tick 간격과 마찬가지로 프로퍼티로 뺐다 — 로그의 경과 시간도 고정 문구가 아니라 실제 tick
+     * 간격(`lifecycleIntervalMs`) 기준으로 계산한다.
      * ponytail: 인스턴스 메모리라 재기동하면 0부터 다시 센다, 영속 기준이 필요해지면 CLOSING 진입 시각을 저장.
      */
-    private static final int DRAIN_WARN_EVERY_TICKS = 30;
-    private static final int DRAIN_ERROR_AFTER_TICKS = 180;
+    @Value("${cking.event.lifecycle-interval-ms:10000}")
+    private long lifecycleIntervalMs = 10_000L;
+
+    @Value("${cking.event.drain-warn-every-ticks:30}")
+    private int drainWarnEveryTicks = 30;
+
+    @Value("${cking.event.drain-error-after-ticks:180}")
+    private int drainErrorAfterTicks = 180;
+
     private final Map<Long, Integer> undrainedTicks = new ConcurrentHashMap<>();
 
     /** 예약 시작, 마감 시작, Drain 완료 처리를 순서대로 한 번 실행한다. */
@@ -172,11 +182,12 @@ public class EventLifecycleScheduler {
                 return;
             }
             int ticks = undrainedTicks.merge(eventId, 1, Integer::sum);
-            if (ticks % DRAIN_WARN_EVERY_TICKS == 0) {
-                if (ticks >= DRAIN_ERROR_AFTER_TICKS) {
-                    log.error("이벤트가 CLOSING에서 Drain을 30분 넘게 끝내지 못하고 있습니다(운영자 확인 필요). "
+            if (ticks % drainWarnEveryTicks == 0) {
+                if (ticks >= drainErrorAfterTicks) {
+                    long elapsedMinutes = ticks * lifecycleIntervalMs / 60_000L;
+                    log.error("이벤트가 CLOSING에서 Drain을 {}분 넘게 끝내지 못하고 있습니다(운영자 확인 필요). "
                                     + "eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
-                            eventId, cutoffStreamId, ticks);
+                            elapsedMinutes, eventId, cutoffStreamId, ticks);
                 } else {
                     log.warn("이벤트가 CLOSING에서 Drain을 끝내지 못하고 있습니다. eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
                             eventId, cutoffStreamId, ticks);
