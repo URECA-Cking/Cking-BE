@@ -31,3 +31,14 @@ SPEND·EARN Lua도 같은 lock을 확인해 lock이 걸린 동안 새 차감·�
 ### 호출 진입점(#207)
 
 `resyncRedisToDb()`는 서비스 메서드라 직접 호출할 외부 API가 없었다(#178 Dead Stream 관리자 API와 같은 상황). `POST /api/admin/tickets/resync`(`userId`(ADMIN), `memberId`, `creatorId`, `reason`)가 `TicketAdminService.resync()`를 통해 이 서비스를 호출한다. ADMIN 검증 후 대상 Balance가 없으면 `RESOURCE_NOT_FOUND`(404), lock 충돌은 `CONCURRENT_COMMAND`(409), 미반영 메시지가 있으면 `INVALID_STATE`(409)를 그대로 응답하며, 성공하면 재동기화 후 현재 잔액을 반환한다.
+
+## 공용 응모권(크리에이터 무관, 이슈 #219)
+
+사용자는 크리에이터별 응모권과 별개로 아무 크리에이터에게나 쓸 수 있는 공용 응모권을 가진다. `user_ticket_balance`/`ticket_ledger`가 `creator_id NOT NULL`이라 이 개념을 담을 수 없어, 크리에이터 축만 뺀 병렬 테이블·경로로 분리했다.
+
+- **저장**: `user_common_ticket_balance`(PK `member_id`만), `common_ticket_ledger`.
+- **EARN**: `CommonTicketEarnService`/`CommonTicketEarnServiceImpl`이 `common-ticket-earn.lua`로 `TicketEarnService`와 동일한 원자성(멱등성 확인 → 중복 적립 가드 → Balance 증가 → Stream 발행)을 재현한다. Redis 키에 `creatorId` 자리가 없다(`ticket:balance:common:{userId}`, `mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd}`, `idem:common-mission:{requestId}`).
+- **Stream**: `stream:common-ticket-earned`를 `cg:common-ticket-earn` Consumer Group으로 소비한다(`CommonEarnStreamListener`/`CommonEarnStreamConfig`). `CommonMissionEarnLedgerService`가 `common_mission_completion` → `common_ticket_ledger` → `user_common_ticket_balance` 반영을 한 트랜잭션으로 묶는다(`TicketEarnLedgerService`와 동일 계약).
+- **조회**: `GET /api/tickets/common`, `GET /api/tickets/common/history`(`CommonTicketQueryController`) — `GET /api/creators/{creatorId}/tickets`류와 동일한 커서 페이지네이션.
+- **알려진 제약(미해결)**: PEL 회수(`EarnStreamPelRecoveryScheduler` 대응)와 잔액 수동 보정(`TicketCompensationService`/`ticket:maint:` maintenance lock 대응)이 아직 없다. `BALANCE_MAINTENANCE`도 아직 반환되지 않는다 — 후속 이슈로 남긴다.
+- **호출 측**: 공용 미션 완료는 `kr.co.cking.mission.application.CommonMissionCompletionService`가 담당한다([Mission 도메인](../mission/README.md#공용-미션크리에이터-무관-이슈-219) 참고). 응모(SPEND)에서 공용 응모권을 크리에이터 이벤트에 쓰는 검증 로직은 이 이슈 범위 밖이며 별도(2조) 이슈로 진행한다.

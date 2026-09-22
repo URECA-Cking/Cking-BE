@@ -93,3 +93,24 @@
 | `EARN_PROCESSING_FAILED` | 503 | 응모권 적립 처리 실패(재시도 필요) |
 | `EARN_STATUS_UNKNOWN` | 504 | 적립 처리 결과 확인 불가(동일 요청으로 재시도 필요) |
 | `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(잠시 후 동일 요청으로 재시도, issue #172) |
+
+## 공용 미션 API(크리에이터 무관, 이슈 #219)
+
+경로에 `creatorId`가 없는 것만 다르고, 그 외 요청·응답 형식과 처리 순서는 위 크리에이터별 API와 동일하다. 공용 미션은 현재 `ATTENDANCE` 한 유형뿐이며 유형당 하나뿐이다(`uk_common_mission_type`).
+
+### GET /api/missions
+
+`userId`는 필수 양수 Long query parameter다. 응답 형식은 위 `GET /api/creators/{creatorId}/missions`와 같다(`type`은 `CommonMissionType`).
+
+### POST /api/missions/{missionId}/complete
+
+```json
+{
+  "userId": 1,
+  "requestId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+처리 순서는 위와 동일하되 3~5단계가 `CommonTicketEarnService#findExisting()`/`#earn()`을 사용하고, Redis 키에 `creatorId` 축이 없다(`ticket:balance:common:{userId}`, `mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd}`).
+
+**`BALANCE_MAINTENANCE`는 아직 발생하지 않는다** — 공용 응모권의 수동 보정(`TicketCompensationService` 대응) 기능이 아직 없다(이슈 #219 범위 밖, 후속 작업).
