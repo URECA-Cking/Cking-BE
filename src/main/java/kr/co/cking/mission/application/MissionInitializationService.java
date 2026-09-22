@@ -41,6 +41,7 @@ public class MissionInitializationService {
 
     private final MissionRepository missionRepository;
 
+    /** 신규 승인 Creator에 누락된 기본 미션만 현재 트랜잭션에 참여시켜 생성한다. */
     public void initializeDefaultMissions(Long creatorId) {
         Set<MissionType> existingTypes = missionRepository.findByCreatorIdAndTypeIn(creatorId, DEFAULT_TYPES)
                 .stream()
@@ -59,6 +60,7 @@ public class MissionInitializationService {
      * 같은 클래스 안에서 이 메서드를 self-invocation하면 프록시를 우회해 조용히
      * 무시된다.
      */
+    /** 기존 Creator 백필 한 건을 독립 트랜잭션으로 초기화한다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void initializeCreatorInNewTransaction(Long creatorId) {
         initializeDefaultMissions(creatorId);

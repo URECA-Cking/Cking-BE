@@ -10,6 +10,7 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.mission.application.MissionInitializationService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -37,6 +38,7 @@ class CreatorApplicationServiceTest {
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         CreatorApplicationRepository applicationRepository = mock(CreatorApplicationRepository.class);
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        MissionInitializationService missionInitializationService = mock(MissionInitializationService.class);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Member applicant = new Member("신청자", null, null, MemberRole.USER);
         ReflectionTestUtils.setField(applicant, "memberId", 10L);
@@ -46,7 +48,7 @@ class CreatorApplicationServiceTest {
                 .willReturn(new PageImpl<>(List.of(application)));
         given(memberRepository.findByMemberIdIn(List.of(10L))).willReturn(List.of(applicant));
         CreatorApplicationService service = new CreatorApplicationService(
-                memberRepository, creatorRepository, applicationRepository, lockManager
+                memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService
         );
 
         var result = service.findAllForAdmin(1L, PageRequest.of(0, 20));
@@ -61,6 +63,7 @@ class CreatorApplicationServiceTest {
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         CreatorApplicationRepository applicationRepository = mock(CreatorApplicationRepository.class);
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        MissionInitializationService missionInitializationService = mock(MissionInitializationService.class);
         runCommands(lockManager);
         CreatorApplication existing = new CreatorApplication(10L);
         given(memberRepository.existsById(10L)).willReturn(true);
@@ -68,7 +71,7 @@ class CreatorApplicationServiceTest {
         given(applicationRepository.findFirstByMemberIdAndStatusOrderByIdDesc(10L, CreatorApplicationStatus.PENDING))
                 .willReturn(Optional.of(existing));
         CreatorApplicationService service = new CreatorApplicationService(
-                memberRepository, creatorRepository, applicationRepository, lockManager
+                memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService
         );
 
         CreatorApplicationService.ApplyResult result = service.apply(10L);
@@ -83,6 +86,7 @@ class CreatorApplicationServiceTest {
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         CreatorApplicationRepository applicationRepository = mock(CreatorApplicationRepository.class);
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        MissionInitializationService missionInitializationService = mock(MissionInitializationService.class);
         runCommands(lockManager);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Member applicant = new Member("신청자", null, null, MemberRole.USER);
@@ -91,8 +95,11 @@ class CreatorApplicationServiceTest {
         given(memberRepository.findById(10L)).willReturn(Optional.of(applicant));
         given(applicationRepository.findById(100L)).willReturn(Optional.of(application));
         given(creatorRepository.existsByMemberId(10L)).willReturn(false);
+        Creator creator = new Creator(10L, "신청자");
+        ReflectionTestUtils.setField(creator, "creatorId", 20L);
+        given(creatorRepository.save(any(Creator.class))).willReturn(creator);
         CreatorApplicationService service = new CreatorApplicationService(
-                memberRepository, creatorRepository, applicationRepository, lockManager
+                memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService
         );
 
         service.approve(1L, 100L);
@@ -103,6 +110,7 @@ class CreatorApplicationServiceTest {
         verify(creatorRepository).save(creatorCaptor.capture());
         assertThat(creatorCaptor.getValue().getMemberId()).isEqualTo(10L);
         assertThat(creatorCaptor.getValue().getName()).isEqualTo("신청자");
+        verify(missionInitializationService).initializeDefaultMissions(20L);
     }
 
     @Test
@@ -111,11 +119,12 @@ class CreatorApplicationServiceTest {
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         CreatorApplicationRepository applicationRepository = mock(CreatorApplicationRepository.class);
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        MissionInitializationService missionInitializationService = mock(MissionInitializationService.class);
         runCommands(lockManager);
         Member user = new Member("일반사용자", null, null, MemberRole.USER);
         given(memberRepository.findById(1L)).willReturn(Optional.of(user));
         CreatorApplicationService service = new CreatorApplicationService(
-                memberRepository, creatorRepository, applicationRepository, lockManager
+                memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService
         );
 
         assertThatThrownBy(() -> service.reject(1L, 100L, "사유"))
