@@ -8,6 +8,8 @@ import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.redraw.application.RedrawRequestCreateCommand;
 import kr.co.cking.redraw.application.RedrawRequestCreateResult;
 import kr.co.cking.redraw.application.RedrawRequestCreateService;
+import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
+import kr.co.cking.redraw.application.RedrawRequestDetailResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +17,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 관리자의 RedrawRequest 생성 HTTP 요청을 처리한다. */
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class RedrawAdminController {
 
     private final RedrawRequestCreateService redrawRequestCreateService;
+    private final RedrawRequestDetailQueryService redrawRequestDetailQueryService;
 
     /** 관리자가 공개 Event의 미점유 결원을 서버 계산으로 확정한 RedrawRequest를 생성한다. */
     @Operation(
@@ -42,5 +47,19 @@ public class RedrawAdminController {
         ));
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status).body(ApiResponse.success(RedrawRequestCreateResponse.from(result)));
+    }
+
+    /** 관리자가 RedrawRequest의 고정 결원과 검토·실행 이력을 조회한다. */
+    @Operation(
+            summary = "RedrawRequest 상세 조회",
+            description = "관리자가 재추첨 요청의 결원 Winner, 원본·실행 Drawing, 검토·실행 상태를 조회합니다. "
+                    + "후보 부족으로 실행되지 않은 요청은 redrawDrawingId가 null입니다."
+    )
+    @GetMapping("/api/admin/redraw-requests/{redrawRequestId}")
+    public ApiResponse<RedrawRequestDetailResult> getRedrawRequest(
+            @PathVariable @Positive Long redrawRequestId,
+            @RequestParam @Positive Long userId
+    ) {
+        return ApiResponse.success(redrawRequestDetailQueryService.getDetail(redrawRequestId, userId));
     }
 }
