@@ -86,6 +86,7 @@ class RedrawRequestTest {
     private void assertInvalidState(Runnable command) {
         assertThatThrownBy(command::run)
                 .isInstanceOf(BusinessException.class)
+                .hasMessage("현재 상태에서는 재추첨 요청을 처리할 수 없습니다.")
                 .extracting("errorCode")
                 .isEqualTo(RedrawErrorCode.INVALID_STATE);
     }
