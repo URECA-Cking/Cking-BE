@@ -25,6 +25,8 @@ import kr.co.cking.drawing.domain.prize.PrizeAllocationEngine;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationInput;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationOutput;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.drawing.repository.DrawAttemptHistoryRepository;
+import kr.co.cking.drawing.domain.DrawAttemptHistory;
 import kr.co.cking.event.application.EventDrawingQueryService;
 import kr.co.cking.event.application.dto.EventDrawingSource;
 import kr.co.cking.event.application.service.EventCommandService;
@@ -64,6 +66,7 @@ public class InitialDrawingExecutionService {
     private final PrizeAllocationEngine prizeAllocationEngine;
     private final EventCommandService eventCommandService;
     private final Clock clock;
+    private final DrawAttemptHistoryRepository attemptRepository;
 
     /** 기존 V1 단위 테스트와 상품이 없는 레거시 Drawing 경로를 위한 호환 생성자다. */
     public InitialDrawingExecutionService(MemberQueryService memberQueryService,
@@ -76,7 +79,22 @@ public class InitialDrawingExecutionService {
                 drawingRepository, winnerRepository, winnerManagementRepository, drawingEngine,
                 inputHashGenerator, resultHashGenerator, new DrawInputV2HashGenerator(),
                 new DrawResultV2HashGenerator(), new kr.co.cking.drawing.domain.prize.WeightedPrizeV1AllocationEngine(),
-                eventCommandService, clock);
+                eventCommandService, clock, null);
+    }
+
+    /** 상품 추첨이 있는 기존 단위 테스트와 수동 조립 코드를 위한 호환 생성자다. */
+    public InitialDrawingExecutionService(MemberQueryService memberQueryService,
+            EventDrawingQueryService eventDrawingQueryService, SnapshotIntegrityService snapshotIntegrityService,
+            DrawingSeedService drawingSeedService, DrawingRepository drawingRepository,
+            WinnerRepository winnerRepository, WinnerManagementRepository winnerManagementRepository,
+            DrawingEngine drawingEngine, DrawInputHashGenerator inputHashGenerator,
+            DrawResultHashGenerator resultHashGenerator, DrawInputV2HashGenerator inputV2HashGenerator,
+            DrawResultV2HashGenerator resultV2HashGenerator, PrizeAllocationEngine prizeAllocationEngine,
+            EventCommandService eventCommandService, Clock clock) {
+        this(memberQueryService, eventDrawingQueryService, snapshotIntegrityService, drawingSeedService,
+                drawingRepository, winnerRepository, winnerManagementRepository, drawingEngine,
+                inputHashGenerator, resultHashGenerator, inputV2HashGenerator, resultV2HashGenerator,
+                prizeAllocationEngine, eventCommandService, clock, null);
     }
 
     @Transactional
@@ -107,6 +125,11 @@ public class InitialDrawingExecutionService {
                 ? inputV2HashGenerator.generate(input, snapshot.prizeAlgorithmVersion(), snapshot.prizes())
                 : inputHashGenerator.generate(input);
         drawing.start(inputHash.canonicalPayload(), inputHash.value(), clock.instant());
+        DrawAttemptHistory attempt = DrawAttemptHistory.started(
+                drawing.getId(), drawing.getAttemptCount(), adminId, clock.instant());
+        if (attemptRepository != null) {
+            attemptRepository.saveAndFlush(attempt);
+        }
 
         DrawOutput output = drawingEngine.draw(input);
         validateOutput(input, output);
@@ -120,6 +143,7 @@ public class InitialDrawingExecutionService {
 
         saveWinners(drawing, snapshot, output, prizeOutput);
         drawing.complete(resultHash.canonicalPayload(), resultHash.value(), clock.instant());
+        attempt.succeed(clock.instant());
         drawingRepository.flush();
         eventCommandService.completeDrawing(eventId);
 

@@ -66,6 +66,9 @@ public class RedrawRequest {
     @Column(name = "reject_reason", length = 500)
     private String rejectReason;
 
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     /** 새 요청을 검토 대기·실행 대기 상태로 만들고 서버가 산출한 결원 수를 고정한다. */
     public static RedrawRequest requested(
             Long eventId,
@@ -92,5 +95,30 @@ public class RedrawRequest {
         request.executionStatus = RedrawExecutionStatus.PENDING;
         request.requestedBy = requestedBy;
         return request;
+    }
+
+    /** REDRAW Drawing 결과가 원자적으로 확정된 트랜잭션에서 실행 상태를 완료한다. */
+    public void completeExecution(Instant completedAt) {
+        if (status != RedrawRequestStatus.APPROVED
+                || (executionStatus != RedrawExecutionStatus.PENDING
+                && executionStatus != RedrawExecutionStatus.FAILED)) {
+            throw new IllegalStateException("실행 가능한 재추첨 요청이 아닙니다.");
+        }
+        if (completedAt == null) {
+            throw new IllegalArgumentException("completedAt은 필수입니다.");
+        }
+        executionStatus = RedrawExecutionStatus.EXECUTED;
+        this.completedAt = completedAt;
+    }
+
+    /** REDRAW 결과 Transaction 실패를 별도 실패 기록 Transaction에서 보존한다. */
+    public void failExecution() {
+        if (status != RedrawRequestStatus.APPROVED
+                || (executionStatus != RedrawExecutionStatus.PENDING
+                && executionStatus != RedrawExecutionStatus.FAILED)) {
+            throw new IllegalStateException("실패 처리할 수 있는 재추첨 요청이 아닙니다.");
+        }
+        executionStatus = RedrawExecutionStatus.FAILED;
+        completedAt = null;
     }
 }

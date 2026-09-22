@@ -110,6 +110,7 @@ class DrawingVerificationIntegrationTest {
                 "SELECT seed_id FROM drawing WHERE event_id = ?", Long.class, eventId);
         jdbcTemplate.update("DELETE wm FROM winner_management wm JOIN winner w ON wm.winner_id = w.id WHERE w.event_id = ?", eventId);
         jdbcTemplate.update("DELETE FROM winner WHERE event_id = ?", eventId);
+        jdbcTemplate.update("DELETE h FROM draw_attempt_history h JOIN drawing d ON h.drawing_id = d.id WHERE d.event_id = ?", eventId);
         jdbcTemplate.update("DELETE FROM drawing WHERE event_id = ?", eventId);
         seedIds.forEach(seedRepository::deleteById);
         jdbcTemplate.update("DELETE FROM draw_snapshot_candidate WHERE snapshot_id = ?", snapshotId);

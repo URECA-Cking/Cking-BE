@@ -42,6 +42,37 @@ class DrawingTest {
     }
 
     @Test
+    void FAILED_Drawing은_기존_입력을_유지하며_RUNNING으로_재시도한다() {
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+        Instant firstStartedAt = Instant.parse("2026-09-20T00:00:00Z");
+        drawing.start("input\n", "a".repeat(64), firstStartedAt);
+        drawing.fail();
+
+        drawing.retry(Instant.parse("2026-09-20T00:01:00Z"));
+
+        assertThat(drawing.getStatus()).isEqualTo(DrawingStatus.RUNNING);
+        assertThat(drawing.getInputPayload()).isEqualTo("input\n");
+        assertThat(drawing.getInputHash()).isEqualTo("a".repeat(64));
+        assertThat(drawing.getFirstStartedAt()).isEqualTo(firstStartedAt);
+        assertThat(drawing.getAttemptCount()).isEqualTo(2);
+    }
+
+    @Test
+    void RUNNING_Drawing_실패는_부분_결과를_지운다() {
+        Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
+        drawing.start("input\n", "a".repeat(64), Instant.now());
+        ReflectionTestUtils.setField(drawing, "outputPayload", "partial");
+        ReflectionTestUtils.setField(drawing, "resultHash", "b".repeat(64));
+
+        drawing.fail();
+
+        assertThat(drawing.getStatus()).isEqualTo(DrawingStatus.FAILED);
+        assertThat(drawing.getOutputPayload()).isNull();
+        assertThat(drawing.getResultHash()).isNull();
+        assertThat(drawing.getCompletedAt()).isNull();
+    }
+
+    @Test
     void 허용되지_않은_Drawing_상태전이는_거부한다() {
         Drawing drawing = Drawing.createInitial(snapshotContract(), 3L, 4L);
 
