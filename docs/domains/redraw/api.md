@@ -136,12 +136,13 @@
     "status": "APPROVED",
     "executionStatus": "PENDING",
     "reviewedBy": 1,
-    "reviewedAt": "2026-09-22T01:00:00Z",
-    "rejectReason": null
+    "reviewedAt": "2026-09-22T01:00:00Z"
   },
   "message": null
 }
 ```
+
+승인 응답에서는 거절 사유가 없으므로 `rejectReason` 필드를 JSON에 포함하지 않는다.
 
 #### 오류
 

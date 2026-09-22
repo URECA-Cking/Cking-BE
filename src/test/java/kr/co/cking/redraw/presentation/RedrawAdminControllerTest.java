@@ -145,7 +145,7 @@ class RedrawAdminControllerTest {
                 .andExpect(jsonPath("$.data.status").value("APPROVED"))
                 .andExpect(jsonPath("$.data.executionStatus").value("PENDING"))
                 .andExpect(jsonPath("$.data.reviewedBy").value(1))
-                .andExpect(jsonPath("$.data.rejectReason").doesNotExist());
+                .andExpect(jsonPath("$.data.rejectReason").doesNotHaveJsonPath());
         verify(redrawRequestReviewService).approve(1L, 30L);
     }
 
