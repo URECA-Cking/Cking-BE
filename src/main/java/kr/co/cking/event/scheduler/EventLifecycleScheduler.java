@@ -46,11 +46,18 @@ public class EventLifecycleScheduler {
     private final Clock clock;
 
     /**
-     * Drain이 연속으로 끝나지 않은 틱 수(eventId별). 10초 틱 기준 30틱(약 5분)마다 WARN을 남긴다.
-     * 임계값은 FR-11b(Drain 최대 대기시간)가 팀에서 확정되기 전까지의 잠정값이다.
+     * Drain이 연속으로 끝나지 않은 틱 수(eventId별). 10초 틱 기준 30틱(약 5분)마다 WARN을 남기고,
+     * 180틱(약 30분)부터는 같은 주기로 ERROR로 올려 "정상 지연"과 "사실상 멈춘 상태"를 로그 레벨로
+     * 구분한다. Drain을 강제로 끝내거나 CLOSED로 전환하지는 않는다(FR-11b, 취합v1.5.4 §6.8 원칙
+     * 유지) — 그건 여전히 수동 개입(Dead Stream 확인·replay 등) 영역이다.
+     *
+     * <p>FR-11b는 이 구체값을 시스템2가 자율 결정하도록 위임했다. MVP concurrency=1 Consumer
+     * 기준 정상 지연은 5분 WARN 안에서 대부분 해소된다고 보고, 30분을 넘기면 실측 부하 테스트
+     * (NFR-06) 이전에도 운영자가 봐야 할 이상 신호로 잡았다. 실측 이후 재조정할 수 있는 잠정값이다.
      * ponytail: 인스턴스 메모리라 재기동하면 0부터 다시 센다, 영속 기준이 필요해지면 CLOSING 진입 시각을 저장.
      */
     private static final int DRAIN_WARN_EVERY_TICKS = 30;
+    private static final int DRAIN_ERROR_AFTER_TICKS = 180;
     private final Map<Long, Integer> undrainedTicks = new ConcurrentHashMap<>();
 
     /** 예약 시작, 마감 시작, Drain 완료 처리를 순서대로 한 번 실행한다. */
@@ -166,8 +173,14 @@ public class EventLifecycleScheduler {
             }
             int ticks = undrainedTicks.merge(eventId, 1, Integer::sum);
             if (ticks % DRAIN_WARN_EVERY_TICKS == 0) {
-                log.warn("이벤트가 CLOSING에서 Drain을 끝내지 못하고 있습니다. eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
-                        eventId, cutoffStreamId, ticks);
+                if (ticks >= DRAIN_ERROR_AFTER_TICKS) {
+                    log.error("이벤트가 CLOSING에서 Drain을 30분 넘게 끝내지 못하고 있습니다(운영자 확인 필요). "
+                                    + "eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
+                            eventId, cutoffStreamId, ticks);
+                } else {
+                    log.warn("이벤트가 CLOSING에서 Drain을 끝내지 못하고 있습니다. eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
+                            eventId, cutoffStreamId, ticks);
+                }
             }
         } catch (RuntimeException e) {
             log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);

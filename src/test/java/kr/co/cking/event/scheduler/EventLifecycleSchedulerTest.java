@@ -184,6 +184,29 @@ class EventLifecycleSchedulerTest {
         assertThat(output.getAll()).contains("연속 미완료 틱=30");
     }
 
+    /** FR-11b: 180틱(약 30분)부터는 같은 30틱 주기로 WARN 대신 ERROR를 남긴다. */
+    @Test
+    void Drain이_180틱_연속_끝나지_않으면_경고가_ERROR로_올라간다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        runTicks(170);
+        assertThat(output.getAll()).doesNotContain("30분 넘게");
+
+        runTicks(10);
+        assertThat(output.getAll()).contains("30분 넘게").contains("연속 미완료 틱=180");
+    }
+
+    @Test
+    void Drain_ERROR도_30틱마다_반복된다(CapturedOutput output) {
+        givenClosingEvent();
+        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+
+        runTicks(210);
+
+        assertThat(output.getAll().split("30분 넘게", -1).length - 1).isEqualTo(2);
+    }
+
     private void givenClosingEvent() {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
