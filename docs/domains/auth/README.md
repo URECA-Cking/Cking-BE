@@ -26,6 +26,16 @@ JWT 인증이 아직 구현되어 있지 않다.** 현재 외부 API의 호출�
 - `(provider, providerUserId)`가 외부 Identity의 고유 식별자다. 같은 email이어도 Google과 Kakao
   계정을 자동 병합하지 않는다.
 
+### OAuth 프로필 name 정규화
+
+Provider의 `name`은 선택적 프로필 정보이지 외부 Identity가 아니다. Mapper는 Provider 응답을
+`OAuthUserInfo.name`으로 정규화하고, `OAuthLoginService`는 최초 `Member` 생성 전에 다음 규칙을 적용한다.
+
+- null·공백 name은 기본값 `사용자`로 바꾼다.
+- 앞뒤 공백을 제거한 name이 50자를 넘으면 Unicode code point 경계를 깨지 않도록 앞 50자로 제한한다.
+- 정규화 결과를 `Member.name`에 저장한다. 기본값은 고유할 필요가 없으며, email이나
+  `providerUserId`를 name fallback 또는 Identity 판단에 사용하지 않는다.
+
 ## 목표 인증 흐름
 
 ```text
