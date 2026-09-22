@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 class RedrawRequestFailurePersistenceService {
     private static final int FAILURE_CODE_MAX_LENGTH = 50;
+    private static final String UNKNOWN_RUNTIME_EXCEPTION = "UNKNOWN_RUNTIME_EXCEPTION";
 
     private final RedrawRequestRepository redrawRequestRepository;
     private final RedrawExecutionHistoryRepository historyRepository;
@@ -33,6 +34,13 @@ class RedrawRequestFailurePersistenceService {
     /** 감사 이력 저장이 예외 클래스명 길이 때문에 실패하지 않도록 DB 컬럼 한계로 제한한다. */
     private static String failureCodeOf(RuntimeException exception) {
         String name = exception.getClass().getSimpleName();
+        if (name.isBlank()) {
+            Class<?> superclass = exception.getClass().getSuperclass();
+            name = superclass == null ? UNKNOWN_RUNTIME_EXCEPTION : superclass.getSimpleName();
+        }
+        if (name.isBlank()) {
+            name = UNKNOWN_RUNTIME_EXCEPTION;
+        }
         return name.substring(0, Math.min(name.length(), FAILURE_CODE_MAX_LENGTH));
     }
 }
