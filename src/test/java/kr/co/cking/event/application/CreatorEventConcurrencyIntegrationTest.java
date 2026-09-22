@@ -14,6 +14,7 @@ import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.event.repository.EventRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,6 +22,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import java.time.Instant;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +41,9 @@ class CreatorEventConcurrencyIntegrationTest {
     @Autowired private EventCache eventCache;
     @Autowired private JdbcTemplate jdbcTemplate;
 
+    private final List<Long> memberIds = new ArrayList<>();
+    private final List<Long> creatorIds = new ArrayList<>();
+
     /** 동시성 테스트의 고정 멱등 키가 이전 실행과 충돌하지 않도록 Event를 정리한다. */
     @BeforeEach
     void cleanTestEvent() {
@@ -45,11 +51,25 @@ class CreatorEventConcurrencyIntegrationTest {
         jdbcTemplate.update("DELETE FROM event WHERE request_id LIKE ?", "550e8400-e29b-41d4-a716-4466554400%");
     }
 
+    /** 테스트가 생성한 Event와 연관 fixture를 외래 키 의존성의 역순으로 정리한다. */
+    @AfterEach
+    void cleanUp() {
+        List<Long> eventIds = jdbcTemplate.queryForList(
+                "SELECT event_id FROM event WHERE request_id LIKE ?",
+                Long.class,
+                "550e8400-e29b-41d4-a716-4466554400%"
+        );
+        eventIds.forEach(eventCache::evict);
+        cleanTestEvent();
+        creatorRepository.deleteAllById(creatorIds);
+        memberRepository.deleteAllById(memberIds);
+    }
+
     /** 동일 멱등 키의 병렬 생성이 하나의 Event 식별자로 수렴하는지 검증한다. */
     @Test
     void concurrentSameRequestReturnsSameEvent() throws Exception {
-        Member member = memberRepository.saveAndFlush(new Member("동시생성", null, null, MemberRole.USER));
-        creatorRepository.saveAndFlush(new Creator(member.getMemberId(), member.getName()));
+        Member member = saveMember("동시생성", MemberRole.USER);
+        saveCreator(member);
         CreateEventCommand command = new CreateEventCommand(member.getMemberId(), "550e8400-e29b-41d4-a716-446655440008",
                 "동시 이벤트", null, Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)), 1, DrawMethod.WEIGHTED);
         ExecutorService executor = Executors.newFixedThreadPool(2); CountDownLatch start = new CountDownLatch(1);
@@ -68,9 +88,9 @@ class CreatorEventConcurrencyIntegrationTest {
     /** 동시 승인·거절 명령에서 하나의 심사 결과만 기록되는지 검증한다. */
     @Test
     void concurrentApprovalAndRejectionLeaveExactlyOneReviewedRequest() throws Exception {
-        Member creator = memberRepository.saveAndFlush(new Member("동시 심사 크리에이터", null, null, MemberRole.USER));
-        creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
-        Member admin = memberRepository.saveAndFlush(new Member("동시 심사 관리자", null, null, MemberRole.ADMIN));
+        Member creator = saveMember("동시 심사 크리에이터", MemberRole.USER);
+        saveCreator(creator);
+        Member admin = saveMember("동시 심사 관리자", MemberRole.ADMIN);
         Event event = service.create(new CreateEventCommand(creator.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440014", "심사 경합", null,
                 Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
@@ -102,8 +122,8 @@ class CreatorEventConcurrencyIntegrationTest {
     /** 병렬 Scheduler 호출에서도 Event 행 잠금으로 OPEN 전이는 한 번만 성공한다. */
     @Test
     void concurrentOpenTransitionsScheduledEventExactlyOnce() throws Exception {
-        Member creator = memberRepository.saveAndFlush(new Member("동시 시작 크리에이터", null, null, MemberRole.USER));
-        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        Member creator = saveMember("동시 시작 크리에이터", MemberRole.USER);
+        Creator savedCreator = saveCreator(creator);
         Event event = eventRepository.saveAndFlush(Event.builder()
                 .creatorId(savedCreator.getCreatorId())
                 .requestId("550e8400-e29b-41d4-a716-446655440015")
@@ -279,8 +299,8 @@ class CreatorEventConcurrencyIntegrationTest {
     }
 
     private Event persistScheduledEvent(String requestId) {
-        Member creator = memberRepository.saveAndFlush(new Member("캐시 시작 크리에이터", null, null, MemberRole.USER));
-        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        Member creator = saveMember("캐시 시작 크리에이터", MemberRole.USER);
+        Creator savedCreator = saveCreator(creator);
         return eventRepository.saveAndFlush(Event.builder()
                 .creatorId(savedCreator.getCreatorId())
                 .requestId(requestId)
@@ -296,8 +316,8 @@ class CreatorEventConcurrencyIntegrationTest {
     }
 
     private Event persistOpenEvent(String requestId) {
-        Member creator = memberRepository.saveAndFlush(new Member("동시 마감 크리에이터", null, null, MemberRole.USER));
-        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        Member creator = saveMember("동시 마감 크리에이터", MemberRole.USER);
+        Creator savedCreator = saveCreator(creator);
         return eventRepository.saveAndFlush(Event.builder()
                 .creatorId(savedCreator.getCreatorId())
                 .requestId(requestId)
@@ -314,8 +334,8 @@ class CreatorEventConcurrencyIntegrationTest {
 
     /** 병렬 추첨 완료 전이 테스트에 사용할 CLOSED Event를 저장한다. */
     private Event persistClosedEvent(String requestId) {
-        Member creator = memberRepository.saveAndFlush(new Member("동시 추첨 크리에이터", null, null, MemberRole.USER));
-        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        Member creator = saveMember("동시 추첨 크리에이터", MemberRole.USER);
+        Creator savedCreator = saveCreator(creator);
         return eventRepository.saveAndFlush(Event.builder()
                 .creatorId(savedCreator.getCreatorId())
                 .requestId(requestId)
@@ -332,8 +352,8 @@ class CreatorEventConcurrencyIntegrationTest {
 
     /** 병렬 결과 공개 전이 테스트에 사용할 DRAW_COMPLETED Event를 저장한다. */
     private Event persistDrawingCompletedEvent(String requestId) {
-        Member creator = memberRepository.saveAndFlush(new Member("동시 공개 크리에이터", null, null, MemberRole.USER));
-        Creator savedCreator = creatorRepository.saveAndFlush(new Creator(creator.getMemberId(), creator.getName()));
+        Member creator = saveMember("동시 공개 크리에이터", MemberRole.USER);
+        Creator savedCreator = saveCreator(creator);
         return eventRepository.saveAndFlush(Event.builder()
                 .creatorId(savedCreator.getCreatorId())
                 .requestId(requestId)
@@ -346,5 +366,19 @@ class CreatorEventConcurrencyIntegrationTest {
                 .createdBy(creator.getMemberId())
                 .createdAt(Instant.now())
                 .build());
+    }
+
+    /** Member를 저장하고 사후 정리 대상에 등록한다. */
+    private Member saveMember(String name, MemberRole role) {
+        Member member = memberRepository.saveAndFlush(new Member(name, null, null, role));
+        memberIds.add(member.getMemberId());
+        return member;
+    }
+
+    /** Creator를 저장하고 사후 정리 대상에 등록한다. */
+    private Creator saveCreator(Member member) {
+        Creator creator = creatorRepository.saveAndFlush(new Creator(member.getMemberId(), member.getName()));
+        creatorIds.add(creator.getCreatorId());
+        return creator;
     }
 }
