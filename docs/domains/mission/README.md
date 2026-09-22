@@ -36,5 +36,5 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 완료 판�
 
 ### 검증 범위(caveat)
 
-- **`rewardAmount`는 코드가 강제하지 않는다.** `Mission` 생성자는 `rewardAmount > 0`만 검증하고 값을 1로 고정하지 않는다([Mission.java](../../../src/main/java/kr/co/cking/mission/Mission.java)). "출석/좋아요 완료 시 응모권 1장"(FR-P1-007/010)은 Mission row를 만드는 쪽(Creator)이 1로 설정한다는 **데이터 규약**이며, 이를 만드는 프로덕션 경로(Admin/Creator API)가 아직 없어 코드로 검증할 방법도 없다. ATTENDANCE도 동일하다 — 좋아요 미션만의 문제가 아니다.
+- **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 ATTENDANCE·LIKE를 각각 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 이미 존재하는 유형은 건너뛰므로 재호출해도 안전하다. 기존 Creator의 누락분은 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
 - **LIKE의 중복 적립 차단은 유닛 테스트로만 확인했다.** `MissionCompletionServiceTest`의 좋아요 관련 테스트는 `TicketEarnService`를 mock으로 대체해, "Redis가 `DUPLICATE_MISSION`을 반환하면 Mission이 이를 올바르게 변환하는가"만 검증한다. "실제 Redis 위에서 좋아요 두 번째 요청이 진짜로 차단되는가"를 확인하는 실제 Redis/MySQL 기반 통합 테스트(`MissionCompletionConcurrencyIntegrationTest`)는 현재 `ATTENDANCE`로만 작성돼 있고 LIKE 버전은 없다. Guard 키·Lua 스크립트가 미션 타입을 분기하지 않아 결과가 같을 것으로 보이지만, LIKE로 직접 실행해 확인한 적은 없다.

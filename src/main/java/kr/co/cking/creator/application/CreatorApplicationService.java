@@ -2,6 +2,7 @@ package kr.co.cking.creator.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.domain.CreatorApplicationStatus;
 import kr.co.cking.creator.domain.CreatorErrorCode;
@@ -10,6 +11,7 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.mission.application.MissionInitializationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +32,7 @@ public class CreatorApplicationService {
     private final CreatorRepository creatorRepository;
     private final CreatorApplicationRepository applicationRepository;
     private final CreatorApplicationLockManager lockManager;
+    private final MissionInitializationService missionInitializationService;
 
     public ApplyResult apply(Long memberId) {
         return lockManager.execute("creator-application:member:" + memberId, () -> applyLocked(memberId));
@@ -78,6 +81,7 @@ public class CreatorApplicationService {
                 () -> approveLocked(adminId, applicationId));
     }
 
+    /** 신청을 승인하고 Creator 및 기본 미션을 하나의 트랜잭션으로 생성한다. */
     private CreatorApplication approveLocked(Long adminId, Long applicationId) {
         requireAdmin(adminId);
         CreatorApplication application = getApplication(applicationId);
@@ -86,7 +90,10 @@ public class CreatorApplicationService {
             throw new BusinessException(CreatorErrorCode.INVALID_STATE);
         }
         application.approve(adminId);
-        creatorRepository.save(new kr.co.cking.creator.domain.Creator(application.getMemberId(), applicant.getName()));
+        Creator creator = creatorRepository.save(
+                new Creator(application.getMemberId(), applicant.getName())
+        );
+        missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
         return application;
     }
 

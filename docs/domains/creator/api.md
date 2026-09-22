@@ -81,7 +81,7 @@ Query: `userId`, `page`, `size`. `userId`는 관리자 식별자다. 기본 정�
 { "userId": 1 }
 ```
 
-관리자만 PENDING 신청을 승인할 수 있다. 승인과 Creator 생성은 하나의 DB transaction으로 처리하고, Member당 Creator는 하나만 존재해야 한다.
+관리자만 PENDING 신청을 승인할 수 있다. 승인, Creator 생성, 기본 미션(ATTENDANCE·LIKE) 초기화는 하나의 DB transaction으로 처리한다. 미션 초기화가 실패하면 승인과 Creator 생성도 함께 롤백되며, Member당 Creator는 하나만 존재해야 한다.
 
 ```json
 { "applicationId": 1, "status": "APPROVED" }
