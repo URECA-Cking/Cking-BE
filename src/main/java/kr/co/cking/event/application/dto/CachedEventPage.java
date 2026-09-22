@@ -11,6 +11,6 @@ import java.util.List;
 public record CachedEventPage(List<CachedEvent> events, long totalElements) implements Serializable {
 
     public CachedEventPage {
-        events = events == null ? List.of() : List.copyOf(events);
+        events = List.copyOf(events);
     }
 }

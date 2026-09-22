@@ -159,4 +159,13 @@ class EventListCacheTest {
 
         assertThat(found).isEmpty();
     }
+
+    /** {@link EventCacheTest#역직렬화에_실패한_캐시는_miss로_처리한다}와 같은 이유·같은 방식. */
+    @Test
+    void 역직렬화에_실패한_캐시는_miss로_처리한다() {
+        byte[] key = (TEST_KEY_PREFIX + "1:IN_PROGRESS:0:10").getBytes();
+        connectionFactory.getConnection().stringCommands().set(key, "corrupted-not-a-java-object".getBytes());
+
+        assertThat(eventListCache.find(1L, DisplayStatus.IN_PROGRESS, 0, 10)).isEmpty();
+    }
 }

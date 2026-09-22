@@ -118,4 +118,20 @@ class EventCacheTest {
 
         assertThat(eventCache.find(5L)).isEmpty();
     }
+
+    /**
+     * 리뷰에서 지적: 역직렬화 실패를 기본값으로 복원하면(예: null 컴포넌트를 빈 목록으로
+     * 채우는 식) 배포 롤링 중첩 구간에 실제로는 값이 있는 필드를 빈 값처럼 정상 응답으로
+     * 내보내게 된다. find()는 대신 이런 payload를 cache miss로 처리해야 한다 — 호출자가
+     * DB에서 다시 읽어 같은 키를 정상 payload로 덮어쓰므로 다음 조회부터 정상화된다.
+     * 구버전 스키마를 실제로 만들기보다, 같은 실패 모드(JDK 역직렬화 실패)를 훨씬 간단히
+     * 재현할 수 있는 손상된 바이트를 그 키에 직접 심어 검증한다.
+     */
+    @Test
+    void 역직렬화에_실패한_캐시는_miss로_처리한다() {
+        byte[] key = (TEST_KEY_PREFIX + "6").getBytes();
+        connectionFactory.getConnection().stringCommands().set(key, "corrupted-not-a-java-object".getBytes());
+
+        assertThat(eventCache.find(6L)).isEmpty();
+    }
 }

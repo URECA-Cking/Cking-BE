@@ -7,12 +7,14 @@ import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.stereotype.Component;
 
 import kr.co.cking.event.application.dto.CachedEvent;
 import kr.co.cking.event.application.dto.CachedEventPage;
 import kr.co.cking.event.domain.DisplayStatus;
 import kr.co.cking.event.domain.EventStatus;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 목록 조회(FR-P2-003, CLAUDE.md §3·§9) 캐시. {@link EventCache}(상세)와 같은 계약을
@@ -26,6 +28,7 @@ import kr.co.cking.event.domain.EventStatus;
  * 제한된다 — 마감 임박 트래픽처럼 같은 조합에 요청이 몰리는 상황에서 의미가 있다.
  */
 @Component
+@Slf4j
 public class EventListCache {
 
     private static final Duration MAX_TTL = Duration.ofSeconds(5);
@@ -42,8 +45,15 @@ public class EventListCache {
         this.keyPrefix = keyPrefix;
     }
 
+    /** {@link EventCache#find}와 같은 이유로, 역직렬화 실패는 기본값 복원이 아니라 cache miss로 처리한다. */
     public Optional<CachedEventPage> find(Long creatorId, DisplayStatus displayStatus, int page, int size) {
-        return Optional.ofNullable(redisTemplate.opsForValue().get(key(creatorId, displayStatus, page, size)));
+        String key = key(creatorId, displayStatus, page, size);
+        try {
+            return Optional.ofNullable(redisTemplate.opsForValue().get(key));
+        } catch (SerializationException exception) {
+            log.warn("Failed to deserialize cached event page, treating as cache miss: key={}", key, exception);
+            return Optional.empty();
+        }
     }
 
     /**
