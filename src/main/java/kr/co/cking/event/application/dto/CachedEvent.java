@@ -30,7 +30,7 @@ public record CachedEvent(
 
     public CachedEvent {
         prizeAlgorithmVersion = prizeAlgorithmVersion == null ? "PRIZE_WEIGHTED_V1" : prizeAlgorithmVersion;
-        prizes = List.copyOf(prizes);
+        prizes = prizes == null ? List.of() : List.copyOf(prizes);
     }
 
     public static CachedEvent from(Event event) {
