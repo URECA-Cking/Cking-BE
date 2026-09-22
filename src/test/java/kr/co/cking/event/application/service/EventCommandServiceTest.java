@@ -121,6 +121,29 @@ class EventCommandServiceTest {
                 .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
     }
 
+    @Test
+    void completeDrawing은_CLOSED_이벤트를_DRAW_COMPLETED로_전이하고_커밋후_캐시무효화_이벤트를_발행한다() {
+        Event event = eventOf(EventStatus.CLOSED);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        eventCommandService.completeDrawing(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.DRAW_COMPLETED);
+        verify(eventPublisher).publishEvent(new EventClosingStateChangedEvent(1L));
+    }
+
+    @Test
+    void publish는_DRAW_COMPLETED_이벤트를_PUBLISHED로_전이하고_커밋후_캐시무효화_이벤트를_발행한다() {
+        Event event = eventOf(EventStatus.CLOSED);
+        event.completeDrawing();
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        eventCommandService.publish(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+        verify(eventPublisher).publishEvent(new EventClosingStateChangedEvent(1L));
+    }
+
     private static Event eventOf(EventStatus status) {
         return Event.builder()
                 .status(status)
