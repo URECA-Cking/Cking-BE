@@ -2,7 +2,6 @@ package kr.co.cking.stream.presentation;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
@@ -17,9 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.stream.application.DeadStreamAdminService;
 import kr.co.cking.stream.domain.DeadStreamResolutionStatus;
-import kr.co.cking.stream.presentation.dto.DeadStreamReplayRequest;
 import kr.co.cking.stream.presentation.dto.DeadStreamResponse;
 
 @RestController
@@ -36,14 +35,15 @@ public class DeadStreamAdminController {
                     + "원본 payload는 반환하지 않습니다."
     )
     @GetMapping("/api/admin/dead-streams")
+    /** 인증된 관리자가 상태별 Dead Stream 메시지를 페이지로 조회한다. */
     public ApiResponse<PageResponse<DeadStreamResponse>> list(
-            @RequestParam @Positive Long userId,
+            @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "UNRESOLVED") DeadStreamResolutionStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return ApiResponse.success(PageResponse.from(
-                deadStreamAdminService.list(userId, status, page, size).map(DeadStreamResponse::from)));
+                deadStreamAdminService.list(memberId, status, page, size).map(DeadStreamResponse::from)));
     }
 
     @Operation(
@@ -52,10 +52,11 @@ public class DeadStreamAdminController {
                     + "다시 적용하지 않고 현재 상태를 반환합니다."
     )
     @PostMapping("/api/admin/dead-streams/{id}/replay")
+    /** 인증된 관리자가 지정한 Dead Stream 메시지를 원본 payload로 다시 처리한다. */
     public ApiResponse<DeadStreamResponse> replay(
             @PathVariable @Positive Long id,
-            @Valid @RequestBody DeadStreamReplayRequest request
+            @CurrentMemberId Long memberId
     ) {
-        return ApiResponse.success(DeadStreamResponse.from(deadStreamAdminService.replay(request.userId(), id)));
+        return ApiResponse.success(DeadStreamResponse.from(deadStreamAdminService.replay(memberId, id)));
     }
 }

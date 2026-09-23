@@ -12,6 +12,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -61,9 +62,21 @@ class CreatorApplicationControllerTest {
     void blankRejectReasonReturnsValidationFailedEnvelope() throws Exception {
         mockMvc.perform(post("/api/admin/creator-applications/{id}/reject", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1,\"rejectReason\":\"   \"}"))
+                        .content("{\"rejectReason\":\"   \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 관리자_승인은_JWT의_memberId를_서비스에_전달한다() throws Exception {
+        CreatorApplication application = applicationWithId(1L);
+        given(creatorApplicationService.approve(10L, 1L)).willReturn(application);
+
+        mockMvc.perform(post("/api/admin/creator-applications/{id}/approve", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+
+        then(creatorApplicationService).should().approve(10L, 1L);
     }
 
     private CreatorApplication applicationWithId(Long id) {
