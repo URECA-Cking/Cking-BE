@@ -35,7 +35,7 @@ class CommonMissionQueryControllerTest {
                 null, null, true);
         when(commonMissionQueryService.findMissions(7L)).thenReturn(List.of(item));
 
-        mockMvc.perform(get("/api/missions").queryParam("userId", "7"))
+        mockMvc.perform(get("/api/missions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data[0].missionId").value(101))
@@ -52,11 +52,11 @@ class CommonMissionQueryControllerTest {
     }
 
     @Test
-    void 존재하지_않는_userId는_RESOURCE_NOT_FOUND다() throws Exception {
+    void 인증된_사용자가_존재하지_않으면_RESOURCE_NOT_FOUND다() throws Exception {
         when(commonMissionQueryService.findMissions(7L))
                 .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
-        mockMvc.perform(get("/api/missions").queryParam("userId", "7"))
+        mockMvc.perform(get("/api/missions"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }

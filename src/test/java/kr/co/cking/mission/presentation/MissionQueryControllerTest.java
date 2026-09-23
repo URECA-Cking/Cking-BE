@@ -43,7 +43,7 @@ class MissionQueryControllerTest {
                 Instant.parse("2026-09-16T00:00:00Z"), Instant.parse("2026-09-17T00:00:00Z"), true);
         when(missionQueryService.findMissions(11L, 7L)).thenReturn(List.of(item));
 
-        mockMvc.perform(get("/api/creators/11/missions").queryParam("userId", "7")
+        mockMvc.perform(get("/api/creators/11/missions")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
@@ -64,11 +64,11 @@ class MissionQueryControllerTest {
     }
 
     @Test
-    void 존재하지_않는_userId_또는_creatorId는_RESOURCE_NOT_FOUND다() throws Exception {
+    void 인증된_사용자_또는_creatorId가_존재하지_않으면_RESOURCE_NOT_FOUND다() throws Exception {
         when(missionQueryService.findMissions(11L, 7L))
                 .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
-        mockMvc.perform(get("/api/creators/11/missions").queryParam("userId", "7"))
+        mockMvc.perform(get("/api/creators/11/missions"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }

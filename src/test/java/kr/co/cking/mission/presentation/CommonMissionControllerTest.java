@@ -69,7 +69,7 @@ class CommonMissionControllerTest {
 
     @Test
     void missionId가_양수가_아니면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
-        String request = "{\"userId\":1,\"requestId\":\"" + UUID.randomUUID() + "\"}";
+        String request = "{\"requestId\":\"" + UUID.randomUUID() + "\"}";
 
         mockMvc.perform(post("/api/missions/0/complete")
                         .contentType(MediaType.APPLICATION_JSON)
