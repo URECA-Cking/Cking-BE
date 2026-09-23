@@ -37,6 +37,9 @@ Server 의존성, REST 401/403 응답 처리가 구성되어 있으나 OAuth2 �
 ```
 
 - 현재 프로젝트 스타일에 맞춰 Member와 JPA 연관관계를 강제하지 않고 `Long memberId`를 보관한다.
+- `oauth_account`는 `oauthAccountId`, `memberId`, `provider`, `providerUserId`, `createdAt`을 저장하며,
+  `memberId`는 Member FK다.
+- 이 FK 때문에 정상 DB 상태에서는 OAuthAccount가 존재하지만 연결 Member가 없는 상태를 허용하지 않는다.
 - 외부 identity key는 email이 아니다. Google은 `sub`, Kakao는 `id`를 `providerUserId`로 쓴다.
 - `(provider, providerUserId)`가 외부 Identity의 고유 식별자다. 같은 email이어도 Google과 Kakao
   계정을 자동 병합하지 않는다.
