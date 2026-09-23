@@ -170,6 +170,16 @@ class UnappliedBalanceMessageCheckerTest {
         assertThat(checker.exists(MEMBER_ID, CREATOR_ID)).isTrue();
     }
 
+    // PR #247 리뷰(자비): COMMON SPEND Dead Stream도 payload에 creatorId가 실려 있지만
+    // 그 크리에이터 잔액을 차감하지 않았으므로, 미해결 상태여도 크리에이터 잔액 보정을 막으면
+    // 안 된다.
+    @Test
+    void 미해결_COMMON_SPEND_Dead_Stream은_크리에이터_잔액_검사에서_제외한다() {
+        insertDeadStream("unapplied-test-common", "SPEND", MEMBER_ID, CREATOR_ID, "UNRESOLVED", "COMMON");
+
+        assertThat(checker.exists(MEMBER_ID, CREATOR_ID)).isFalse();
+    }
+
     @Test
     void 해결된_Dead_Stream이나_다른_대상의_Dead_Stream은_무시한다() {
         insertDeadStream("unapplied-test-3", "SPEND", MEMBER_ID, CREATOR_ID, "RESOLVED");
@@ -212,6 +222,17 @@ class UnappliedBalanceMessageCheckerTest {
 
     private void insertDeadStream(String sourceStreamId, String type, Long memberId, Long creatorId, String status) {
         String payload = "{\"userId\":\"%d\",\"creatorId\":\"%d\"}".formatted(memberId, creatorId);
+        insertDeadStreamPayload(sourceStreamId, type, payload, status);
+    }
+
+    private void insertDeadStream(String sourceStreamId, String type, Long memberId, Long creatorId, String status,
+                                   String couponType) {
+        String payload = "{\"userId\":\"%d\",\"creatorId\":\"%d\",\"couponType\":\"%s\"}"
+                .formatted(memberId, creatorId, couponType);
+        insertDeadStreamPayload(sourceStreamId, type, payload, status);
+    }
+
+    private void insertDeadStreamPayload(String sourceStreamId, String type, String payload, String status) {
         jdbcTemplate.update("""
                 INSERT INTO dead_stream_message (source_stream_id, stream_type, payload, retry_count, resolution_status)
                 VALUES (?, ?, ?, 3, ?)

@@ -165,7 +165,7 @@ public class TicketSpendLedgerService {
         boolean same = existing.getEventId().equals(command.eventId())
                 && existing.getMemberId().equals(command.userId())
                 && existing.getUsedTicketCount().equals(command.ticketCount())
-                && resolveCouponType(command.requestId()) == command.couponType();
+                && resolveCouponType(existing.getEntryId()) == command.couponType();
 
         if (!same) {
             throw new IllegalStateException(
@@ -173,8 +173,13 @@ public class TicketSpendLedgerService {
         }
     }
 
-    private CouponType resolveCouponType(String requestId) {
-        return commonTicketLedgerRepository.findByRequestId(requestId).isPresent()
+    // PR #247 리뷰(자비): requestId로 조회하면 오판할 수 있다 — common_ticket_ledger에는
+    // 공용 미션 EARN 행도 쌓이고 requestId는 클라이언트가 API마다 독립적으로 생성하는 값이라
+    // 이 테이블 안에서만 유일할 뿐, EARN이 쓴 requestId를 다른 CREATOR SPEND가 재사용하면
+    // requestId 기준 조회는 그 EARN 행을 찾아 COMMON으로 잘못 판정한다. eventEntryId는
+    // SPEND 전용이라(EARN은 event_entry와 무관) 이걸로 판정해야 안전하다.
+    private CouponType resolveCouponType(Long eventEntryId) {
+        return commonTicketLedgerRepository.existsByEventEntryId(eventEntryId)
                 ? CouponType.COMMON
                 : CouponType.CREATOR;
     }

@@ -14,6 +14,13 @@ public interface CommonTicketLedgerRepository extends JpaRepository<CommonTicket
 
     Optional<CommonTicketLedger> findByRequestId(String requestId);
 
+    // TicketSpendLedgerService.resolveCouponType(entryId)용(이슈 #247 리뷰, 자비).
+    // requestId는 EARN(공용 미션)·SPEND(COMMON 응모) 양쪽에 다 쓰이고 클라이언트가 생성하는
+    // 값이라 이 테이블 안에서만 유일해서, requestId로 couponType을 역산하면 서로 다른 API가
+    // 우연히 같은 requestId를 쓴 경우 오판할 수 있다. eventEntryId는 SPEND에서만 채워지므로
+    // 이걸로 판정해야 안전하다.
+    boolean existsByEventEntryId(Long eventEntryId);
+
     @Query(value = """
             select l.ledger_id as ledgerId, l.delta_amount as deltaAmount, l.type as type,
                    mc.mission_id as missionId, ee.event_id as eventId,

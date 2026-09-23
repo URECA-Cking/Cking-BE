@@ -51,6 +51,7 @@ class TicketSpendLedgerServiceIntegrationTest {
     private static final long CREATOR_ID = 96101L;
     private static final long OTHER_CREATOR_ID = 96102L;
     private static final long EVENT_ID_SEQ_START = 96201L;
+    private static final String TEST_COMMON_MISSION_TYPE = "TEST_247_ISOLATION";
 
     @Autowired
     private TicketSpendLedgerService ticketSpendLedgerService;
@@ -121,6 +122,8 @@ class TicketSpendLedgerServiceIntegrationTest {
     private void cleanUp() {
         jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM common_ticket_ledger WHERE member_id = ?", MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM common_mission_completion WHERE member_id = ?", MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM common_mission WHERE type = ?", TEST_COMMON_MISSION_TYPE);
         jdbcTemplate.update("DELETE FROM event_entry WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ? AND creator_id IN (?, ?)",
                 MEMBER_ID, CREATOR_ID, OTHER_CREATOR_ID);
@@ -255,6 +258,57 @@ class TicketSpendLedgerServiceIntegrationTest {
         UserTicketBalance balance = userTicketBalanceRepository
                 .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID).orElseThrow();
         assertThat(balance.getBalance()).isEqualTo(96L);
+    }
+
+    // PR #247 리뷰(자비): requestId는 클라이언트가 API마다 독립적으로 생성하는 값이라
+    // common_ticket_ledger 안에서만 유일하다. 공용 미션 EARN이 쓴 requestId를 CREATOR
+    // 응모가 재사용하면(우연이든 버그든), requestId 기준 couponType 역산은 그 EARN 행을
+    // COMMON으로 잘못 판정해서 정상 재전달까지 예외로 깨뜨릴 수 있었다 - eventEntryId
+    // 기준으로 고친 뒤에는 EARN 행과 무관하게 정상 재전달이 통과해야 한다.
+    @Test
+    void 공용_미션_EARN과_같은_requestId를_쓴_CREATOR_응모_재전달은_EARN_행과_무관하게_정상_처리된다() {
+        String sharedRequestId = UUID.randomUUID().toString();
+        seedCommonMissionEarnLedger(sharedRequestId);
+
+        SpendCommand command = command(sharedRequestId, 4L);
+        ticketSpendLedgerService.apply(command); // 최초 반영
+        ticketSpendLedgerService.apply(command); // at-least-once 재전달 - 예외 없이 통과해야 한다
+
+        Integer entryCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM event_entry WHERE member_id = ? AND request_id = ?",
+                Integer.class, MEMBER_ID, sharedRequestId);
+        UserTicketBalance balance = userTicketBalanceRepository
+                .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID).orElseThrow();
+
+        assertThat(entryCount).isEqualTo(1);
+        assertThat(balance.getBalance()).isEqualTo(96L); // 재전달로 중복 차감되지 않아야 한다
+    }
+
+    // sharedRequestId로 공용 미션 EARN이 이미 반영된 상태를 재현한다. common_mission ->
+    // common_mission_completion -> common_ticket_ledger(EARN) 순으로 FK를 채워야 한다.
+    private void seedCommonMissionEarnLedger(String sharedRequestId) {
+        jdbcTemplate.update(
+                "INSERT INTO common_mission (type, reward_amount, active_from, active_to) VALUES (?, 1, NULL, NULL)",
+                TEST_COMMON_MISSION_TYPE);
+        Long missionId = jdbcTemplate.queryForObject(
+                "SELECT mission_id FROM common_mission WHERE type = ?", Long.class, TEST_COMMON_MISSION_TYPE);
+
+        String fingerprint = "a".repeat(64);
+        jdbcTemplate.update("""
+                INSERT INTO common_mission_completion
+                    (member_id, mission_id, period_key, request_id, payload_fingerprint, completed_at)
+                VALUES (?, ?, '2026-09-23', ?, ?, NOW())
+                """, MEMBER_ID, missionId, sharedRequestId, fingerprint);
+        Long completionId = jdbcTemplate.queryForObject(
+                "SELECT completion_id FROM common_mission_completion WHERE request_id = ?",
+                Long.class, sharedRequestId);
+
+        jdbcTemplate.update("""
+                INSERT INTO common_ticket_ledger
+                    (member_id, event_entry_id, mission_completion_id, delta_amount, type, request_id,
+                     balance_before, balance_after, created_at)
+                VALUES (?, NULL, ?, 1, 'EARN', ?, 0, 1, NOW())
+                """, MEMBER_ID, completionId, sharedRequestId);
     }
 
     @Test
