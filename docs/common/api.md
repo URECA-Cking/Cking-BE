@@ -38,6 +38,10 @@
   Drawing 계열 `/api/admin/**` 대상은 Spring Security가 `ADMIN`을 먼저 인가하며, 이후 Application의
   기존 Member·업무 권한 검증도 유지한다. USER/ADMIN 공용 Winner 상태 이력 API는 JWT 인증만 요구하고,
   USER 본인 여부와 ADMIN 업무 권한은 Application이 검증한다. 각 상세 계약은 해당 도메인 API 문서를 따른다.
+- AUTH-10 전환 API는 Ticket 관리자 재동기화, Dead Stream 조회·replay, Creator 신청 관리자 심사와 Event
+  관리자 심사다. 이 API는 Bearer Access JWT가 필수이고 모든 `/api/admin/**` 경로는 Spring Security가
+  `ADMIN` 역할을 먼저 인가한다. Controller는 `@CurrentMemberId`를 기존 Service의 관리자 업무 식별자로
+  전달하며, Service의 `validateAdmin(memberId)` 등 업무 권한 검증은 유지한다.
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
 - 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
 

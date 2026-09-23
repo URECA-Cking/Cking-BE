@@ -12,8 +12,9 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
 - `/actuator/health`, `/actuator/info`는 ALB와 모니터링의 상태 확인을 위해 인증 없이 노출·허용한다.
   그 외 actuator 경로는 공개하지 않는다.
 - Resource Server는 Bearer JWT의 서명·만료·Issuer·Claim을 검증한다. Creator Event 관리와 수동 마감,
-  Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification, Winner, Redraw)와 Winner 상태 이력 조회는
-  `@CurrentMemberId`로 인증된 호출자를 받는다. Drawing 계열 관리자 경로는 Spring Security가 `ADMIN`을
+  Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification, Winner, Redraw), Ticket 관리자 재동기화,
+  Dead Stream 조회·replay, Creator 신청 관리자 심사와 Event 관리자 심사, Winner 상태 이력 조회는
+  `@CurrentMemberId`로 인증된 호출자를 받는다. 모든 `/api/admin/**` 경로는 Spring Security가 `ADMIN`을
   먼저 인가하고, USER/ADMIN 공용 Winner 상태 이력 경로와 `GET /api/me`는 JWT 인증만 요구한다. 그 밖의
   기존 업무 API는 호출자 `userId` 전환 전까지 현재 `permitAll` 규칙을 유지한다.
   업무 권한 검증을 Spring Security로 대체하지 않는다.
@@ -217,3 +218,15 @@ Application/Service의 actor 파라미터로 전달한다. Application/Domain에
 
 Bearer Token 누락·만료·변조는 공통 `UNAUTHORIZED`(401)로 처리한다. 인증된 사용자의 소유권과 상태
 검증은 기존 Application/Domain이 계속 담당한다.
+
+### AUTH-10 ADMIN API 전환
+
+AUTH-10은 관리자 API의 외부 호출자 `userId`만 Access JWT의 `@CurrentMemberId`로 전환한다. 대상은
+Ticket 재동기화, Dead Stream 조회·replay, Creator 신청 목록·승인·거절, Event 승인 대기 목록·승인·거절이다.
+`/api/admin/**`는 Spring Security가 `hasRole("ADMIN")`으로 먼저 제한하므로 토큰 없음은 `UNAUTHORIZED`(401),
+USER 토큰은 `FORBIDDEN`(403)이다.
+
+Controller는 검증된 `memberId`를 기존 Application/Service의 `adminId` 파라미터에 전달한다. Ticket
+재동기화 요청의 대상 `memberId`와 `creatorId`, 거절 요청의 `rejectReason`처럼 업무 데이터는 유지한다.
+Application/Domain의 `validateAdmin(memberId)`·`requireAdmin(memberId)`는 Security 1차 인가와 별도로
+계속 실행한다.
