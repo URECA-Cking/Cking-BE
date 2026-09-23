@@ -73,6 +73,14 @@ class LoginCodeServiceTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_LOGIN_CODE));
     }
 
+    /** Redis에 손상된 회원 ID가 있어도 Login Code 오류로 통합하는지 검증한다. */
+    @Test
+    void 손상된_회원_ID의_LoginCode는_INVALID_LOGIN_CODE를_반환한다() {
+        when(redisTemplate.execute(eq(loginCodeConsumeScript), anyList())).thenReturn("not-a-member-id");
+
+        assertInvalidLoginCode("corrupted-code");
+    }
+
     /** null 또는 공백 Code는 Redis를 조회하지 않고 동일한 Login Code 오류로 거절하는지 검증한다. */
     @Test
     void null_또는_공백_LoginCode는_INVALID_LOGIN_CODE를_반환한다() {

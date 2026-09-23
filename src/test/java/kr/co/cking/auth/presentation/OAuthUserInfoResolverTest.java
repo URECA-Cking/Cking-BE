@@ -1,6 +1,7 @@
 package kr.co.cking.auth.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,30 @@ class OAuthUserInfoResolverTest {
 
         assertThat(userInfo).isEqualTo(new OAuthUserInfo(
                 OAuthProvider.KAKAO, "12345", "kakao@example.com", "레거시 카카오 사용자"));
+    }
+
+    /** Google 응답에 외부 Identity인 sub가 없으면 로그인 처리를 중단하는지 검증한다. */
+    @Test
+    void Google_sub가_없으면_예외가_발생한다() {
+        assertThatThrownBy(() -> resolver.resolve(authentication("google", Map.of(
+                "email", "google@example.com"
+        )))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** Kakao 응답에 외부 Identity인 id가 없으면 로그인 처리를 중단하는지 검증한다. */
+    @Test
+    void Kakao_id가_없으면_예외가_발생한다() {
+        assertThatThrownBy(() -> resolver.resolve(authentication("kakao", Map.of(
+                "kakao_account", Map.of()
+        )))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** 지원하지 않는 OAuth registration ID는 사용자 정보 정규화를 거부하는지 검증한다. */
+    @Test
+    void 미지원_OAuth_Provider는_예외가_발생한다() {
+        assertThatThrownBy(() -> resolver.resolve(authentication("naver", Map.of(
+                "id", "unsupported-provider-id"
+        )))).isInstanceOf(IllegalArgumentException.class);
     }
 
     /** 테스트용 OAuth2 인증 토큰을 만든다. */
