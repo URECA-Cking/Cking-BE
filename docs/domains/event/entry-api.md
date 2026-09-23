@@ -8,13 +8,17 @@
 {
   "userId": 1,
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
-  "ticketCount": 3
+  "ticketCount": 3,
+  "couponType": "COMMON"
 }
 ```
 
-`userId`, UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. Controller는 형식과
-범위만 검증하고, Event 개방 여부·잔액·멱등성·차감·Stream 발행은 `entry-spend.lua`가 원자적으로
-처리한다. 자세한 Redis 계약은 [응모 Lua API](lua-api.md)를 따른다.
+`userId`, UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. `couponType`(`CREATOR`|
+`COMMON`)은 선택이며 생략하면 `CREATOR`다 — **이벤트가 아니라 이 요청**이 어떤 응모권을 쓸지
+정한다(이슈 #243). `CREATOR`는 그 이벤트 크리에이터 전용 잔액을, `COMMON`은 크리에이터 무관 공용
+잔액(#219/#224)을 검증·차감한다. Controller는 형식과 범위만 검증하고, Event 개방 여부·잔액·
+멱등성·차감·Stream 발행은 `entry-spend.lua`가 원자적으로 처리한다. 자세한 Redis 계약은
+[응모 Lua API](lua-api.md#coupontype-이슈-243)를 따른다.
 
 같은 `requestId`와 동일한 요청은 기존 성공 결과를 재현한다. 같은 `requestId`에 다른 요청 본문을
 보내면 `IDEMPOTENCY_CONFLICT`다. 성공 응답 `data`는 `requestId`, `eventId`, `accepted: true`를
@@ -38,7 +42,7 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 | `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(issue #172) | 잠시 후 동일 `requestId`로 재시도 |
 | `SYSTEM_ERROR` | 500 | 내부 오류. Redis 타임아웃도 포함 | 동일 `requestId`로 재시도 |
 
-1~100 범위를 벗어난 `ticketCount`나 UUID 형식이 아닌 `requestId`는 Lua에 도달하기 전에 Controller가 공통 `VALIDATION_FAILED`(400)로 거절한다.
+1~100 범위를 벗어난 `ticketCount`, UUID 형식이 아닌 `requestId`, `CREATOR`/`COMMON`이 아닌 `couponType`은 Lua에 도달하기 전에 Controller가 공통 `VALIDATION_FAILED`(400)로 거절한다.
 
 `GATE_NOT_LOADED`·`BALANCE_NOT_LOADED`·`BALANCE_MAINTENANCE`·`SYSTEM_ERROR`는 동일 `requestId`로 재시도해도 이중 차감이 없다. 재시도 결과와 타임아웃 처리는 [응모 Lua API](lua-api.md#redis-타임아웃과-system_error)를 따른다.
 

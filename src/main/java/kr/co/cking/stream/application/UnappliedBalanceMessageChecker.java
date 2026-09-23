@@ -95,6 +95,7 @@ public class UnappliedBalanceMessageChecker {
             return records != null && records.stream().anyMatch(record -> matches(
                     String.valueOf(record.getValue().get("userId")),
                     String.valueOf(record.getValue().get("creatorId")),
+                    record.getValue().get("couponType"),
                     memberId, creatorId));
         });
     }
@@ -111,6 +112,7 @@ public class UnappliedBalanceMessageChecker {
             boolean found = records.stream().anyMatch(record -> matches(
                     String.valueOf(record.getValue().get("userId")),
                     String.valueOf(record.getValue().get("creatorId")),
+                    record.getValue().get("couponType"),
                     memberId, creatorId));
             if (found) {
                 return true;
@@ -134,7 +136,15 @@ public class UnappliedBalanceMessageChecker {
         }
     }
 
-    private static boolean matches(String userId, String creatorId, Long memberId, Long targetCreatorId) {
+    // 이 checker는 (memberId, creatorId) 크리에이터 잔액 보정 전용이다(이슈 #243). SPEND
+    // 메시지의 couponType이 COMMON이면 creatorId 필드가 실려 있어도 그 크리에이터 잔액을
+    // 차감하지 않았으므로 매칭 대상에서 제외한다 - 아니면 공용 응모권 사용 메시지가 크리에이터
+    // 잔액의 미반영 메시지로 잘못 잡혀 정상 보정이 거부된다. couponType 필드가 없는 메시지
+    // (배포 전 SPEND, EARN 스트림)는 CREATOR로 취급한다.
+    private static boolean matches(String userId, String creatorId, Object couponType, Long memberId, Long targetCreatorId) {
+        if ("COMMON".equals(couponType)) {
+            return false;
+        }
         return String.valueOf(memberId).equals(userId) && String.valueOf(targetCreatorId).equals(creatorId);
     }
 }

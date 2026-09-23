@@ -22,6 +22,8 @@
 -- ARGV[6] = userId
 -- ARGV[7] = creatorId
 -- ARGV[8] = requestId
+-- ARGV[9] = couponType     (CREATOR|COMMON. 이슈 #243: KEYS[3]·KEYS[6]을 어느 쪽으로 넘길지는
+--                           이미 Java가 정해서 넘겼으므로 여기서는 분기 없이 Stream 필드로만 싣는다)
 --
 -- 반환: { resultCode, ...옵션 필드 } (FR-P2-036, 기존 10종 + BALANCE_MAINTENANCE)
 --   GATE_NOT_LOADED        -- Gate 키 자체가 없음(2.4절: 없음=OPEN으로 간주 금지)
@@ -54,6 +56,7 @@ local eventId     = ARGV[5]
 local userId      = ARGV[6]
 local creatorId   = ARGV[7]
 local requestId   = ARGV[8]
+local couponType  = ARGV[9]
 
 if ticketCount == nil or ticketCount < 1 or ticketCount > 100 then
     return { 'INVALID_TICKET_COUNT' }
@@ -141,7 +144,8 @@ local streamId = redis.pcall('XADD', streamKey, '*',
     'userId', userId,
     'creatorId', creatorId,
     'requestId', requestId,
-    'ticketCount', ARGV[1])
+    'ticketCount', ARGV[1],
+    'couponType', couponType)
 
 if type(streamId) == 'table' and streamId.err then
     redis.call('INCRBY', balanceKey, ticketCount)

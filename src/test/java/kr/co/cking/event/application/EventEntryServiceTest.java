@@ -10,6 +10,7 @@ import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
 import kr.co.cking.event.application.service.EntrySpendService;
 import kr.co.cking.event.domain.EntryErrorCode;
 import kr.co.cking.event.domain.EntryResultCode;
+import kr.co.cking.ticket.domain.CouponType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -45,9 +46,9 @@ class EventEntryServiceTest {
     @Test
     void SUCCESS면_accepted_응답을_반환한다() {
         UUID requestId = UUID.randomUUID();
-        EntryCommand command = new EntryCommand(10L, requestId, 2);
+        EntryCommand command = new EntryCommand(10L, requestId, 2, CouponType.CREATOR);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
-        when(entrySpendService.spend(eq(1L), eq(10L), eq(2L), eq(requestId.toString()), eq(2)))
+        when(entrySpendService.spend(eq(1L), eq(10L), eq(2L), eq(requestId.toString()), eq(2), eq(CouponType.CREATOR)))
                 .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.SUCCESS, "1-0", 1L));
 
         EntryOutcome outcome = eventEntryService.apply(1L, command);
@@ -59,9 +60,9 @@ class EventEntryServiceTest {
 
     @Test
     void DUPLICATE_REPLAY도_accepted_응답을_반환한다() {
-        EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2);
+        EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.CREATOR);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
-        when(entrySpendService.spend(any(), any(), any(), any(), anyInt()))
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
                 .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.DUPLICATE_REPLAY, "1-0", 1L));
 
         EntryOutcome outcome = eventEntryService.apply(1L, command);
@@ -71,9 +72,9 @@ class EventEntryServiceTest {
 
     @Test
     void 실패_코드는_BusinessException으로_변환된다() {
-        EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2);
+        EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.CREATOR);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
-        when(entrySpendService.spend(any(), any(), any(), any(), anyInt()))
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
                 .thenReturn(EntrySpendResult.ofBalance(EntrySpendResultCode.INSUFFICIENT_BALANCE, 0L));
 
         assertThatThrownBy(() -> eventEntryService.apply(1L, command))

@@ -30,6 +30,8 @@ import kr.co.cking.event.application.config.EntryRedisKeys;
 import kr.co.cking.ticket.application.TicketMaintenanceLock;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
+import kr.co.cking.ticket.domain.CouponType;
 
 // entrySpendServiceImpl.streamKey(cking.entry.stream-key)를 테스트 전용 키로 오버라이드한다.
 // 이 클래스는 그 키를 삭제하거나 타입을 바꾸는 조작(WRONGTYPE 유도 등)을 하므로,
@@ -70,7 +72,11 @@ class EntrySpendServiceIntegrationTest {
             "req-guard-ttl",
             "req-maintenance-lock",
             "req-maintenance-lock-replay",
-            "req-real-lock"
+            "req-real-lock",
+            "req-common",
+            "req-common-only-creator-balance",
+            "req-common-insufficient",
+            "req-creator-only-common-balance"
     );
 
     @BeforeEach
@@ -81,6 +87,8 @@ class EntrySpendServiceIntegrationTest {
                 EntryRedisKeys.endAt(EVENT_ID),
                 EntryRedisKeys.balance(CREATOR_ID, USER_ID),
                 EntryRedisKeys.maintenance(CREATOR_ID, USER_ID),
+                CommonTicketRedisKeys.balance(USER_ID),
+                CommonTicketRedisKeys.maintenance(USER_ID),
                 EntryRedisKeys.entryTotal(EVENT_ID),
                 EntryRedisKeys.entrants(EVENT_ID),
                 STREAM_KEY
@@ -110,7 +118,7 @@ class EntrySpendServiceIntegrationTest {
 
     @Test
     void Gate_키가_없으면_GATE_NOT_LOADED를_반환한다() {
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.GATE_NOT_LOADED);
     }
@@ -120,7 +128,7 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "CLOSED");
         redisTemplate.opsForValue().set(EntryRedisKeys.endAt(EVENT_ID), String.valueOf(FAR_FUTURE_MILLIS));
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.EVENT_NOT_OPEN);
     }
@@ -130,21 +138,21 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "OPEN");
         redisTemplate.opsForValue().set(EntryRedisKeys.endAt(EVENT_ID), String.valueOf(PAST_MILLIS));
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.EVENT_CLOSED);
     }
 
     @Test
     void ticketCount가_0이면_INVALID_TICKET_COUNT를_반환한다() {
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 0);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 0, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.INVALID_TICKET_COUNT);
     }
 
     @Test
     void ticketCount가_101이면_INVALID_TICKET_COUNT를_반환한다() {
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 101);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 101, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.INVALID_TICKET_COUNT);
     }
@@ -153,7 +161,7 @@ class EntrySpendServiceIntegrationTest {
     void balance_키가_없으면_BALANCE_NOT_LOADED를_반환한다() {
         openGate();
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.BALANCE_NOT_LOADED);
     }
@@ -163,7 +171,7 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "1");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 5);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 5, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.INSUFFICIENT_BALANCE);
     }
@@ -173,7 +181,7 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(result.balance()).isEqualTo(8L);
@@ -198,6 +206,74 @@ class EntrySpendServiceIntegrationTest {
         assertThat(fields.get("ticketCount")).isEqualTo("2");
     }
 
+    // 이슈 #243: couponType=COMMON이면 크리에이터 잔액이 아니라 공용 잔액을 검증·차감한다.
+    @Test
+    void COMMON_요청은_공용_잔액을_차감하고_크리에이터_잔액은_그대로다() {
+        openGate();
+        redisTemplate.opsForValue().set(CommonTicketRedisKeys.balance(USER_ID), "10");
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "5");
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-common", 2, CouponType.COMMON);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(result.balance()).isEqualTo(8L);
+        assertThat(redisTemplate.opsForValue().get(CommonTicketRedisKeys.balance(USER_ID))).isEqualTo("8");
+        // 크리에이터 잔액은 COMMON 차감의 영향을 받지 않는다.
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("5");
+
+        StreamOperations<String, String, String> streamOps = redisTemplate.opsForStream();
+        List<MapRecord<String, String, String>> records =
+                streamOps.range(STREAM_KEY, Range.just(result.streamId()));
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).getValue().get("couponType")).isEqualTo("COMMON");
+    }
+
+    // 자비 확인 동시성 시나리오(반대 방향): 크리에이터 응모권만 있고 공용 응모권이 없는
+    // 사용자가 COMMON으로 응모하면 BALANCE_NOT_LOADED이고 크리에이터 잔액은 차감되지 않는다.
+    @Test
+    void 공용_잔액_없이_COMMON으로_응모하면_BALANCE_NOT_LOADED이고_크리에이터_잔액은_그대로다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "5");
+        // CommonTicketRedisKeys.balance(USER_ID)는 의도적으로 세팅하지 않는다.
+
+        EntrySpendResult result = entrySpendService.spend(
+                EVENT_ID, USER_ID, CREATOR_ID, "req-common-only-creator-balance", 2, CouponType.COMMON);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.BALANCE_NOT_LOADED);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("5");
+    }
+
+    // 이슈 #243 완료조건: 공용 잔액 키는 있지만 부족한 경우도 격리를 확인한다(키 부재와는
+    // 다른 코드) - 크리에이터 잔액은 넉넉해도 COMMON 요청에는 영향을 주지 않는다.
+    @Test
+    void COMMON_잔액이_부족하면_INSUFFICIENT_BALANCE이고_크리에이터_잔액은_그대로다() {
+        openGate();
+        redisTemplate.opsForValue().set(CommonTicketRedisKeys.balance(USER_ID), "1");
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult result = entrySpendService.spend(
+                EVENT_ID, USER_ID, CREATOR_ID, "req-common-insufficient", 5, CouponType.COMMON);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.INSUFFICIENT_BALANCE);
+        assertThat(redisTemplate.opsForValue().get(CommonTicketRedisKeys.balance(USER_ID))).isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("10");
+    }
+
+    // 반대 방향(자비 요청 동시성 시나리오의 비동시성 버전): 공용 잔액만 있고 크리에이터
+    // 잔액 키가 없는 사용자가 CREATOR로 응모하면 BALANCE_NOT_LOADED이고 공용 잔액은 그대로다.
+    @Test
+    void 크리에이터_잔액_없이_CREATOR로_응모하면_BALANCE_NOT_LOADED이고_공용_잔액은_그대로다() {
+        openGate();
+        redisTemplate.opsForValue().set(CommonTicketRedisKeys.balance(USER_ID), "10");
+        // EntryRedisKeys.balance(CREATOR_ID, USER_ID)는 의도적으로 세팅하지 않는다.
+
+        EntrySpendResult result = entrySpendService.spend(
+                EVENT_ID, USER_ID, CREATOR_ID, "req-creator-only-common-balance", 2, CouponType.CREATOR);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.BALANCE_NOT_LOADED);
+        assertThat(redisTemplate.opsForValue().get(CommonTicketRedisKeys.balance(USER_ID))).isEqualTo("10");
+    }
+
     // FR-P2-045~050: 집계 키가 이미 적재돼 있으면 신규 SUCCESS 경로에서만 원자적으로 증가한다.
     @Test
     void 집계_키가_적재돼_있으면_SUCCESS_시_실시간_응모_현황이_증가한다() {
@@ -206,7 +282,7 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(EVENT_ID), "3");
         redisTemplate.opsForHash().put(EntryRedisKeys.entrants(EVENT_ID), String.valueOf(USER_ID), "1");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(EVENT_ID))).isEqualTo("5");
@@ -224,7 +300,7 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(EVENT_ID), "3");
         // entrants는 의도적으로 세팅하지 않는다 - eviction으로 사라진 상태를 흉내낸다.
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(redisTemplate.hasKey(EntryRedisKeys.entryTotal(EVENT_ID))).isFalse();
@@ -237,7 +313,7 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(redisTemplate.hasKey(EntryRedisKeys.entryTotal(EVENT_ID))).isFalse();
@@ -251,8 +327,8 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
         redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(EVENT_ID), "0");
 
-        entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
-        EntrySpendResult replay = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+        entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2, CouponType.CREATOR);
+        EntrySpendResult replay = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2, CouponType.CREATOR);
 
         assertThat(replay.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(EVENT_ID))).isEqualTo("2");
@@ -269,7 +345,7 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.endAt(EVENT_ID), String.valueOf(endAtMillis));
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-ttl", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-ttl", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
 
@@ -284,8 +360,8 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-duplicate", 2);
-        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-duplicate", 2);
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-duplicate", 2, CouponType.CREATOR);
+        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-duplicate", 2, CouponType.CREATOR);
 
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retry.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
@@ -299,8 +375,8 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict", 2);
-        EntrySpendResult conflicting = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict", 3);
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict", 2, CouponType.CREATOR);
+        EntrySpendResult conflicting = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict", 3, CouponType.CREATOR);
 
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(conflicting.code()).isEqualTo(EntrySpendResultCode.IDEMPOTENCY_CONFLICT);
@@ -313,11 +389,11 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-replay-after-close", 2);
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-replay-after-close", 2, CouponType.CREATOR);
         redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "CLOSED");
 
         EntrySpendResult retryAfterClose =
-                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-replay-after-close", 2);
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-replay-after-close", 2, CouponType.CREATOR);
 
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retryAfterClose.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
@@ -330,11 +406,11 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict-after-close", 2);
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict-after-close", 2, CouponType.CREATOR);
         redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "CLOSED");
 
         EntrySpendResult conflicting =
-                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict-after-close", 3);
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-conflict-after-close", 3, CouponType.CREATOR);
 
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(conflicting.code()).isEqualTo(EntrySpendResultCode.IDEMPOTENCY_CONFLICT);
@@ -347,7 +423,7 @@ class EntrySpendServiceIntegrationTest {
         // 격리된 테스트 전용 stream 키를 STRING 타입으로 선점시켜 XADD가 WRONGTYPE로 실패하도록 유도한다.
         redisTemplate.opsForValue().set(STREAM_KEY, "not-a-stream");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-xadd-fail", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-xadd-fail", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.SYSTEM_ERROR);
         // DECRBY가 INCRBY로 보상되어 원래 잔액(10)이 그대로 유지되어야 한다.
@@ -366,7 +442,7 @@ class EntrySpendServiceIntegrationTest {
         // 정수 문자열만 허용하므로 여기서 실제로 실패한다.
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10.5");
 
-        EntrySpendResult failed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-decrby-fail", 2);
+        EntrySpendResult failed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-decrby-fail", 2, CouponType.CREATOR);
 
         assertThat(failed.code()).isEqualTo(EntrySpendResultCode.SYSTEM_ERROR);
         assertThat(redisTemplate.hasKey(EntryRedisKeys.spendGuard("req-decrby-fail"))).isFalse();
@@ -375,7 +451,7 @@ class EntrySpendServiceIntegrationTest {
         // Balance를 정상값으로 고치면, 같은 requestId로도 처음부터 다시 성공해야 한다.
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-decrby-fail", 2);
+        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-decrby-fail", 2, CouponType.CREATOR);
 
         assertThat(retry.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retry.balance()).isEqualTo(8L);
@@ -387,10 +463,10 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-recovery", 2);
+        EntrySpendResult first = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-recovery", 2, CouponType.CREATOR);
         redisTemplate.delete(EntryRedisKeys.idem("req-guard-recovery"));
 
-        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-recovery", 2);
+        EntrySpendResult retry = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-recovery", 2, CouponType.CREATOR);
 
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retry.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
@@ -412,7 +488,7 @@ class EntrySpendServiceIntegrationTest {
                 "{\"fingerprint\":\"" + fp + "\"}"
         );
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-stuck", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-stuck", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
         assertThat(result.streamId()).isNull();
@@ -432,7 +508,7 @@ class EntrySpendServiceIntegrationTest {
                 "{\"fingerprint\":\"" + differentFingerprint + "\"}"
         );
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-conflict", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-conflict", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.IDEMPOTENCY_CONFLICT);
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("10");
@@ -453,7 +529,7 @@ class EntrySpendServiceIntegrationTest {
             for (int i = 0; i < threadCount; i++) {
                 futures.add(executor.submit(() -> {
                     startLatch.await();
-                    return entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-concurrent", 2);
+                    return entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-concurrent", 2, CouponType.CREATOR);
                 }));
             }
 
@@ -490,7 +566,7 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
         redisTemplate.opsForValue().set(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("10");
@@ -506,11 +582,11 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
         EntrySpendResult first =
-                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2);
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2, CouponType.CREATOR);
         redisTemplate.opsForValue().set(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
 
         EntrySpendResult retry =
-                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2);
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock-replay", 2, CouponType.CREATOR);
 
         assertThat(first.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retry.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
@@ -525,9 +601,9 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
         String token = maintenanceLock.acquire(CREATOR_ID, USER_ID);
-        EntrySpendResult blocked = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2);
+        EntrySpendResult blocked = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2, CouponType.CREATOR);
         maintenanceLock.release(CREATOR_ID, USER_ID, token);
-        EntrySpendResult passed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2);
+        EntrySpendResult passed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2, CouponType.CREATOR);
 
         assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
         assertThat(passed.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
@@ -543,12 +619,12 @@ class EntrySpendServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID), "locked");
 
         EntrySpendResult blocked =
-                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2);
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2, CouponType.CREATOR);
         assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
 
         redisTemplate.delete(EntryRedisKeys.maintenance(CREATOR_ID, USER_ID));
         EntrySpendResult retried =
-                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2);
+                entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-maintenance-lock", 2, CouponType.CREATOR);
 
         assertThat(retried.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
         assertThat(retried.balance()).isEqualTo(8L);

@@ -31,14 +31,18 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.event.application.config.EntryRedisKeys;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
+import kr.co.cking.ticket.domain.UserCommonTicketBalance;
 import kr.co.cking.ticket.domain.UserTicketBalance;
+import kr.co.cking.ticket.repository.UserCommonTicketBalanceRepository;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 
 /**
@@ -75,6 +79,11 @@ class EntrySpendLoadTest {
     private static final long THROUGHPUT_BALANCE = 5L;
     private static final long FAR_FUTURE_MILLIS = 9_999_999_999_999L;
 
+    /** COMMON 경합 시나리오(이슈 #243) 동시 요청 수·보유 잔액. 여러 크리에이터 이벤트에 같은
+     * 공용 잔액으로 동시 응모해도 Lua 원자성이 지켜지는지 본다(자비 요청 동시성 시나리오). */
+    private static final int COMMON_CONTENTION_REQUESTS = 300;
+    private static final long COMMON_CONTENTION_BALANCE = 150L;
+
     @Autowired
     private EntrySpendService entrySpendService;
 
@@ -96,11 +105,20 @@ class EntrySpendLoadTest {
     @Autowired
     private UserTicketBalanceRepository userTicketBalanceRepository;
 
+    @Autowired
+    private UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
+
     private Long ownerMemberId;
     private Long creatorId;
     private Long eventId;
     private List<Long> throughputUserIds;
     private Long contentionUserId;
+
+    /** COMMON 경합 시나리오 전용 - 크리에이터 2개, 이벤트 2개, 공용 응모권 사용자 1명. */
+    private Long secondOwnerMemberId;
+    private Long secondCreatorId;
+    private Long secondEventId;
+    private Long commonContentionUserId;
 
     @BeforeEach
     void setUp() {
@@ -131,6 +149,36 @@ class EntrySpendLoadTest {
             throughputUserIds.add(createUserWithBalance("부하테스트 응모자", THROUGHPUT_BALANCE));
         }
         contentionUserId = createUserWithBalance("경합테스트 응모자", CONTENTION_BALANCE);
+
+        // COMMON 경합 시나리오용 2번째 크리에이터·이벤트.
+        Member secondOwner = memberRepository.saveAndFlush(
+                new Member("부하테스트 크리에이터 회원2", null, null, MemberRole.USER));
+        secondOwnerMemberId = secondOwner.getMemberId();
+        Creator secondCreator = creatorRepository.saveAndFlush(new Creator(secondOwnerMemberId, "부하테스트 크리에이터2"));
+        secondCreatorId = secondCreator.getCreatorId();
+        Event secondEvent = eventRepository.saveAndFlush(Event.builder()
+                .creatorId(secondCreatorId)
+                .requestId(UUID.randomUUID().toString())
+                .title("부하테스트 이벤트2")
+                .startAt(Instant.parse("2026-09-01T00:00:00Z"))
+                .endAt(Instant.parse("2026-12-01T00:00:00Z"))
+                .winnerCount(1)
+                .drawMethod("WEIGHTED")
+                .status(EventStatus.OPEN)
+                .createdBy(secondOwnerMemberId)
+                .createdAt(Instant.now())
+                .build());
+        secondEventId = secondEvent.getEventId();
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(secondEventId), "OPEN");
+        redisTemplate.opsForValue().set(EntryRedisKeys.endAt(secondEventId), String.valueOf(FAR_FUTURE_MILLIS));
+
+        Member commonMember = memberRepository.saveAndFlush(
+                new Member("공용경합테스트 응모자", null, null, MemberRole.USER));
+        commonContentionUserId = commonMember.getMemberId();
+        userCommonTicketBalanceRepository.saveAndFlush(UserCommonTicketBalance.builder()
+                .memberId(commonContentionUserId).balance(COMMON_CONTENTION_BALANCE).updatedAt(Instant.now()).build());
+        redisTemplate.opsForValue().set(
+                CommonTicketRedisKeys.balance(commonContentionUserId), String.valueOf(COMMON_CONTENTION_BALANCE));
     }
 
     private Long createUserWithBalance(String name, long balance) {
@@ -144,12 +192,24 @@ class EntrySpendLoadTest {
 
     @AfterEach
     void cleanUp() {
+        // COMMON 경합 시나리오는 eventId/secondEventId 양쪽에 event_entry를 남기고
+        // common_ticket_ledger.event_entry_id가 그걸 참조하므로(FK), 아래 두 event_entry
+        // 삭제보다 먼저 common_ticket_ledger부터 지워야 한다.
+        if (commonContentionUserId != null) {
+            jdbcTemplate.update("DELETE FROM common_ticket_ledger WHERE member_id = ?", commonContentionUserId);
+        }
         if (creatorId != null) {
             jdbcTemplate.update("DELETE FROM ticket_ledger WHERE creator_id = ?", creatorId);
             jdbcTemplate.update("DELETE FROM event_entry WHERE event_id = ?", eventId);
             jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE creator_id = ?", creatorId);
             jdbcTemplate.update("DELETE FROM event WHERE event_id = ?", eventId);
             jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", creatorId);
+        }
+        if (secondCreatorId != null) {
+            jdbcTemplate.update("DELETE FROM event_entry WHERE event_id = ?", secondEventId);
+            jdbcTemplate.update("DELETE FROM user_common_ticket_balance WHERE member_id = ?", commonContentionUserId);
+            jdbcTemplate.update("DELETE FROM event WHERE event_id = ?", secondEventId);
+            jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", secondCreatorId);
         }
         List<Long> memberIds = new ArrayList<>();
         if (throughputUserIds != null) {
@@ -161,6 +221,12 @@ class EntrySpendLoadTest {
         if (ownerMemberId != null) {
             memberIds.add(ownerMemberId);
         }
+        if (secondOwnerMemberId != null) {
+            memberIds.add(secondOwnerMemberId);
+        }
+        if (commonContentionUserId != null) {
+            memberIds.add(commonContentionUserId);
+        }
         for (Long memberId : memberIds) {
             jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId);
         }
@@ -170,8 +236,15 @@ class EntrySpendLoadTest {
             keys.add(EntryRedisKeys.status(eventId));
             keys.add(EntryRedisKeys.endAt(eventId));
         }
+        if (secondEventId != null) {
+            keys.add(EntryRedisKeys.status(secondEventId));
+            keys.add(EntryRedisKeys.endAt(secondEventId));
+        }
         for (Long memberId : memberIds) {
             keys.add(TicketRedisKeys.balance(creatorId, memberId));
+        }
+        if (commonContentionUserId != null) {
+            keys.add(CommonTicketRedisKeys.balance(commonContentionUserId));
         }
         if (!keys.isEmpty()) {
             redisTemplate.delete(keys);
@@ -188,7 +261,7 @@ class EntrySpendLoadTest {
         runConcurrently(USER_COUNT, index -> {
             long callStart = System.nanoTime();
             EntrySpendResult result = entrySpendService.spend(
-                    eventId, throughputUserIds.get(index), creatorId, requestIds.get(index), 1);
+                    eventId, throughputUserIds.get(index), creatorId, requestIds.get(index), 1, CouponType.CREATOR);
             latenciesMillis[index] = (System.nanoTime() - callStart) / 1_000_000;
             if (result.code() == EntrySpendResultCode.SUCCESS) {
                 successCount.incrementAndGet();
@@ -225,7 +298,7 @@ class EntrySpendLoadTest {
         runConcurrently(CONTENTION_REQUESTS, index -> {
             long callStart = System.nanoTime();
             EntrySpendResult result = entrySpendService.spend(
-                    eventId, contentionUserId, creatorId, requestIds.get(index), 1);
+                    eventId, contentionUserId, creatorId, requestIds.get(index), 1, CouponType.CREATOR);
             latenciesMillis[index] = (System.nanoTime() - callStart) / 1_000_000;
             switch (result.code()) {
                 case SUCCESS -> successCount.incrementAndGet();
@@ -257,6 +330,98 @@ class EntrySpendLoadTest {
                 "SELECT balance FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?",
                 Long.class, contentionUserId, creatorId);
         assertThat(dbBalance).isZero();
+    }
+
+    /**
+     * 자비 요청 동시성 시나리오(이슈 #243): 같은 사용자가 여러 크리에이터의 공통 추첨에
+     * 동시에 응모해도 공용 잔액 음수·초과 차감 0건이어야 한다. 위 CREATOR 경합 시나리오와
+     * 같은 원리지만, 두 이벤트(서로 다른 크리에이터)가 같은 COMMON 잔액 키 하나를 다툰다.
+     */
+    @Test
+    void 여러_크리에이터_이벤트에_COMMON으로_동시_응모해도_공용_잔액_음수_초과차감_0건이다() throws InterruptedException {
+        List<String> requestIds = new ArrayList<>(COMMON_CONTENTION_REQUESTS);
+        for (int i = 0; i < COMMON_CONTENTION_REQUESTS; i++) {
+            requestIds.add(UUID.randomUUID().toString());
+        }
+        long[] latenciesMillis = new long[COMMON_CONTENTION_REQUESTS];
+        AtomicInteger successCount = new AtomicInteger();
+        AtomicInteger insufficientCount = new AtomicInteger();
+        AtomicInteger otherCount = new AtomicInteger();
+
+        Instant start = Instant.now();
+        runConcurrently(COMMON_CONTENTION_REQUESTS, index -> {
+            // 짝/홀로 두 크리에이터 이벤트에 번갈아 응모해 "여러 크리에이터"를 실제로 재현한다.
+            Long targetEventId = index % 2 == 0 ? eventId : secondEventId;
+            Long targetCreatorId = index % 2 == 0 ? creatorId : secondCreatorId;
+            long callStart = System.nanoTime();
+            EntrySpendResult result = entrySpendService.spend(
+                    targetEventId, commonContentionUserId, targetCreatorId, requestIds.get(index), 1, CouponType.COMMON);
+            latenciesMillis[index] = (System.nanoTime() - callStart) / 1_000_000;
+            switch (result.code()) {
+                case SUCCESS -> successCount.incrementAndGet();
+                case INSUFFICIENT_BALANCE -> insufficientCount.incrementAndGet();
+                default -> {
+                    otherCount.incrementAndGet();
+                    log.warn("예상치 못한 결과코드: code={}", result.code());
+                }
+            }
+        });
+        Duration elapsed = Duration.between(start, Instant.now());
+
+        awaitCommonEntryCount((int) COMMON_CONTENTION_BALANCE);
+        log.info("[이슈 #243 COMMON 경합 시나리오] 동시 요청={}, 보유 잔액={}, SUCCESS={}, INSUFFICIENT_BALANCE={}, 기타={}",
+                COMMON_CONTENTION_REQUESTS, COMMON_CONTENTION_BALANCE, successCount.get(), insufficientCount.get(),
+                otherCount.get());
+        report(elapsed, latenciesMillis, successCount.get());
+
+        assertThat(otherCount.get()).isZero();
+        assertThat(successCount.get()).isEqualTo((int) COMMON_CONTENTION_BALANCE);
+        assertThat(insufficientCount.get()).isEqualTo(COMMON_CONTENTION_REQUESTS - (int) COMMON_CONTENTION_BALANCE);
+
+        // Redis는 정확히 0까지만 내려가야 한다(음수 금지) - 크리에이터가 둘이어도 잔액 키는 하나뿐이다.
+        String redisBalance = redisTemplate.opsForValue().get(CommonTicketRedisKeys.balance(commonContentionUserId));
+        assertThat(redisBalance).isEqualTo("0");
+
+        Long dbBalance = jdbcTemplate.queryForObject(
+                "SELECT balance FROM user_common_ticket_balance WHERE member_id = ?",
+                Long.class, commonContentionUserId);
+        assertThat(dbBalance).isZero();
+
+        Integer ledgerTotal = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM common_ticket_ledger WHERE member_id = ? AND type = 'SPEND'",
+                Integer.class, commonContentionUserId);
+        Integer ledgerDistinct = jdbcTemplate.queryForObject(
+                "SELECT COUNT(DISTINCT request_id) FROM common_ticket_ledger WHERE member_id = ? AND type = 'SPEND'",
+                Integer.class, commonContentionUserId);
+        assertThat(ledgerTotal).isEqualTo((int) COMMON_CONTENTION_BALANCE);
+        assertThat(ledgerDistinct).isEqualTo(ledgerTotal);
+
+        // 두 이벤트 모두에 실제로 Entry가 갈렸는지 확인한다 - 한쪽만 소비되면 "여러 크리에이터"
+        // 시나리오를 재현하지 못한 것이다.
+        Integer firstEventEntries = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM event_entry WHERE event_id = ? AND member_id = ?",
+                Integer.class, eventId, commonContentionUserId);
+        Integer secondEventEntries = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM event_entry WHERE event_id = ? AND member_id = ?",
+                Integer.class, secondEventId, commonContentionUserId);
+        assertThat(firstEventEntries).isGreaterThan(0);
+        assertThat(secondEventEntries).isGreaterThan(0);
+        assertThat(firstEventEntries + secondEventEntries).isEqualTo((int) COMMON_CONTENTION_BALANCE);
+    }
+
+    /** COMMON SPEND Consumer가 두 이벤트 합산 기대 건수만큼 event_entry를 반영할 때까지 최대 30초 기다린다. */
+    private void awaitCommonEntryCount(int expected) throws InterruptedException {
+        Instant deadline = Instant.now().plusSeconds(30);
+        while (Instant.now().isBefore(deadline)) {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM event_entry WHERE event_id IN (?, ?) AND member_id = ?",
+                    Integer.class, eventId, secondEventId, commonContentionUserId);
+            if (count != null && count >= expected) {
+                return;
+            }
+            TimeUnit.MILLISECONDS.sleep(200);
+        }
+        throw new AssertionError("COMMON SPEND Consumer가 30초 안에 Entry %d건을 반영하지 못했습니다.".formatted(expected));
     }
 
     private void runConcurrently(int count, java.util.function.IntConsumer task) {

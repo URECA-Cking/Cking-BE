@@ -19,6 +19,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.event.application.config.EntryRedisKeys;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventEntryAggregate;
@@ -137,7 +138,7 @@ class EntryStatusDrainConsistencyIntegrationTest {
     private void assertSpendSucceeds(Long userId, int ticketCount) {
         String requestId = UUID.randomUUID().toString();
         requestIds.add(requestId);
-        var result = entrySpendService.spend(eventId, userId, creatorId, requestId, ticketCount);
+        var result = entrySpendService.spend(eventId, userId, creatorId, requestId, ticketCount, CouponType.CREATOR);
         assertThat(result.code().name()).isEqualTo("SUCCESS");
     }
 

@@ -23,10 +23,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import kr.co.cking.event.domain.EventEntry;
 import kr.co.cking.event.repository.EventEntryRepository;
 import kr.co.cking.ticket.application.dto.SpendCommand;
+import kr.co.cking.ticket.domain.CommonTicketLedger;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.ticket.domain.TicketLedger;
 import kr.co.cking.ticket.domain.TicketLedgerType;
+import kr.co.cking.ticket.domain.UserCommonTicketBalance;
 import kr.co.cking.ticket.domain.UserTicketBalance;
+import kr.co.cking.ticket.repository.CommonTicketLedgerRepository;
 import kr.co.cking.ticket.repository.TicketLedgerRepository;
+import kr.co.cking.ticket.repository.UserCommonTicketBalanceRepository;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 
 /**
@@ -60,6 +65,12 @@ class TicketSpendLedgerServiceIntegrationTest {
     private UserTicketBalanceRepository userTicketBalanceRepository;
 
     @Autowired
+    private CommonTicketLedgerRepository commonTicketLedgerRepository;
+
+    @Autowired
+    private UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     private long eventId;
@@ -84,6 +95,11 @@ class TicketSpendLedgerServiceIntegrationTest {
         userTicketBalanceRepository.save(
                 UserTicketBalance.builder().memberId(MEMBER_ID).creatorId(CREATOR_ID).balance(100L)
                         .updatedAt(java.time.Instant.now()).build());
+        // 크리에이터 잔액(100)과 값을 다르게 둬서, COMMON 반영이 실제로 공용 잔액을
+        // 건드리고 크리에이터 잔액과는 무관하다는 걸 값 자체로 구분할 수 있게 한다.
+        userCommonTicketBalanceRepository.save(
+                UserCommonTicketBalance.builder().memberId(MEMBER_ID).balance(50L)
+                        .updatedAt(java.time.Instant.now()).build());
     }
 
     @AfterEach
@@ -104,9 +120,11 @@ class TicketSpendLedgerServiceIntegrationTest {
 
     private void cleanUp() {
         jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM common_ticket_ledger WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM event_entry WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ? AND creator_id IN (?, ?)",
                 MEMBER_ID, CREATOR_ID, OTHER_CREATOR_ID);
+        jdbcTemplate.update("DELETE FROM user_common_ticket_balance WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM event WHERE creator_id IN (?, ?)", CREATOR_ID, OTHER_CREATOR_ID);
         jdbcTemplate.update("DELETE FROM creator WHERE creator_id IN (?, ?)", CREATOR_ID, OTHER_CREATOR_ID);
         jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?, ?)",
@@ -114,7 +132,51 @@ class TicketSpendLedgerServiceIntegrationTest {
     }
 
     private SpendCommand command(String requestId, long ticketCount) {
-        return new SpendCommand(eventId, MEMBER_ID, CREATOR_ID, requestId, ticketCount);
+        return new SpendCommand(eventId, MEMBER_ID, CREATOR_ID, requestId, ticketCount, CouponType.CREATOR);
+    }
+
+    // couponType=COMMON이어도 creatorId 필드는 여전히 이벤트에서 resolve된 값 그대로 싣는다
+    // (교차검증용 - 이슈 #243). 어느 잔액을 차감할지는 couponType이 정한다.
+    private SpendCommand commonCommand(String requestId, long ticketCount) {
+        return new SpendCommand(eventId, MEMBER_ID, CREATOR_ID, requestId, ticketCount, CouponType.COMMON);
+    }
+
+    @Test
+    void COMMON_요청은_공용_잔액과_공용_Ledger에_반영되고_크리에이터_잔액은_그대로다() {
+        String requestId = UUID.randomUUID().toString();
+
+        ticketSpendLedgerService.apply(commonCommand(requestId, 3L));
+
+        EventEntry entry = eventEntryRepository.findByRequestId(requestId).orElseThrow();
+        assertThat(entry.getUsedTicketCount()).isEqualTo(3L);
+
+        CommonTicketLedger ledger = commonTicketLedgerRepository.findByRequestId(requestId).orElseThrow();
+        assertThat(ledger.getType()).isEqualTo(TicketLedgerType.SPEND);
+        assertThat(ledger.getEventEntryId()).isEqualTo(entry.getEntryId());
+        assertThat(ledger.getDeltaAmount()).isEqualTo(-3L);
+        assertThat(ledger.getBalanceBefore()).isEqualTo(50L);
+        assertThat(ledger.getBalanceAfter()).isEqualTo(47L);
+        // 크리에이터 전용 Ledger에는 아무것도 남지 않는다.
+        assertThat(ticketLedgerRepository.findByRequestId(requestId)).isEmpty();
+
+        UserCommonTicketBalance commonBalance =
+                userCommonTicketBalanceRepository.findById(MEMBER_ID).orElseThrow();
+        assertThat(commonBalance.getBalance()).isEqualTo(47L);
+        // 크리에이터 잔액(100)은 COMMON 차감의 영향을 받지 않는다.
+        UserTicketBalance creatorBalance =
+                userTicketBalanceRepository.findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID).orElseThrow();
+        assertThat(creatorBalance.getBalance()).isEqualTo(100L);
+    }
+
+    @Test
+    void 공용_잔액이_없으면_COMMON_요청을_반영하지_않는다() {
+        userCommonTicketBalanceRepository.deleteById(MEMBER_ID);
+        String requestId = UUID.randomUUID().toString();
+
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(commonCommand(requestId, 3L)))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(eventEntryRepository.findByRequestId(requestId)).isEmpty();
     }
 
     @Test
@@ -177,12 +239,30 @@ class TicketSpendLedgerServiceIntegrationTest {
         assertThat(balance.getBalance()).isEqualTo(96L);
     }
 
+    // 이슈 #243: EventEntry에 couponType 컬럼이 없어 Ledger 존재로 역산해서 검증한다.
+    @Test
+    void 같은_requestId에_couponType만_달라도_반영하지_않는다() {
+        String requestId = UUID.randomUUID().toString();
+        ticketSpendLedgerService.apply(command(requestId, 4L)); // CREATOR로 최초 반영
+
+        SpendCommand conflicting = commonCommand(requestId, 4L); // 같은 requestId, COMMON로 재전달
+
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting))
+                .isInstanceOf(IllegalStateException.class);
+
+        // 최초 CREATOR 반영만 남아있고 COMMON Ledger는 생기지 않아야 한다.
+        assertThat(commonTicketLedgerRepository.findByRequestId(requestId)).isEmpty();
+        UserTicketBalance balance = userTicketBalanceRepository
+                .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID).orElseThrow();
+        assertThat(balance.getBalance()).isEqualTo(96L);
+    }
+
     @Test
     void 같은_requestId에_creatorId만_달라도_반영하지_않는다() {
         String requestId = UUID.randomUUID().toString();
         ticketSpendLedgerService.apply(command(requestId, 4L));
 
-        SpendCommand conflicting = new SpendCommand(eventId, MEMBER_ID, OTHER_CREATOR_ID, requestId, 4L);
+        SpendCommand conflicting = new SpendCommand(eventId, MEMBER_ID, OTHER_CREATOR_ID, requestId, 4L, CouponType.CREATOR);
 
         assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting))
                 .isInstanceOf(IllegalStateException.class);
@@ -191,7 +271,7 @@ class TicketSpendLedgerServiceIntegrationTest {
     @Test
     void creatorId가_Event의_creatorId와_다르면_반영하지_않는다() {
         SpendCommand command = new SpendCommand(
-                otherCreatorEventId, MEMBER_ID, CREATOR_ID, UUID.randomUUID().toString(), 3L);
+                otherCreatorEventId, MEMBER_ID, CREATOR_ID, UUID.randomUUID().toString(), 3L, CouponType.CREATOR);
 
         assertThatThrownBy(() -> ticketSpendLedgerService.apply(command))
                 .isInstanceOf(IllegalStateException.class);

@@ -25,7 +25,8 @@ public class EventEntryService {
                 command.userId(),
                 event.creatorId(),
                 command.requestId().toString(),
-                command.ticketCount()
+                command.ticketCount(),
+                command.couponType()
         );
         EntryResultCode code = EntryResultCode.valueOf(result.code().name());
 

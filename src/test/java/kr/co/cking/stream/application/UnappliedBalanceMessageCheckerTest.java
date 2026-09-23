@@ -134,6 +134,28 @@ class UnappliedBalanceMessageCheckerTest {
         assertThat(checker.exists(MEMBER_ID, CREATOR_ID)).isTrue();
     }
 
+    // 이슈 #243: COMMON 응모권으로 응모한 SPEND 메시지도 creatorId 필드는 실려 있지만,
+    // 그 크리에이터 잔액을 차감하지 않았으므로 크리에이터 잔액 미반영 검사에서 빠져야 한다.
+    // 아니면 공용 응모권 사용 메시지가 크리에이터 잔액 보정을 막는다.
+    @Test
+    void COMMON_SPEND_메시지는_크리에이터_잔액_미반영_검사에서_제외한다() {
+        addSpendWithCouponType(MEMBER_ID, CREATOR_ID, "COMMON");
+        createGroupFromZero(SPEND_KEY, SPEND_GROUP);
+        readAll(SPEND_KEY, SPEND_GROUP);
+
+        assertThat(checker.exists(MEMBER_ID, CREATOR_ID)).isFalse();
+    }
+
+    // couponType 필드가 없는(배포 전) 메시지는 CREATOR로 취급해 기존과 동일하게 검사 대상이다.
+    @Test
+    void couponType_필드가_없는_SPEND_메시지는_CREATOR로_취급해_검사_대상이다() {
+        add(SPEND_KEY, MEMBER_ID, CREATOR_ID);
+        createGroupFromZero(SPEND_KEY, SPEND_GROUP);
+        readAll(SPEND_KEY, SPEND_GROUP);
+
+        assertThat(checker.exists(MEMBER_ID, CREATOR_ID)).isTrue();
+    }
+
     @Test
     void 미해결_SPEND_Dead_Stream이_있으면_true() {
         insertDeadStream("unapplied-test-1", "SPEND", MEMBER_ID, CREATOR_ID, "UNRESOLVED");
@@ -160,6 +182,12 @@ class UnappliedBalanceMessageCheckerTest {
     private RecordId add(String key, Long userId, Long creatorId) {
         return redisTemplate.opsForStream().add(MapRecord.create(key, Map.of(
                 "userId", String.valueOf(userId), "creatorId", String.valueOf(creatorId))));
+    }
+
+    private RecordId addSpendWithCouponType(Long userId, Long creatorId, String couponType) {
+        return redisTemplate.opsForStream().add(MapRecord.create(SPEND_KEY, Map.of(
+                "userId", String.valueOf(userId), "creatorId", String.valueOf(creatorId),
+                "couponType", couponType)));
     }
 
     private void readAll(String key, String group) {

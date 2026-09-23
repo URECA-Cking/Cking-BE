@@ -31,6 +31,7 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
 - 있지만 내용이 다르면 `IllegalStateException`을 던진다. `process()`가 catch해 ACK하지 않고 PEL에 남긴다.
 - 동시 재전달로 UNIQUE(`uk_entry_request` 등)가 충돌하면 그 자리에서 복구하지 않고 롤백한다. 재전달 때 새 트랜잭션에서 위 조회로 판정한다.
 - SPEND는 Event의 `creatorId`와 Stream의 `creatorId`가 다르면 신규·재전달 구분 없이 예외로 거부한다.
+- SPEND 메시지의 `couponType`(`CREATOR`|`COMMON`)이 어느 잔액·Ledger에 반영할지 정한다(이슈 #243) — `COMMON`이면 `common_ticket_ledger`/`user_common_ticket_balance`(#219/#224)에, 그 외는 기존 크리에이터 전용 Balance·Ledger에 반영한다. `couponType` 필드가 없는 배포 전 메시지·Dead Stream 원본은 `CREATOR`로 해석한다. `creatorId` 필드는 couponType과 무관하게 항상 Event에서 resolve된 값이 실린다 - 위 교차검증용이지, 어느 잔액을 차감했는지의 근거가 아니다.
 - Balance는 `SELECT ... FOR UPDATE`(`findByMemberIdAndCreatorIdForUpdate`)로 잠근 뒤 갱신한다.
 
 ## PEL 회수와 재기동 후 이어받기
