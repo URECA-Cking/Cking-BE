@@ -14,8 +14,8 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
 - Resource Server는 Bearer JWT의 서명·만료·Issuer·Claim을 검증한다. Creator Event 관리와 수동 마감,
   Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification, Winner, Redraw)와 Winner 상태 이력 조회는
   `@CurrentMemberId`로 인증된 호출자를 받는다. Drawing 계열 관리자 경로는 Spring Security가 `ADMIN`을
-  먼저 인가하고, USER/ADMIN 공용 Winner 상태 이력 경로는 JWT 인증만 요구한다. 그 밖의 기존 업무 API는
-  호출자 `userId` 전환 전까지 현재 `permitAll` 규칙을 유지한다.
+  먼저 인가하고, USER/ADMIN 공용 Winner 상태 이력 경로와 `GET /api/me`는 JWT 인증만 요구한다. 그 밖의
+  기존 업무 API는 호출자 `userId` 전환 전까지 현재 `permitAll` 규칙을 유지한다.
   업무 권한 검증을 Spring Security로 대체하지 않는다.
 - CSRF는 현재 세션 기반 인증을 사용하지 않는 기존 API 호환을 위해 비활성화한다. CORS는
   `cking.cors.allowed-origins`와 `cking.cors.allow-credentials` 설정을 사용하며, credential 기본값은

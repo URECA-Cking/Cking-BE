@@ -22,24 +22,22 @@
 
 ## 사용자 식별
 
-### 현재: Access JWT 도입, 업무 API 전환 전 단계
+### 현재: Access JWT 도입, 업무 API 전환 진행 중
 
 - Access JWT는 `POST /api/auth/token`에서 발급하고 Resource Server가 검증한다. 새 인증 필요 API는
   `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
 - 전환되지 않은 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
 - Creator Event 관리(`GET`/`POST`/`PATCH`/`DELETE /api/creator/events/**`, 승인 요청)와 수동 마감
   (`POST /api/events/{eventId}/close`), Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification,
-  Winner, Redraw)와 Winner 상태 이력 조회는 전환을 완료했으므로 호출자 `userId`를 받지 않고
-  `@CurrentMemberId`를 사용한다.
+  Winner, Redraw), Winner 상태 이력 조회와 현재 사용자 조회(`GET /api/me`)는 전환을 완료했으므로 호출자
+  `userId`를 받지 않고 `@CurrentMemberId`를 사용한다.
   Drawing 계열 `/api/admin/**` 대상은 Spring Security가 `ADMIN`을 먼저 인가하며, 이후 Application의
   기존 Member·업무 권한 검증도 유지한다. USER/ADMIN 공용 Winner 상태 이력 API는 JWT 인증만 요구하고,
   USER 본인 여부와 ADMIN 업무 권한은 Application이 검증한다. 각 상세 계약은 해당 도메인 API 문서를 따른다.
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
 - 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
-- 전환되지 않은 `/api/me/**` 경로도 `userId`를 요청에 포함한다.
-- `POST /api/demo/users/select`의 `userId`는 클라이언트가 선택하는 가상 사용자를 뜻하며, 선택 결과는 클라이언트가 관리한다.
 
-Controller는 요청에서 호출자 `userId`를 추출해 Application/Service에 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
+인증 전환되지 않은 API의 Controller는 요청에서 호출자 `userId`를 추출해 Application/Service에 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
 
 ### 이후: 업무 API 호출자 식별 전환 단계
 
@@ -112,36 +110,27 @@ Controller는 요청에서 호출자 `userId`를 추출해 Application/Service�
 
 ## 공통 API
 
-### GET /api/users
+### GET /api/me
 
-- 권한: PUBLIC
-- 역할: 가상 사용자 목록을 조회한다.
+- 권한: Access JWT 인증 필요
+- 역할: 인증된 현재 사용자의 기본 정보와 Creator 여부를 조회한다.
 
 ```json
 {
   "code": "SUCCESS",
   "data": {
-    "items": [{ "userId": 1, "name": "홍길동" }]
+    "memberId": 1,
+    "name": "홍길동",
+    "email": "hong@example.com",
+    "role": "USER",
+    "creator": false
   },
   "message": null
 }
 ```
 
-### POST /api/demo/users/select
-
-- 역할: 가상 사용자를 선택한다. 선택 결과는 클라이언트가 관리한다.
-
-```json
-{ "userId": 1 }
-```
-
-```json
-{
-  "code": "SUCCESS",
-  "data": { "userId": 1, "name": "홍길동", "selected": true },
-  "message": null
-}
-```
+- `creator`는 JWT role이 아니라 `creator.member_id` 존재 여부다.
+- JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
 
 ### GET /api/creators
 

@@ -1,7 +1,6 @@
 package kr.co.cking.common.config;
 
 import java.time.Instant;
-import java.util.List;
 import kr.co.cking.auth.application.AccessTokenService;
 import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
@@ -17,9 +16,11 @@ import kr.co.cking.common.security.AccessTokenJwtValidator;
 import kr.co.cking.common.security.JwtAuthenticationConverterConfig;
 import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
+import kr.co.cking.creator.application.CreatorQueryService;
+import kr.co.cking.member.application.MemberProfile;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.presentation.MemberController;
-import kr.co.cking.member.presentation.UserSummary;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -30,7 +31,6 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.JwsHeader;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -80,6 +80,9 @@ class SecurityConfigTest {
     private MemberQueryService memberQueryService;
 
     @MockitoBean
+    private CreatorQueryService creatorQueryService;
+
+    @MockitoBean
     private LoginCodeService loginCodeService;
 
     @MockitoBean
@@ -100,33 +103,42 @@ class SecurityConfigTest {
     @MockitoBean
     private OAuth2LoginFailureHandler oauth2LoginFailureHandler;
 
-    /** 인증 전환 전 API가 인증 없이도 기존처럼 호출되는지 검증한다. */
+    /** 인증 전환 전 Event API 경로가 인증 없이 Security에서 차단되지 않는지 검증한다. */
     @Test
     void 인증_전환_전_API는_인증_없이_호출할_수_있다() throws Exception {
-        when(memberQueryService.findUsers()).thenReturn(List.of(new UserSummary(1L, "홍길동")));
-
-        mockMvc.perform(get("/api/users"))
-                .andExpect(status().isOk())
-                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
-    }
-
-    /** 인증된 요청도 기존 API의 공개 동작을 바꾸지 않는지 검증한다. */
-    @Test
-    @WithMockUser(username = "member-1")
-    void 인증된_호출자도_기존_API를_호출할_수_있다() throws Exception {
-        when(memberQueryService.findUsers()).thenReturn(List.of(new UserSummary(1L, "홍길동")));
-
-        mockMvc.perform(get("/api/users"))
-                .andExpect(status().isOk())
-                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+        mockMvc.perform(get("/api/events"))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }
 
     /** 서명 또는 형식이 잘못된 Bearer JWT는 공통 UNAUTHORIZED 응답으로 거절하는지 검증한다. */
     @Test
     void 유효하지_않은_Bearer_JWT는_401로_거절한다() throws Exception {
-        mockMvc.perform(get("/api/users").header(AUTHORIZATION, "Bearer invalid-token"))
+        mockMvc.perform(get("/api/events").header(AUTHORIZATION, "Bearer invalid-token"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** 현재 사용자 API는 유효한 Access JWT가 없으면 호출할 수 없다. */
+    @Test
+    void 현재_사용자_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** 유효 JWT의 subject가 Controller를 거쳐 현재 사용자 조회 서비스로 전달된다. */
+    @Test
+    void 유효한_Access_JWT로_현재_사용자를_조회한다() throws Exception {
+        when(memberQueryService.getProfile(17L))
+                .thenReturn(new MemberProfile(17L, "홍길동", "hong@example.com", MemberRole.USER));
+        when(creatorQueryService.isCreatorMember(17L)).thenReturn(false);
+
+        mockMvc.perform(get("/api/me")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"code\":\"SUCCESS\"}"))
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .contains("\"memberId\":17", "\"creator\":false"));
     }
 
     /** Drawing 계열 ADMIN API는 Access JWT 없이 호출할 수 없다. */
@@ -213,7 +225,7 @@ class SecurityConfigTest {
     /** Authorization 헤더를 포함한 허용 origin의 사전 요청을 처리하는지 검증한다. */
     @Test
     void 허용된_origin의_CORS_사전_요청을_처리한다() throws Exception {
-        mockMvc.perform(options("/api/users")
+        mockMvc.perform(options("/api/me")
                         .header(ORIGIN, "https://frontend.cking.co.kr")
                         .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
                         .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
