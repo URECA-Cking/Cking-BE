@@ -30,10 +30,10 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
 
-    @Value("${cking.docs.username}")
+    @Value("${cking.docs.username:}")
     private String docsUsername;
 
-    @Value("${cking.docs.password}")
+    @Value("${cking.docs.password:}")
     private String docsPassword;
 
     /** Swagger UI와 OpenAPI JSON에만 적용할 Basic Auth 보안 체인을 구성한다. */
