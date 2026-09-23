@@ -8,7 +8,6 @@ import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
 import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
 import kr.co.cking.auth.domain.AuthErrorCode;
-import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -62,8 +61,8 @@ public class AuthController {
         RefreshTokenRotationResult result = refreshTokenService.rotate(refreshToken);
         try {
             return tokenResponse(result.memberId(), result.refreshToken(), AuthErrorCode.INVALID_REFRESH_TOKEN);
-        } catch (BusinessException exception) {
-            // Member가 사라진 경우 회전으로 만든 다음 Token도 폐기해 고아 key를 남기지 않는다.
+        } catch (RuntimeException exception) {
+            // 응답 생성이 실패하면 클라이언트에 전달되지 않은 다음 Token을 폐기해 고아 key를 남기지 않는다.
             refreshTokenService.revoke(result.refreshToken());
             throw exception;
         }

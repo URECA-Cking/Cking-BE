@@ -123,6 +123,25 @@ class AuthControllerTest {
         verify(refreshTokenService).revoke("next-refresh-token");
     }
 
+    /** 응답 생성 중 예기치 않은 오류가 나도 클라이언트에 전달되지 않은 다음 Token을 폐기한다. */
+    @Test
+    void Refresh_응답생성_중_런타임오류가_나면_다음Token을_폐기한다() throws Exception {
+        when(refreshTokenService.rotate("old-refresh-token"))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenThrow(new IllegalStateException("JWT 발급 실패"));
+        when(refreshTokenCookieFactory.create("next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://dev.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "old-refresh-token")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("SYSTEM_ERROR"));
+
+        verify(refreshTokenService).revoke("next-refresh-token");
+    }
+
     /** Refresh Cookie가 없으면 Refresh Token 오류 계약으로 거절하는지 검증한다. */
     @Test
     void RefreshCookie가_없으면_401로_거절한다() throws Exception {
