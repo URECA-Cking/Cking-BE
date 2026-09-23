@@ -28,7 +28,7 @@
   `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
 - AUTH-08 전환 API는 Bearer Access JWT가 필수이며, Controller가 `@CurrentMemberId Long memberId`로
   호출자를 받는다. Request의 호출자 `userId`는 사용하지 않는다.
-- 전환 범위는 Mission 수행·조회, Ticket 조회, Event 상세, Event 응모·내 응모, Notification,
+- 전환 범위는 Mission 수행·조회, Ticket 조회, Event 상세·응모·내 응모·실시간 응모 현황, Notification,
   내 Winner·포기, Creator 신청·내 신청 조회다.
 - 전환되지 않은 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
 - Creator Event 관리(`GET`/`POST`/`PATCH`/`DELETE /api/creator/events/**`, 승인 요청)와 수동 마감

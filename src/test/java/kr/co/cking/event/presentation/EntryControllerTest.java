@@ -61,7 +61,7 @@ class EntryControllerTest {
         when(eventEntryQueryService.getMyEntries(2L, 1L, 20, null))
                 .thenReturn(new EntryHistoryPage(List.of(item), null, false));
 
-        mockMvc.perform(get("/api/events/2/entries/me").queryParam("userId", "1"))
+        mockMvc.perform(get("/api/events/2/entries/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].entryId").value(10))
@@ -74,11 +74,12 @@ class EntryControllerTest {
     }
 
     @Test
+    @kr.co.cking.common.security.WithMockJwt(memberId = "7")
     void 실시간_응모_현황을_조회한다() throws Exception {
-        when(entryStatusQueryService.getStatus(2L, 1L))
+        when(entryStatusQueryService.getStatus(2L, 7L))
                 .thenReturn(new EntryStatusResponse(2L, 3L, 7L, 4L, true));
 
-        mockMvc.perform(get("/api/events/2/entry-status").queryParam("userId", "1"))
+        mockMvc.perform(get("/api/events/2/entry-status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(2))
@@ -87,18 +88,15 @@ class EntryControllerTest {
                 .andExpect(jsonPath("$.data.myTicketCount").value(4))
                 .andExpect(jsonPath("$.data.realtime").value(true));
 
-        verify(entryStatusQueryService).getStatus(2L, 1L);
+        verify(entryStatusQueryService).getStatus(2L, 7L);
     }
 
     @Test
-    void userId_없이도_실시간_응모_현황을_조회한다() throws Exception {
-        when(entryStatusQueryService.getStatus(2L, null))
-                .thenReturn(new EntryStatusResponse(2L, 3L, 7L, null, false));
-
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_실시간_응모_현황은_401과_UNAUTHORIZED를_반환한다() throws Exception {
         mockMvc.perform(get("/api/events/2/entry-status"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.myTicketCount").doesNotExist())
-                .andExpect(jsonPath("$.data.realtime").value(false));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
@@ -111,15 +109,14 @@ class EntryControllerTest {
     @Test
     void 응모내역_size가_100을_초과하면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/events/2/entries/me")
-                        .queryParam("userId", "1")
                         .queryParam("size", "101"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
-    void 응모내역의_eventId와_userId는_양수여야_한다() throws Exception {
-        mockMvc.perform(get("/api/events/0/entries/me").queryParam("userId", "0"))
+    void 응모내역의_eventId는_양수여야_한다() throws Exception {
+        mockMvc.perform(get("/api/events/0/entries/me"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
@@ -199,7 +196,7 @@ class EntryControllerTest {
     @Test
     void couponType이_CREATOR_COMMON_외의_값이면_400을_반환한다() throws Exception {
         String invalidBody = """
-                {"userId":1,"requestId":"%s","ticketCount":2,"couponType":"INVALID"}
+                {"requestId":"%s","ticketCount":2,"couponType":"INVALID"}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/api/events/1/entries")

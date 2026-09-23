@@ -107,6 +107,7 @@ public class SecurityConfig {
                                 "/api/events/*",
                                 "/api/events/*/entries",
                                 "/api/events/*/entries/me",
+                                "/api/events/*/entry-status",
                                 "/api/me/notifications",
                                 "/api/me/notifications/**",
                                 "/api/me/winners",
