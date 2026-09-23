@@ -1,74 +1,26 @@
 package kr.co.cking.auth.presentation;
 
-import java.util.Map;
+import java.util.List;
 
 import kr.co.cking.auth.application.model.OAuthUserInfo;
-import kr.co.cking.auth.domain.OAuthProvider;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.stereotype.Component;
 
-/** Provider별 OAuth2 사용자 속성을 Auth Application의 공통 모델로 정규화한다. */
+/** OAuth registration ID에 맞는 Provider Mapper를 선택해 사용자 정보 정규화를 위임한다. */
 @Component
+@RequiredArgsConstructor
 public class OAuthUserInfoResolver {
 
-    /** 인증 토큰의 registration ID에 맞춰 Google 또는 Kakao 사용자 정보를 정규화한다. */
+    private final List<OAuthUserInfoMapper> oauthUserInfoMappers;
+
+    /** 인증 토큰의 registration ID를 처리할 Mapper에 Provider 속성 해석을 위임한다. */
     public OAuthUserInfo resolve(OAuth2AuthenticationToken authentication) {
-        return switch (authentication.getAuthorizedClientRegistrationId()) {
-            case "google" -> resolveGoogle(authentication.getPrincipal().getAttributes());
-            case "kakao" -> resolveKakao(authentication.getPrincipal().getAttributes());
-            default -> throw new IllegalArgumentException("지원하지 않는 OAuth Provider입니다.");
-        };
-    }
-
-    /** Google의 표준 OpenID Connect 속성에서 외부 Identity와 프로필을 추출한다. */
-    private OAuthUserInfo resolveGoogle(Map<String, Object> attributes) {
-        return new OAuthUserInfo(
-                OAuthProvider.GOOGLE,
-                requiredString(attributes.get("sub")),
-                optionalString(attributes.get("email")),
-                optionalString(attributes.get("name"))
-        );
-    }
-
-    /** Kakao 표준 프로필과 레거시 properties fallback을 공통 사용자 정보로 정규화한다. */
-    private OAuthUserInfo resolveKakao(Map<String, Object> attributes) {
-        Map<String, Object> kakaoAccount = mapValue(attributes.get("kakao_account"));
-        Map<String, Object> profile = mapValue(kakaoAccount.get("profile"));
-        Map<String, Object> properties = mapValue(attributes.get("properties"));
-        return new OAuthUserInfo(
-                OAuthProvider.KAKAO,
-                requiredString(attributes.get("id")),
-                optionalString(kakaoAccount.get("email")),
-                nickname(profile, properties)
-        );
-    }
-
-    /** Kakao 표준 profile.nickname을 우선하고 레거시 properties.nickname은 호환용으로만 사용한다. */
-    private String nickname(Map<String, Object> profile, Map<String, Object> properties) {
-        String standardNickname = optionalString(profile.get("nickname"));
-        return standardNickname != null ? standardNickname : optionalString(properties.get("nickname"));
-    }
-
-    /** 필수 OAuth 속성을 문자열로 바꾸고 누락값은 로그인 처리 실패로 전환한다. */
-    private String requiredString(Object value) {
-        String stringValue = optionalString(value);
-        if (stringValue == null || stringValue.isBlank()) {
-            throw new IllegalArgumentException("필수 OAuth 사용자 속성이 없습니다.");
-        }
-        return stringValue;
-    }
-
-    /** 선택 OAuth 속성을 문자열로 바꾸며 누락값은 null로 유지한다. */
-    private String optionalString(Object value) {
-        return value == null ? null : String.valueOf(value);
-    }
-
-    /** 중첩 Provider 속성이 Map이 아니거나 없으면 빈 Map으로 정규화한다. */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> mapValue(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
+        String registrationId = authentication.getAuthorizedClientRegistrationId();
+        return oauthUserInfoMappers.stream()
+                .filter(mapper -> mapper.supports(registrationId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("지원하지 않는 OAuth Provider입니다."))
+                .resolve(authentication.getPrincipal().getAttributes());
     }
 }

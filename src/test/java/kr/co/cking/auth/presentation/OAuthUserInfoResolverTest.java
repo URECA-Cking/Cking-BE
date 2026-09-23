@@ -16,7 +16,10 @@ import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 /** Provider 응답을 OAuthLoginService 입력 모델로 정규화하는지 검증한다. */
 class OAuthUserInfoResolverTest {
 
-    private final OAuthUserInfoResolver resolver = new OAuthUserInfoResolver();
+    private final OAuthUserInfoResolver resolver = new OAuthUserInfoResolver(List.of(
+            new GoogleOAuthUserInfoMapper(),
+            new KakaoOAuthUserInfoMapper()
+    ));
 
     /** Google의 sub와 프로필 속성을 공통 모델에 옮기는지 검증한다. */
     @Test
