@@ -2,12 +2,12 @@ package kr.co.cking.drawing.presentation;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.drawing.application.DrawingAdminQueryService;
 import kr.co.cking.drawing.application.DrawingQueryResult;
 import kr.co.cking.drawing.application.DrawingResultQuery;
@@ -21,7 +21,6 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -45,10 +44,10 @@ public class DrawingAdminController {
     @PostMapping("/api/admin/events/{eventId}/drawings")
     public ApiResponse<InitialDrawingResponse> executeInitialDrawing(
             @PathVariable @Positive Long eventId,
-            @Valid @RequestBody InitialDrawingRequest request
+            @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(InitialDrawingResponse.from(
-                initialDrawingExecutionService.execute(request.userId(), eventId)
+                initialDrawingExecutionService.execute(memberId, eventId)
         ));
     }
 
@@ -61,10 +60,10 @@ public class DrawingAdminController {
     @PostMapping("/api/admin/drawings/{drawingId}/publish")
     public ApiResponse<DrawingPublicationResponse> publishDrawing(
             @PathVariable @Positive Long drawingId,
-            @Valid @RequestBody DrawingPublishRequest request
+            @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(DrawingPublicationResponse.from(
-                publicationService.publish(drawingId, request.userId())
+                publicationService.publish(drawingId, memberId)
         ));
     }
 
@@ -73,9 +72,9 @@ public class DrawingAdminController {
     @GetMapping("/api/admin/drawings/{drawingId}")
     public ApiResponse<DrawingQueryResult> getDrawing(
             @PathVariable @Positive Long drawingId,
-            @RequestParam @Positive Long userId
+            @CurrentMemberId Long memberId
     ) {
-        return ApiResponse.success(drawingAdminQueryService.getDrawing(drawingId, userId));
+        return ApiResponse.success(drawingAdminQueryService.getDrawing(drawingId, memberId));
     }
 
     /** 관리자가 완료된 Drawing의 당첨 결과를 순위대로 조회한다. */
@@ -83,28 +82,28 @@ public class DrawingAdminController {
     @GetMapping("/api/admin/drawings/{drawingId}/result")
     public ApiResponse<DrawingResultQuery> getDrawingResult(
             @PathVariable @Positive Long drawingId,
-            @RequestParam @Positive Long userId
+            @CurrentMemberId Long memberId
     ) {
-        return ApiResponse.success(drawingAdminQueryService.getDrawingResult(drawingId, userId));
+        return ApiResponse.success(drawingAdminQueryService.getDrawingResult(drawingId, memberId));
     }
 
     @PostMapping("/api/admin/drawings/{drawingId}/verify")
     public ApiResponse<DrawingVerificationResult> verifyDrawing(
             @PathVariable @Positive Long drawingId,
-            @Valid @RequestBody DrawingVerificationRequest request
+            @CurrentMemberId Long memberId
     ) {
-        return ApiResponse.success(drawingVerificationService.verify(drawingId, request.userId()));
+        return ApiResponse.success(drawingVerificationService.verify(drawingId, memberId));
     }
 
     @GetMapping("/api/admin/drawings/{drawingId}/verification-history")
     public ApiResponse<PageResponse<DrawingVerificationResult>> getVerificationHistory(
             @PathVariable @Positive Long drawingId,
-            @RequestParam @Positive Long userId,
+            @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return ApiResponse.success(drawingVerificationService.getHistory(
-                drawingId, userId, page, size));
+                drawingId, memberId, page, size));
     }
 
     /** 실패한 INITIAL 또는 REDRAW Drawing을 저장된 확정 입력 그대로 다시 실행한다. */
@@ -115,10 +114,10 @@ public class DrawingAdminController {
     @PostMapping("/api/admin/drawings/{drawingId}/retry")
     public ApiResponse<DrawingRetryResponse> retryDrawing(
             @PathVariable @Positive Long drawingId,
-            @Valid @RequestBody DrawingRetryRequest request
+            @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(DrawingRetryResponse.from(
-                drawingRetryService.retry(drawingId, request.userId())
+                drawingRetryService.retry(drawingId, memberId)
         ));
     }
 }

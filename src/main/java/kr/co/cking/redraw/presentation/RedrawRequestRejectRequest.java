@@ -3,16 +3,12 @@ package kr.co.cking.redraw.presentation;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 
-/** 관리자 RedrawRequest 거절 요청의 호출자 식별자와 거절 사유를 전달한다. */
+/** 관리자 RedrawRequest 거절 요청의 거절 사유를 전달한다. */
 public record RedrawRequestRejectRequest(
-        @Schema(description = "거절하는 관리자 Member ID", example = "1")
-        @NotNull @Positive Long userId,
         @Schema(description = "재추첨 요청 거절 사유", example = "결원 확인이 필요합니다.")
         @NotBlank @Size(max = 500) String rejectReason
 ) {

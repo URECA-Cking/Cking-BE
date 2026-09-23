@@ -12,6 +12,8 @@ import java.util.List;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.config.WebMvcConfig;
+import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.drawing.application.DrawingAdminQueryService;
 import kr.co.cking.drawing.application.DrawingPublicationResult;
@@ -34,14 +36,23 @@ import kr.co.cking.drawing.domain.DrawingVerificationMode;
 import kr.co.cking.drawing.domain.DrawingVerificationStatus;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.snapshot.domain.SnapshotErrorCode;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 @WebMvcTest(DrawingAdminController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import({WebMvcConfig.class, CurrentMemberIdArgumentResolver.class})
 class DrawingAdminControllerTest {
 
     @Autowired
@@ -62,6 +73,17 @@ class DrawingAdminControllerTest {
     @MockitoBean
     private DrawingRetryService drawingRetryService;
 
+    @BeforeEach
+    void authenticatedAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
+                .header("alg", "none").subject("1").claim("role", "ADMIN").build(), List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void 관리자는_FAILED_Drawing을_재시도한다() throws Exception {
         when(drawingRetryService.retry(20L, 1L)).thenReturn(new DrawingRetryResult(
@@ -79,7 +101,7 @@ class DrawingAdminControllerTest {
     }
 
     @Test
-    void Retry의_drawingId와_userId는_양수여야_한다() throws Exception {
+    void Retry의_drawingId는_양수여야_한다() throws Exception {
         mockMvc.perform(post("/api/admin/drawings/0/retry")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":0}"))
@@ -104,25 +126,25 @@ class DrawingAdminControllerTest {
     }
 
     @Test
-    void 존재하지_않는_관리자는_RESOURCE_NOT_FOUND를_반환한다() throws Exception {
-        when(initialDrawingExecutionService.execute(999L, 10L))
+    void 서비스의_관리자_검증_오류는_RESOURCE_NOT_FOUND를_반환한다() throws Exception {
+        when(initialDrawingExecutionService.execute(1L, 10L))
                 .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":999}"))
+                        .content("{}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
-    void ADMIN이_아닌_사용자는_FORBIDDEN을_반환한다() throws Exception {
-        when(initialDrawingExecutionService.execute(2L, 10L))
+    void 서비스의_업무_권한_검증_오류는_FORBIDDEN을_반환한다() throws Exception {
+        when(initialDrawingExecutionService.execute(1L, 10L))
                 .thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 
         mockMvc.perform(post("/api/admin/events/10/drawings")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":2}"))
+                        .content("{}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
@@ -176,13 +198,7 @@ class DrawingAdminControllerTest {
     }
 
     @Test
-    void userId가_없거나_식별자가_양수가_아니면_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/admin/events/10/drawings")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-
+    void INITIAL_Drawing_Event_식별자가_양수가_아니면_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/events/0/drawings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":0}"))
@@ -201,7 +217,7 @@ class DrawingAdminControllerTest {
                 null
         ));
 
-        mockMvc.perform(get("/api/admin/drawings/20").param("userId", "1"))
+        mockMvc.perform(get("/api/admin/drawings/20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.drawingId").value(20))
@@ -223,7 +239,7 @@ class DrawingAdminControllerTest {
                         Instant.parse("2026-09-17T00:02:00Z"))
         )));
 
-        mockMvc.perform(get("/api/admin/drawings/20/result").param("userId", "1"))
+        mockMvc.perform(get("/api/admin/drawings/20/result"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.drawingId").value(20))
@@ -238,34 +254,27 @@ class DrawingAdminControllerTest {
     }
 
     @Test
-    void Drawing_조회는_권한과_완료상태_오류를_공통오류응답으로_반환한다() throws Exception {
-        when(drawingAdminQueryService.getDrawing(20L, 999L))
-                .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        when(drawingAdminQueryService.getDrawing(20L, 2L))
+    void Drawing_조회는_업무_권한과_완료상태_오류를_공통오류응답으로_반환한다() throws Exception {
+        when(drawingAdminQueryService.getDrawing(20L, 1L))
+                .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
                 .thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
         when(drawingAdminQueryService.getDrawingResult(20L, 1L))
                 .thenThrow(new BusinessException(DrawingErrorCode.DRAWING_NOT_COMPLETED));
 
-        mockMvc.perform(get("/api/admin/drawings/20").param("userId", "999"))
+        mockMvc.perform(get("/api/admin/drawings/20"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
-        mockMvc.perform(get("/api/admin/drawings/20").param("userId", "2"))
+        mockMvc.perform(get("/api/admin/drawings/20"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-        mockMvc.perform(get("/api/admin/drawings/20/result").param("userId", "1"))
+        mockMvc.perform(get("/api/admin/drawings/20/result"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("DRAWING_NOT_COMPLETED"));
     }
 
     @Test
-    void Drawing_조회_식별자가_누락되거나_양수가_아니면_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(get("/api/admin/drawings/20"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mockMvc.perform(get("/api/admin/drawings/0/result").param("userId", "1"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mockMvc.perform(get("/api/admin/drawings/20/result").param("userId", "0"))
+    void Drawing_조회_대상_식별자가_양수가_아니면_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/admin/drawings/0/result"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
@@ -290,25 +299,25 @@ class DrawingAdminControllerTest {
     }
 
     @Test
-    void 존재하지_않는_관리자의_Drawing_공개_요청은_RESOURCE_NOT_FOUND를_반환한다() throws Exception {
-        when(publicationService.publish(10L, 999L))
+    void 서비스의_관리자_검증_오류인_Drawing_공개_요청은_RESOURCE_NOT_FOUND를_반환한다() throws Exception {
+        when(publicationService.publish(10L, 1L))
                 .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
         mockMvc.perform(post("/api/admin/drawings/10/publish")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":999}"))
+                        .content("{}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
-    void ADMIN이_아닌_사용자의_Drawing_공개_요청은_FORBIDDEN을_반환한다() throws Exception {
-        when(publicationService.publish(10L, 2L))
+    void 서비스의_업무_권한_검증_오류인_Drawing_공개_요청은_FORBIDDEN을_반환한다() throws Exception {
+        when(publicationService.publish(10L, 1L))
                 .thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 
         mockMvc.perform(post("/api/admin/drawings/10/publish")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":2}"))
+                        .content("{}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
@@ -384,13 +393,7 @@ class DrawingAdminControllerTest {
     }
 
     @Test
-    void 공개_요청의_userId_또는_drawingId가_양수가_아니면_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/admin/drawings/10/publish")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-
+    void 공개_요청의_drawingId가_양수가_아니면_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/drawings/0/publish")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":1}"))

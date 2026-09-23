@@ -87,6 +87,15 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers(
+                                "/api/admin/events/*/snapshot",
+                                "/api/admin/events/*/drawings",
+                                "/api/admin/events/*/redraw-requests",
+                                "/api/admin/drawings/**",
+                                "/api/admin/winners/**",
+                                "/api/admin/redraw-requests/**"
+                        ).hasRole("ADMIN")
+                        .requestMatchers("/api/winners/*/history").authenticated()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer

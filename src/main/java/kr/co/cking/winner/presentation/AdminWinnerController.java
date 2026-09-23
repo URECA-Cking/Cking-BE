@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.winner.application.AdminWinnerDisqualifyService;
 import kr.co.cking.winner.application.AdminWinnerReceiveService;
 import lombok.RequiredArgsConstructor;
@@ -27,30 +28,31 @@ public class AdminWinnerController {
     /** 관리자가 SELECTED Winner를 RECEIVED 종결 상태로 변경하고 성공 응답을 반환한다. */
     @Operation(
             summary = "Winner 수령 완료",
-            description = "관리자 userId를 검증한 뒤 SELECTED Winner만 RECEIVED로 변경합니다. "
+            description = "인증된 관리자만 SELECTED Winner를 RECEIVED로 변경합니다. "
                     + "상태 변경 이력은 변경 주체·시각과 함께 저장되며, 같은 Winner의 동시 변경은 직렬화됩니다."
     )
     @PostMapping("/api/admin/winners/{winnerId}/receive")
     public ApiResponse<Void> receive(
             @PathVariable @Positive Long winnerId,
-            @Valid @RequestBody AdminWinnerReceiveRequest request
+            @CurrentMemberId Long memberId
     ) {
-        adminWinnerReceiveService.receive(winnerId, request.userId());
+        adminWinnerReceiveService.receive(winnerId, memberId);
         return ApiResponse.success();
     }
 
     /** 관리자가 SELECTED Winner를 DISQUALIFIED 종결 상태로 변경하고 성공 응답을 반환한다. */
     @Operation(
             summary = "Winner 자격 박탈",
-            description = "관리자 userId와 필수 자격 박탈 사유를 검증한 뒤 SELECTED Winner만 DISQUALIFIED로 변경합니다. "
+            description = "인증된 관리자가 필수 자격 박탈 사유와 함께 SELECTED Winner를 DISQUALIFIED로 변경합니다. "
                     + "사유·변경 주체·시각은 이력에 저장되고, 같은 Winner의 동시 변경은 직렬화됩니다."
     )
     @PostMapping("/api/admin/winners/{winnerId}/disqualify")
     public ApiResponse<Void> disqualify(
             @PathVariable @Positive Long winnerId,
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody AdminWinnerDisqualifyRequest request
     ) {
-        adminWinnerDisqualifyService.disqualify(winnerId, request.userId(), request.reason());
+        adminWinnerDisqualifyService.disqualify(winnerId, memberId, request.reason());
         return ApiResponse.success();
     }
 }

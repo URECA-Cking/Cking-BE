@@ -28,8 +28,12 @@
   `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
 - 전환되지 않은 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
 - Creator Event 관리(`GET`/`POST`/`PATCH`/`DELETE /api/creator/events/**`, 승인 요청)와 수동 마감
-  (`POST /api/events/{eventId}/close`)은 전환을 완료했으므로 호출자 `userId`를 받지 않고
-  `@CurrentMemberId`를 사용한다. 각 상세 계약은 Event API 문서를 따른다.
+  (`POST /api/events/{eventId}/close`), Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification,
+  Winner, Redraw)와 Winner 상태 이력 조회는 전환을 완료했으므로 호출자 `userId`를 받지 않고
+  `@CurrentMemberId`를 사용한다.
+  Drawing 계열 `/api/admin/**` 대상은 Spring Security가 `ADMIN`을 먼저 인가하며, 이후 Application의
+  기존 Member·업무 권한 검증도 유지한다. USER/ADMIN 공용 Winner 상태 이력 API는 JWT 인증만 요구하고,
+  USER 본인 여부와 ADMIN 업무 권한은 Application이 검증한다. 각 상세 계약은 해당 도메인 API 문서를 따른다.
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
 - 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
 - 전환되지 않은 `/api/me/**` 경로도 `userId`를 요청에 포함한다.

@@ -129,6 +129,31 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
+    /** Drawing 계열 ADMIN API는 Access JWT 없이 호출할 수 없다. */
+    @Test
+    void Drawing_계열_ADMIN_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/admin/drawings/10"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** USER JWT는 Drawing 계열 ADMIN API의 1차 인가에서 거절한다. */
+    @Test
+    void USER_JWT는_Drawing_계열_ADMIN_API를_403으로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/admin/drawings/10")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json("{\"code\":\"FORBIDDEN\"}"));
+    }
+
+    /** USER·ADMIN 공용 Winner 이력 API도 JWT 인증 없이는 호출할 수 없다. */
+    @Test
+    void Winner_상태_이력_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/winners/10/history"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
     /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
     @Test
     void 만료된_Access_JWT와_LoginCode로_AccessToken을_발급한다() throws Exception {
@@ -222,6 +247,19 @@ class SecurityConfigTest {
                 .claim("role", "USER")
                 .issuedAt(expiresAt.minusSeconds(60))
                 .expiresAt(expiresAt)
+                .build();
+        return jwtEncoder.encode(JwtEncoderParameters.from(
+                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+    }
+
+    private String validAccessToken(String role) {
+        Instant now = Instant.now();
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("cking")
+                .subject("17")
+                .claim("role", role)
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(1800))
                 .build();
         return jwtEncoder.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();

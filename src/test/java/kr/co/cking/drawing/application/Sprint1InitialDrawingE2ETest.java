@@ -56,6 +56,11 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -79,6 +84,7 @@ class Sprint1InitialDrawingE2ETest {
     @Autowired private WinnerManagementRepository winnerManagementRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private StringRedisTemplate redisTemplate;
+    @Autowired private JwtEncoder jwtEncoder;
 
     private final List<Long> memberIds = new ArrayList<>();
     private Long creatorId;
@@ -205,7 +211,7 @@ class Sprint1InitialDrawingE2ETest {
                 .containsExactly("FIRST", "SECOND");
 
         mockMvc.perform(get("/api/admin/events/{eventId}/snapshot", eventId)
-                        .param("userId", adminId.toString()))
+                        .header("Authorization", "Bearer " + adminAccessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.snapshotId").value(snapshot.snapshotId()))
                 .andExpect(jsonPath("$.data.candidateCount").value(3))
@@ -263,14 +269,14 @@ class Sprint1InitialDrawingE2ETest {
                 .isEqualTo(EventStatus.DRAW_COMPLETED);
 
         mockMvc.perform(get("/api/admin/drawings/{drawingId}", drawingId)
-                        .param("userId", adminId.toString()))
+                        .header("Authorization", "Bearer " + adminAccessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.drawingId").value(drawingId))
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.visibility").value("PRIVATE"));
 
         mockMvc.perform(get("/api/admin/drawings/{drawingId}/result", drawingId)
-                        .param("userId", adminId.toString()))
+                        .header("Authorization", "Bearer " + adminAccessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.drawingId").value(drawingId))
                 .andExpect(jsonPath("$.data.winners.length()").value(2))
@@ -313,7 +319,7 @@ class Sprint1InitialDrawingE2ETest {
     private MvcResult executeDrawing() throws Exception {
         return mockMvc.perform(post("/api/admin/events/{eventId}/drawings", eventId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":" + adminId + "}"))
+                        .header("Authorization", "Bearer " + adminAccessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(eventId))
@@ -325,6 +331,19 @@ class Sprint1InitialDrawingE2ETest {
     private MvcResult executeDrawingAfter(CountDownLatch start) throws Exception {
         start.await();
         return executeDrawing();
+    }
+
+    private String adminAccessToken() {
+        Instant now = Instant.now();
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("cking")
+                .subject(adminId.toString())
+                .claim("role", MemberRole.ADMIN.name())
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(1800))
+                .build();
+        return jwtEncoder.encode(JwtEncoderParameters.from(
+                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }
 
     private long drawingId(MvcResult result) throws Exception {
