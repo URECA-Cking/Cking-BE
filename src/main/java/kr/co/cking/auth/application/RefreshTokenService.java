@@ -12,7 +12,6 @@ import java.util.Objects;
 import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
 import kr.co.cking.auth.domain.AuthErrorCode;
 import kr.co.cking.common.exception.BusinessException;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -22,18 +21,26 @@ import org.springframework.util.StringUtils;
 
 /** Redis에 hash key만 남기는 opaque Refresh Token의 발급·회전·폐기를 담당한다. */
 @Service
-@RequiredArgsConstructor
 public class RefreshTokenService {
 
     private static final String KEY_PREFIX = "auth:refresh-token:";
     private static final int TOKEN_BYTE_LENGTH = 32;
 
     private final StringRedisTemplate redisTemplate;
-    @Qualifier("refreshTokenRotateScript")
     private final DefaultRedisScript<String> refreshTokenRotateScript;
-    @Value("${cking.auth.refresh-token-ttl:P14D}")
-    private Duration refreshTokenTtl;
+    private final Duration refreshTokenTtl;
     private final SecureRandom secureRandom = new SecureRandom();
+
+    /** Redis 회전 스크립트와 Refresh Token TTL을 생성자에서 명시적으로 주입받는다. */
+    public RefreshTokenService(
+            StringRedisTemplate redisTemplate,
+            @Qualifier("refreshTokenRotateScript") DefaultRedisScript<String> refreshTokenRotateScript,
+            @Value("${cking.auth.refresh-token-ttl:P14D}") Duration refreshTokenTtl
+    ) {
+        this.redisTemplate = redisTemplate;
+        this.refreshTokenRotateScript = refreshTokenRotateScript;
+        this.refreshTokenTtl = refreshTokenTtl;
+    }
 
     /** 회원 ID에 연결된 새 opaque Refresh Token을 Redis hash key와 함께 저장한다. */
     public String issue(Long memberId) {
