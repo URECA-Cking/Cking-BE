@@ -25,11 +25,11 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * {@link TicketEarnLedgerService}와 동일 계약의 공용 EARN Stream Consumer DB 반영
  * 로직(이슈 #219). {@code common_mission_completion} INSERT → 공용 EARN Ledger
- * INSERT → 공용 Balance UPDATE를 한 트랜잭션으로 묶는다.
+ * INSERT → 공용 Balance UPDATE를 한 트랜잭션으로 묶는다. 반영에 실패한 메시지는
+ * {@code CommonEarnStreamPelRecoveryScheduler}가 회수해 재처리한다.
  *
- * <p>알려진 제약(미해결): PEL 회수(XCLAIM)·Dead Stream 재처리는 아직 구현하지 않았다
- * ({@code EarnStreamPelRecoveryScheduler}에 대응하는 공용 버전 없음) — 이 이슈 범위
- * 밖의 후속 작업으로 남긴다.
+ * <p>알려진 제약(미해결): 공용 EARN은 Dead Stream 이관·replay를 아직 지원하지 않는다.
+ * 최대 재시도를 넘긴 메시지는 PEL에 보존된 채 더 긴 간격으로 계속 재처리된다 — 후속 이슈.
  */
 @Slf4j
 @Service
