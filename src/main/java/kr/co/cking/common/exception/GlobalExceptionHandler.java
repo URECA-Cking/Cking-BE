@@ -5,6 +5,7 @@ import kr.co.cking.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -86,6 +87,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(CommonErrorCode.METHOD_NOT_ALLOWED.status())
                 .body(ApiResponse.error(CommonErrorCode.METHOD_NOT_ALLOWED));
+    }
+
+    /** 인증된 Principal이 필요한 Controller 인자에 인증 정보가 없으면 401로 응답한다. */
+    @ExceptionHandler(AuthenticationCredentialsNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthenticationRequired(AuthenticationCredentialsNotFoundException e) {
+        log.warn("authentication required: {}", e.getMessage());
+        return ResponseEntity
+                .status(CommonErrorCode.UNAUTHORIZED.status())
+                .body(ApiResponse.error(CommonErrorCode.UNAUTHORIZED));
     }
 
     @ExceptionHandler(Exception.class)
