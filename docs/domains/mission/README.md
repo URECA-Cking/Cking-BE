@@ -4,7 +4,7 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 완료 판�
 
 ## 문서
 
-- [미션 완료 API](api.md): `POST .../missions/{missionId}/complete` 계약
+- [미션 완료 API](api.md): `POST .../missions/{missionId}/complete` 계약, 공용 미션 API 포함
 
 ## 소유 데이터와 경계
 
@@ -38,3 +38,13 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 완료 판�
 
 - **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 ATTENDANCE·LIKE를 각각 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 이미 존재하는 유형은 건너뛰므로 재호출해도 안전하다. 기존 Creator의 누락분은 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
 - **LIKE의 중복 적립 차단은 유닛 테스트로만 확인했다.** `MissionCompletionServiceTest`의 좋아요 관련 테스트는 `TicketEarnService`를 mock으로 대체해, "Redis가 `DUPLICATE_MISSION`을 반환하면 Mission이 이를 올바르게 변환하는가"만 검증한다. "실제 Redis 위에서 좋아요 두 번째 요청이 진짜로 차단되는가"를 확인하는 실제 Redis/MySQL 기반 통합 테스트(`MissionCompletionConcurrencyIntegrationTest`)는 현재 `ATTENDANCE`로만 작성돼 있고 LIKE 버전은 없다. Guard 키·Lua 스크립트가 미션 타입을 분기하지 않아 결과가 같을 것으로 보이지만, LIKE로 직접 실행해 확인한 적은 없다.
+
+## 공용 미션(크리에이터 무관, 이슈 #219)
+
+사용자는 크리에이터별 응모권과 별개로, 아무 크리에이터에게나 사용할 수 있는 **공용 응모권**을 가진다. "공용"은 크리에이터가 아니다 — `mission`/`mission_completion`은 `creator_id`가 NOT NULL이라 이 개념을 담을 수 없어, `CommonMission`/`CommonMissionCompletion`(`common_mission`/`common_mission_completion` 테이블)으로 완전히 분리했다.
+
+- **판정 로직은 크리에이터별 미션과 완전히 동일하다.** `CommonMissionCompletionService.complete()`는 `MissionCompletionService.complete()`와 순서(기존 requestId 조회 → 활성 검증 → EARN 호출)가 같고, `MissionCompleteCommand`/`MissionCompleteOutcome`/`MissionErrorCode`도 원래 creatorId를 안 담는 범용 타입이라 그대로 재사용한다.
+- **API 경로에 creatorId가 없다** — `GET /api/missions`, `POST /api/missions/{missionId}/complete`.
+- **적립은 별도의 공용 EARN 경로를 탄다.** `CommonTicketEarnService`/`common-ticket-earn.lua`/`stream:common-ticket-earned`가 `TicketEarnService`/`ticket-earn.lua`/`stream:ticket-earned`와 같은 원자성·멱등성을 크리에이터 축 없이 재현한다. 자세한 계약은 [Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219)을 참고한다.
+- **공용 미션은 유형당 하나뿐이라(`uk_common_mission_type`) 생성 계기(Creator 승인 같은)가 없다.** `V16__add_common_ticket.sql`이 기본 출석 미션(reward 1, 상시 활성)을 직접 시딩한다 — 이슈 #185의 크리에이터별 기본 미션 초기화와 동일한 정책이지만 코드가 아니라 데이터로 고정했다.
+- **알려진 제약(미해결)**: 공용 EARN의 Dead Stream 이관·replay와 공용 잔액 수동 보정(`TicketCompensationService` 대응)은 아직 없다. 후속 이슈로 남긴다. PEL 회수는 구현돼 있다([Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219) 참고).
