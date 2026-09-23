@@ -4,8 +4,6 @@
 
 | No. | 구분 | 도메인 | 역할 | Method | 경로·호출 | 기능 | 멱등성 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 외부 | 공통 | PUBLIC | GET | `/api/users` | 가상 사용자 목록 | - |
-| 2 | 외부 | 공통 | USER | POST | `/api/demo/users/select` | 가상 사용자 선택 | - |
 | 3 | 외부 | 공통 | PUBLIC | GET | `/api/creators` | Creator 목록 | - |
 | 4 | 외부 | 공통 | PUBLIC | GET | `/api/creators/{creatorId}` | Creator 상세 | - |
 | 5 | 외부 | Mission | USER | GET | `/api/creators/{creatorId}/missions` | 미션 조회 | - |
@@ -81,5 +79,6 @@
 | 75 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/{templateId}/activate` | 템플릿 활성화 | 상태 기반 |
 | 76 | 외부 | Auth | PUBLIC | POST | `/api/auth/refresh` | Refresh Cookie를 회전해 Access JWT 갱신 | Refresh Token 1회 소비 |
 | 77 | 외부 | Auth | PUBLIC | POST | `/api/auth/logout` | Refresh Token 폐기 및 Cookie 만료 | - |
+| 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보 조회 | - |
 
 No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

@@ -114,6 +114,7 @@ public class SecurityConfig {
                                 "/api/creator/applications",
                                 "/api/creator/applications/me"
                         ).authenticated()
+                        .requestMatchers("/api/me").authenticated()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer

@@ -96,6 +96,26 @@ Cookie의 opaque Refresh Token을 Redis Lua로 원자적으로 한 번 소비하
 Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만료된 `refresh_token` Cookie를 응답한다.
 이미 만료·폐기된 Cookie 또는 Cookie가 없는 Logout도 성공으로 처리한다.
 
+## 현재 사용자 조회
+
+### `GET /api/me`
+
+- 권한: Access JWT 인증 필요
+- 호출자 식별: Access JWT의 `@CurrentMemberId`; query/body `userId`는 받지 않는다.
+- JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
+- 응답 `data`: `memberId`, `name`, `email`, `role`, `creator`
+- `creator`는 JWT role이 아닌 `creator.member_id` 존재 여부다.
+
+```json
+{
+  "memberId": 1,
+  "name": "홍길동",
+  "email": "hong@example.com",
+  "role": "USER",
+  "creator": false
+}
+```
+
 ## Refresh Cookie
 
 `refresh_token`은 `HttpOnly`, `Path=/api/auth`, host-only Domain, `SameSite=Lax`로 발급한다. 운영 HTTPS
