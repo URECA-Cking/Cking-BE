@@ -201,6 +201,52 @@ class EarnStreamPelRecoverySchedulerIntegrationTest {
         assertThat(missionCompletionRepository.findByRequestId(requestId)).isEmpty();
     }
 
+    // dead_stream_message.member_id는 FK라, 존재하지 않는 userId로 이관 자체가 실패할 수 있다
+    // (예: member가 나중에 삭제됐거나 손상된 메시지). 그 실패가 같은 배치의 나머지 메시지
+    // 처리까지 막으면 안 된다.
+    @Test
+    void Dead_Stream_이관에_실패한_메시지가_있어도_같은_배치의_나머지_메시지는_계속_이관된다() throws InterruptedException {
+        long unknownMemberId = 999999911L; // member 테이블에 존재하지 않음 - dead_stream_message INSERT가 FK로 실패한다.
+        String failingRequestId = UUID.randomUUID().toString();
+        String recoverableRequestId = UUID.randomUUID().toString();
+
+        redisTemplate.opsForStream().add(STREAM_KEY, earnFieldsFor(failingRequestId, unknownMemberId));
+        String recoverableRecordId = redisTemplate.opsForStream()
+                .add(STREAM_KEY, earnFields(recoverableRequestId)).getValue();
+        awaitPending(2);
+
+        // 회수 1회차: 둘 다 여전히 실패(creator 없음) → PEL에 남고 deliveryCount 증가.
+        Thread.sleep(150);
+        scheduler.recoverPending();
+        Thread.sleep(150);
+
+        // 회수 2회차: 둘 다 한도를 넘겨 이관을 시도한다. unknownMemberId 쪽은 FK 위반으로
+        // 이관 자체가 실패하지만, 예외를 삼키고 계속 진행해 MEMBER_ID 쪽은 정상 이관돼야 한다.
+        scheduler.recoverPending();
+
+        assertThat(deadStreamMessageRepository.findBySourceStreamIdAndStreamType(
+                recoverableRecordId, DeadStreamType.EARN)).isPresent();
+
+        // 실패한 메시지는 이관되지 못한 채 PEL에 남는다(알려진 제약) - 그래도 다른 메시지를
+        // 막지는 않았다는 게 이 테스트의 핵심이다.
+        PendingMessages pending = redisTemplate.opsForStream()
+                .pending(STREAM_KEY, CONSUMER_GROUP, Range.unbounded(), 10);
+        assertThat(pending.size()).isEqualTo(1);
+    }
+
+    private Map<String, String> earnFieldsFor(String requestId, long memberId) {
+        return Map.of(
+                "requestId", requestId,
+                "userId", String.valueOf(memberId),
+                "creatorId", String.valueOf(CREATOR_ID),
+                "missionType", "ATTENDANCE",
+                "missionId", String.valueOf(MISSION_ID),
+                "periodKey", "2026-09-16",
+                "missionKey", "attendance:%d:2026-09-16".formatted(CREATOR_ID),
+                "amount", "5"
+        );
+    }
+
     private Map<String, String> earnFields(String requestId) {
         return Map.of(
                 "requestId", requestId,

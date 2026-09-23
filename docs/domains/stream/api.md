@@ -28,11 +28,11 @@ Query는 필수 `userId`, 선택 `status`, `page`, `size`다. `status`는 `UNRES
 }
 ```
 
-원본 `payload`는 반환하지 않는다. EARN 메시지는 이벤트와 무관해 `eventId`가 `null`이다. 해당 이벤트의 cutoff 범위에 `UNRESOLVED` SPEND 메시지가 있으면 그 이벤트는 `CLOSED`로 전이할 수 없으므로, `eventId`로 마감이 막힌 원인을 찾는다.
+원본 `payload`는 반환하지 않는다. `streamType`은 `EARN`/`SPEND`/`COMMON_EARN`(이슈 #244) 중 하나다. EARN·COMMON_EARN 메시지는 이벤트와 무관해 `eventId`가 `null`이다. 해당 이벤트의 cutoff 범위에 `UNRESOLVED` SPEND 메시지가 있으면 그 이벤트는 `CLOSED`로 전이할 수 없으므로, `eventId`로 마감이 막힌 원인을 찾는다.
 
 ## POST /api/admin/dead-streams/{id}/replay
 
-Body는 `{"userId": 1}`이다. 보존한 원본 payload를 EARN·SPEND Ledger 서비스에 다시 적용하고 `RESOLVED`로 표시하며, 처리자(`resolvedBy`)는 요청한 관리자다. 응답은 위 목록 항목과 같은 형태의 처리된 메시지다.
+Body는 `{"userId": 1}`이다. 보존한 원본 payload를 EARN·SPEND·공용 EARN Ledger 서비스에 다시 적용하고 `RESOLVED`로 표시하며, 처리자(`resolvedBy`)는 요청한 관리자다. 응답은 위 목록 항목과 같은 형태의 처리된 메시지다.
 
 - 대상이 없으면 `RESOURCE_NOT_FOUND`다.
 - 이미 `RESOLVED`인 메시지는 다시 적용하지 않고 현재 상태를 그대로 반환한다(상태 기반 멱등). `resolvedBy`·`resolvedAt`도 바뀌지 않는다.
