@@ -3,6 +3,7 @@ package kr.co.cking.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
@@ -70,5 +71,15 @@ class AccessTokenServiceTest {
         assertThatThrownBy(() -> accessTokenService.issue(17L, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("invalidCredentialError는 필수입니다.");
+    }
+
+    /** Member ID는 조회 전에 명시적으로 검증한다. */
+    @Test
+    void Member_ID는_필수다() {
+        assertThatThrownBy(() -> accessTokenService.issue(null, AuthErrorCode.INVALID_LOGIN_CODE))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("memberId는 필수입니다.");
+
+        verifyNoInteractions(memberRepository);
     }
 }

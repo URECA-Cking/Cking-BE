@@ -8,7 +8,6 @@ import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
 import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
 import kr.co.cking.auth.domain.AuthErrorCode;
-import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,7 +44,7 @@ public class AuthController {
         Long memberId = loginCodeService.consume(request.code());
         String refreshToken = refreshTokenService.issue(memberId);
         try {
-            return tokenResponse(memberId, refreshToken);
+            return tokenResponse(memberId, refreshToken, AuthErrorCode.INVALID_LOGIN_CODE);
         } catch (RuntimeException exception) {
             // 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기해 고아 key를 남기지 않는다.
             revokeUnsentRefreshToken(refreshToken, exception);
@@ -96,14 +95,9 @@ public class AuthController {
                 .body(ApiResponse.success());
     }
 
-    /** Access JWT 응답과 동일한 속성의 새 Refresh Cookie를 함께 반환한다. */
-    private ResponseEntity<ApiResponse<TokenResponse>> tokenResponse(Long memberId, String refreshToken) {
-        return tokenResponse(memberId, refreshToken, AuthErrorCode.INVALID_LOGIN_CODE);
-    }
-
     /** 호출한 인증 수단의 오류 계약에 맞춰 Access JWT와 Refresh Cookie를 함께 반환한다. */
     private ResponseEntity<ApiResponse<TokenResponse>> tokenResponse(
-            Long memberId, String refreshToken, ErrorCode invalidCredentialError
+            Long memberId, String refreshToken, AuthErrorCode invalidCredentialError
     ) {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookieFactory.create(refreshToken).toString())
