@@ -1,5 +1,8 @@
 package kr.co.cking.stream.scheduler;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.MapRecord;
@@ -11,140 +14,141 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.ArrayList;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
+import kr.co.cking.stream.domain.DeadStreamMessage;
+import kr.co.cking.stream.domain.DeadStreamResolutionStatus;
+import kr.co.cking.stream.domain.DeadStreamType;
 import kr.co.cking.stream.presentation.CommonEarnStreamListener;
+import kr.co.cking.stream.repository.DeadStreamMessageRepository;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * PEL에 남은 공용 EARN Stream 메시지를 XCLAIM으로 회수해 재처리한다(이슈 #219). Lua가 이미
- * Redis 잔액을 올리고 성공을 응답한 메시지이므로, 이 회수 경로가 없으면 DB 반영 실패가
- * 영구 불일치로 남는다.
+ * PEL에 남은 공용 EARN Stream 메시지를 XCLAIM으로 회수해 재처리한다. 최대 재시도 횟수를
+ * 넘긴 메시지는 {@code dead_stream_message}로 옮기고 XACK해서 PEL에서 제거한다(이슈 #244,
+ * #219/#224에서 범위 밖으로 미뤘던 부분).
  *
- * <p>{@link EarnStreamPelRecoveryScheduler}와 달리 공용 EARN은 아직 Dead Stream 이관을
- * 지원하지 않는다(후속 이슈). 그래서 최대 재시도를 넘긴 메시지도 포기하지 않고 PEL에
- * 보존한 채 {@code overLimitIdleTime} 간격으로 계속 재처리한다 — 장시간 DB 장애로 한도를
- * 넘긴 일시적 실패도 복구 후 결국 반영되고, {@code apply()}가 requestId 기준 멱등이라
- * 재처리를 반복해도 중복 반영되지 않는다. 절대 성공할 수 없는 메시지(fingerprint 불일치 등)는
- * 간격마다 재시도·실패 로그가 반복되며, 후속 이슈의 Dead Stream 이관으로 정리한다.
- *
- * <p>XCLAIM은 {@code totalDeliveryCount}를 올리고 idle을 0으로 되돌리므로, 한도 초과
- * 메시지는 XPENDING의 idle로 먼저 걸러 간격이 지난 것만 claim한다. claim 시 min-idle도
- * 같은 간격으로 넘겨 다중 인스턴스 경합에서도 간격이 지켜지게 한다.
+ * <p>{@link kr.co.cking.stream.presentation.EarnStreamListener}·
+ * {@link kr.co.cking.stream.scheduler.EarnStreamPelRecoveryScheduler}와 완전히 같은 구조다.
+ * 이전 버전은 Dead Stream 이관이 없어 한도 초과 메시지를 포기하지 않고 더 긴 간격으로
+ * 영구히 재시도했는데(페이지네이션·2단계 claim 분리 포함), 이관이 생긴 지금은 한도를 넘긴
+ * 메시지를 그 자리에서 이관·ACK하므로 그 복잡도가 더 필요 없다 - PEL에 영구히 쌓이는
+ * 메시지가 없어 페이지가 밀릴 일도 없다.
  */
 @Slf4j
 @Component
 public class CommonEarnStreamPelRecoveryScheduler {
 
     private static final String RECOVERY_CONSUMER = "common-earn-pel-recovery";
-    private static final int MAX_SCAN_PAGES = 10;
+    private static final int SCAN_COUNT = 100;
 
     private final StringRedisTemplate redisTemplate;
     private final CommonEarnStreamListener commonEarnStreamListener;
+    private final DeadStreamMessageRepository deadStreamMessageRepository;
+    private final ObjectMapper objectMapper;
     private final String streamKey;
     private final String consumerGroup;
     private final Duration minIdleTime;
     private final long maxRetry;
-    private final Duration overLimitIdleTime;
-    private final int scanCount;
 
     public CommonEarnStreamPelRecoveryScheduler(
             StringRedisTemplate redisTemplate,
             CommonEarnStreamListener commonEarnStreamListener,
+            DeadStreamMessageRepository deadStreamMessageRepository,
+            ObjectMapper objectMapper,
             @Value("${cking.ticket.common-earn-stream-key:stream:common-ticket-earned}") String streamKey,
             @Value("${cking.ticket.common-earn-consumer-group:cg:common-ticket-earn}") String consumerGroup,
             @Value("${cking.ticket.common-earn-pel-min-idle-ms:60000}") long minIdleTimeMillis,
-            @Value("${cking.ticket.common-earn-pel-max-retry:5}") long maxRetry,
-            @Value("${cking.ticket.common-earn-pel-over-limit-idle-ms:600000}") long overLimitIdleTimeMillis,
-            @Value("${cking.ticket.common-earn-pel-scan-count:100}") int scanCount
+            @Value("${cking.ticket.common-earn-pel-max-retry:5}") long maxRetry
     ) {
         this.redisTemplate = redisTemplate;
         this.commonEarnStreamListener = commonEarnStreamListener;
+        this.deadStreamMessageRepository = deadStreamMessageRepository;
+        this.objectMapper = objectMapper;
         this.streamKey = streamKey;
         this.consumerGroup = consumerGroup;
         this.minIdleTime = Duration.ofMillis(minIdleTimeMillis);
         this.maxRetry = maxRetry;
-        this.overLimitIdleTime = Duration.ofMillis(overLimitIdleTimeMillis);
-        this.scanCount = scanCount;
     }
 
-    /**
-     * 한도 초과 메시지는 claim하지 않아도 XPENDING 결과 앞쪽에 계속 남으므로, 첫 페이지만 보면
-     * 그 뒤의 정상 메시지가 회수되지 못한다. 마지막으로 본 ID 다음부터 페이지를 넘겨가며 본다.
-     */
     @Scheduled(fixedDelayString = "${cking.ticket.common-earn-pel-recovery-interval-ms:30000}")
     public void recoverPending() {
-        Range<String> range = Range.unbounded();
+        PendingMessages pending = redisTemplate.opsForStream()
+                .pending(streamKey, consumerGroup, Range.unbounded(), SCAN_COUNT, minIdleTime);
 
-        for (int page = 0; page < MAX_SCAN_PAGES; page++) {
-            PendingMessages pending = redisTemplate.opsForStream()
-                    .pending(streamKey, consumerGroup, range, scanCount, minIdleTime);
-
-            if (pending == null || pending.isEmpty()) {
-                return;
-            }
-
-            recover(pending);
-
-            if (pending.size() < scanCount) {
-                return;
-            }
-            String lastId = pending.get(pending.size() - 1).getIdAsString();
-            range = Range.rightUnbounded(Range.Bound.inclusive(nextId(lastId)));
-        }
-    }
-
-    private void recover(PendingMessages pending) {
-        Map<String, PendingMessage> pendingById = pending.stream()
-                .collect(Collectors.toMap(PendingMessage::getIdAsString, m -> m));
-
-        List<RecordId> withinLimit = new ArrayList<>();
-        List<RecordId> overLimitDue = new ArrayList<>();
-
-        for (PendingMessage message : pending) {
-            if (message.getTotalDeliveryCount() <= maxRetry) {
-                withinLimit.add(message.getId());
-            } else if (message.getElapsedTimeSinceLastDelivery().compareTo(overLimitIdleTime) >= 0) {
-                overLimitDue.add(message.getId());
-            }
-            // 한도를 넘겼지만 간격이 지나지 않은 메시지는 이번 주기에 claim하지 않는다.
-        }
-
-        claimAndProcess(withinLimit, minIdleTime, pendingById, false);
-        claimAndProcess(overLimitDue, overLimitIdleTime, pendingById, true);
-    }
-
-    private void claimAndProcess(List<RecordId> recordIds, Duration claimMinIdle,
-                                 Map<String, PendingMessage> pendingById, boolean overLimit) {
-        if (recordIds.isEmpty()) {
+        if (pending == null || pending.isEmpty()) {
             return;
         }
 
+        Map<String, PendingMessage> pendingById = pending.stream()
+                .collect(java.util.stream.Collectors.toMap(PendingMessage::getIdAsString, m -> m));
+
+        RecordId[] recordIds = pending.stream().map(PendingMessage::getId).toArray(RecordId[]::new);
         List<MapRecord<String, String, String>> claimed = redisTemplate.<String, String>opsForStream()
-                .claim(streamKey, consumerGroup, RECOVERY_CONSUMER, claimMinIdle, recordIds.toArray(RecordId[]::new));
+                .claim(streamKey, consumerGroup, RECOVERY_CONSUMER, minIdleTime, recordIds);
 
         for (MapRecord<String, String, String> record : claimed) {
             PendingMessage pendingMessage = pendingById.get(record.getId().getValue());
 
-            // 한도 초과 후 첫 claim(직전 전달 횟수 = maxRetry + 1)에서만 남긴다. 이후 claim은 횟수가 더 크다.
-            if (overLimit && pendingMessage != null && pendingMessage.getTotalDeliveryCount() == maxRetry + 1) {
-                log.warn("공용 EARN Stream 메시지가 최대 재시도({}회)를 넘겼습니다. Dead Stream 미지원이라 PEL에 보존하고 "
-                                + "{}초 간격으로 계속 재처리합니다. id={}, fields={}",
-                        maxRetry, overLimitIdleTime.toSeconds(), record.getId(), record.getValue());
+            if (pendingMessage != null && pendingMessage.getTotalDeliveryCount() > maxRetry) {
+                try {
+                    moveToDeadStream(record, pendingMessage);
+                } catch (Exception e) {
+                    // Dead Stream 이관 자체가 실패해도(예: dead_stream_message.member_id FK 위반)
+                    // 예외를 밖으로 던지면 이번 틱에서 claim된 나머지 메시지 처리까지 전부 막힌다.
+                    // 이 메시지만 건너뛰고 계속 진행한다 - ACK하지 않았으므로 PEL에 남아 다음
+                    // 틱에 다시 시도된다.
+                    log.error("공용 EARN Stream 메시지를 Dead Stream으로 이관하지 못했습니다. sourceStreamId={}, fields={}",
+                            record.getId().getValue(), record.getValue(), e);
+                }
+            } else {
+                commonEarnStreamListener.process(record);
             }
-
-            commonEarnStreamListener.process(record);
         }
     }
 
-    /** Stream ID({@code ms-seq})의 바로 다음 ID. XPENDING 페이지를 이어서 보기 위한 시작점이다. */
-    private static String nextId(String id) {
-        int dash = id.indexOf('-');
-        long millis = Long.parseLong(id.substring(0, dash));
-        long sequence = Long.parseLong(id.substring(dash + 1));
-        return millis + "-" + (sequence + 1);
+    private void moveToDeadStream(MapRecord<String, String, String> record, PendingMessage pendingMessage) {
+        String sourceStreamId = record.getId().getValue();
+        Map<String, String> fields = record.getValue();
+        String failureReason = "PEL 최대 재시도(%d회) 초과".formatted(maxRetry);
+        Instant now = Instant.now();
+
+        deadStreamMessageRepository.findBySourceStreamIdAndStreamType(sourceStreamId, DeadStreamType.COMMON_EARN)
+                .ifPresentOrElse(
+                        existing -> {
+                            existing.recordRetry((int) pendingMessage.getTotalDeliveryCount(), failureReason, now);
+                            deadStreamMessageRepository.save(existing);
+                        },
+                        () -> deadStreamMessageRepository.save(DeadStreamMessage.builder()
+                                .sourceStreamId(sourceStreamId)
+                                .streamType(DeadStreamType.COMMON_EARN)
+                                .payload(toJson(fields))
+                                .requestId(fields.get("requestId"))
+                                .memberId(parseLongOrNull(fields.get("userId")))
+                                .failureReason(failureReason)
+                                .retryCount((int) pendingMessage.getTotalDeliveryCount())
+                                .lastFailedAt(now)
+                                .resolutionStatus(DeadStreamResolutionStatus.UNRESOLVED)
+                                .createdAt(now)
+                                .build())
+                );
+
+        // Dead Stream에 원본을 보존했으므로 PEL에서 제거해도 안전하다.
+        redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, record.getId());
+        log.warn("공용 EARN Stream 메시지를 Dead Stream으로 이동했습니다. sourceStreamId={}, fields={}", sourceStreamId, fields);
+    }
+
+    private String toJson(Map<String, String> fields) {
+        try {
+            return objectMapper.writeValueAsString(fields);
+        } catch (JacksonException e) {
+            throw new IllegalStateException("공용 EARN Stream payload를 JSON으로 직렬화하지 못했습니다.", e);
+        }
+    }
+
+    private Long parseLongOrNull(String value) {
+        return value == null ? null : Long.valueOf(value);
     }
 }

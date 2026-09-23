@@ -20,7 +20,7 @@ server:
 cking:
   cors:
     allowed-origins: https://dev.cking.co.kr
-    allow-credentials: false
+    allow-credentials: true
   docs:
     # 개발 서버는 인터넷에 공개되어 있다. 값이 주입되지 않으면 문서가 무방비로 열리는 대신 기동에 실패한다.
     username: ${DOCS_USERNAME}
@@ -29,3 +29,4 @@ cking:
     frontend-callback-url: https://dev.cking.co.kr/oauth/callback
     jwt:
       secret: ${JWT_SECRET}
+    refresh-cookie-secure: true

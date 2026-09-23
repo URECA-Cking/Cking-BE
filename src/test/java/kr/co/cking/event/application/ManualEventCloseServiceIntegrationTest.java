@@ -39,7 +39,6 @@ import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.presentation.EventCloseController;
-import kr.co.cking.event.presentation.dto.EventCloseRequest;
 import kr.co.cking.event.presentation.dto.EventCloseResponse;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.event.scheduler.EventLifecycleScheduler;
@@ -102,8 +101,8 @@ class ManualEventCloseServiceIntegrationTest {
         redisTemplate.opsForValue().set(EntryRedisKeys.status(event.getEventId()), "OPEN");
 
         ResponseEntity<ApiResponse<EventCloseResponse>> first = eventCloseController.close(
-                event.getEventId(),
-                new EventCloseRequest(owner.memberId())
+                owner.memberId(),
+                event.getEventId()
         );
         String firstCutoff = eventRepository.findById(event.getEventId()).orElseThrow().getCutoffStreamId();
         EventClosingService.ClosingResult second = manualEventCloseService.close(owner.memberId(), event.getEventId());

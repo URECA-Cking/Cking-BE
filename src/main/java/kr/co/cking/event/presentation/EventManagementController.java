@@ -1,6 +1,9 @@
 package kr.co.cking.event.presentation;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
@@ -22,14 +25,14 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Max;
+import org.springframework.validation.annotation.Validated;
 import java.util.List;
 
 /** Creator Event 관리와 관리자 심사 HTTP 요청을 처리한다. */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping
+@Validated
 public class EventManagementController {
 
     private final CreatorEventService creatorEventService;
@@ -38,9 +41,9 @@ public class EventManagementController {
     /** Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 반환한다. */
     @GetMapping("/api/creator/events")
     public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.Item>> findMine(
-            @RequestParam Long userId, @RequestParam(defaultValue = "0") @Min(0) int page,
+            @CurrentMemberId Long memberId, @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        Page<Event> events = creatorEventService.findMine(userId, PageRequest.of(page, size));
+        Page<Event> events = creatorEventService.findMine(memberId, PageRequest.of(page, size));
         List<EventManagementResponse.Item> items = events.stream().map(EventManagementResponse.Item::from).toList();
         return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
     }
@@ -57,28 +60,29 @@ public class EventManagementController {
 
     /** Creator 소유 Event의 내용을 수정한다. */
     @PatchMapping("/api/creator/events/{eventId}")
-    public ApiResponse<EventManagementResponse.Result> update(@PathVariable Long eventId,
+    public ApiResponse<EventManagementResponse.Result> update(@CurrentMemberId Long memberId, @PathVariable Long eventId,
             @Valid @RequestBody EventManagementRequest.Update request) {
         Event event = creatorEventService.update(new kr.co.cking.event.application.dto.UpdateEventCommand(
-                request.userId(), eventId, request.title(), request.description(), request.startAt(), request.endAt(),
+                memberId, eventId, request.title(), request.description(), request.startAt(), request.endAt(),
                 request.winnerCount(), request.drawMethod(), request.prizeAlgorithmVersion(), request.prizeConfigs()));
         return ApiResponse.success(EventManagementResponse.Result.from(event));
     }
 
     /** Creator 소유 초안 Event를 논리 삭제한다. */
     @DeleteMapping("/api/creator/events/{eventId}")
-    public ResponseEntity<Void> delete(@PathVariable Long eventId, @RequestParam Long userId) {
-        creatorEventService.delete(userId, eventId);
+    public ResponseEntity<Void> delete(@CurrentMemberId Long memberId, @PathVariable Long eventId) {
+        creatorEventService.delete(memberId, eventId);
         return ResponseEntity.noContent().build();
     }
 
     /** Creator의 Event 생성 요청을 멱등 명령으로 전달한다. */
     @PostMapping("/api/creator/events")
     public ResponseEntity<ApiResponse<EventManagementResponse.Result>> create(
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody EventManagementRequest.Create request
     ) {
         Event event = creatorEventService.create(new CreateEventCommand(
-                request.userId(), request.requestId(), request.title(), request.description(), request.startAt(),
+                memberId, request.requestId(), request.title(), request.description(), request.startAt(),
                 request.endAt(), request.winnerCount(), request.drawMethod(), request.prizeAlgorithmVersion(),
                 request.prizeConfigs()));
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -87,9 +91,9 @@ public class EventManagementController {
 
     /** Creator Event의 새 승인 요청을 생성한다. */
     @PostMapping("/api/creator/events/{eventId}/approval-request")
-    public ApiResponse<EventManagementResponse.Result> requestApproval(@PathVariable Long eventId,
-            @Valid @RequestBody EventManagementRequest.Actor request) {
-        creatorEventService.requestApproval(request.userId(), eventId);
+    public ApiResponse<EventManagementResponse.Result> requestApproval(
+            @CurrentMemberId Long memberId, @PathVariable Long eventId) {
+        creatorEventService.requestApproval(memberId, eventId);
         return ApiResponse.success(new EventManagementResponse.Result(eventId,
                 kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL));
     }

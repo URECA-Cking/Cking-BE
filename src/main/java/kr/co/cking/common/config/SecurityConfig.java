@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -18,8 +19,13 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.core.annotation.Order;
 import org.springframework.util.StringUtils;
 
@@ -32,6 +38,11 @@ import org.springframework.util.StringUtils;
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    private static final RequestMatcher ACCESS_TOKEN_ISSUANCE_ENDPOINTS = new OrRequestMatcher(
+            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/token"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/refresh"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/logout"));
 
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
@@ -76,6 +87,15 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers(
+                                "/api/admin/events/*/snapshot",
+                                "/api/admin/events/*/drawings",
+                                "/api/admin/events/*/redraw-requests",
+                                "/api/admin/drawings/**",
+                                "/api/admin/winners/**",
+                                "/api/admin/redraw-requests/**"
+                        ).hasRole("ADMIN")
+                        .requestMatchers("/api/winners/*/history").authenticated()
+                        .requestMatchers(
                                 "/api/creators/*/missions",
                                 "/api/creators/*/missions/*/complete",
                                 "/api/missions",
@@ -97,12 +117,24 @@ public class SecurityConfig {
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer
+                        .bearerTokenResolver(applicationBearerTokenResolver())
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint(authenticationEntryPoint))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .build();
+    }
+
+    /**
+     * Login Code·Refresh Cookie 인증 흐름은 기존 Access JWT와 독립적으로 동작해야 한다.
+     * 만료된 Access JWT가 자동으로 첨부되어도 Auth Controller까지 도달하게 한다.
+     */
+    private BearerTokenResolver applicationBearerTokenResolver() {
+        DefaultBearerTokenResolver defaultResolver = new DefaultBearerTokenResolver();
+        return request -> ACCESS_TOKEN_ISSUANCE_ENDPOINTS.matches(request)
+                ? null
+                : defaultResolver.resolve(request);
     }
 
     /** OAuth Client 등록이 있는 환경에서만 로그인 성공·실패 Handler를 Security 체인에 연결한다. */

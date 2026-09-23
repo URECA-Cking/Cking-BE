@@ -9,11 +9,11 @@
 #### 요청
 
 - Path Variable: `eventId` (`Long`, 양수, 필수)
-- Body: `userId` (`Long`, 양수), `reason` (공백 제거 후 1~500자), `idempotencyKey` (UUID 표준 문자열)
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Body는 `reason` (공백 제거 후 1~500자),
+  `idempotencyKey` (UUID 표준 문자열)만 받는다.
 
 ```json
 {
-  "userId": 1,
   "reason": "당첨자 포기에 따른 재추첨이 필요합니다.",
   "idempotencyKey": "d2719c4a-1f9b-4dc4-a656-9a4bb37d8e70"
 }
@@ -62,7 +62,7 @@
 #### 요청
 
 - Path Variable: `redrawRequestId` (`Long`, 양수, 필수)
-- Query Parameter: `userId` (`Long`, 양수, 필수, 호출 관리자)
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); query parameter `userId`는 받지 않는다.
 
 #### 성공 응답
 
@@ -103,8 +103,8 @@
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | 경로 또는 `userId`가 양수가 아님 |
-| `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | 경로가 양수가 아님 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 존재하지 않음 |
 
@@ -117,11 +117,7 @@
 #### 요청
 
 - Path Variable: `redrawRequestId` (`Long`, 양수, 필수)
-- Body: `userId` (`Long`, 양수, 필수, 호출 관리자)
-
-```json
-{ "userId": 1 }
-```
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Request Body는 받지 않는다.
 
 #### 성공 응답
 
@@ -148,8 +144,8 @@
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | 경로 또는 `userId`가 양수가 아님 |
-| `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | 경로가 양수가 아님 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 존재하지 않음 |
 | `INVALID_STATE` | 대상 요청이 `REQUESTED`가 아니거나 동시 심사에서 먼저 처리됨 |
@@ -163,10 +159,10 @@
 #### 요청
 
 - Path Variable: `redrawRequestId` (`Long`, 양수, 필수)
-- Body: `userId` (`Long`, 양수, 필수, 호출 관리자), `rejectReason` (공백 제거 후 1~500자, 필수)
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Body는 `rejectReason` (공백 제거 후 1~500자, 필수)만 받는다.
 
 ```json
-{ "userId": 1, "rejectReason": "결원 확인이 필요합니다." }
+{ "rejectReason": "결원 확인이 필요합니다." }
 ```
 
 #### 성공 응답
@@ -178,8 +174,8 @@
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | 경로·`userId`가 양수가 아니거나 거절 사유가 비어 있거나 500자를 초과함 |
-| `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | 경로가 양수가 아니거나 거절 사유가 비어 있거나 500자를 초과함 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 존재하지 않음 |
 | `INVALID_STATE` | 대상 요청이 `REQUESTED`가 아니거나 동시 심사에서 먼저 처리됨 |
@@ -193,11 +189,7 @@
 #### 요청
 
 - Path Variable: `redrawRequestId` (`Long`, 양수, 필수)
-- Body: `userId` (`Long`, 양수, 필수, 호출 관리자)
-
-```json
-{ "userId": 1 }
-```
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Request Body는 받지 않는다.
 
 #### 성공 응답
 
@@ -222,8 +214,8 @@ Drawing이 종결된 뒤 같은 실행 API로 다시 요청할 수 있다.
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | 경로 또는 `userId`가 양수가 아님 |
-| `RESOURCE_NOT_FOUND` | 호출 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | 경로가 양수가 아님 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
 | `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
 | `REDRAW_REQUEST_NOT_FOUND` | 대상 RedrawRequest가 없음 |
 | `INVALID_STATE` | 요청이 APPROVED·PENDING이 아니거나 고정 결원 행 수가 불일치함 |

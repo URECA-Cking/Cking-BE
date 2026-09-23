@@ -35,7 +35,7 @@ cking:
   cors:
     # 비우면 교차 출처 요청을 허용하지 않는다. 로컬은 Vite 프록시로 같은 출처 요청이 된다.
     allowed-origins: ""
-    # Refresh Cookie를 사용하는 인증 전환 전까지 credential을 허용하지 않는다.
+    # Cookie 기반 인증을 사용하는 환경에서는 허용 origin을 명시하고 true로 설정한다.
     allow-credentials: false
   docs:
     # 둘 중 하나라도 비우면 Swagger Basic Auth를 적용하지 않는다.
@@ -49,3 +49,6 @@ cking:
       secret: ${JWT_SECRET}
       issuer: cking
       access-token-ttl: PT30M
+    refresh-token-ttl: P14D
+    # 운영 HTTPS 환경은 반드시 REFRESH_COOKIE_SECURE=true를 명시적으로 주입한다.
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE}

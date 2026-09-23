@@ -130,16 +130,12 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 - 권한: `ADMIN`
 - Path Variable: `winnerId` (`Long`, 양수, 필수)
-- Request Body의 `userId`는 인증 미도입 단계의 호출자 식별자이며 `Long` 양수여야 한다.
-- 먼저 Member 존재와 `ADMIN` 역할을 검증한 뒤 Winner 존재 여부를 검증한다. Winner 원본은 변경하지 않는다.
+- 호출자 식별은 Access JWT의 `@CurrentMemberId`이며 Request Body `userId`는 받지 않는다.
+- Spring Security가 `ADMIN`을 먼저 인가한 뒤 Member 존재와 업무 권한을 검증하고 Winner 존재 여부를 확인한다. Winner 원본은 변경하지 않는다.
 - WinnerManagement를 쓰기 잠금으로 조회해 동일 Winner의 동시 상태 변경을 직렬화한다. `SELECTED`일 때만
   `RECEIVED`로 전이할 수 있으며 `RECEIVED`는 종결 상태다. 이미 종결된 Winner의 재변경은 허용하지 않는다.
 - 상태 전이와 `WinnerStatusHistory`의 상태·변경 주체·변경 시각 저장은 하나의 Transaction으로 처리한다.
 - 별도 멱등 키는 사용하지 않는다. 같은 Winner의 재요청은 현재 상태가 `SELECTED`가 아니므로 실패한다.
-
-```json
-{ "userId": 1 }
-```
 
 성공 시 `200 OK`와 공통 성공 응답을 반환한다.
 
@@ -153,8 +149,8 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | winnerId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
-| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | winnerId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
 | `FORBIDDEN` | 요청 Member의 역할이 ADMIN이 아님 |
 | `WINNER_NOT_FOUND` | winnerId에 해당하는 Winner가 존재하지 않음 |
 | `WINNER_MANAGEMENT_NOT_FOUND` | Winner에 연결된 WinnerManagement가 존재하지 않음 |
@@ -166,7 +162,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 - 권한: `ADMIN`
 - Path Variable: `winnerId` (`Long`, 양수, 필수)
-- Request Body의 `userId`는 인증 미도입 단계의 호출자 식별자이며 `Long` 양수여야 한다.
+- 호출자 식별은 Access JWT의 `@CurrentMemberId`이며 Request Body `userId`는 받지 않는다.
 - `reason`은 공백을 제외한 1~500자의 필수 자격 박탈 사유다. 저장 시 앞뒤 공백을 제거한다.
 - 먼저 Member 존재와 `ADMIN` 역할을 검증한 뒤 Winner 존재 여부를 검증한다. Winner 원본은 변경하지 않는다.
 - WinnerManagement를 쓰기 잠금으로 조회해 동일 Winner의 동시 상태 변경을 직렬화한다. `SELECTED`일 때만
@@ -176,7 +172,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 - 별도 멱등 키는 사용하지 않는다. 같은 Winner의 재요청은 현재 상태가 `SELECTED`가 아니므로 실패한다.
 
 ```json
-{ "userId": 1, "reason": "이벤트 참여 조건을 충족하지 않았습니다." }
+{ "reason": "이벤트 참여 조건을 충족하지 않았습니다." }
 ```
 
 성공 시 `200 OK`와 공통 성공 응답을 반환한다.
@@ -191,8 +187,8 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | winnerId 또는 userId가 누락·0 이하이거나 reason이 공백이거나 500자를 초과함 |
-| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | winnerId가 누락·0 이하이거나 reason이 공백이거나 500자를 초과함 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
 | `FORBIDDEN` | 요청 Member의 역할이 ADMIN이 아님 |
 | `WINNER_NOT_FOUND` | winnerId에 해당하는 Winner가 존재하지 않음 |
 | `WINNER_MANAGEMENT_NOT_FOUND` | Winner에 연결된 WinnerManagement가 존재하지 않음 |
@@ -204,8 +200,8 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 - 권한: `USER` 또는 `ADMIN`
 - Path Variable: `winnerId` (`Long`, 양수, 필수)
-- Query Parameter: `userId` (`Long`, 양수, 필수). 인증 미도입 단계의 호출자 식별자다.
-- Member 존재와 역할을 검증한 뒤 Winner 존재 여부를 확인한다. `USER`는 본인 소유 Winner만 조회할 수 있고,
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); query parameter `userId`는 받지 않는다.
+- Spring Security는 JWT 인증만 확인하고, Application이 Member 존재와 역할을 검증한 뒤 Winner 존재 여부를 확인한다. `USER`는 본인 소유 Winner만 조회할 수 있고,
   `ADMIN`은 모든 Winner를 조회할 수 있다. 다른 사용자의 Winner 조회는 `FORBIDDEN`이다.
 - WinnerManagement에 연결된 변경 이력을 `changedAt ASC`, `historyId ASC`으로 반환한다. 이력이 없으면 빈 배열을
   정상 반환한다.
@@ -229,8 +225,8 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | winnerId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
-| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | winnerId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
 | `WINNER_NOT_FOUND` | winnerId에 해당하는 Winner가 존재하지 않음 |
 | `WINNER_MANAGEMENT_NOT_FOUND` | Winner에 연결된 WinnerManagement가 존재하지 않음 |
 | `FORBIDDEN` | USER 요청 Member가 Winner의 소유자가 아님 |

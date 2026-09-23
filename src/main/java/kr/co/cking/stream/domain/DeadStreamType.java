@@ -6,5 +6,8 @@ package kr.co.cking.stream.domain;
  */
 public enum DeadStreamType {
     EARN,
-    SPEND
+    SPEND,
+    // 공용(크리에이터 무관) 미션 EARN. 크리에이터 EARN(위 EARN)과 Stream·Consumer Group이
+    // 달라 값을 공유하지 않는다(이슈 #244, #219/#224에서 범위 밖으로 미뤄뒀던 부분).
+    COMMON_EARN
 }

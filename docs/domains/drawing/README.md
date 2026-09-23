@@ -16,7 +16,7 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 엔진 호출, Winner·WinnerManagement 저장, Drawing 완료, Event 상태 전이를 하나의 Transaction으로
 처리한다.
 
-- Request Body: `{ "userId": 1 }` (`Long`, 양수, 필수)
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Request Body `userId`는 받지 않는다.
 - 성공: `200 OK`, 공통 `ApiResponse`의 `data`에 `drawingId`, `eventId`, `status`,
   `winnerCount`를 반환한다.
 - 요청자는 존재하는 `ADMIN` Member여야 한다.
@@ -26,7 +26,7 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | eventId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `VALIDATION_FAILED` | eventId가 누락·0 이하이거나 형식이 올바르지 않음 |
 | `RESOURCE_NOT_FOUND` | 요청한 Member 또는 Event가 존재하지 않음 |
 | `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
 | `INVALID_STATE` | Event가 삭제됐거나 CLOSED 상태가 아님 |

@@ -114,7 +114,8 @@ class PublicationServiceRollbackIntegrationTest {
         jdbcTemplate.update("DELETE FROM draw_snapshot WHERE id = ?", SNAPSHOT_ID);
         jdbcTemplate.update("DELETE FROM event WHERE event_id = ?", EVENT_ID);
         jdbcTemplate.update("DELETE FROM draw_seed WHERE id = ?", SEED_ID);
-        jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", CREATOR_ID);
+        jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ? OR member_id IN (?, ?)",
+                CREATOR_ID, ADMIN_ID, CREATOR_OWNER_ID);
         jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?)", ADMIN_ID, CREATOR_OWNER_ID);
     }
 }
