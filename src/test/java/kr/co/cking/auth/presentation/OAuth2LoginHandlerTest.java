@@ -9,9 +9,7 @@ import jakarta.servlet.http.HttpSession;
 import java.util.List;
 import java.util.Map;
 import kr.co.cking.auth.application.LoginCodeService;
-import kr.co.cking.auth.application.OAuthLoginService;
-import kr.co.cking.auth.application.model.OAuthUserInfo;
-import kr.co.cking.auth.domain.OAuthProvider;
+import kr.co.cking.auth.security.oauth.OAuthMemberLoginService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,8 +26,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class OAuth2LoginHandlerTest {
 
-    @Mock private OAuthUserInfoResolver oauthUserInfoResolver;
-    @Mock private OAuthLoginService oauthLoginService;
+    @Mock private OAuthMemberLoginService oauthMemberLoginService;
     @Mock private LoginCodeService loginCodeService;
     @Mock private HttpServletRequest request;
     @Mock private HttpServletResponse response;
@@ -42,9 +39,7 @@ class OAuth2LoginHandlerTest {
     void OAuth_성공_후_LoginCode만_담아_redirect하고_세션을_정리한다() throws Exception {
         configureCallbackUrl();
         OAuth2AuthenticationToken authentication = authentication();
-        OAuthUserInfo userInfo = new OAuthUserInfo(OAuthProvider.GOOGLE, "sub", "user@example.com", "사용자");
-        when(oauthUserInfoResolver.resolve(authentication)).thenReturn(userInfo);
-        when(oauthLoginService.login(userInfo)).thenReturn(31L);
+        when(oauthMemberLoginService.login("google", authentication.getPrincipal().getAttributes())).thenReturn(31L);
         when(loginCodeService.issue(31L)).thenReturn("one-time-code");
         when(request.getSession(false)).thenReturn(session);
 
@@ -59,7 +54,8 @@ class OAuth2LoginHandlerTest {
     void OAuth_성공_처리_실패는_계약된_error로_redirect한다() throws Exception {
         configureCallbackUrl();
         OAuth2AuthenticationToken authentication = authentication();
-        when(oauthUserInfoResolver.resolve(authentication)).thenThrow(new IllegalArgumentException("provider detail"));
+        when(oauthMemberLoginService.login("google", authentication.getPrincipal().getAttributes()))
+                .thenThrow(new IllegalArgumentException("provider detail"));
         when(request.getSession(false)).thenReturn(session);
 
         successHandler.onAuthenticationSuccess(request, response, authentication);

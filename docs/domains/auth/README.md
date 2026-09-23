@@ -63,7 +63,8 @@ Provider의 `name`은 선택적 프로필 정보이지 외부 Identity가 아니
 
 ```text
 Google / Kakao → Spring Security OAuth2 Client → Provider 사용자 정보
-    → OAuthUserInfoResolver (Google Mapper / Kakao Mapper) → OAuthLoginService
+    → OAuthMemberLoginService → OAuthUserInfoResolver (Google Mapper / Kakao Mapper)
+    → OAuthLoginService
     → OAuthAccount / Member → memberId → OAuth2LoginSuccessHandler
     → 1회용 Login Code → Redis → Frontend Callback → POST /api/auth/token
     → Access Token + Refresh Token → Access JWT → Spring Security Resource Server
