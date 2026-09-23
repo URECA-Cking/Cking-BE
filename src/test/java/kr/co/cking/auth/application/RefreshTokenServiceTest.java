@@ -1,6 +1,7 @@
 package kr.co.cking.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,5 +46,18 @@ class RefreshTokenServiceTest {
         verify(valueOperations).set(redisKey.capture(), eq("17"), eq(REFRESH_TOKEN_TTL));
         assertThat(refreshToken).isNotBlank();
         assertThat(redisKey.getValue()).doesNotContain(refreshToken);
+    }
+
+    /** 회전 Lua 스크립트에도 생성자로 받은 TTL을 밀리초 단위로 전달하는지 검증한다. */
+    @Test
+    void 생성자로_주입한_TTL로_RefreshToken을_회전한다() {
+        String ttlMillis = Long.toString(REFRESH_TOKEN_TTL.toMillis());
+        when(redisTemplate.execute(eq(refreshTokenRotateScript), anyList(), eq(ttlMillis))).thenReturn("17");
+
+        var result = refreshTokenService.rotate("old-refresh-token");
+
+        verify(redisTemplate).execute(eq(refreshTokenRotateScript), anyList(), eq(ttlMillis));
+        assertThat(result.memberId()).isEqualTo(17L);
+        assertThat(result.refreshToken()).isNotBlank();
     }
 }
