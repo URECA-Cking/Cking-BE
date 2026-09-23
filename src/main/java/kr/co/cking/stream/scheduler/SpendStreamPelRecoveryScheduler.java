@@ -93,7 +93,16 @@ public class SpendStreamPelRecoveryScheduler {
             PendingMessage pendingMessage = pendingById.get(record.getId().getValue());
 
             if (pendingMessage != null && pendingMessage.getTotalDeliveryCount() > maxRetry) {
-                moveToDeadStream(record, pendingMessage);
+                try {
+                    moveToDeadStream(record, pendingMessage);
+                } catch (Exception e) {
+                    // Dead Stream 이관 자체가 실패해도(예: dead_stream_message.member_id FK 위반)
+                    // 예외를 밖으로 던지면 이번 틱에서 claim된 나머지 메시지 처리까지 전부 막힌다.
+                    // 이 메시지만 건너뛰고 계속 진행한다 - ACK하지 않았으므로 PEL에 남아 다음
+                    // 틱에 다시 시도된다.
+                    log.error("SPEND Stream 메시지를 Dead Stream으로 이관하지 못했습니다. sourceStreamId={}, fields={}",
+                            record.getId().getValue(), record.getValue(), e);
+                }
             } else {
                 spendStreamListener.process(record);
             }

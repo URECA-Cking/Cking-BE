@@ -24,6 +24,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import kr.co.cking.event.repository.EventEntryRepository;
+import kr.co.cking.mission.CommonMissionCompletionRepository;
 import kr.co.cking.mission.MissionCompletionRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
@@ -58,12 +59,16 @@ class DeadStreamReplayServiceIntegrationTest {
     private MissionCompletionRepository missionCompletionRepository;
 
     @Autowired
+    private CommonMissionCompletionRepository commonMissionCompletionRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
     private long eventId;
+    private long commonMissionId;
 
     @BeforeEach
     void setUp() {
@@ -90,6 +95,8 @@ class DeadStreamReplayServiceIntegrationTest {
         jdbcTemplate.update(
                 "INSERT INTO user_ticket_balance (member_id, creator_id, balance, updated_at) VALUES (?, ?, ?, NOW(6))",
                 MEMBER_ID, CREATOR_ID, 100L);
+        commonMissionId = jdbcTemplate.queryForObject(
+                "SELECT mission_id FROM common_mission WHERE type = 'ATTENDANCE'", Long.class);
     }
 
     @AfterEach
@@ -100,6 +107,9 @@ class DeadStreamReplayServiceIntegrationTest {
     private void cleanUp() {
         deadStreamMessageRepository.deleteAll();
         jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM common_ticket_ledger WHERE member_id = ?", MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM user_common_ticket_balance WHERE member_id = ?", MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM common_mission_completion WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM event_entry WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM mission_completion WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?", MEMBER_ID, CREATOR_ID);
@@ -171,6 +181,39 @@ class DeadStreamReplayServiceIntegrationTest {
         deadStreamReplayService.replay(saved.getId(), RESOLVED_BY);
 
         assertThat(missionCompletionRepository.findByRequestId(requestId)).isPresent();
+
+        DeadStreamMessage resolved = deadStreamMessageRepository.findById(saved.getId()).orElseThrow();
+        assertThat(resolved.isUnresolved()).isFalse();
+    }
+
+    // 이슈 #244: 공용 EARN Dead Stream도 EARN과 같은 계약으로 수동 replay할 수 있어야 한다.
+    @Test
+    void COMMON_EARN_Dead_Stream_메시지를_replay하면_Ledger가_반영되고_RESOLVED된다() {
+        String requestId = UUID.randomUUID().toString();
+        Map<String, String> fields = Map.of(
+                "requestId", requestId,
+                "userId", String.valueOf(MEMBER_ID),
+                "missionType", "ATTENDANCE",
+                "missionId", String.valueOf(commonMissionId),
+                "periodKey", "2026-09-16",
+                "amount", "1"
+        );
+        DeadStreamMessage saved = deadStreamMessageRepository.save(DeadStreamMessage.builder()
+                .sourceStreamId("9999-0")
+                .streamType(DeadStreamType.COMMON_EARN)
+                .payload(objectMapper.writeValueAsString(fields))
+                .requestId(requestId)
+                .memberId(MEMBER_ID)
+                .failureReason("테스트 유도 실패")
+                .retryCount(6)
+                .lastFailedAt(Instant.now())
+                .resolutionStatus(DeadStreamResolutionStatus.UNRESOLVED)
+                .createdAt(Instant.now())
+                .build());
+
+        deadStreamReplayService.replay(saved.getId(), RESOLVED_BY);
+
+        assertThat(commonMissionCompletionRepository.findByRequestId(requestId)).isPresent();
 
         DeadStreamMessage resolved = deadStreamMessageRepository.findById(saved.getId()).orElseThrow();
         assertThat(resolved.isUnresolved()).isFalse();

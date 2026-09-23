@@ -1,6 +1,6 @@
 # Ticket Stream 처리
 
-EARN과 SPEND는 Redis Stream으로 비동기 전달되고, Consumer는 DB 반영이 성공한 뒤에만 XACK한다. DB 반영이 실패하면 ACK하지 않아 메시지는 PEL에 남으며, at-least-once 전달을 전제로 Ledger 서비스가 requestId 기준 중복 반영을 막는다.
+EARN과 SPEND(크리에이터), 공용 EARN(COMMON_EARN, 이슈 #244)은 Redis Stream으로 비동기 전달되고, Consumer는 DB 반영이 성공한 뒤에만 XACK한다. DB 반영이 실패하면 ACK하지 않아 메시지는 PEL에 남으며, at-least-once 전달을 전제로 Ledger 서비스가 requestId 기준 중복 반영을 막는다.
 
 ```
 Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit 후→ XACK
@@ -13,11 +13,12 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
 | --- | --- | --- | --- | --- |
 | `stream:ticket-earned` | `cg:ticket-earn` | `earn-consumer-1` | EARN Ledger, Mission Completion, DB Balance | 없음 |
 | `stream:ticket-deducted` | `cg:ticket-history` | `spend-consumer-1` | EventEntry, SPEND Ledger, DB Balance | `EVENT_ENTRY_CLOSED` barrier는 DB 반영 없이 ACK |
+| `stream:common-ticket-earned` | `cg:common-ticket-earn` | `common-earn-consumer-1` | 공용 EARN Ledger, Common Mission Completion, 공용 Balance | 없음(크리에이터 축이 없어 barrier 대상 아님) |
 
-- 두 그룹 모두 concurrency 1로 고정한다(MVP). 병렬 처리가 필요하면 이벤트별 Stream 분리를 먼저 재검토한다.
+- 세 그룹 모두 concurrency 1로 고정한다(MVP). 병렬 처리가 필요하면 이벤트별 Stream 분리를 먼저 재검토한다.
 - 그룹은 기동 시 `XGROUP CREATE ... MKSTREAM`(시작 오프셋 0)으로 만들고, 이미 있으면(`BUSYGROUP`) 무시한다. Listener는 `lastConsumed`(신규 메시지)만 읽는다.
 - Listener의 `process()`가 "DB 반영 → XACK"의 유일한 경로이며 회수 스케줄러도 이 메서드를 재사용한다.
-- 키·그룹명·재시도 값은 `cking.ticket.*`(EARN), `cking.entry.*`(SPEND) 프로퍼티로 바꿀 수 있다.
+- 키·그룹명·재시도 값은 `cking.ticket.*`(EARN·공용 EARN), `cking.entry.*`(SPEND) 프로퍼티로 바꿀 수 있다.
 
 ## 불변식: DB Commit 후에만 XACK
 
@@ -36,7 +37,7 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
 
 ## PEL 회수와 재기동 후 이어받기
 
-EARN·SPEND 스케줄러는 기본 30초마다 idle 60초 이상인 Pending을 최대 100건 조회해 `XCLAIM`으로 전용 consumer(`earn-pel-recovery`, `spend-pel-recovery`)에게 가져와 `process()`로 재처리한다.
+EARN·SPEND·공용 EARN 스케줄러는 기본 30초마다 idle 60초 이상인 Pending을 최대 100건 조회해 `XCLAIM`으로 전용 consumer(`earn-pel-recovery`, `spend-pel-recovery`, `common-earn-pel-recovery`)에게 가져와 `process()`로 재처리한다.
 
 - 회수 조건은 consumer가 아니라 idle 시간이다. 서버가 죽어 PEL에 남은 메시지는 재기동 후 첫 스케줄에서 회수된다.
 - Listener는 신규 메시지만 읽으므로 과거 PEL은 이 스케줄러만 처리한다.
@@ -48,8 +49,24 @@ EARN·SPEND 스케줄러는 기본 30초마다 idle 60초 이상인 Pending을 �
 
 - 보존 항목: source Stream ID, 원본 payload(JSON), requestId, memberId, eventId(SPEND만), 실패 이유, `retry_count`, `UNRESOLVED`.
 - `UNIQUE(source_stream_id, stream_type)`(A안)이므로 같은 원본은 한 행만 두고, 다시 들어오면 `retry_count`·실패 이유·`last_failed_at`만 갱신한다.
+- `stream_type`은 `EARN`/`SPEND`/`COMMON_EARN` 세 값이다(이슈 #244). 공용 EARN은 `eventId`가 없다(미션 기반이라 이벤트와 무관).
 
-운영자는 원인 확인 뒤 [관리자 API](api.md)로 목록을 조회하고 replay한다(내부적으로 `DeadStreamReplayService.replay(deadStreamMessageId, resolvedBy)`를 호출한다). 보존 payload를 같은 EARN·SPEND Ledger 서비스에 재적용하고 성공한 경우에만 `RESOLVED`로 표시한다. Ledger가 requestId 멱등이라 중복 replay도 이중 반영하지 않는다.
+운영자는 원인 확인 뒤 [관리자 API](api.md)로 목록을 조회하고 replay한다(내부적으로 `DeadStreamReplayService.replay(deadStreamMessageId, resolvedBy)`를 호출한다). 보존 payload를 같은 EARN·SPEND·공용 EARN Ledger 서비스에 재적용하고 성공한 경우에만 `RESOLVED`로 표시한다. Ledger가 requestId 멱등이라 중복 replay도 이중 반영하지 않는다.
+
+> ⚠️ **replay 순서: EARN(공용 포함)을 SPEND보다 먼저 한다.** 같은 사용자의 EARN이 Dead
+> Stream에 UNRESOLVED로 남아 있으면 DB Balance 행이 아직 없거나 부족한 상태다. 그 사용자의
+> SPEND를 먼저 replay하면 잔액 차감 대상이 없어 같은 이유로 다시 실패한다(PR #250 리뷰,
+> 문구). 크리에이터 EARN/SPEND·공용 EARN/SPEND 모두 같은 제약이다.
+>
+> **COMMON_EARN이 오래 UNRESOLVED로 남으면 그 사용자가 관련된 이벤트의 CLOSING이 안
+> 끝날 수 있다.** Redis 공용 잔액은 이미 올라간 상태라 사용자는 정상적으로 SPEND에 성공하지만,
+> DB 반영이 막혀 있던 COMMON_EARN 때문에 그 SPEND의 DB Balance 차감도 실패해 SPEND까지
+> Dead Stream으로 이관된다. 그 SPEND가 속한 이벤트는 아래 Drain 조건 3번에 걸려 CLOSED로
+> 전이하지 못한다 — COMMON_EARN을 먼저 해소해야 막힌 이벤트가 풀린다.
+>
+> 장시간 DB 장애로 `min-idle × max-retry`(기본 설정 기준 약 5~7.5분)를 넘긴 메시지는
+> 이관 이후 자동으로 재시도되지 않는다. 장애 복구 후에는 `UNRESOLVED` 목록을 확인하고
+> 위 순서로 수동 replay해야 한다.
 
 ## 마감 Drain과의 관계
 
