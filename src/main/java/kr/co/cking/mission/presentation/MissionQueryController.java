@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -24,12 +23,12 @@ public class MissionQueryController {
 
     private final MissionQueryService missionQueryService;
 
-    @GetMapping("/api/creators/{creatorId}/missions")
+    /** 인증된 사용자의 Creator별 활성 미션과 완료 여부를 조회한다. */
     @Operation(
             summary = "Creator별 미션 목록 조회",
-            description = "Creator의 활성 출석·좋아요 미션과 userId 기준 UTC periodKey의 오늘 완료 여부를 조회합니다."
+            description = "Creator의 활성 출석·좋아요 미션과 인증된 사용자 기준 UTC periodKey의 오늘 완료 여부를 조회합니다."
     )
-    /** 인증된 사용자의 Creator별 활성 미션과 완료 여부를 조회한다. */
+    @GetMapping("/api/creators/{creatorId}/missions")
     public ApiResponse<List<MissionQueryItem>> findMissions(
             @PathVariable Long creatorId,
             @CurrentMemberId Long memberId
