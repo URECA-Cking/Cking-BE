@@ -11,9 +11,9 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
   Basic Auth로 보호한다. 문서 계정 설정이 비어 있는 로컬·CI 환경에서는 Basic Auth를 적용하지 않는다.
 - `/actuator/health`, `/actuator/info`는 ALB와 모니터링의 상태 확인을 위해 인증 없이 노출·허용한다.
   그 외 actuator 경로는 공개하지 않는다.
-- Resource Server는 Bearer JWT의 서명·만료·Issuer·Claim을 검증한다. 기존 업무 API는 호출자 `userId`
-  전환 전까지 현재 `permitAll` 규칙을 유지하며, JWT가 필요한 신규 API부터 `@CurrentMemberId`를 사용한다.
-  업무 권한 검증을 Spring Security로 대체하지 않는다.
+- Resource Server는 Bearer JWT의 서명·만료·Issuer·Claim을 검증한다. Creator Event 관리와 수동 마감은
+  `@CurrentMemberId`로 인증된 호출자를 받으며, 그 밖의 기존 업무 API는 호출자 `userId` 전환 전까지
+  현재 `permitAll` 규칙을 유지한다. 업무 권한 검증을 Spring Security로 대체하지 않는다.
 - CSRF는 현재 세션 기반 인증을 사용하지 않는 기존 API 호환을 위해 비활성화한다. CORS는
   `cking.cors.allowed-origins`와 `cking.cors.allow-credentials` 설정을 사용하며, credential 기본값은
   `false`다. Refresh Cookie를 실제 도입하는 작업에서 배포 구조에 맞는 허용 origin과 credential을 함께

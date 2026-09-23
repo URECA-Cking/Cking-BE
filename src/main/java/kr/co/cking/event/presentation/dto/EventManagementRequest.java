@@ -22,7 +22,6 @@ public final class EventManagementRequest {
 
     /** Event 생성 요청의 입력값을 전달한다. */
     public record Create(
-            @NotNull Long userId,
             @NotBlank @Size(max = 36) @Pattern(regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$") String requestId,
             @NotBlank @Size(max = 200) String title,
             String description,
@@ -52,7 +51,7 @@ public final class EventManagementRequest {
     }
 
     /** Event 수정 요청의 변경 값을 전달한다. */
-    public record Update(@NotNull Long userId, @NotBlank @Size(max = 200) String title, String description,
+    public record Update(@NotBlank @Size(max = 200) String title, String description,
                          @NotNull Instant startAt, @NotNull Instant endAt, @Min(1) int winnerCount,
                          @NotNull DrawMethod drawMethod, PrizeAllocationAlgorithmVersion prizeAlgorithmVersion,
                          List<@Valid Prize> prizes) {
