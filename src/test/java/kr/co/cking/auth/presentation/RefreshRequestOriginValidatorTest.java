@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import org.junit.jupiter.api.Test;
 
 /** Refresh·Logout 요청의 Origin 검증 규칙을 확인한다. */
@@ -25,8 +26,12 @@ class RefreshRequestOriginValidatorTest {
                 new String[]{"https://dev.cking.co.kr"});
 
         assertThatThrownBy(() -> validator.validate("https://attacker.example"))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> org.assertj.core.api.Assertions.assertThat(exception.getErrorCode())
+                                .isEqualTo(CommonErrorCode.FORBIDDEN));
         assertThatThrownBy(() -> validator.validate(null))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> org.assertj.core.api.Assertions.assertThat(exception.getErrorCode())
+                                .isEqualTo(CommonErrorCode.FORBIDDEN));
     }
 }
