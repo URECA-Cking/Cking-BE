@@ -68,5 +68,6 @@
 | 62 | 외부 | Stream | ADMIN | GET | `/api/admin/dead-streams` | Dead Stream 목록 조회 | - |
 | 63 | 외부 | Stream | ADMIN | POST | `/api/admin/dead-streams/{id}/replay` | Dead Stream 수동 replay | 상태 기반 |
 | 64 | 외부 | Ticket | ADMIN | POST | `/api/admin/tickets/resync` | 잔액 수동 재동기화(Redis를 DB 기준으로) | 상태 기반 |
+| 65 | 외부 | Entry | USER | GET | `/api/events/{eventId}/entry-status` | 실시간 응모 현황(참여자 수·누적 응모권) 조회 | - |
 
 No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

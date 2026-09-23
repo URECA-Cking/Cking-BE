@@ -74,6 +74,18 @@ Provider별 응답 형식은 Mapper가 공통 `OAuthUserInfo`(`provider`, `provi
 `name`)로 정규화한다. `OAuthLoginService`는 Google/Kakao별 조건문 없이 이 값을 받아
 OAuthAccount를 조회·연결한다.
 
+### OAuth Client 설정
+
+- OAuth Provider credential은 저장소에 두지 않고 `oauth` 프로필의 환경변수로만 주입한다. 로컬 실행에서
+  OAuth 로그인이 필요하면 `SPRING_PROFILES_ACTIVE=local,oauth`와 함께 네 credential 값을 모두 설정한다.
+- Google은 Spring Security의 기본 Provider 설정과 `OAUTH_GOOGLE_CLIENT_ID`,
+  `OAUTH_GOOGLE_CLIENT_SECRET`, `profile,email` scope를 사용한다.
+- Kakao의 `OAUTH_KAKAO_CLIENT_ID`는 REST API 키이며, `OAUTH_KAKAO_CLIENT_SECRET`은 Kakao Client
+  Secret이다. Authorization·Token·UserInfo URI는 Kakao REST API 기준으로 설정하고
+  `profile_nickname,account_email` scope를 요청한다.
+- OAuth2 Login 성공 처리와 Login Code 발급은 별도 인증 구현이 연결한다. Mapper·Resolver는 Provider
+  응답 정규화와 `memberId` 반환 경계까지만 담당한다.
+
 ## 책임 경계
 
 ### OAuth 사용자 식별과 Member 연결
