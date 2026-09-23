@@ -118,6 +118,22 @@ class EntryStatusQueryServiceIntegrationTest {
         assertThat(response.myTicketCount()).isEqualTo(7L);
     }
 
+    // 코드 리뷰(PR #236, mercy0704): entry-total만 존재하고 entrants Hash가 부분 유실된
+    // 경우, HLEN·HGET이 0/null을 반환해 실제 참여자가 있는데도 0으로 잘못 응답했다.
+    // entry-total과 entrants 둘 다 있을 때만 Redis를 신뢰하고, 하나라도 없으면 DB로 대체한다.
+    @Test
+    void entrants만_없으면_entry_total이_있어도_DB_집계로_대체한다() {
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(eventId), "7");
+        // entrants는 의도적으로 세팅하지 않는다 - eviction으로 사라진 상태를 흉내낸다.
+        insertEntry(eventId, MEMBER_A_ID, 3L);
+
+        EntryStatusResponse response = entryStatusQueryService.getStatus(eventId, MEMBER_A_ID);
+
+        assertThat(response.realtime()).isFalse();
+        assertThat(response.totalTicketCount()).isEqualTo(3L);
+        assertThat(response.myTicketCount()).isEqualTo(3L);
+    }
+
     @Test
     void 집계_키가_없으면_OPEN이어도_DB_집계로_대체한다() {
         insertEntry(eventId, MEMBER_A_ID, 3L);

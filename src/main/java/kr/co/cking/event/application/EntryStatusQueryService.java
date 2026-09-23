@@ -78,6 +78,14 @@ public class EntryStatusQueryService {
 
         HashOperations<String, String, String> entrants = redisTemplate.opsForHash();
         String entrantsKey = EntryRedisKeys.entrants(eventId);
+        // entrants(Hash)는 빈 채로 존재할 수 없어서, 참여자가 아직 없는 정상 상태("0")에서는
+        // entrantsKey가 원래 없는 게 맞다. 그 외에 entry-total은 있는데 entrantsKey가 없으면
+        // entrants만 eviction 등으로 유실된 부분 desync다 - HLEN·HGET이 조용히 0/null을 반환해
+        // 실제로는 참여자가 있는데도 0으로 잘못 응답하게 되므로, 이때는 Redis를 신뢰하지 않고
+        // DB 집계로 완전히 대체한다.
+        if (!"0".equals(totalValue) && Boolean.FALSE.equals(redisTemplate.hasKey(entrantsKey))) {
+            return Optional.empty();
+        }
         long participantCount = entrants.size(entrantsKey);
         Long myTicketCount = null;
         if (userId != null) {
