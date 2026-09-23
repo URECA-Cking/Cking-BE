@@ -21,7 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** Access JWT 발급에 필요한 Claim과 Login Code 오류 경계를 검증한다. */
+/** Access JWT 발급에 필요한 Claim과 인증 수단별 오류 경계를 검증한다. */
 @ExtendWith(MockitoExtension.class)
 class AccessTokenServiceTest {
 
@@ -38,7 +38,7 @@ class AccessTokenServiceTest {
         AccessTokenResult issuedToken = new AccessTokenResult("signed-token", "Bearer", 1800);
         when(accessTokenIssuer.issue(17L, MemberRole.USER)).thenReturn(issuedToken);
 
-        AccessTokenResult response = accessTokenService.issue(17L);
+        AccessTokenResult response = accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE);
 
         assertThat(response).isEqualTo(issuedToken);
         verify(accessTokenIssuer).issue(17L, MemberRole.USER);
@@ -49,7 +49,7 @@ class AccessTokenServiceTest {
     void 존재하지_않는_Member의_LoginCode는_유효하지_않다() {
         when(memberRepository.findById(17L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> accessTokenService.issue(17L))
+        assertThatThrownBy(() -> accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_LOGIN_CODE));
     }
@@ -62,5 +62,13 @@ class AccessTokenServiceTest {
         assertThatThrownBy(() -> accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+    }
+
+    /** 호출 맥락의 오류 코드는 회원 조회 전에 명시적으로 검증한다. */
+    @Test
+    void 인증수단_오류코드는_필수다() {
+        assertThatThrownBy(() -> accessTokenService.issue(17L, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("invalidCredentialError는 필수입니다.");
     }
 }
