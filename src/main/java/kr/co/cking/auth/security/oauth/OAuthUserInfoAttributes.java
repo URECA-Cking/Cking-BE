@@ -1,5 +1,6 @@
 package kr.co.cking.auth.security.oauth;
 
+import java.math.BigInteger;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -17,15 +18,21 @@ final class OAuthUserInfoAttributes {
         return stringValue;
     }
 
-    static String requiredScalar(Map<String, Object> attributes, String field) {
+    static String requiredPositiveIntegerIdentifier(Map<String, Object> attributes, String field) {
         Object value = requireAttributes(attributes).get(field);
-        if (value instanceof String stringValue && !stringValue.isBlank()) {
+        if (value instanceof String stringValue && stringValue.matches("[1-9][0-9]*")) {
             return stringValue;
         }
-        if (value instanceof Number numberValue) {
-            return numberValue.toString();
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+            long numericValue = ((Number) value).longValue();
+            if (numericValue > 0) {
+                return Long.toString(numericValue);
+            }
         }
-        throw new IllegalArgumentException(field + "는 비어 있지 않은 식별자여야 합니다.");
+        if (value instanceof BigInteger numericValue && numericValue.signum() > 0) {
+            return numericValue.toString();
+        }
+        throw new IllegalArgumentException(field + "는 양의 정수 식별자여야 합니다.");
     }
 
     static String optionalString(Map<String, Object> attributes, String field) {

@@ -26,9 +26,9 @@ class KakaoOAuthUserInfoMapperTest {
 
     @Test
     void allowsMissingOptionalProfileValues() {
-        OAuthUserInfo userInfo = mapper.map(Map.of("id", "kakao-id"));
+        OAuthUserInfo userInfo = mapper.map(Map.of("id", "123456789"));
 
-        assertThat(userInfo).isEqualTo(new OAuthUserInfo(OAuthProvider.KAKAO, "kakao-id", null, null));
+        assertThat(userInfo).isEqualTo(new OAuthUserInfo(OAuthProvider.KAKAO, "123456789", null, null));
     }
 
     @Test
@@ -36,6 +36,16 @@ class KakaoOAuthUserInfoMapperTest {
         assertThatThrownBy(() -> mapper.map(Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> mapper.map(Map.of("id", 1L, "properties", "nickname")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsNonIntegerOrNonPositiveKakaoIdBeforeMemberConnection() {
+        assertThatThrownBy(() -> mapper.map(Map.of("id", "abc")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> mapper.map(Map.of("id", 1.5d)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> mapper.map(Map.of("id", 0L)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

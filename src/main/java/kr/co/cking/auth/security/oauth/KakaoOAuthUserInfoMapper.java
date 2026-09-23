@@ -23,7 +23,7 @@ public class KakaoOAuthUserInfoMapper implements OAuthUserInfoMapper {
 
         return new OAuthUserInfo(
                 OAuthProvider.KAKAO,
-                OAuthUserInfoAttributes.requiredScalar(attributes, "id"),
+                OAuthUserInfoAttributes.requiredPositiveIntegerIdentifier(attributes, "id"),
                 OAuthUserInfoAttributes.optionalString(kakaoAccount, "email"),
                 OAuthUserInfoAttributes.optionalString(properties, "nickname")
         );
