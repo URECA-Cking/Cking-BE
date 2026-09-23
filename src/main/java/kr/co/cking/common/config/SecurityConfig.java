@@ -2,8 +2,11 @@ package kr.co.cking.common.config;
 
 import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
+import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
+import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -11,6 +14,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.core.annotation.Order;
@@ -29,6 +33,9 @@ public class SecurityConfig {
 
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
+    private final OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
+    private final OAuth2LoginFailureHandler oauth2LoginFailureHandler;
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
 
     @Value("${cking.docs.username:}")
     private String docsUsername;
@@ -59,6 +66,7 @@ public class SecurityConfig {
     @Bean
     @Order(2)
     public SecurityFilterChain applicationSecurityFilterChain(HttpSecurity http) throws Exception {
+        configureOAuth2LoginIfRegistered(http);
         return http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
@@ -70,6 +78,15 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .build();
+    }
+
+    /** OAuth Client 등록이 있는 환경에서만 로그인 성공·실패 Handler를 Security 체인에 연결한다. */
+    private void configureOAuth2LoginIfRegistered(HttpSecurity http) throws Exception {
+        if (clientRegistrationRepositoryProvider.getIfAvailable() != null) {
+            http.oauth2Login(oauth2 -> oauth2
+                    .successHandler(oauth2LoginSuccessHandler)
+                    .failureHandler(oauth2LoginFailureHandler));
+        }
     }
 
     /** 문서 보안 체인에서만 사용할 단일 인메모리 계정을 만든다. */
