@@ -8,6 +8,7 @@
 | --- | --- | --- | --- |
 | `JWT_SECRET` | local, dev, 운영 | 예 | Access JWT HS256 서명·검증용 값. Base64 decode 결과가 32바이트 이상이어야 한다. |
 | `FRONTEND_CALLBACK_URL` | 운영 | 예 | OAuth Login Code를 전달할 Frontend callback URL. |
+| `REFRESH_COOKIE_SECURE` | 운영 | 예 | HTTPS로 서비스하는 운영 환경에서는 반드시 `true`를 주입해 Refresh Cookie에 `Secure` 속성을 설정한다. 누락하면 기동에 실패한다. local 프로필은 HTTP를 위해 `false`를 명시한다. |
 
 `JWT_SECRET`은 예를 들어 `openssl rand -base64 32`으로 생성한다. local·dev 설정에 기본값은 없으며,
 누락하면 애플리케이션이 기동하지 않는다. 테스트는 `src/test/resources/application-test.yml`의 전용 키를

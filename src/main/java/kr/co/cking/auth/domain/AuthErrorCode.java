@@ -8,7 +8,8 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum AuthErrorCode implements ErrorCode {
 
-    INVALID_LOGIN_CODE(HttpStatus.UNAUTHORIZED, "로그인 코드가 유효하지 않습니다.");
+    INVALID_LOGIN_CODE(HttpStatus.UNAUTHORIZED, "로그인 코드가 유효하지 않습니다."),
+    INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "Refresh Token이 유효하지 않습니다.");
 
     private final HttpStatus status;
     private final String message;

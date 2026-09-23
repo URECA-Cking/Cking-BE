@@ -6,6 +6,8 @@ spring:
 
 cking:
   auth:
+    # 테스트는 HTTP 환경을 가정하므로 Secure Cookie를 사용하지 않는다.
+    refresh-cookie-secure: false
     jwt:
       # 테스트 전용 키이며 런타임 환경변수로 사용하지 않는다.
       secret: 2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA=

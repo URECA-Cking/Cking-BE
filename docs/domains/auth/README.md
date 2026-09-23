@@ -131,22 +131,33 @@ iat, exp
 
 Creator 여부는 JWT claim에 넣지 않는다.
 
-### Refresh Token (후속 구현 범위)
+### Refresh Token
 
-Refresh Token은 아직 발급·회전·Cookie·갱신·Logout endpoint를 구현하지 않았다. 다음 계약은 후속 인증
-작업을 위한 보존 규칙이며, 구현 전까지 [Auth API](api.md)에 `POST /api/auth/refresh` 또는
-`POST /api/auth/logout`을 노출하지 않는다.
+Refresh Token은 Access JWT를 갱신하기 위한 서버 저장형 인증 수단이다. Login Code 교환이 성공하면
+Access JWT와 함께 Refresh Cookie를 발급한다. `POST /api/auth/refresh`와 `POST /api/auth/logout`의
+상세 계약은 [Auth API](api.md)를 따른다.
 
 - Refresh Token은 JWT가 아닌 opaque random token이며 TTL은 14일이다.
 - Redis에는 원문 token을 key나 value로 저장하지 않고 `SHA-256(token)` 기반 key로만 저장·조회·삭제한다.
 - Refresh Cookie 이름은 `refresh_token`이며 `HttpOnly`, `Path=/api/auth`, `Domain` 미지정(host-only)을
   사용한다. 운영 환경에서는 `Secure=true`를 사용한다.
-- `SameSite`는 배포 구조에 따라 정한다. same-site 배포는 `Lax`, cross-site Cookie가 필요하면
-  `None`과 `Secure=true`를 함께 사용한다.
+- Cking은 same-site로 배포하므로 `SameSite=Lax`를 사용한다.
 - Refresh 성공 시 기존 token을 원자적으로 한 번 소비하고 새 token을 저장·발급하는 rotation을 수행한다.
   소비된 token은 재사용할 수 없다.
 - Logout은 Redis의 Refresh Token을 삭제하고 Refresh Cookie를 만료시킨다.
+- Login Code 교환·Refresh·Logout은 기존 Access JWT와 독립적인 인증 수단 흐름이다. 세 경로는
+  `Authorization: Bearer`를 읽지 않으므로 만료된 Access JWT가 함께 전송되어도 Login Code 또는
+  Refresh Cookie를 처리한다.
 - Cookie 기반 Refresh·Logout 요청은 설정된 허용 origin과 일치하는 `Origin`만 허용해 CSRF를 방어한다.
+  허용 origin은 `cking.cors.allowed-origins`로 관리하며, Cookie를 받는 교차 origin 환경에서는
+  `cking.cors.allow-credentials=true`를 함께 설정한다.
+
+#### Redis rotation 설계
+
+Redis key는 `auth:refresh-token:<SHA-256(token)>`, value는 `memberId`다. Refresh 요청은 Lua가 기존 key를
+읽어 삭제하고 새 hash key를 TTL 14일로 저장하는 단일 원자 연산으로 처리한다. 따라서 동시 refresh에서도
+하나만 성공하며, 나머지는 `INVALID_REFRESH_TOKEN`을 받는다. Logout은 동일한 hash key를 삭제하지만
+이미 만료·폐기된 Cookie도 성공으로 처리해 클라이언트가 Cookie를 항상 정리할 수 있게 한다.
 
 Login Code와 Refresh Token의 만료·소비·폐기 같은 내부 상태는 외부 API에서 세분화하지 않는다.
 
