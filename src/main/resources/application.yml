@@ -44,3 +44,6 @@ cking:
   auth:
     # 운영은 FRONTEND_CALLBACK_URL을 반드시 주입한다. 프로필별 기본값은 application-<profile>.yml에 둔다.
     frontend-callback-url: ${FRONTEND_CALLBACK_URL}
+    jwt:
+      issuer: cking
+      access-token-ttl: PT30M

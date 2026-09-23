@@ -12,9 +12,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.core.annotation.Order;
@@ -22,8 +25,8 @@ import org.springframework.util.StringUtils;
 
 /**
  * API 인증 전환을 위한 Spring Security 진입점이다.
- * 현재 API는 기존 호출자 {@code userId} 계약을 유지하므로 모두 허용하고,
- * JWT 인증 전환 작업에서 경로별 권한 규칙만 단계적으로 교체한다.
+ * Resource Server는 Bearer JWT를 검증하고, 현재 API는 기존 호출자 {@code userId} 계약을 유지하므로
+ * 모두 허용한다. 업무 API 전환 작업에서 경로별 인증 규칙을 단계적으로 교체한다.
  * Swagger는 전용 Basic Auth 체인에서 보호하고, actuator는 필요한 상태 확인 경로만 공개한다.
  */
 @Configuration
@@ -36,6 +39,7 @@ public class SecurityConfig {
     private final OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
     private final OAuth2LoginFailureHandler oauth2LoginFailureHandler;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
+    private final Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter;
 
     @Value("${cking.docs.username:}")
     private String docsUsername;
@@ -74,6 +78,9 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
+                .oauth2ResourceServer(resourceServer -> resourceServer
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .authenticationEntryPoint(authenticationEntryPoint))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
