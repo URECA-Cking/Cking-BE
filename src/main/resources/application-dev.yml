@@ -26,5 +26,6 @@ cking:
     username: ${DOCS_USERNAME}
     password: ${DOCS_PASSWORD}
   auth:
-    # 개발 배포 환경은 개발 Frontend callback으로 고정한다.
     frontend-callback-url: https://dev.cking.co.kr/oauth/callback
+    jwt:
+      secret: ${JWT_SECRET}

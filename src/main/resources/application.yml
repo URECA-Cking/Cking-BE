@@ -44,3 +44,8 @@ cking:
   auth:
     # 운영은 FRONTEND_CALLBACK_URL을 반드시 주입한다. 프로필별 기본값은 application-<profile>.yml에 둔다.
     frontend-callback-url: ${FRONTEND_CALLBACK_URL}
+    jwt:
+      # 개발·운영에서는 저장소 밖의 256비트 이상 Base64 비밀값을 주입한다.
+      secret: ${JWT_SECRET}
+      issuer: cking
+      access-token-ttl: PT30M

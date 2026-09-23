@@ -73,5 +73,6 @@
 | 67 | 외부 | Mission | USER | POST | `/api/missions/{missionId}/complete` | 공용 미션 완료 | `requestId` |
 | 68 | 외부 | Ticket | USER | GET | `/api/tickets/common` | 공용 Balance 조회 | - |
 | 69 | 외부 | Ticket | USER | GET | `/api/tickets/common/history` | 공용 Ledger 조회 | - |
+| 70 | 외부 | Auth | PUBLIC | POST | `/api/auth/token` | Login Code를 Access JWT로 교환 | Login Code 1회 소비 |
 
 No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
