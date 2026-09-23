@@ -114,14 +114,17 @@ public class RedrawRequest {
     }
 
     /** REDRAW 결과 Transaction 실패를 별도 실패 기록 Transaction에서 보존한다. */
-    public void failExecution() {
+    public void failExecution(Instant failedAt) {
         if (status != RedrawRequestStatus.APPROVED
                 || (executionStatus != RedrawExecutionStatus.PENDING
                 && executionStatus != RedrawExecutionStatus.FAILED)) {
             throw new IllegalStateException("실패 처리할 수 있는 재추첨 요청이 아닙니다.");
         }
+        if (failedAt == null) {
+            throw new IllegalArgumentException("failedAt은 필수입니다.");
+        }
         executionStatus = RedrawExecutionStatus.FAILED;
-        completedAt = null;
+        completedAt = failedAt;
     }
 
     /** 검토 대기 요청을 승인하고 검토자와 검토 시각을 기록한다. */
@@ -145,9 +148,42 @@ public class RedrawRequest {
         rejectReason = reason.strip();
     }
 
+    /** 시스템3 실행을 요청하기 전에 승인·실행 대기 상태인지 검증한다. */
+    public void validateExecutable() {
+        requireExecutable();
+    }
+
+    /** 승인된 요청의 실행 성공 결과를 고정하고 연결된 REDRAW Drawing을 기록한다. */
+    public void markExecuted() {
+        requireExecutable();
+        executionStatus = RedrawExecutionStatus.EXECUTED;
+        completedAt = Instant.now();
+    }
+
+    /** 후보 부족으로 Drawing을 만들지 못한 실행 결과를 기록한다. */
+    public void markInsufficientCandidates() {
+        requireExecutable();
+        executionStatus = RedrawExecutionStatus.INSUFFICIENT_CANDIDATES;
+        completedAt = Instant.now();
+    }
+
+    /** 시스템 오류로 끝난 실행 결과를 기록한다. */
+    public void markFailed() {
+        requireExecutable();
+        executionStatus = RedrawExecutionStatus.FAILED;
+        completedAt = Instant.now();
+    }
+
     /** 심사 가능한 검토 대기 상태인지 확인하고, 이미 심사된 요청은 거부한다. */
     private void requireRequested() {
         if (status != RedrawRequestStatus.REQUESTED) {
+            throw new BusinessException(RedrawErrorCode.INVALID_STATE);
+        }
+    }
+
+    /** 실행 가능한 승인·대기 상태인지 검증해 중복 실행을 차단한다. */
+    private void requireExecutable() {
+        if (status != RedrawRequestStatus.APPROVED || executionStatus != RedrawExecutionStatus.PENDING) {
             throw new BusinessException(RedrawErrorCode.INVALID_STATE);
         }
     }

@@ -143,6 +143,32 @@ public class Drawing {
         return drawing;
     }
 
+    /** INITIAL Drawing의 검증된 입력 규격을 복제해 결원 수만 다른 REDRAW Drawing을 만든다. */
+    public static Drawing createRedraw(Drawing initial, int drawNo, Long redrawRequestId, Long seedId, int vacancyCount,
+            Long requestedBy) {
+        if (initial == null || initial.drawType != DrawingType.INITIAL || drawNo <= 0 || redrawRequestId == null
+                || seedId == null || vacancyCount <= 0 || requestedBy == null) {
+            throw new IllegalArgumentException("REDRAW Drawing 생성 입력이 올바르지 않습니다.");
+        }
+        Drawing drawing = new Drawing();
+        drawing.eventId = initial.eventId;
+        drawing.drawNo = drawNo;
+        drawing.drawType = DrawingType.REDRAW;
+        drawing.originalDrawingId = initial.id;
+        drawing.redrawRequestId = redrawRequestId;
+        drawing.snapshotId = initial.snapshotId;
+        drawing.seedId = seedId;
+        drawing.drawMethod = initial.drawMethod;
+        drawing.algorithmVersion = initial.algorithmVersion;
+        drawing.prizeAlgorithmVersion = initial.prizeAlgorithmVersion;
+        drawing.winnerCount = vacancyCount;
+        drawing.status = DrawingStatus.READY;
+        drawing.visibility = DrawingVisibility.PRIVATE;
+        drawing.requestedBy = requestedBy;
+        drawing.attemptCount = 0;
+        return drawing;
+    }
+
     /** 확정 입력과 함께 최초 실행을 시작한다. */
     public void start(String canonicalInput, String inputHash, Instant startedAt) {
         if (status != DrawingStatus.READY) {

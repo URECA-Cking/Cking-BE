@@ -1,5 +1,6 @@
 package kr.co.cking.snapshot.repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import kr.co.cking.event.domain.EventStatus;
@@ -32,6 +33,41 @@ public class JdbcSnapshotSourceQueryRepository implements SnapshotSourceQueryRep
                         resultSet.getString("prize_algorithm_version")
                 ))
                 .optional();
+    }
+
+    @Override
+    public List<Long> findMissingOfficialSnapshotEventIds(
+            Instant closedBefore,
+            Instant retryableBefore,
+            int limit
+    ) {
+        if (closedBefore == null) {
+            throw new IllegalArgumentException("closedBefore는 필수입니다.");
+        }
+        if (retryableBefore == null) {
+            throw new IllegalArgumentException("retryableBefore는 필수입니다.");
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit은 양수여야 합니다.");
+        }
+        return jdbcClient.sql("""
+                        SELECT event.event_id
+                        FROM event
+                        LEFT JOIN draw_snapshot snapshot ON snapshot.event_id = event.event_id
+                        LEFT JOIN snapshot_recovery_failure failure ON failure.event_id = event.event_id
+                        WHERE event.status = 'CLOSED'
+                          AND event.closed_at IS NOT NULL
+                          AND event.closed_at <= :closedBefore
+                          AND snapshot.id IS NULL
+                          AND (failure.next_attempt_at IS NULL OR failure.next_attempt_at <= :retryableBefore)
+                        ORDER BY event.closed_at ASC, event.event_id ASC
+                        LIMIT :limit
+                        """)
+                .param("closedBefore", closedBefore)
+                .param("retryableBefore", retryableBefore)
+                .param("limit", limit)
+                .query(Long.class)
+                .list();
     }
 
     @Override

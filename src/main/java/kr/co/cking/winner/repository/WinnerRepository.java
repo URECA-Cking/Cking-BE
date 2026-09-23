@@ -50,4 +50,5 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
     );
 
     boolean existsByEventIdAndMemberId(Long eventId, Long memberId);
+
 }

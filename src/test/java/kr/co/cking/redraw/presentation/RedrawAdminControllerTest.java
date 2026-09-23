@@ -16,6 +16,8 @@ import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
 import kr.co.cking.redraw.application.RedrawRequestDetailResult;
 import kr.co.cking.redraw.application.RedrawRequestReviewResult;
 import kr.co.cking.redraw.application.RedrawRequestReviewService;
+import kr.co.cking.redraw.application.RedrawRequestExecutionService;
+import kr.co.cking.redraw.application.RedrawRequestExecutionResult;
 import kr.co.cking.redraw.application.RedrawVacancyWinnerResult;
 import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import kr.co.cking.redraw.domain.RedrawRequestStatus;
@@ -45,6 +47,9 @@ class RedrawAdminControllerTest {
 
     @MockitoBean
     private RedrawRequestReviewService redrawRequestReviewService;
+
+    @MockitoBean
+    private RedrawRequestExecutionService redrawRequestExecutionService;
 
     /** 새 RedrawRequest는 서버가 결정한 원본·결원 정보를 201 응답으로 반환한다. */
     @Test
@@ -163,6 +168,35 @@ class RedrawAdminControllerTest {
                 .andExpect(jsonPath("$.data.executionStatus").value("PENDING"))
                 .andExpect(jsonPath("$.data.rejectReason").value("결원 확인이 필요합니다."));
         verify(redrawRequestReviewService).reject(1L, 30L, "결원 확인이 필요합니다.");
+    }
+
+    /** 승인된 요청의 실행 결과는 REDRAW Drawing ID와 최종 실행 상태로 반환한다. */
+    @Test
+    void 관리자는_승인된_RedrawRequest를_실행한다() throws Exception {
+        when(redrawRequestExecutionService.execute(1L, 30L))
+                .thenReturn(new RedrawRequestExecutionResult(30L, RedrawExecutionStatus.EXECUTED, 40L));
+
+        mockMvc.perform(post("/api/admin/redraw-requests/30/execute")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.executionStatus").value("EXECUTED"))
+                .andExpect(jsonPath("$.data.redrawDrawingId").value(40));
+        verify(redrawRequestExecutionService).execute(1L, 30L);
+    }
+
+    /** 실행 실패 응답은 관리자가 같은 Drawing을 Retry할 수 있도록 보존 ID를 노출한다. */
+    @Test
+    void REDRAW_실패_응답은_Retry할_Drawing_ID를_반환한다() throws Exception {
+        when(redrawRequestExecutionService.execute(1L, 30L))
+                .thenReturn(new RedrawRequestExecutionResult(30L, RedrawExecutionStatus.FAILED, 40L));
+
+        mockMvc.perform(post("/api/admin/redraw-requests/30/execute")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.executionStatus").value("FAILED"))
+                .andExpect(jsonPath("$.data.redrawDrawingId").value(40));
     }
 
     /** 승인 경로 식별자와 요청 본문의 관리자 식별자를 각각 독립적으로 검증한다. */

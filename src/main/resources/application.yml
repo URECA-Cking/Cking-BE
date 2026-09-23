@@ -21,6 +21,11 @@ spring:
     baseline-on-migrate: true
 
 cking:
+  snapshot:
+    recovery:
+      interval-ms: 60000
+      grace-period: PT1M
+      batch-size: 100
   cors:
     # 비우면 교차 출처 요청을 허용하지 않는다. 로컬은 Vite 프록시로 같은 출처 요청이 된다.
     allowed-origins: ""

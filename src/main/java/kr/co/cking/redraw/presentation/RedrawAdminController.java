@@ -12,6 +12,8 @@ import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
 import kr.co.cking.redraw.application.RedrawRequestDetailResult;
 import kr.co.cking.redraw.application.RedrawRequestReviewResult;
 import kr.co.cking.redraw.application.RedrawRequestReviewService;
+import kr.co.cking.redraw.application.RedrawRequestExecutionResult;
+import kr.co.cking.redraw.application.RedrawRequestExecutionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +35,7 @@ public class RedrawAdminController {
     private final RedrawRequestCreateService redrawRequestCreateService;
     private final RedrawRequestDetailQueryService redrawRequestDetailQueryService;
     private final RedrawRequestReviewService redrawRequestReviewService;
+    private final RedrawRequestExecutionService redrawRequestExecutionService;
 
     /** 관리자가 공개 Event의 미점유 결원을 서버 계산으로 확정한 RedrawRequest를 생성한다. */
     @Operation(
@@ -96,5 +99,21 @@ public class RedrawAdminController {
                 request.userId(), redrawRequestId, request.rejectReason()
         );
         return ApiResponse.success(RedrawRequestReviewResponse.from(result));
+    }
+
+    /** 관리자가 승인된 요청을 실행해 시스템3의 REDRAW Drawing 생성을 시작한다. */
+    @Operation(
+            summary = "REDRAW 실행",
+            description = "관리자만 APPROVED·PENDING 요청을 한 번 실행할 수 있습니다. 고정 결원과 실제 결원 행을 재검증한 뒤 "
+                    + "시스템3 REDRAW 실행 서비스에 위임합니다. 실행 실패 시 보존된 Drawing ID와 실패 이력을 반환하며, "
+                    + "해당 Drawing은 Drawing Retry API로 재실행할 수 있습니다."
+    )
+    @PostMapping("/api/admin/redraw-requests/{redrawRequestId}/execute")
+    public ApiResponse<RedrawRequestExecutionResponse> executeRedrawRequest(
+            @PathVariable @Positive Long redrawRequestId,
+            @Valid @RequestBody RedrawRequestExecuteRequest request
+    ) {
+        RedrawRequestExecutionResult result = redrawRequestExecutionService.execute(request.userId(), redrawRequestId);
+        return ApiResponse.success(RedrawRequestExecutionResponse.from(result));
     }
 }
