@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.redraw.application.RedrawRequestCreateCommand;
 import kr.co.cking.redraw.application.RedrawRequestCreateResult;
 import kr.co.cking.redraw.application.RedrawRequestCreateService;
@@ -22,7 +23,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 관리자의 RedrawRequest 생성 HTTP 요청을 처리한다. */
@@ -46,10 +46,11 @@ public class RedrawAdminController {
     @PostMapping("/api/admin/events/{eventId}/redraw-requests")
     public ResponseEntity<ApiResponse<RedrawRequestCreateResponse>> createRedrawRequest(
             @PathVariable @Positive Long eventId,
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody RedrawRequestCreateRequest request
     ) {
         RedrawRequestCreateResult result = redrawRequestCreateService.create(new RedrawRequestCreateCommand(
-                request.userId(), eventId, request.reason(), request.idempotencyKey()
+                memberId, eventId, request.reason(), request.idempotencyKey()
         ));
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status).body(ApiResponse.success(RedrawRequestCreateResponse.from(result)));
@@ -64,9 +65,9 @@ public class RedrawAdminController {
     @GetMapping("/api/admin/redraw-requests/{redrawRequestId}")
     public ApiResponse<RedrawRequestDetailResult> getRedrawRequest(
             @PathVariable @Positive Long redrawRequestId,
-            @RequestParam @Positive Long userId
+            @CurrentMemberId Long memberId
     ) {
-        return ApiResponse.success(redrawRequestDetailQueryService.getDetail(redrawRequestId, userId));
+        return ApiResponse.success(redrawRequestDetailQueryService.getDetail(redrawRequestId, memberId));
     }
 
     /** 관리자가 검토 대기 RedrawRequest를 승인하고 실행 대기 상태를 유지한다. */
@@ -78,9 +79,9 @@ public class RedrawAdminController {
     @PostMapping("/api/admin/redraw-requests/{redrawRequestId}/approve")
     public ApiResponse<RedrawRequestReviewResponse> approveRedrawRequest(
             @PathVariable @Positive Long redrawRequestId,
-            @Valid @RequestBody RedrawRequestApproveRequest request
+            @CurrentMemberId Long memberId
     ) {
-        RedrawRequestReviewResult result = redrawRequestReviewService.approve(request.userId(), redrawRequestId);
+        RedrawRequestReviewResult result = redrawRequestReviewService.approve(memberId, redrawRequestId);
         return ApiResponse.success(RedrawRequestReviewResponse.from(result));
     }
 
@@ -93,10 +94,11 @@ public class RedrawAdminController {
     @PostMapping("/api/admin/redraw-requests/{redrawRequestId}/reject")
     public ApiResponse<RedrawRequestReviewResponse> rejectRedrawRequest(
             @PathVariable @Positive Long redrawRequestId,
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody RedrawRequestRejectRequest request
     ) {
         RedrawRequestReviewResult result = redrawRequestReviewService.reject(
-                request.userId(), redrawRequestId, request.rejectReason()
+                memberId, redrawRequestId, request.rejectReason()
         );
         return ApiResponse.success(RedrawRequestReviewResponse.from(result));
     }
@@ -111,9 +113,9 @@ public class RedrawAdminController {
     @PostMapping("/api/admin/redraw-requests/{redrawRequestId}/execute")
     public ApiResponse<RedrawRequestExecutionResponse> executeRedrawRequest(
             @PathVariable @Positive Long redrawRequestId,
-            @Valid @RequestBody RedrawRequestExecuteRequest request
+            @CurrentMemberId Long memberId
     ) {
-        RedrawRequestExecutionResult result = redrawRequestExecutionService.execute(request.userId(), redrawRequestId);
+        RedrawRequestExecutionResult result = redrawRequestExecutionService.execute(memberId, redrawRequestId);
         return ApiResponse.success(RedrawRequestExecutionResponse.from(result));
     }
 }

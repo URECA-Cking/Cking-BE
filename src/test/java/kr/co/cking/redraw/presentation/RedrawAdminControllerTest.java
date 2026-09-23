@@ -23,15 +23,26 @@ import kr.co.cking.redraw.domain.RedrawExecutionStatus;
 import kr.co.cking.redraw.domain.RedrawRequestStatus;
 import java.time.Instant;
 import java.util.List;
+import kr.co.cking.common.config.WebMvcConfig;
+import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 /** 관리자 RedrawRequest 생성 API의 성공·멱등·입력 검증 응답을 검증한다. */
 @WebMvcTest(RedrawAdminController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import({WebMvcConfig.class, CurrentMemberIdArgumentResolver.class})
 class RedrawAdminControllerTest {
 
     private static final String IDEMPOTENCY_KEY = "d2719c4a-1f9b-4dc4-a656-9a4bb37d8e70";
@@ -50,6 +61,17 @@ class RedrawAdminControllerTest {
 
     @MockitoBean
     private RedrawRequestExecutionService redrawRequestExecutionService;
+
+    @BeforeEach
+    void authenticatedAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
+                .header("alg", "none").subject("1").claim("role", "ADMIN").build(), List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     /** 새 RedrawRequest는 서버가 결정한 원본·결원 정보를 201 응답으로 반환한다. */
     @Test
@@ -84,12 +106,12 @@ class RedrawAdminControllerTest {
                 .andExpect(jsonPath("$.data.redrawRequestId").value(30));
     }
 
-    /** userId·사유·idempotencyKey가 누락되거나 형식이 틀리면 Service 호출 전에 차단한다. */
+    /** Event 식별자·사유·idempotencyKey가 유효하지 않으면 Service 호출 전에 차단한다. */
     @Test
     void 유효하지_않은_요청은_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/events/0/redraw-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":0,\"reason\":\" \",\"idempotencyKey\":\"invalid\"}"))
+                        .content("{\"reason\":\" \",\"idempotencyKey\":\"invalid\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
@@ -99,7 +121,7 @@ class RedrawAdminControllerTest {
     void 서버_결정_필드를_전달하면_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/events/10/redraw-requests")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1,\"reason\":\"사유\",\"idempotencyKey\":\""
+                        .content("{\"reason\":\"사유\",\"idempotencyKey\":\""
                                 + IDEMPOTENCY_KEY + "\",\"vacancyCount\":2,\"originalDrawingId\":20}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
@@ -162,7 +184,7 @@ class RedrawAdminControllerTest {
 
         mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1,\"rejectReason\":\" 결원 확인이 필요합니다. \"}"))
+                        .content("{\"rejectReason\":\" 결원 확인이 필요합니다. \"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.executionStatus").value("PENDING"))
@@ -199,17 +221,11 @@ class RedrawAdminControllerTest {
                 .andExpect(jsonPath("$.data.redrawDrawingId").value(40));
     }
 
-    /** 승인 경로 식별자와 요청 본문의 관리자 식별자를 각각 독립적으로 검증한다. */
+    /** 승인 경로 식별자는 Controller에서 검증한다. */
     @Test
     void 유효하지_않은_승인_식별자는_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/redraw-requests/0/approve")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mockMvc.perform(post("/api/admin/redraw-requests/30/approve")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":0}"))
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         verifyNoInteractions(redrawRequestReviewService);
@@ -247,25 +263,20 @@ class RedrawAdminControllerTest {
         verifyNoInteractions(redrawRequestReviewService);
     }
 
-    /** 승인·거절 계약에 없는 JSON 필드는 Service 호출 전에 차단한다. */
+    /** 거절 계약에 없는 JSON 필드는 Service 호출 전에 차단한다. */
     @Test
     void 심사_요청의_미정의_필드는_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/admin/redraw-requests/30/approve")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1,\"extraField\":\"value\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         mockMvc.perform(post("/api/admin/redraw-requests/30/reject")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1,\"rejectReason\":\"사유\",\"extraField\":\"value\"}"))
+                        .content("{\"rejectReason\":\"사유\",\"extraField\":\"value\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         verifyNoInteractions(redrawRequestReviewService);
     }
 
-    /** 테스트 요청 JSON은 클라이언트 입력에 허용한 세 필드만 담는다. */
+    /** 테스트 요청 JSON은 클라이언트 입력에 허용한 사유·멱등 키만 담는다. */
     private String requestBody() {
-        return "{\"userId\":1,\"reason\":\"당첨자 포기에 따른 재추첨\",\"idempotencyKey\":\""
+        return "{\"reason\":\"당첨자 포기에 따른 재추첨\",\"idempotencyKey\":\""
                 + IDEMPOTENCY_KEY + "\"}";
     }
 
