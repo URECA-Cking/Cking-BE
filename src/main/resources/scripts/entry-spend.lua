@@ -149,12 +149,21 @@ if type(streamId) == 'table' and streamId.err then
     return redis.error_reply('XADD_FAILED: ' .. streamId.err)
 end
 
--- 7) 실시간 응모 현황 집계(FR-P2-045~050). 집계 키가 없으면(미적재·마감 후 만료) 증가하지
--- 않는다 - 0부터 다시 쌓아 조용히 틀린 값을 만드는 대신, 조회 쪽이 DB 집계로 대체한다.
--- 표시용 집계라 실패가 이미 확정된 응모 결과에 영향을 주면 안 되므로 pcall로 격리한다.
-if redis.call('EXISTS', entryTotalKey) == 1 then
-    redis.pcall('INCRBY', entryTotalKey, ticketCount)
-    redis.pcall('HINCRBY', entrantsKey, userId, ticketCount)
+-- 7) 실시간 응모 현황 집계(FR-P2-045~050). entrants(Hash)는 빈 채로 존재할 수 없어서 "0건째
+-- 첫 응모"(entry-total="0", entrants 아직 없음 - 정상)와 "entrants만 eviction으로 유실"
+-- (entry-total>0인데 entrants 없음 - 비정상)을 entrants의 EXISTS만으로는 구분할 수 없다.
+-- entry-total 값으로 구분한다: "0"이면 최초 증가라 HINCRBY가 entrants를 새로 만들어도 맞고,
+-- 그 외에 entrants가 없으면 유실이므로 이번 요청 하나로 entrants를 조용히 재생성해 과거
+-- 참여자 기록을 잃는 대신 entry-total도 함께 지워 이후 조회가 DB 집계로 완전히 대체되게
+-- 한다. 표시용 집계라 실패가 이미 확정된 응모 결과에 영향을 주면 안 되므로 pcall로 격리한다.
+local currentTotal = redis.call('GET', entryTotalKey)
+if currentTotal ~= false then
+    if currentTotal == '0' or redis.call('EXISTS', entrantsKey) == 1 then
+        redis.pcall('INCRBY', entryTotalKey, ticketCount)
+        redis.pcall('HINCRBY', entrantsKey, userId, ticketCount)
+    else
+        redis.pcall('DEL', entryTotalKey)
+    end
 end
 
 local result = { 'SUCCESS', streamId, tostring(newBalance) }

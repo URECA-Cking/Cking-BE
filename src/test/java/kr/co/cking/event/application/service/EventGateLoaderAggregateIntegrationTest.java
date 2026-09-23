@@ -149,4 +149,20 @@ class EventGateLoaderAggregateIntegrationTest {
         // Gate 자체는 정상적으로 복원돼야 한다.
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(eventId))).isEqualTo("OPEN");
     }
+
+    // entry-total·entrants 둘 중 하나만 살아있는 경우(부분 eviction), 살아있는 쪽은
+    // Consumer가 아직 DB에 못 옮긴 증가분을 포함한 최신값일 수 있는데 없는 쪽만 이번
+    // DB 스냅샷(더 과거 시점)으로 채우면 두 키가 서로 다른 시점 값이 되어 어긋난다.
+    // 이런 경우 아무것도 건드리지 않아야 한다.
+    @Test
+    void entry_total만_살아있으면_entrants를_DB로_채우지_않는다() {
+        insertEntry(MEMBER_A_ID, 3L);
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(eventId), "50");
+        // entrants는 의도적으로 세팅하지 않는다 - eviction으로 사라진 상태를 흉내낸다.
+
+        eventGateLoader.load(event());
+
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(eventId))).isEqualTo("50");
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.entrants(eventId))).isFalse();
+    }
 }

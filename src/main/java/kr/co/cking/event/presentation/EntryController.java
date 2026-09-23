@@ -54,7 +54,8 @@ public class EntryController {
             summary = "실시간 응모 현황 조회",
             description = "이벤트의 참여자 수·누적 사용 응모권 수를 조회합니다. userId를 전달하면 해당 사용자의 사용 "
                     + "응모권 수도 함께 반환합니다. 표시용 값이며 응모 승인·추첨의 근거가 아닙니다. "
-                    + "realtime=true는 Redis 집계(응모 수락 기준), false는 DB 집계(Consumer 반영 기준)입니다."
+                    + "요청 파라미터가 아니라 응답의 realtime 필드로 조회 출처를 알려줍니다 - "
+                    + "true는 Redis 집계(응모 수락 기준), false는 DB 집계(Consumer 반영 기준)입니다."
     )
     @GetMapping("/api/events/{eventId}/entry-status")
     public ApiResponse<EntryStatusResponse> getEntryStatus(

@@ -1,7 +1,11 @@
 package kr.co.cking.event.application;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -24,16 +28,28 @@ import lombok.RequiredArgsConstructor;
  * 적재돼 있으면 Redis에서, 그 외에는 DB {@code event_entry} 집계로 대체한다("키 없음 = 0
  * 금지" 원칙 - 집계 키 미적재를 0건으로 보지 않는다). Snapshot·추첨 판단에는 쓰이지 않는
  * 표시 전용 조회다.
+ *
+ * <p>DB 폴백 경로는 매 호출마다 {@code event_entry}를 group by로 재집계하므로, CLOSED 이후
+ * 계속 조회되는 인기 이벤트의 DB 부하를 줄이기 위해 이벤트별로 5초짜리 인스턴스 로컬 캐시를
+ * 둔다(표시용 값이라 인스턴스 간 공유·무효화 없이 TTL만으로 충분하다).
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class EntryStatusQueryService {
 
+    private static final Duration DB_AGGREGATE_CACHE_TTL = Duration.ofSeconds(5);
+
     private final EventQueryService eventQueryService;
     private final EventEntryRepository eventEntryRepository;
     private final MemberRepository memberRepository;
     private final StringRedisTemplate redisTemplate;
+    private final Clock clock;
+
+    private final ConcurrentHashMap<Long, CachedAggregate> dbAggregateCache = new ConcurrentHashMap<>();
+
+    private record CachedAggregate(List<EventEntryAggregate> aggregates, Instant expiresAt) {
+    }
 
     public EntryStatusResponse getStatus(Long eventId, Long userId) {
         CachedEvent event = eventQueryService.getCachedEvent(eventId);
@@ -74,7 +90,7 @@ public class EntryStatusQueryService {
     }
 
     private EntryStatusResponse readFromDb(Long eventId, Long userId) {
-        List<EventEntryAggregate> aggregates = eventEntryRepository.aggregateByEvent(eventId);
+        List<EventEntryAggregate> aggregates = loadAggregatesCached(eventId);
         long totalTicketCount = aggregates.stream().mapToLong(EventEntryAggregate::getTicketCount).sum();
         Long myTicketCount = null;
         if (userId != null) {
@@ -86,5 +102,18 @@ public class EntryStatusQueryService {
         }
 
         return new EntryStatusResponse(eventId, aggregates.size(), totalTicketCount, myTicketCount, false);
+    }
+
+    // ponytail: 만료된 엔트리를 제거하지 않는 무제한 캐시 - eventId당 1건이라 이 프로젝트
+    // 규모에서는 무시 가능하지만, 이벤트 수가 매우 많아지면 Caffeine 등 크기 제한 캐시로 교체.
+    private List<EventEntryAggregate> loadAggregatesCached(Long eventId) {
+        Instant now = clock.instant();
+        CachedAggregate cached = dbAggregateCache.get(eventId);
+        if (cached != null && now.isBefore(cached.expiresAt())) {
+            return cached.aggregates();
+        }
+        List<EventEntryAggregate> aggregates = eventEntryRepository.aggregateByEvent(eventId);
+        dbAggregateCache.put(eventId, new CachedAggregate(aggregates, now.plus(DB_AGGREGATE_CACHE_TTL)));
+        return aggregates;
     }
 }

@@ -26,13 +26,13 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
     return 1
 end
 
--- 집계 키는 status와 별도로 각자 존재 여부를 확인한다. status만 유실되고(예: 부분 eviction)
--- entry-total·entrants가 살아 있는 경우, DB 스냅샷으로 덮어쓰면 그사이 Redis에는 반영됐지만
--- Consumer가 아직 DB에 옮기지 못한 증가분이 사라진다 - 이미 있는 집계 키는 절대 건드리지 않는다.
-if redis.call('EXISTS', KEYS[4]) == 0 then
+-- 집계 키는 status와 별도로 존재 여부를 확인하되, entry-total·entrants 둘은 항상 같은 단위로
+-- 취급한다(둘 다 없을 때만 함께 초기화). 만약 한쪽만 살아 있으면(예: 부분 eviction) 없는
+-- 쪽만 지금 DB 스냅샷으로 채워 넣지 않는다 - 살아 있는 쪽은 Consumer가 아직 DB에 반영하지
+-- 못한 증가분을 포함한 최신값인데, 없는 쪽을 이번 DB 스냅샷(그보다 과거 시점)으로 채우면
+-- 두 키가 서로 다른 시점 값이 되어 어긋난다. 이미 있는 집계 키는 절대 건드리지 않는다.
+if redis.call('EXISTS', KEYS[4]) == 0 and redis.call('EXISTS', KEYS[5]) == 0 then
     redis.call('SET', KEYS[4], ARGV[2])
-end
-if redis.call('EXISTS', KEYS[5]) == 0 then
     for i = 3, #ARGV, 2 do
         redis.call('HSET', KEYS[5], ARGV[i], ARGV[i + 1])
     end

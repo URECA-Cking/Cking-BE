@@ -214,6 +214,23 @@ class EntrySpendServiceIntegrationTest {
                 .isEqualTo("3");
     }
 
+    // entrants(Hash)만 eviction 등으로 유실되고 entry-total은 살아있는 desync 상황.
+    // HINCRBY가 entrants를 이번 요청 하나로 조용히 재생성하면 과거 참여자 기록이
+    // 사라지므로, 대신 entry-total도 함께 지워 이후 조회가 DB 집계로 전부 대체되게 한다.
+    @Test
+    void entrants만_유실되면_증가시키지_않고_entry_total도_정리한다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(EVENT_ID), "3");
+        // entrants는 의도적으로 세팅하지 않는다 - eviction으로 사라진 상태를 흉내낸다.
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.entryTotal(EVENT_ID))).isFalse();
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.entrants(EVENT_ID))).isFalse();
+    }
+
     // 집계 키 미적재(배포 시점 OPEN 이벤트 등)는 "0으로 간주 금지" 원칙에 따라 새로 만들지 않는다.
     @Test
     void 집계_키가_없으면_SUCCESS_해도_새로_만들지_않는다() {
