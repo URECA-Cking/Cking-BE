@@ -7,11 +7,13 @@ import jakarta.validation.constraints.Positive;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.event.application.EntryStatusQueryService;
 import kr.co.cking.event.application.EventEntryQueryService;
 import kr.co.cking.event.application.EventEntryService;
 import kr.co.cking.event.application.dto.EntryCommand;
 import kr.co.cking.event.application.dto.EntryHistoryPage;
 import kr.co.cking.event.application.dto.EntryOutcome;
+import kr.co.cking.event.application.dto.EntryStatusResponse;
 import kr.co.cking.event.presentation.dto.EntryRequest;
 import kr.co.cking.event.presentation.dto.EntryResponse;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class EntryController {
 
     private final EventEntryService eventEntryService;
     private final EventEntryQueryService eventEntryQueryService;
+    private final EntryStatusQueryService entryStatusQueryService;
 
     @Operation(
             summary = "내 응모 내역 조회",
@@ -45,6 +48,20 @@ public class EntryController {
             @RequestParam(required = false) String cursor
     ) {
         return ApiResponse.success(eventEntryQueryService.getMyEntries(eventId, userId, size, cursor));
+    }
+
+    @Operation(
+            summary = "실시간 응모 현황 조회",
+            description = "이벤트의 참여자 수·누적 사용 응모권 수를 조회합니다. userId를 전달하면 해당 사용자의 사용 "
+                    + "응모권 수도 함께 반환합니다. 표시용 값이며 응모 승인·추첨의 근거가 아닙니다. "
+                    + "realtime=true는 Redis 집계(응모 수락 기준), false는 DB 집계(Consumer 반영 기준)입니다."
+    )
+    @GetMapping("/api/events/{eventId}/entry-status")
+    public ApiResponse<EntryStatusResponse> getEntryStatus(
+            @PathVariable @Positive Long eventId,
+            @RequestParam(required = false) @Positive Long userId
+    ) {
+        return ApiResponse.success(entryStatusQueryService.getStatus(eventId, userId));
     }
 
     @Operation(

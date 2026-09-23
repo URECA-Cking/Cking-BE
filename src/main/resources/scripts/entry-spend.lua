@@ -11,6 +11,8 @@
 -- KEYS[4] = idem:{requestId}                         String(JSON: {fingerprint, result})
 -- KEYS[5] = entry:spend-guard:{requestId}            String(JSON: {fingerprint})
 -- KEYS[6] = ticket:maint:{creatorId}:{userId}        존재 여부만 확인(issue #172)
+-- KEYS[7] = event:entry-total:{eventId}               String(integer), 실시간 응모 현황 집계(FR-P2-045~050)
+-- KEYS[8] = event:entrants:{eventId}                  Hash(userId -> 사용 응모권 수), 실시간 응모 현황 집계
 --
 -- ARGV[1] = ticketCount
 -- ARGV[2] = fingerprint      (EntrySpendService가 eventId+userId+ticketCount로 계산)
@@ -41,6 +43,8 @@ local balanceKey = KEYS[3]
 local idemKey    = KEYS[4]
 local guardKey   = KEYS[5]
 local maintenanceLockKey = KEYS[6]
+local entryTotalKey = KEYS[7]
+local entrantsKey   = KEYS[8]
 
 local ticketCount = tonumber(ARGV[1])
 local fingerprint = ARGV[2]
@@ -143,6 +147,14 @@ if type(streamId) == 'table' and streamId.err then
     redis.call('INCRBY', balanceKey, ticketCount)
     redis.call('DEL', guardKey)
     return redis.error_reply('XADD_FAILED: ' .. streamId.err)
+end
+
+-- 7) 실시간 응모 현황 집계(FR-P2-045~050). 집계 키가 없으면(미적재·마감 후 만료) 증가하지
+-- 않는다 - 0부터 다시 쌓아 조용히 틀린 값을 만드는 대신, 조회 쪽이 DB 집계로 대체한다.
+-- 표시용 집계라 실패가 이미 확정된 응모 결과에 영향을 주면 안 되므로 pcall로 격리한다.
+if redis.call('EXISTS', entryTotalKey) == 1 then
+    redis.pcall('INCRBY', entryTotalKey, ticketCount)
+    redis.pcall('HINCRBY', entrantsKey, userId, ticketCount)
 end
 
 local result = { 'SUCCESS', streamId, tostring(newBalance) }

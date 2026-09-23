@@ -39,4 +39,15 @@ public final class EntryRedisKeys {
     public static String cutoff(Long eventId) {
         return "event:cutoff:" + eventId;
     }
+
+    // 실시간 응모 현황(FR-P2-045~050) 집계 키. Gate 최초 적재와 같은 원자 단위에서
+    // event-gate-load.lua가 DB 집계값으로 초기화하고, entry-spend.lua가 신규 SUCCESS
+    // 경로에서만 증가시킨다. 존재 여부 자체가 "집계 적재됨"의 판단 기준이다.
+    public static String entryTotal(Long eventId) {
+        return "event:entry-total:" + eventId;
+    }
+
+    public static String entrants(Long eventId) {
+        return "event:entrants:" + eventId;
+    }
 }

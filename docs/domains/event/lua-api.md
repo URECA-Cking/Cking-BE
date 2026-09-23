@@ -16,6 +16,8 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
 | `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172) |
+| `event:entry-total:{eventId}` | STRING(integer) | 실시간 응모 현황(FR-P2-045~050) 누적 사용 응모권 수. `event-gate-load.lua`가 Gate 최초 적재 시 DB 집계로 초기화하고, 이 스크립트가 신규 SUCCESS 경로에서만 증가시킨다 |
+| `event:entrants:{eventId}` | HASH(userId → 사용 응모권 수) | 실시간 응모 현황 참여자별 집계. `HLEN`이 참여자 수다. 초기화·증가 시점은 위와 같다 |
 
 Gate 복원은 10초 틱(`cking.event.lifecycle-interval-ms`)마다 OPEN 이벤트 전체를 조회한다(#149). 10초는 `fixedDelay`(이전 실행 종료 후 대기)라서 Redis가 정상일 때 Gate 유실 복원을 재시도하는 기본 간격이다. 실제 `GATE_NOT_LOADED`(503) 지속 시간은 틱 실행 시간과 Redis 장애 기간만큼 10초를 초과할 수 있다.
 - 전체 조회는 OPEN 이벤트 100개 이하를 전제한다. 100개를 넘거나 틱 실행 시간이 주기의 절반(5초)을 넘으면 Slice 페이징을 도입한다.
@@ -39,7 +41,7 @@ ticketCount 검증
 → 시각 확인 (event:endat, Redis 서버 시각 기준)
 → Balance 확인
 → guard 선점 (한 번만, 이후 다시 갱신 안 함)
-→ 차감(DECRBY) + Stream 발행(XADD) + 멱등 결과 저장
+→ 차감(DECRBY) + Stream 발행(XADD) + 실시간 응모 현황 집계 증가 + 멱등 결과 저장
 ```
 
 **멱등성 확인이 Gate/시각 확인보다 먼저 실행된다.** idem 키가 남아 있는 기존 성공 요청은 응답 타임아웃 등으로 재시도되더라도, 이벤트 마감 뒤 Gate/시각 상태와 무관하게 `DUPLICATE_REPLAY`를 반환한다. idem 저장 실패 시에는 Guard가 이벤트 진행 중 재차감을 막고, 이벤트 종료 뒤에는 기존 Gate/시각 검증을 따른다. idem·Guard가 모두 없는 신규 요청만 Gate → 시각 → Balance를 검증한다.
@@ -62,6 +64,15 @@ Redis Lua는 명령 하나가 에러를 던져도 그 전에 실행된 쓰기를
 - `DECRBY` 이후 `XADD`가 실패하면(예: 스트림 키 타입 충돌) 잔액만 깎이고 멱등 결과는 저장되지 않아, 이후에도 DB UNIQUE 안전망이 적용되지 않는 채로 잔액이 샐 수 있다. `XADD`도 `redis.pcall`로 감싸서 실패를 감지하면 `INCRBY`로 잔액을 보상하고 guard 예약도 해제한다.
 
 두 경우 모두 `redis.error_reply`로 에러를 반환하며, 호출측 Java에서 `SYSTEM_ERROR`로 매핑한다.
+
+## 실시간 응모 현황 집계 (FR-P2-045~050)
+
+`event:entry-total:{eventId}`·`event:entrants:{eventId}`는 `GET /api/events/{eventId}/entry-status`(참여자 수·누적 사용 응모권 수 조회, 표시 전용 - 응모 승인·추첨 근거 아님)가 읽는 집계 키다. "키 없음 = 0 금지" 원칙을 그대로 적용해, 집계 키가 없으면 0으로 증가시키지 않고 조회 쪽이 DB `event_entry` 집계로 대체한다(`EntryStatusQueryService`).
+
+- **초기화**: `event-gate-load.lua`가 Gate가 처음 열릴 때(`event:status` 키가 아직 없을 때)만 DB 집계값으로 두 키를 채운다. Gate가 이미 있으면(정상 운영 중 대부분의 호출) 집계에 손대지 않는다 - `EventGateLoader`가 Redis `EXISTS` 사전 확인으로 매 틱 DB를 조회하지 않게 하고, Lua가 KEYS 존재 여부를 다시 확인하므로 그 사이 경합에도 이중 초기화는 없다.
+- **증가**: `entry-spend.lua`의 신규 SUCCESS 경로(XADD 성공 직후, idem 저장 전)에서만 `INCRBY`/`HINCRBY`로 증가한다. `DUPLICATE_REPLAY`(idem·guard 경로)와 모든 실패 코드는 반영하지 않으므로 재전송에도 이중 집계가 없다. 집계 실패가 이미 확정된 응모 결과를 바꾸면 안 되므로 `pcall`로 격리한다.
+- **만료**: `event-close-barrier.lua`가 새 cutoff를 확정할 때만 두 키에 24시간 만료(`PEXPIRE`)를 건다. 마감 이후 신규 증가가 없으므로 CLOSED 이후 조회는 DB로 넘어가면 충분하고, 키가 영구히 남지 않는다. 기존 cutoff를 그대로 반환하는 재시도 경로에는 적용하지 않는다(이미 걸려 있음).
+- **조회 출처**: Event 상태가 `OPEN`/`CLOSING`이고 집계 키가 있으면 Redis(`realtime=true`), 그 외는 DB `event_entry` 집계(`realtime=false`, CLOSED 이후는 Drain이 끝난 확정값).
 
 ## idem 저장 실패 시 guard 백스톱 (issue #106)
 
@@ -114,7 +125,7 @@ SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다
 - `@Value("${cking.entry.stream-key:...}")`로 stream 키를 테스트 전용(`stream:ticket-deducted:test`)으로 오버라이드해서, 테스트가 실제 운영 `stream:ticket-deducted`를 절대 건드리지 않는다.
 - 매 테스트 전후로 그 테스트가 쓴 키만 `delete`한다(FLUSHALL 사용 안 함).
 
-검증하는 케이스(22개):
+검증하는 케이스(26개):
 
 - 10종 결과 코드 각각 (Gate 없음/닫힘, 마감, ticketCount 상하한, Balance 없음/부족, 성공, XADD 실패)
 - 수동 보정 락이 걸려 있으면 `BALANCE_MAINTENANCE`를 반환하고 잔액·idem·guard를 건드리지 않는지, 이미 완료된 요청의 replay는 락과 무관하게 재현되는지, 락이 풀린 뒤 같은 requestId로 재시도하면 SUCCESS로 처리되는지 (issue #172)
@@ -126,6 +137,9 @@ SPEND는 EARN과 달리 `QueryTimeoutException`을 따로 구분하지 않는다
 - idem 키가 유실돼도 guard가 DUPLICATE_REPLAY로 막고(streamId/balance 없이) 잔액을 다시 깎지 않는지 (issue #106)
 - idem 없이 guard만 있으면 DUPLICATE_REPLAY를, guard의 fingerprint가 다르면 IDEMPOTENCY_CONFLICT를 반환하는지 (issue #106)
 - endAt이 idemTtl보다 먼 이벤트에서도 guard TTL이 idemTtl을 넘겨 endAt까지 유지되는지 (issue #106)
+- 실시간 응모 현황 집계 키가 있으면 SUCCESS 시 증가하는지, 없으면 새로 만들지 않는지, DUPLICATE_REPLAY는 다시 증가시키지 않는지 (FR-P2-045~050)
+
+Gate 최초 적재 시 DB 집계로 두 키를 초기화하는지는 `EventGateLoaderAggregateIntegrationTest`, 마감 barrier의 만료 설정은 `EventCutoffBarrierTest`, 조회 시 Redis/DB 선택 분기는 `EntryStatusQueryServiceIntegrationTest`가 각각 검증한다.
 
 ## NFR-06 부하 테스트
 

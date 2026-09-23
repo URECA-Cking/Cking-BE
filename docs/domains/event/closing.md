@@ -20,6 +20,10 @@ OPEN
 
 마감 시작 전 Event 상태가 OPEN이 아니면 `INVALID_STATE`다. Gate·barrier·cutoff는 `EventCutoffBarrier`가 처리하고, 상태 전이는 `EventCommandService.startClosing()`과 `completeClosing()`만 수행한다.
 
+`EventCutoffBarrier`는 새 cutoff를 확정할 때 실시간 응모 현황(FR-P2-045~050) 집계 키(`event:entry-total`,
+`event:entrants`)에도 24시간 만료를 건다 - 마감 이후에는 신규 응모가 없어 조회가 DB 집계로 넘어가면
+충분하기 때문이다. 자세한 내용은 [응모 Lua API](lua-api.md#실시간-응모-현황-집계-fr-p2-045050) 참고.
+
 ## Drain 완료 조건
 
 `EventDrainChecker.isDrained(eventId, cutoffStreamId)`는 다음을 모두 만족할 때만 true다.

@@ -81,6 +81,8 @@ class EntrySpendServiceIntegrationTest {
                 EntryRedisKeys.endAt(EVENT_ID),
                 EntryRedisKeys.balance(CREATOR_ID, USER_ID),
                 EntryRedisKeys.maintenance(CREATOR_ID, USER_ID),
+                EntryRedisKeys.entryTotal(EVENT_ID),
+                EntryRedisKeys.entrants(EVENT_ID),
                 STREAM_KEY
         ));
 
@@ -194,6 +196,49 @@ class EntrySpendServiceIntegrationTest {
         assertThat(fields.get("creatorId")).isEqualTo(String.valueOf(CREATOR_ID));
         assertThat(fields.get("requestId")).isEqualTo("req-success");
         assertThat(fields.get("ticketCount")).isEqualTo("2");
+    }
+
+    // FR-P2-045~050: 집계 키가 이미 적재돼 있으면 신규 SUCCESS 경로에서만 원자적으로 증가한다.
+    @Test
+    void 집계_키가_적재돼_있으면_SUCCESS_시_실시간_응모_현황이_증가한다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(EVENT_ID), "3");
+        redisTemplate.opsForHash().put(EntryRedisKeys.entrants(EVENT_ID), String.valueOf(USER_ID), "1");
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(EVENT_ID))).isEqualTo("5");
+        assertThat(redisTemplate.opsForHash().get(EntryRedisKeys.entrants(EVENT_ID), String.valueOf(USER_ID)))
+                .isEqualTo("3");
+    }
+
+    // 집계 키 미적재(배포 시점 OPEN 이벤트 등)는 "0으로 간주 금지" 원칙에 따라 새로 만들지 않는다.
+    @Test
+    void 집계_키가_없으면_SUCCESS_해도_새로_만들지_않는다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.entryTotal(EVENT_ID))).isFalse();
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.entrants(EVENT_ID))).isFalse();
+    }
+
+    // 동일 requestId 재전송(DUPLICATE_REPLAY)은 재차감이 없으므로 집계도 다시 증가하지 않는다.
+    @Test
+    void DUPLICATE_REPLAY는_집계를_다시_증가시키지_않는다() {
+        openGate();
+        redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(EVENT_ID), "0");
+
+        entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+        EntrySpendResult replay = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-success", 2);
+
+        assertThat(replay.code()).isEqualTo(EntrySpendResultCode.DUPLICATE_REPLAY);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(EVENT_ID))).isEqualTo("2");
     }
 
     // issue #106: guard는 idemTtl이 아니라 endAt까지 유지돼야 한다 - idemTtl로

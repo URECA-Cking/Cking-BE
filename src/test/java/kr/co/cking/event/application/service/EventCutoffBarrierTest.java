@@ -32,6 +32,8 @@ class EventCutoffBarrierTest {
         redisTemplate.delete(List.of(
                 EntryRedisKeys.status(EVENT_ID),
                 EntryRedisKeys.cutoff(EVENT_ID),
+                EntryRedisKeys.entryTotal(EVENT_ID),
+                EntryRedisKeys.entrants(EVENT_ID),
                 STREAM_KEY
         ));
     }
@@ -70,5 +72,26 @@ class EventCutoffBarrierTest {
 
         assertThat(second).isEqualTo(first);
         assertThat(redisTemplate.opsForStream().size(STREAM_KEY)).isEqualTo(1L);
+    }
+
+    @Test
+    void 새_cutoff_확정_시_실시간_응모_현황_집계_키에_만료를_건다() {
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "OPEN");
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(EVENT_ID), "5");
+        redisTemplate.opsForHash().put(EntryRedisKeys.entrants(EVENT_ID), "1", "5");
+
+        eventCutoffBarrier.close(EVENT_ID);
+
+        assertThat(redisTemplate.getExpire(EntryRedisKeys.entryTotal(EVENT_ID))).isGreaterThan(0);
+        assertThat(redisTemplate.getExpire(EntryRedisKeys.entrants(EVENT_ID))).isGreaterThan(0);
+    }
+
+    @Test
+    void 집계_키가_없어도_cutoff_확정은_실패하지_않는다() {
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "OPEN");
+
+        String cutoff = eventCutoffBarrier.close(EVENT_ID);
+
+        assertThat(cutoff).isNotBlank();
     }
 }
