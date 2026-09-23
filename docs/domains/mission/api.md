@@ -104,6 +104,9 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 ### POST /api/missions/{missionId}/complete
 
+- 권한: `USER`
+- Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
+
 ```json
 {
   "requestId": "550e8400-e29b-41d4-a716-446655440000"
