@@ -36,9 +36,9 @@ public class CreatorApplicationController {
 
     private final CreatorApplicationService creatorApplicationService;
 
+    /** 인증된 사용자의 Creator 신청을 처리한다. */
     @PostMapping("/api/creator/applications")
     @Operation(summary = "Creator 신청", description = "인증된 사용자의 Creator 신청을 생성하거나 기존 PENDING 신청을 반환합니다.")
-    /** 인증된 사용자의 Creator 신청을 처리한다. */
     public ResponseEntity<ApiResponse<CreatorApplicationResponse.Result>> apply(@CurrentMemberId Long memberId) {
         CreatorApplicationService.ApplyResult result = creatorApplicationService.apply(memberId);
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
@@ -46,9 +46,9 @@ public class CreatorApplicationController {
                 .body(ApiResponse.success(CreatorApplicationResponse.Result.from(result.application())));
     }
 
+    /** 인증된 사용자의 Creator 신청 이력을 조회한다. */
     @GetMapping("/api/creator/applications/me")
     @Operation(summary = "내 Creator 신청 조회", description = "인증된 사용자의 Creator 신청 이력을 페이지로 조회합니다.")
-    /** 인증된 사용자의 Creator 신청 이력을 조회한다. */
     public ApiResponse<CreatorApplicationResponse.PageResult<CreatorApplicationResponse.Mine>> findMine(
             @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "0") @Min(0) int page,

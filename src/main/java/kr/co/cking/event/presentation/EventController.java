@@ -46,8 +46,8 @@ public class EventController {
             summary = "이벤트 상세 조회",
             description = "이벤트 정보와 요청 사용자의 해당 크리에이터 보유 응모권 수를 함께 조회합니다."
     )
-    @GetMapping("/api/events/{eventId}")
     /** 인증된 사용자의 응모권 정보를 포함해 Event 상세를 조회한다. */
+    @GetMapping("/api/events/{eventId}")
     public ApiResponse<EventDetail> getEvent(@PathVariable Long eventId, @CurrentMemberId Long memberId) {
         return ApiResponse.success(eventQueryService.getEvent(eventId, memberId));
     }

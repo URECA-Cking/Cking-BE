@@ -42,8 +42,8 @@ public class EntryController {
             description = "사용자가 특정 이벤트에 응모한 내역을 appliedAt DESC, entryId DESC 순으로 cursor 기반 조회합니다. "
                     + "size의 기본값은 20이며 1~100 범위입니다."
     )
-    @GetMapping("/api/events/{eventId}/entries/me")
     /** 인증된 사용자의 Event 응모 이력을 조회한다. */
+    @GetMapping("/api/events/{eventId}/entries/me")
     public ApiResponse<EntryHistoryPage> getMyEntries(
             @PathVariable @Positive Long eventId,
             @CurrentMemberId Long memberId,
@@ -74,8 +74,8 @@ public class EntryController {
                     + "couponType을 생략하면 CREATOR(해당 크리에이터 전용 응모권)로 처리하고, COMMON을 주면 "
                     + "크리에이터 무관 공용 응모권을 대신 씁니다."
     )
-    @PostMapping("/api/events/{eventId}/entries")
     /** 인증된 사용자의 응모권으로 Event 응모를 요청한다. */
+    @PostMapping("/api/events/{eventId}/entries")
     public ApiResponse<EntryResponse> apply(
             @PathVariable Long eventId,
             @CurrentMemberId Long memberId,

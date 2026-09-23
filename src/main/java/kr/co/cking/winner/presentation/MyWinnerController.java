@@ -32,8 +32,8 @@ public class MyWinnerController {
             description = "userId로 식별한 Member를 검증한 뒤 본인 소유 Winner만 반환합니다. "
                     + "Winner의 불변 데이터와 WinnerManagement의 현재 상태를 함께 조회합니다."
     )
-    @GetMapping("/api/me/winners")
     /** 인증된 사용자의 공개 당첨 결과를 조회한다. */
+    @GetMapping("/api/me/winners")
     public ApiResponse<List<MyWinnerResult>> getMyWinners(@CurrentMemberId Long memberId) {
         return ApiResponse.success(myWinnerQueryService.getMyWinners(memberId));
     }
@@ -44,8 +44,8 @@ public class MyWinnerController {
             description = "userId로 호출자를 검증한 뒤 본인 소유의 SELECTED Winner만 DECLINED로 변경합니다. "
                     + "상태 변경 이력은 변경 주체·시각과 함께 저장되며, 같은 Winner의 동시 변경은 직렬화됩니다."
     )
-    @PostMapping("/api/me/winners/{winnerId}/decline")
     /** 인증된 사용자가 본인 소유 당첨을 포기한다. */
+    @PostMapping("/api/me/winners/{winnerId}/decline")
     public ApiResponse<Void> decline(
             @PathVariable @Positive Long winnerId,
             @CurrentMemberId Long memberId

@@ -32,9 +32,9 @@ public class MissionController {
 
     private final MissionCompletionService missionCompletionService;
 
+    /** 인증된 사용자의 Creator 미션 완료 요청을 처리한다. */
     @PostMapping("/api/creators/{creatorId}/missions/{missionId}/complete")
     @Operation(summary = "Creator 미션 완료", description = "인증된 사용자의 미션 완료를 requestId로 멱등 처리합니다.")
-    /** 인증된 사용자의 Creator 미션 완료 요청을 처리한다. */
     public ResponseEntity<ApiResponse<MissionCompleteResponse>> complete(
             @PathVariable @Positive Long creatorId,
             @PathVariable @Positive Long missionId,
