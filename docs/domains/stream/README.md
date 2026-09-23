@@ -53,6 +53,21 @@ EARN·SPEND·공용 EARN 스케줄러는 기본 30초마다 idle 60초 이상인
 
 운영자는 원인 확인 뒤 [관리자 API](api.md)로 목록을 조회하고 replay한다(내부적으로 `DeadStreamReplayService.replay(deadStreamMessageId, resolvedBy)`를 호출한다). 보존 payload를 같은 EARN·SPEND·공용 EARN Ledger 서비스에 재적용하고 성공한 경우에만 `RESOLVED`로 표시한다. Ledger가 requestId 멱등이라 중복 replay도 이중 반영하지 않는다.
 
+> ⚠️ **replay 순서: EARN(공용 포함)을 SPEND보다 먼저 한다.** 같은 사용자의 EARN이 Dead
+> Stream에 UNRESOLVED로 남아 있으면 DB Balance 행이 아직 없거나 부족한 상태다. 그 사용자의
+> SPEND를 먼저 replay하면 잔액 차감 대상이 없어 같은 이유로 다시 실패한다(PR #250 리뷰,
+> 문구). 크리에이터 EARN/SPEND·공용 EARN/SPEND 모두 같은 제약이다.
+>
+> **COMMON_EARN이 오래 UNRESOLVED로 남으면 그 사용자가 관련된 이벤트의 CLOSING이 안
+> 끝날 수 있다.** Redis 공용 잔액은 이미 올라간 상태라 사용자는 정상적으로 SPEND에 성공하지만,
+> DB 반영이 막혀 있던 COMMON_EARN 때문에 그 SPEND의 DB Balance 차감도 실패해 SPEND까지
+> Dead Stream으로 이관된다. 그 SPEND가 속한 이벤트는 아래 Drain 조건 3번에 걸려 CLOSED로
+> 전이하지 못한다 — COMMON_EARN을 먼저 해소해야 막힌 이벤트가 풀린다.
+>
+> 장시간 DB 장애로 `min-idle × max-retry`(기본 설정 기준 약 5~7.5분)를 넘긴 메시지는
+> 이관 이후 자동으로 재시도되지 않는다. 장애 복구 후에는 `UNRESOLVED` 목록을 확인하고
+> 위 순서로 수동 replay해야 한다.
+
 ## 마감 Drain과의 관계
 
 `EventDrainChecker.isDrained(eventId, cutoffStreamId)`는 다음이 모두 참일 때만 true다.

@@ -57,6 +57,11 @@ public class DeadStreamReplayService {
             case EARN -> ticketEarnLedgerService.apply(EarnCommand.fromStreamFields(fields));
             case SPEND -> ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
             case COMMON_EARN -> commonMissionEarnLedgerService.apply(CommonEarnCommand.fromStreamFields(fields));
+            // PR #250 리뷰(문구): enum switch 문은 case 누락을 컴파일러가 잡아주지 않는다 -
+            // DeadStreamType에 값이 추가되고 case를 빠뜨리면 아무것도 재적용하지 않은 채
+            // 조용히 RESOLVED로 표시될 뻔했다. default를 명시해 그 경로를 막는다.
+            default -> throw new IllegalStateException(
+                    "지원하지 않는 DeadStreamType입니다: " + message.getStreamType());
         }
 
         message.resolve(resolvedBy, Instant.now());

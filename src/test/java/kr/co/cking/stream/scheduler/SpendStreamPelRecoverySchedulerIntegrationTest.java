@@ -108,6 +108,12 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
     void tearDown() {
         // stream 키 자체를 지우면 consumer group도 함께 사라져 다음 테스트가
         // NOGROUP 에러를 맞는다(그룹은 컨텍스트 시작 시 한 번만 생성됨) — entry만 비운다.
+        // PR #250 리뷰(문구): trim은 Stream 본문만 비우고 PEL 항목은 남긴다 - "이관 실패"
+        // 테스트가 일부러 PEL에 남긴 메시지를 ACK로 먼저 비우지 않으면, 다음 테스트의
+        // awaitPending()이 이 잔존 항목 때문에 새 메시지를 기다리지 않고 바로 통과해버린다.
+        PendingMessages leftover = redisTemplate.opsForStream()
+                .pending(STREAM_KEY, CONSUMER_GROUP, Range.unbounded(), 100);
+        leftover.forEach(m -> redisTemplate.opsForStream().acknowledge(STREAM_KEY, CONSUMER_GROUP, m.getId()));
         redisTemplate.opsForStream().trim(STREAM_KEY, 0);
         cleanUp();
     }
