@@ -18,6 +18,8 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.core.annotation.Order;
@@ -79,12 +81,29 @@ public class SecurityConfig {
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer
+                        .bearerTokenResolver(applicationBearerTokenResolver())
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint(authenticationEntryPoint))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .build();
+    }
+
+    /**
+     * Refresh Cookie 흐름은 Access JWT와 독립적으로 동작해야 한다.
+     * 만료된 Access JWT가 자동으로 첨부되어도 refresh/logout Controller까지 도달하게 한다.
+     */
+    private BearerTokenResolver applicationBearerTokenResolver() {
+        DefaultBearerTokenResolver defaultResolver = new DefaultBearerTokenResolver();
+        return request -> isRefreshCookieEndpoint(request.getRequestURI(), request.getContextPath())
+                ? null
+                : defaultResolver.resolve(request);
+    }
+
+    private boolean isRefreshCookieEndpoint(String requestUri, String contextPath) {
+        String path = requestUri.substring(contextPath.length());
+        return path.equals("/api/auth/refresh") || path.equals("/api/auth/logout");
     }
 
     /** OAuth Client 등록이 있는 환경에서만 로그인 성공·실패 Handler를 Security 체인에 연결한다. */

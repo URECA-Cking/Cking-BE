@@ -67,6 +67,8 @@ JWT는 `iss=cking`, `sub=memberId`, `role=USER|ADMIN`, `iat`, `exp` Claim을 포
 - 권한: `PUBLIC`
 - Request Body: 없음
 - Request Cookie: `refresh_token`
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  Refresh Cookie 흐름을 수행한다.
 
 Cookie의 opaque Refresh Token을 Redis Lua로 원자적으로 한 번 소비하고, 같은 Member의 새 Access JWT와
 새 Refresh Cookie를 발급한다. 기존 Refresh Token은 즉시 폐기되어 재사용할 수 없다.
@@ -86,6 +88,8 @@ Cookie의 opaque Refresh Token을 Redis Lua로 원자적으로 한 번 소비하
 - 권한: `PUBLIC`
 - Request Body: 없음
 - Request Cookie: `refresh_token` (선택)
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  Refresh Cookie를 폐기한다.
 
 Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만료된 `refresh_token` Cookie를 응답한다.
 이미 만료·폐기된 Cookie 또는 Cookie가 없는 Logout도 성공으로 처리한다.

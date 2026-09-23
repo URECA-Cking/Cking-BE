@@ -1,11 +1,22 @@
 package kr.co.cking.common.config;
 
-import kr.co.cking.common.security.RestAccessDeniedHandler;
-import kr.co.cking.common.security.RestAuthenticationEntryPoint;
-import kr.co.cking.common.security.AccessTokenJwtValidator;
-import kr.co.cking.common.security.JwtAuthenticationConverterConfig;
+import java.time.Instant;
+import java.util.List;
+import kr.co.cking.auth.application.AccessTokenService;
+import kr.co.cking.auth.application.LoginCodeService;
+import kr.co.cking.auth.application.RefreshTokenService;
+import kr.co.cking.auth.application.dto.AccessTokenResult;
+import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
+import kr.co.cking.auth.domain.AuthErrorCode;
+import kr.co.cking.auth.presentation.AuthController;
 import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
 import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
+import kr.co.cking.auth.presentation.RefreshRequestOriginValidator;
+import kr.co.cking.auth.presentation.RefreshTokenCookieFactory;
+import kr.co.cking.common.security.AccessTokenJwtValidator;
+import kr.co.cking.common.security.JwtAuthenticationConverterConfig;
+import kr.co.cking.common.security.RestAccessDeniedHandler;
+import kr.co.cking.common.security.RestAuthenticationEntryPoint;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.presentation.MemberController;
 import kr.co.cking.member.presentation.UserSummary;
@@ -13,14 +24,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.ResponseCookie;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS;
@@ -31,12 +47,13 @@ import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.http.HttpHeaders.ORIGIN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Spring Security 기반 설정이 기존 API와 문서 인증 경로에 미치는 영향을 검증한다. */
-@WebMvcTest(controllers = MemberController.class)
+@WebMvcTest(controllers = {MemberController.class, AuthController.class})
 @Import({
         SecurityConfig.class,
         JwtConfig.class,
@@ -56,8 +73,26 @@ class SecurityConfigTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private JwtEncoder jwtEncoder;
+
     @MockitoBean
     private MemberQueryService memberQueryService;
+
+    @MockitoBean
+    private LoginCodeService loginCodeService;
+
+    @MockitoBean
+    private AccessTokenService accessTokenService;
+
+    @MockitoBean
+    private RefreshTokenService refreshTokenService;
+
+    @MockitoBean
+    private RefreshTokenCookieFactory refreshTokenCookieFactory;
+
+    @MockitoBean
+    private RefreshRequestOriginValidator refreshRequestOriginValidator;
 
     @MockitoBean
     private OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
@@ -94,6 +129,42 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
+    /** 만료된 Access JWT가 자동 첨부되어도 Refresh Cookie 인증 흐름을 차단하지 않는다. */
+    @Test
+    void 만료된_Access_JWT와_RefreshCookie로_AccessToken을_갱신한다() throws Exception {
+        when(refreshTokenService.rotate("refresh-token"))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenReturn(new AccessTokenResult("next-access-token", "Bearer", 1800));
+        when(refreshTokenCookieFactory.create("next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header(AUTHORIZATION, "Bearer " + expiredAccessToken())
+                        .header(ORIGIN, "https://frontend.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "refresh-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+
+        verify(refreshTokenService).rotate("refresh-token");
+    }
+
+    /** 만료된 Access JWT가 자동 첨부되어도 Logout의 Refresh Cookie 정리를 차단하지 않는다. */
+    @Test
+    void 만료된_Access_JWT와_RefreshCookie로_Logout한다() throws Exception {
+        when(refreshTokenCookieFactory.expire())
+                .thenReturn(ResponseCookie.from("refresh_token", "").maxAge(0).build());
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .header(AUTHORIZATION, "Bearer " + expiredAccessToken())
+                        .header(ORIGIN, "https://frontend.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "refresh-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+
+        verify(refreshTokenService).revoke("refresh-token");
+    }
+
     /** Authorization 헤더를 포함한 허용 origin의 사전 요청을 처리하는지 검증한다. */
     @Test
     void 허용된_origin의_CORS_사전_요청을_처리한다() throws Exception {
@@ -121,6 +192,19 @@ class SecurityConfigTest {
     void Swagger_기본_진입_경로는_Security_인증으로_거부되지_않는다() throws Exception {
         mockMvc.perform(get("/swagger-ui.html"))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    private String expiredAccessToken() {
+        Instant expiresAt = Instant.now().minusSeconds(120);
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("cking")
+                .subject("17")
+                .claim("role", "USER")
+                .issuedAt(expiresAt.minusSeconds(60))
+                .expiresAt(expiresAt)
+                .build();
+        return jwtEncoder.encode(JwtEncoderParameters.from(
+                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }
 
 }
