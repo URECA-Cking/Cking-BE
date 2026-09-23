@@ -30,17 +30,33 @@ class OAuthUserInfoResolverTest {
                 OAuthProvider.GOOGLE, "google-sub", "google@example.com", "구글 사용자"));
     }
 
-    /** Kakao의 중첩 프로필 속성을 공통 모델에 옮기는지 검증한다. */
+    /** Kakao 표준 profile.nickname을 레거시 properties.nickname보다 우선하는지 검증한다. */
     @Test
-    void Kakao_속성을_OAuthUserInfo로_정규화한다() {
+    void Kakao_표준_프로필_닉네임을_우선해_OAuthUserInfo로_정규화한다() {
         OAuthUserInfo userInfo = resolver.resolve(authentication("kakao", Map.of(
                 "id", 12345L,
-                "kakao_account", Map.of("email", "kakao@example.com"),
-                "properties", Map.of("nickname", "카카오 사용자")
+                "kakao_account", Map.of(
+                        "email", "kakao@example.com",
+                        "profile", Map.of("nickname", "표준 카카오 사용자")
+                ),
+                "properties", Map.of("nickname", "레거시 카카오 사용자")
         )));
 
         assertThat(userInfo).isEqualTo(new OAuthUserInfo(
-                OAuthProvider.KAKAO, "12345", "kakao@example.com", "카카오 사용자"));
+                OAuthProvider.KAKAO, "12345", "kakao@example.com", "표준 카카오 사용자"));
+    }
+
+    /** Kakao 표준 프로필이 없을 때만 레거시 properties.nickname을 사용하는지 검증한다. */
+    @Test
+    void Kakao_표준_프로필이_없으면_레거시_닉네임을_사용한다() {
+        OAuthUserInfo userInfo = resolver.resolve(authentication("kakao", Map.of(
+                "id", 12345L,
+                "kakao_account", Map.of("email", "kakao@example.com"),
+                "properties", Map.of("nickname", "레거시 카카오 사용자")
+        )));
+
+        assertThat(userInfo).isEqualTo(new OAuthUserInfo(
+                OAuthProvider.KAKAO, "12345", "kakao@example.com", "레거시 카카오 사용자"));
     }
 
     /** 테스트용 OAuth2 인증 토큰을 만든다. */

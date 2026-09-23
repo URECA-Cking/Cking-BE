@@ -30,16 +30,23 @@ public class OAuthUserInfoResolver {
         );
     }
 
-    /** Kakao 응답의 id, kakao_account, properties 구조를 공통 사용자 정보로 정규화한다. */
+    /** Kakao 표준 프로필과 레거시 properties fallback을 공통 사용자 정보로 정규화한다. */
     private OAuthUserInfo resolveKakao(Map<String, Object> attributes) {
         Map<String, Object> kakaoAccount = mapValue(attributes.get("kakao_account"));
+        Map<String, Object> profile = mapValue(kakaoAccount.get("profile"));
         Map<String, Object> properties = mapValue(attributes.get("properties"));
         return new OAuthUserInfo(
                 OAuthProvider.KAKAO,
                 requiredString(attributes.get("id")),
                 optionalString(kakaoAccount.get("email")),
-                optionalString(properties.get("nickname"))
+                nickname(profile, properties)
         );
+    }
+
+    /** Kakao 표준 profile.nickname을 우선하고 레거시 properties.nickname은 호환용으로만 사용한다. */
+    private String nickname(Map<String, Object> profile, Map<String, Object> properties) {
+        String standardNickname = optionalString(profile.get("nickname"));
+        return standardNickname != null ? standardNickname : optionalString(properties.get("nickname"));
     }
 
     /** 필수 OAuth 속성을 문자열로 바꾸고 누락값은 로그인 처리 실패로 전환한다. */
