@@ -90,8 +90,10 @@ class CreatorSpaceTemplateServiceTest {
         ReflectionTestUtils.setField(current, "templateId", 10L);
         CreatorSpaceTemplate target = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s", true, true, true, true);
         ReflectionTestUtils.setField(target, "templateId", 20L);
-        given(templateRepository.findById(20L)).willReturn(Optional.of(target));
-        given(templateRepository.findByActiveMarker(CreatorSpaceTemplate.ACTIVE_MARKER)).willReturn(Optional.of(current));
+        given(templateRepository.existsById(20L)).willReturn(true);
+        given(templateRepository.findByIdForActivation(20L)).willReturn(Optional.of(target));
+        given(templateRepository.findByActiveMarkerForActivation(CreatorSpaceTemplate.ACTIVE_MARKER))
+                .willReturn(Optional.of(current));
         CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
 
         CreatorSpaceTemplate activated = service.activate(1L, 20L);
@@ -103,23 +105,24 @@ class CreatorSpaceTemplateServiceTest {
     }
 
     @Test
-    void activatingAlreadyActiveTemplateNeverAcquiresLock() {
+    void activatingAlreadyActiveTemplateIsNoOp() {
         MemberRepository memberRepository = mock(MemberRepository.class);
         CreatorSpaceTemplateRepository templateRepository = mock(CreatorSpaceTemplateRepository.class);
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        runCommands(lockManager);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         CreatorSpaceTemplate target = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s", true, true, true, true);
         target.activate(1L);
         ReflectionTestUtils.setField(target, "templateId", 20L);
-        given(templateRepository.findById(20L)).willReturn(Optional.of(target));
+        given(templateRepository.existsById(20L)).willReturn(true);
+        given(templateRepository.findByIdForActivation(20L)).willReturn(Optional.of(target));
         CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
 
         service.activate(1L, 20L);
 
-        verify(templateRepository, never()).findByActiveMarker(any());
+        verify(templateRepository, never()).findByActiveMarkerForActivation(any());
         verify(templateRepository, never()).flush();
-        verify(lockManager, never()).execute(any(), any());
     }
 
     /**
@@ -141,7 +144,25 @@ class CreatorSpaceTemplateServiceTest {
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CommonErrorCode.FORBIDDEN);
 
-        verify(templateRepository, never()).findById(any());
+        verify(templateRepository, never()).existsById(any());
+        verify(lockManager, never()).execute(any(), any());
+    }
+
+    @Test
+    void nonExistentTemplateActivationNeverAcquiresLock() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        CreatorSpaceTemplateRepository templateRepository = mock(CreatorSpaceTemplateRepository.class);
+        CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
+        given(templateRepository.existsById(999L)).willReturn(false);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+
+        assertThatThrownBy(() -> service.activate(1L, 999L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+
         verify(lockManager, never()).execute(any(), any());
     }
 

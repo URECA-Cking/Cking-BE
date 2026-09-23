@@ -23,7 +23,8 @@
 
 - 활성 템플릿은 항상 하나뿐이다. DB `creator_space_template.active_marker` UNIQUE 제약이 최종 안전망이며, 활성 템플릿만 이 컬럼에 `1`을 갖고 나머지는 `NULL`이다.
 - 활성화 API는 대상 템플릿을 활성화하면서 기존에 활성이던 템플릿을 함께 비활성화한다. 두 동작은 하나의 트랜잭션으로 처리되며, 기존 템플릿의 비활성화를 먼저 flush한 뒤 새 템플릿을 활성화한다(순서를 지키지 않으면 Hibernate가 새 템플릿의 `active_marker=1` UPDATE를 먼저 내보내 UNIQUE 제약을 순간적으로 위반할 수 있다).
-- 동시 활성화 요청은 advisory lock으로 직렬화된다. 락을 즉시 얻지 못한 요청은 `CONCURRENT_COMMAND`다. 락 key는 템플릿별이 아니라 전역이므로, 관리자 검증과 대상 템플릿 조회는 락을 잡기 전에 끝낸다 — 그렇지 않으면 없는 templateId·비관리자 같은 잘못된 요청이 락부터 잡아 무관한 다른 템플릿의 정상 활성화 요청까지 `CONCURRENT_COMMAND`로 거부될 수 있다.
+- 동시 활성화 요청은 advisory lock으로 직렬화된다. 락을 즉시 얻지 못한 요청은 `CONCURRENT_COMMAND`다. 락 key는 템플릿별이 아니라 전역이므로, 관리자 검증과 대상 템플릿 존재 여부 확인은 락을 잡기 전에 끝낸다 — 그렇지 않으면 없는 templateId·비관리자 같은 잘못된 요청이 락부터 잡아 무관한 다른 템플릿의 정상 활성화 요청까지 `CONCURRENT_COMMAND`로 거부될 수 있다.
+- 락을 잡기 전에 실행한 조회(관리자 검증)가 MySQL REPEATABLE READ 트랜잭션의 첫 SELECT라 consistent-read 스냅샷을 그 시점에 고정해버린다. 그래서 락 안에서 "누가 활성 상태인지" 판단하는 조회는 일반 SELECT가 아니라 `FOR UPDATE`(`findByIdForActivation`/`findByActiveMarkerForActivation`)로 한다 — 그래야 락을 기다리는 동안 다른 트랜잭션이 커밋한 최신 활성화 상태를 놓치지 않는다. 일반 SELECT를 썼다면 오래된 스냅샷 기준으로 "아무도 활성 아님"을 보고 이미 활성인 다른 템플릿을 비활성화하지 않은 채 지나쳐 UNIQUE 제약을 위반했을 것이다.
 
 ## POST /api/admin/creator-space-templates
 
