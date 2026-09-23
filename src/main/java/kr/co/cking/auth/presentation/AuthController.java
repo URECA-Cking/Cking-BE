@@ -41,7 +41,14 @@ public class AuthController {
     @PostMapping("/api/auth/token")
     public ResponseEntity<ApiResponse<TokenResponse>> exchangeToken(@Valid @RequestBody TokenExchangeRequest request) {
         Long memberId = loginCodeService.consume(request.code());
-        return tokenResponse(memberId, refreshTokenService.issue(memberId));
+        String refreshToken = refreshTokenService.issue(memberId);
+        try {
+            return tokenResponse(memberId, refreshToken);
+        } catch (RuntimeException exception) {
+            // 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기해 고아 key를 남기지 않는다.
+            refreshTokenService.revoke(refreshToken);
+            throw exception;
+        }
     }
 
     /** Refresh Cookie를 한 번 소비하고 새 Access JWT와 Refresh Cookie를 발급한다. */

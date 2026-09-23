@@ -71,6 +71,25 @@ class AuthControllerTest {
         verify(refreshTokenService).issue(17L);
     }
 
+    /** Login Code 교환의 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기한다. */
+    @Test
+    void LoginCode_AccessToken발급_실패시_RefreshToken을_폐기한다() throws Exception {
+        when(loginCodeService.consume("one-time-code")).thenReturn(17L);
+        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
+        when(refreshTokenCookieFactory.create("refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE));
+
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType("application/json")
+                        .content("{\"code\":\"one-time-code\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
+
+        verify(refreshTokenService).revoke("refresh-token");
+    }
+
     /** 비어 있는 Login Code 요청은 Access Token 발급 전에 입력 오류로 거절하는지 검증한다. */
     @Test
     void LoginCode가_비어_있으면_400을_반환한다() throws Exception {
