@@ -55,7 +55,9 @@ Event는 Event 전용 `EVENT_NOT_FOUND`다.
 
 ## GET /api/creator/events
 
-Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하고 `deletedAt IS NULL`인 Event만 반환한다. 기본 정렬은 `createdAt DESC, eventId DESC`다.
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Query `userId`는 받지 않는다.
+Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `deletedAt IS NULL`인 Event만 반환한다.
+기본 정렬은 `createdAt DESC, eventId DESC`다.
 
 ```json
 {
@@ -86,7 +88,6 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
 
 ```json
 {
-  "userId": 1,
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
   "title": "이벤트 제목",
   "description": "이벤트 설명",
@@ -102,10 +103,11 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
 }
 ```
 
-- `creatorId`는 userId의 승인 Creator에서 서버가 결정한다.
+- 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body `userId`는 받지 않는다.
+- `creatorId`는 인증된 Member의 승인 Creator에서 서버가 결정한다.
 - 생성 상태는 DRAFT다. 성공은 201이며 응답은 `{ "eventId": 1, "status": "DRAFT" }`다.
 - `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다.
-- `userId`, `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가,
+- `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가,
   description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이다.
 - `drawMethod`는 `UNIFORM`(후보 동일 확률) 또는 `WEIGHTED`(응모권 수 비례)를 사용한다.
   `prizeAlgorithmVersion`은 `PRIZE_UNIFORM_V1` 또는 `PRIZE_WEIGHTED_V1`이며, 생략하면 하위 호환을
@@ -117,20 +119,19 @@ Query: `userId`, `page`, `size`. 요청 Member에 연결된 Creator가 소유하
 
 ## PATCH /api/creator/events/{eventId}
 
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body `userId`는 받지 않는다.
 요청 본문은 생성 API에서 `requestId`를 제외한 동일 필드를 사용한다. 상품 설정 변경도 DRAFT에서만 허용한다. DRAFT 또는 REJECTED 상태에서만 수정할 수 있으며, REJECTED 수정은 `EventCommandService.changeToDraft(eventId)`로 DRAFT로 전이한다.
 
 성공은 200이고 응답은 `{ "eventId": 1, "status": "DRAFT" }`다. 별도 멱등 키는 사용하지 않으며 같은 값을 재적용해도 같은 최종 상태가 된다.
 
 ## DELETE /api/creator/events/{eventId}
 
-Query: `userId`. DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedAt`을 기록한다. 성공은 204 No Content다.
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Query `userId`는 받지 않는다.
+DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedAt`을 기록한다. 성공은 204 No Content다.
 
 ## POST /api/creator/events/{eventId}/approval-request
 
-```json
-{ "userId": 1 }
-```
-
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body는 없다.
 EventApprovalRequest를 새 차수로 생성한 뒤 `EventCommandService.requestApproval(eventId)`로 DRAFT에서 PENDING_APPROVAL로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "PENDING_APPROVAL" }`다.
 
 ## GET /api/admin/events/pending
@@ -197,13 +198,9 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 
 ## POST /api/events/{eventId}/close
 
-```json
-{ "userId": 1 }
-```
-
-`userId`는 양수 Long이며, 요청 Member와 삭제되지 않은 Event가 존재해야 한다. ADMIN은 모든 Event,
-Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요청할 수 있다. Creator가 타인의 Event를
-요청하면 `FORBIDDEN`이고, 존재하지 않는 Member 또는 존재하지 않거나 삭제된 Event는
+호출자 식별자는 Access JWT에서 추출하며 Request Body는 없다. 요청 Member와 삭제되지 않은 Event가
+존재해야 한다. ADMIN은 모든 Event, Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요청할 수 있다.
+Creator가 타인의 Event를 요청하면 `FORBIDDEN`이고, 존재하지 않는 Member 또는 존재하지 않거나 삭제된 Event는
 `RESOURCE_NOT_FOUND`다. `OPEN`이면 마감을 시작하고, 이미 `CLOSING` 또는 `CLOSED`인 요청은
 오류 없이 현재 상태를 반환하는 멱등 명령이다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`,
 `SCHEDULED`, `DRAW_COMPLETED`, `PUBLISHED` 상태는 `INVALID_STATE`다.
@@ -237,5 +234,5 @@ Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요
 { "status": "CLOSING" }
 ```
 
-식별자가 누락·0 이하이거나 형식이 올바르지 않으면 `VALIDATION_FAILED`, 없는 Member 또는 Event는
+`eventId`가 누락·0 이하이거나 형식이 올바르지 않으면 `VALIDATION_FAILED`, 없는 Member 또는 Event는
 `RESOURCE_NOT_FOUND`, 관리자가 아닌 Member는 `FORBIDDEN`이다.

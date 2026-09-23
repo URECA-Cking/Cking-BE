@@ -2,16 +2,25 @@ package kr.co.cking.event.presentation;
 
 import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
+import kr.co.cking.common.config.WebMvcConfig;
+import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,6 +32,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -31,11 +41,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(EventManagementController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import({WebMvcConfig.class, CurrentMemberIdArgumentResolver.class})
 class EventManagementControllerTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private CreatorEventService creatorEventService;
     @MockitoBean private EventReviewService eventReviewService;
+
+    @BeforeEach
+    void authenticatedCreator() {
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt("1"), java.util.List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     /** Event 생성 API가 Created 상태와 공통 응답 봉투를 반환하는지 검증한다. */
     @Test
@@ -49,7 +71,7 @@ class EventManagementControllerTest {
         mockMvc.perform(post("/api/creator/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","description":"설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                {"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","description":"설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
@@ -70,7 +92,7 @@ class EventManagementControllerTest {
         mockMvc.perform(post("/api/creator/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"UNIFORM","prizeAlgorithmVersion":"PRIZE_UNIFORM_V1"}
+                                {"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"UNIFORM","prizeAlgorithmVersion":"PRIZE_UNIFORM_V1"}
                                 """))
                 .andExpect(status().isCreated());
     }
@@ -81,6 +103,7 @@ class EventManagementControllerTest {
         Event event = event(1L, "팬미팅");
         given(creatorEventService.create(any())).willAnswer(invocation -> {
             var command = invocation.getArgument(0, kr.co.cking.event.application.dto.CreateEventCommand.class);
+            assertThat(command.userId()).isEqualTo(1L);
             assertThat(command.startAt()).isEqualTo(Instant.parse("2026-09-20T09:00:00Z"));
             assertThat(command.endAt()).isEqualTo(Instant.parse("2026-09-21T09:00:00Z"));
             return event;
@@ -89,7 +112,7 @@ class EventManagementControllerTest {
         mockMvc.perform(post("/api/creator/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T18:00:00+09:00","endAt":"2026-09-21T18:00:00+09:00","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                {"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T18:00:00+09:00","endAt":"2026-09-21T18:00:00+09:00","winnerCount":1,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isCreated());
     }
@@ -100,7 +123,7 @@ class EventManagementControllerTest {
         given(creatorEventService.findMine(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of()));
 
-        mockMvc.perform(get("/api/creator/events").param("userId", "1"))
+        mockMvc.perform(get("/api/creator/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items").isArray())
@@ -123,7 +146,7 @@ class EventManagementControllerTest {
         given(creatorEventService.findMine(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(event)));
 
-        mockMvc.perform(get("/api/creator/events").param("userId", "1"))
+        mockMvc.perform(get("/api/creator/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].eventId").value(7))
                 .andExpect(jsonPath("$.data.items[0].startAt").exists())
@@ -139,7 +162,7 @@ class EventManagementControllerTest {
         mockMvc.perform(post("/api/creator/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requestId":"not-a-uuid","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
+                                {"requestId":"not-a-uuid","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
@@ -148,8 +171,9 @@ class EventManagementControllerTest {
     /** Creator Event 삭제 API가 No Content를 반환하는지 검증한다. */
     @Test
     void deleteEventReturnsNoContent() throws Exception {
-        mockMvc.perform(delete("/api/creator/events/{eventId}", 1L).param("userId", "1"))
+        mockMvc.perform(delete("/api/creator/events/{eventId}", 1L))
                 .andExpect(status().isNoContent());
+        then(creatorEventService).should().delete(1L, 1L);
     }
 
     /** Event 수정 API가 변경된 초안 상태를 공통 응답 봉투로 반환하는지 검증한다. */
@@ -161,7 +185,7 @@ class EventManagementControllerTest {
         mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":2,"drawMethod":"WEIGHTED"}
+                                {"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":2,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
@@ -175,6 +199,7 @@ class EventManagementControllerTest {
         Event event = event(7L, "변경된 팬미팅");
         given(creatorEventService.update(any())).willAnswer(invocation -> {
             var command = invocation.getArgument(0, kr.co.cking.event.application.dto.UpdateEventCommand.class);
+            assertThat(command.userId()).isEqualTo(1L);
             assertThat(command.startAt()).isEqualTo(Instant.parse("2026-09-20T09:00:00Z"));
             assertThat(command.endAt()).isEqualTo(Instant.parse("2026-09-21T09:00:00Z"));
             return event;
@@ -183,7 +208,7 @@ class EventManagementControllerTest {
         mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T18:00:00+09:00","endAt":"2026-09-21T18:00:00+09:00","winnerCount":2,"drawMethod":"WEIGHTED"}
+                                {"title":"변경된 팬미팅","description":"변경 설명","startAt":"2026-09-20T18:00:00+09:00","endAt":"2026-09-21T18:00:00+09:00","winnerCount":2,"drawMethod":"WEIGHTED"}
                                 """))
                 .andExpect(status().isOk());
     }
@@ -191,13 +216,21 @@ class EventManagementControllerTest {
     /** 승인 요청 API가 승인 대기 상태를 공통 응답 봉투로 반환하는지 검증한다. */
     @Test
     void approvalRequestReturnsPendingApprovalResultEnvelope() throws Exception {
-        mockMvc.perform(post("/api/creator/events/{eventId}/approval-request", 7L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1}"))
+        mockMvc.perform(post("/api/creator/events/{eventId}/approval-request", 7L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(7))
                 .andExpect(jsonPath("$.data.status").value("PENDING_APPROVAL"));
+        then(creatorEventService).should().requestApproval(1L, 7L);
+    }
+
+    @Test
+    void Creator_API는_JWT가_없으면_UNAUTHORIZED를_반환한다() throws Exception {
+        SecurityContextHolder.clearContext();
+
+        mockMvc.perform(get("/api/creator/events"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     /** 관리자 승인 대기 목록 API가 Event와 승인 요청 정보를 페이지 봉투로 반환하는지 검증한다. */
@@ -261,5 +294,14 @@ class EventManagementControllerTest {
                 Arguments.of("/api/admin/events/pending", "size", "0"),
                 Arguments.of("/api/admin/events/pending", "size", "101")
         );
+    }
+
+    private Jwt jwt(String subject) {
+        return Jwt.withTokenValue("token")
+                .header("alg", "HS256")
+                .subject(subject)
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(60))
+                .build();
     }
 }

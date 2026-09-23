@@ -27,9 +27,12 @@
 - Access JWT는 `POST /api/auth/token`에서 발급하고 Resource Server가 검증한다. 새 인증 필요 API는
   `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
 - 전환되지 않은 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
-- GET·DELETE 요청은 query parameter `userId`를 사용한다.
-- POST·PATCH 요청은 body의 `userId`를 사용한다.
-- `/api/me/**` 경로도 `userId`를 요청에 포함한다.
+- Creator Event 관리(`GET`/`POST`/`PATCH`/`DELETE /api/creator/events/**`, 승인 요청)와 수동 마감
+  (`POST /api/events/{eventId}/close`)은 전환을 완료했으므로 호출자 `userId`를 받지 않고
+  `@CurrentMemberId`를 사용한다. 각 상세 계약은 Event API 문서를 따른다.
+- 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
+- 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
+- 전환되지 않은 `/api/me/**` 경로도 `userId`를 요청에 포함한다.
 - `POST /api/demo/users/select`의 `userId`는 클라이언트가 선택하는 가상 사용자를 뜻하며, 선택 결과는 클라이언트가 관리한다.
 
 Controller는 요청에서 호출자 `userId`를 추출해 Application/Service에 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
