@@ -94,11 +94,27 @@ Creator 여부는 JWT claim에 넣지 않는다.
 
 Refresh Token은 JWT가 아닌 opaque random token이다.
 
-- TTL은 14일이며 Redis에는 Hash 기반 key로 저장한다. Refresh Cookie는 `refresh_token`,
-  `Path=/api/auth`, host-only, `HttpOnly`, `Secure`, `SameSite=None`을 사용한다. 세부 외부
-  계약은 [Auth API](api.md#refresh-cookie-계약)를 따른다.
-- Refresh 성공 시 기존 토큰을 폐기하고 새 토큰을 발급한다. 폐기된 토큰은 재사용할 수 없다.
-- Logout은 Redis의 Refresh Token을 폐기하고 Refresh Cookie를 만료시킨다.
+- TTL은 14일이다. Redis에는 원문 token을 key나 value로 저장하지 않고 `SHA-256(token)` 기반 key로만
+  저장·조회·삭제한다.
+- Refresh Cookie 이름은 `refresh_token`이며 `HttpOnly`, `Path=/api/auth`, `Domain` 미지정(host-only)을
+  사용한다. 운영 환경에서는 `Secure=true`를 사용한다.
+- `SameSite`는 배포 구조에 따라 정한다. same-site 배포는 `Lax`, cross-site Cookie가 필요하면
+  `None`과 `Secure=true`를 함께 사용한다.
+- Refresh 성공 시 기존 token을 원자적으로 한 번 소비하고 새 token을 저장·발급하는 rotation을 수행한다.
+  소비된 token은 재사용할 수 없다.
+- Logout은 Redis의 Refresh Token을 삭제하고 Refresh Cookie를 만료시킨다.
+
+### Opaque Token 상태와 외부 오류
+
+Login Code와 Refresh Token의 만료·소비·폐기 같은 내부 상태는 외부 API에서 세분화하지 않는다.
+
+| 대상 | 외부 오류 코드 | 통합하는 상태 |
+| --- | --- | --- |
+| Login Code | `INVALID_LOGIN_CODE` | 만료, 소비됨, 잘못된 값 |
+| Refresh Token | `INVALID_REFRESH_TOKEN` | 만료, 폐기, 재사용, rotation 후 사용, 잘못된 값 |
+
+세부 원인은 서버 로그와 모니터링에서만 구분한다. 외부 오류 구분을 위해 Redis에 tombstone 또는 meta
+상태를 별도로 유지하지 않는다.
 
 ## 인증과 업무 권한
 

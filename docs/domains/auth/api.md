@@ -64,16 +64,17 @@ Login Code를 검증하고 원자적으로 한 번 소비한 뒤 `memberId`로 A
 `POST /api/auth/token`과 `POST /api/auth/refresh`는 다음 속성으로 Refresh Token을 설정한다.
 
 ```text
-Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600;
-            HttpOnly; Secure; SameSite=None
+Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600; HttpOnly;
+            [운영 환경: Secure]; SameSite=<Lax | None>
 ```
 
 - Cookie 이름은 `refresh_token`이며, `Domain` 속성을 설정하지 않는 host-only Cookie다.
 - `Path=/api/auth`로 한정해 일반 Cking API 요청에는 Refresh Cookie를 보내지 않는다.
-- `Secure`이므로 HTTPS에서만 전달한다. `SameSite=None`은 Frontend와 API가 cross-site일 수 있는
-  배포 구조에서도 credential Cookie 전달을 허용하기 위한 정책이다.
-- Cookie 기반 Refresh·Logout 요청은 Frontend가 credential을 포함해 전송한다. 인증 구현 시 CORS는
-  허용 origin을 명시하고 credential을 허용하며 `Authorization` header를 허용해야 한다.
+- 운영 환경에서는 `Secure=true`로 HTTPS에서만 전달한다.
+- same-site 배포는 `SameSite=Lax`를 사용한다. Frontend와 API의 cross-site Cookie 전달이 필요하면
+  `SameSite=None`과 `Secure=true`를 함께 사용한다.
+- Cookie 기반 Refresh·Logout 요청은 Frontend가 credential을 포함해 전송한다. cross-site 배포에서는
+  CORS가 허용 origin을 명시하고 credential을 허용해야 한다.
 - `POST /api/auth/refresh`와 `POST /api/auth/logout`은 설정된 허용 origin과 일치하는 `Origin`만
   허용해 Cookie 기반 요청의 CSRF를 방어한다.
 
@@ -83,7 +84,8 @@ Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600;
 
 - 권한: `PUBLIC`
 - HttpOnly Cookie의 Refresh Token을 사용한다. Request Body는 없다.
-- Redis 상태를 확인한 뒤 기존 Refresh Token을 폐기하고 새 Refresh Token과 Access Token을 발급한다.
+- Redis에서 기존 Refresh Token을 원자적으로 한 번 소비한 뒤, 새 Refresh Token과 Access Token을
+  발급한다. 동시에 도착한 동일 Cookie 요청은 하나만 성공한다.
 - 응답 `data`는 [Token 교환](#token-교환)과 같고, 새 Refresh Cookie는
   [Refresh Cookie 계약](#refresh-cookie-계약)을 따른다.
 
@@ -92,10 +94,10 @@ Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600;
 ### `POST /api/auth/logout`
 
 - 권한: `PUBLIC`
-- HttpOnly Cookie의 Refresh Token이 있으면 Redis에서 제거하고 Refresh Cookie를 만료한다.
+- HttpOnly Cookie의 Refresh Token이 있으면 `SHA-256(token)` 기반 Redis key를 삭제하고 Refresh Cookie를 만료한다.
 - 이미 만료·폐기되었거나 Cookie가 없는 경우에도 클라이언트 Cookie 만료 처리를 수행한다.
-- Cookie 만료 응답도 `refresh_token`, `Path=/api/auth`, host-only, `HttpOnly`, `Secure`,
-  `SameSite=None`을 동일하게 적용하고 `Max-Age=0`으로 설정한다.
+- Cookie 만료 응답도 `refresh_token`, `Path=/api/auth`, host-only, `HttpOnly`, 운영 환경의 `Secure`,
+  배포 구조에 맞는 `SameSite`를 동일하게 적용하고 `Max-Age=0`으로 설정한다.
 - 성공 시 `200 OK`와 공통 성공 응답을 반환한다.
 
 ## 현재 사용자 조회
@@ -125,24 +127,11 @@ Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600;
 | 코드 | HTTP | 상황 | 클라이언트 처리 |
 | --- | --- | --- | --- |
 | `VALIDATION_FAILED` | 400 | Login Code 요청 형식이 올바르지 않음 | 요청을 수정해 다시 시도 |
-| `AUTHENTICATION_REQUIRED` | 401 | 보호 API에 Access Token이 없음 | Refresh Cookie가 있으면 Refresh를 시도하고, 없거나 실패하면 로그인 |
-| `INVALID_ACCESS_TOKEN` | 401 | Access JWT의 서명·형식·claim이 유효하지 않음 | Refresh하지 않고 현재 인증 상태를 폐기한 뒤 로그인 |
-| `EXPIRED_ACCESS_TOKEN` | 401 | Access JWT가 만료됨 | Refresh를 한 번 시도하고, 실패하면 로그인 |
-| `INVALID_LOGIN_CODE` | 401 | Login Code가 유효하지 않음 | OAuth 로그인을 처음부터 다시 시작 |
-| `EXPIRED_LOGIN_CODE` | 401 | 보존된 만료 메타데이터로 Login Code의 60초 TTL 경과가 확인됨 | OAuth 로그인을 처음부터 다시 시작 |
-| `CONSUMED_LOGIN_CODE` | 401 | Login Code가 이미 교환에 성공해 소비됨 | OAuth 로그인을 처음부터 다시 시작 |
-| `INVALID_REFRESH_TOKEN` | 401 | Refresh Token의 형식·Hash 또는 활성 Redis 기록이 유효하지 않음 | 현재 인증 상태를 폐기하고 로그인 |
-| `EXPIRED_REFRESH_TOKEN` | 401 | 보존된 만료 메타데이터로 Refresh Token의 14일 TTL 경과가 확인됨 | 현재 인증 상태를 폐기하고 로그인 |
-| `REVOKED_REFRESH_TOKEN` | 401 | Logout 또는 rotation으로 Refresh Token이 폐기됨 | 현재 인증 상태를 폐기하고 로그인 |
+| `UNAUTHORIZED` | 401 | Access Token 없음·만료·변조·형식 오류 | Refresh Cookie가 있으면 Refresh를 시도하고, 없거나 실패하면 로그인 |
+| `INVALID_LOGIN_CODE` | 401 | Login Code 만료·소비·잘못된 값 | OAuth 로그인을 처음부터 다시 시작 |
+| `INVALID_REFRESH_TOKEN` | 401 | Refresh Token 만료·폐기·재사용·잘못된 값 | 현재 인증 상태를 폐기하고 로그인 |
 | `FORBIDDEN` | 403 | 인증되었지만 endpoint 권한이 부족함 | Refresh하지 않고 권한 없음으로 처리 |
-
-Login Code와 Refresh Token은 소비·폐기 뒤에도 남은 원래 TTL 동안 상태를 식별할 수 있어야 한다.
-소비·폐기 상태 기록이 있으면 각각 `CONSUMED_LOGIN_CODE`, `REVOKED_REFRESH_TOKEN`을 반환한다.
-
-활성 Redis 기록과 상태 기록이 모두 없으면, 자연 만료 후 모든 기록이 삭제된 경우까지 포함해
-`INVALID_LOGIN_CODE` 또는 `INVALID_REFRESH_TOKEN`을 반환한다. opaque token만으로는 그 토큰이
-처음부터 유효하지 않았는지 자연 만료됐는지 알 수 없기 때문이다. `EXPIRED_*`는 별도 만료
-메타데이터가 남아 만료 사실을 확인할 수 있을 때만 반환하며, 이 메타데이터가 없을 때 만료를 추정하지 않는다.
+| `SYSTEM_ERROR` | 500 | 예상하지 못한 인증 서버 오류 | 재시도 안내 또는 로그인 화면으로 이동 |
 
 `POST /api/auth/token`의 Login Code 소비와 `POST /api/auth/refresh`의 Refresh Token rotation은
 동시 요청에서도 각각 한 번만 성공하도록 원자적으로 처리한다.
