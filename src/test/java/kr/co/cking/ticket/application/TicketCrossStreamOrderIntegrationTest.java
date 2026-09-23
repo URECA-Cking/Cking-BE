@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.SpendCommand;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 
 /**
@@ -86,7 +87,7 @@ class TicketCrossStreamOrderIntegrationTest {
     }
 
     private SpendCommand spend(String requestId, long ticketCount) {
-        return new SpendCommand(eventId, MEMBER_ID, CREATOR_ID, requestId, ticketCount);
+        return new SpendCommand(eventId, MEMBER_ID, CREATOR_ID, requestId, ticketCount, CouponType.CREATOR);
     }
 
     private int count(String table) {

@@ -18,4 +18,10 @@ public final class CommonTicketRedisKeys {
     public static String earnGuard(Long userId, String missionType, String periodKeyYyyyMmDd) {
         return "mission:earn-guard:common:" + userId + ":" + missionType + ":" + periodKeyYyyyMmDd;
     }
+
+    // 공용 보정 락(이슈 #243). 공용 잔액 수동 보정 자체는 아직 없어 entry-spend.lua의
+    // EXISTS 확인 대상으로만 쓰인다 — 후속 공용 보정 작업이 이 포맷을 그대로 재사용한다.
+    public static String maintenance(Long userId) {
+        return "ticket:maint:common:" + userId;
+    }
 }

@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import kr.co.cking.event.application.config.EntryRedisKeys;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
+import kr.co.cking.ticket.domain.CouponType;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -48,9 +50,17 @@ public class EntrySpendServiceImpl implements EntrySpendService {
             Long userId,
             Long creatorId,
             String requestId,
-            int ticketCount
+            int ticketCount,
+            CouponType couponType
     ) {
-        String fingerprint = computeFingerprint(eventId, userId, ticketCount);
+        String fingerprint = computeFingerprint(eventId, userId, ticketCount, couponType);
+        // 이슈 #243: 어느 잔액·보정 락 키를 검증·차감할지는 이벤트가 아니라 요청의
+        // couponType이 정한다. Lua에는 분기 로직이 없다 - Java가 이미 고른 키를 그대로 넘긴다.
+        boolean common = couponType == CouponType.COMMON;
+        String balanceKey = common ? CommonTicketRedisKeys.balance(userId) : EntryRedisKeys.balance(creatorId, userId);
+        String maintenanceKey = common
+                ? CommonTicketRedisKeys.maintenance(userId)
+                : EntryRedisKeys.maintenance(creatorId, userId);
         List<?> luaResult;
 
         try {
@@ -59,10 +69,10 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                     List.of(
                             EntryRedisKeys.status(eventId),
                             EntryRedisKeys.endAt(eventId),
-                            EntryRedisKeys.balance(creatorId, userId),
+                            balanceKey,
                             EntryRedisKeys.idem(requestId),
                             EntryRedisKeys.spendGuard(requestId),
-                            EntryRedisKeys.maintenance(creatorId, userId),
+                            maintenanceKey,
                             EntryRedisKeys.entryTotal(eventId),
                             EntryRedisKeys.entrants(eventId)
                     ),
@@ -73,7 +83,8 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                     String.valueOf(eventId),
                     String.valueOf(userId),
                     String.valueOf(creatorId),
-                    requestId
+                    requestId,
+                    couponType.name()
             );
         } catch (DataAccessException e) {
             // Lua는 DECRBY/XADD 실패 시 잔액과 guard를 정리한 뒤 오류를 반환한다.
@@ -92,8 +103,13 @@ public class EntrySpendServiceImpl implements EntrySpendService {
     // FR-P2-029: 동일 requestId라도 요청 내용(eventId+userId+ticketCount)이 다르면
     // IDEMPOTENCY_CONFLICT로 구분해야 하므로, 그 내용을 요약한 값을 여기서 직접 계산한다.
     // 클라이언트는 이 값을 알거나 전달할 필요가 없다.
-    private String computeFingerprint(Long eventId, Long userId, int ticketCount) {
+    // couponType은 CREATOR면 접미사를 붙이지 않는다(D5: 배포 직전 요청의 재시도가
+    // IDEMPOTENCY_CONFLICT로 깨지지 않게 기존 fingerprint 값을 그대로 유지).
+    private String computeFingerprint(Long eventId, Long userId, int ticketCount, CouponType couponType) {
         String payload = eventId + ":" + userId + ":" + ticketCount;
+        if (couponType == CouponType.COMMON) {
+            payload += ":COMMON";
+        }
 
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

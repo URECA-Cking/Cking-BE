@@ -4,13 +4,16 @@ import tools.jackson.databind.ObjectMapper;
 import kr.co.cking.event.application.EntryStatusQueryService;
 import kr.co.cking.event.application.EventEntryService;
 import kr.co.cking.event.application.EventEntryQueryService;
+import kr.co.cking.event.application.dto.EntryCommand;
 import kr.co.cking.event.application.dto.EntryHistoryItemResponse;
 import kr.co.cking.event.application.dto.EntryHistoryPage;
 import kr.co.cking.event.application.dto.EntryOutcome;
 import kr.co.cking.event.application.dto.EntryStatusResponse;
 import kr.co.cking.event.domain.EntryResultCode;
 import kr.co.cking.event.presentation.dto.EntryRequest;
+import kr.co.cking.ticket.domain.CouponType;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -21,6 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -121,7 +125,7 @@ class EntryControllerTest {
     @Test
     void 정상_응모는_SUCCESS_코드와_accepted_true를_반환한다() throws Exception {
         UUID requestId = UUID.randomUUID();
-        EntryRequest request = new EntryRequest(1L, requestId, 2);
+        EntryRequest request = new EntryRequest(1L, requestId, 2, null);
         EntryOutcome outcome = new EntryOutcome(EntryResultCode.SUCCESS, requestId, 1L);
         when(eventEntryService.apply(eq(1L), any())).thenReturn(outcome);
 
@@ -137,7 +141,7 @@ class EntryControllerTest {
 
     @Test
     void ticketCount가_0이면_400을_반환한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 0);
+        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 0, null);
 
         mockMvc.perform(post("/api/events/1/entries")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -148,11 +152,57 @@ class EntryControllerTest {
 
     @Test
     void ticketCount가_100_초과면_400을_반환한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 101);
+        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 101, null);
 
         mockMvc.perform(post("/api/events/1/entries")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    // 이슈 #243: couponType을 생략하면 EntryCommand에 CREATOR로 확정돼 넘어가야 한다.
+    @Test
+    void couponType을_생략하면_CREATOR로_확정해서_전달한다() throws Exception {
+        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 2, null);
+        when(eventEntryService.apply(eq(1L), any()))
+                .thenReturn(new EntryOutcome(EntryResultCode.SUCCESS, request.requestId(), 1L));
+
+        mockMvc.perform(post("/api/events/1/entries")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<EntryCommand> captor = ArgumentCaptor.forClass(EntryCommand.class);
+        verify(eventEntryService).apply(eq(1L), captor.capture());
+        assertThat(captor.getValue().couponType()).isEqualTo(CouponType.CREATOR);
+    }
+
+    @Test
+    void couponType_COMMON을_보내면_그대로_전달한다() throws Exception {
+        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 2, CouponType.COMMON);
+        when(eventEntryService.apply(eq(1L), any()))
+                .thenReturn(new EntryOutcome(EntryResultCode.SUCCESS, request.requestId(), 1L));
+
+        mockMvc.perform(post("/api/events/1/entries")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<EntryCommand> captor = ArgumentCaptor.forClass(EntryCommand.class);
+        verify(eventEntryService).apply(eq(1L), captor.capture());
+        assertThat(captor.getValue().couponType()).isEqualTo(CouponType.COMMON);
+    }
+
+    @Test
+    void couponType이_CREATOR_COMMON_외의_값이면_400을_반환한다() throws Exception {
+        String invalidBody = """
+                {"userId":1,"requestId":"%s","ticketCount":2,"couponType":"INVALID"}
+                """.formatted(UUID.randomUUID());
+
+        mockMvc.perform(post("/api/events/1/entries")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidBody))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }

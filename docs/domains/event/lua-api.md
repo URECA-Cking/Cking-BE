@@ -12,10 +12,10 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `event:status:{eventId}` | STRING | `OPEN`이면 응모 허용, 그 외 값이면 차단. `EventGateLoader`가 `open()` 커밋 직후(및 스케줄러 틱마다 키가 없을 때) `OPEN`으로 적재하고, `EventCutoffBarrier`가 마감 시작 시 `CLOSED`로 갱신 |
 | `event:endat:{eventId}` | STRING | 마감 시각(epoch millis). `open()` 시점에 `EventGateLoader`가 `status`보다 먼저 적재, 불변. 키가 없을 때만 쓰고, `event:cutoff`가 있으면(마감 barrier 실행 후) 적재를 건너뛰어 stale한 DB 조회값으로 `CLOSED` Gate를 다시 열지 않음(`event-gate-load.lua`). 진행 중 OPEN 이벤트의 유실 키는 `EventLifecycleScheduler`가 DB 기준으로 복원 |
 | `event:cutoff:{eventId}` | STRING | 시스템2가 확정한 마감 barrier Stream ID. 재시도 시 같은 값을 재사용 |
-| `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 응모권 잔액 |
+| `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 크리에이터 전용 응모권 잔액. `couponType=COMMON`이면 대신 `ticket:balance:common:{userId}`를 쓴다(이슈 #243) |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
-| `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172) |
+| `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172). `couponType=COMMON`이면 `ticket:maint:common:{userId}`를 대신 확인한다 — 공용 보정 기능 자체는 아직 없어 항상 미존재(EXISTS=false) |
 | `event:entry-total:{eventId}` | STRING(integer) | 실시간 응모 현황(FR-P2-045~050) 누적 사용 응모권 수. `event-gate-load.lua`가 Gate 최초 적재 시 DB 집계로 초기화하고, 이 스크립트가 신규 SUCCESS 경로에서만 증가시킨다 |
 | `event:entrants:{eventId}` | HASH(userId → 사용 응모권 수) | 실시간 응모 현황 참여자별 집계. `HLEN`이 참여자 수다. 초기화·증가 시점은 위와 같다 |
 
@@ -105,7 +105,11 @@ guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 �
 | `SYSTEM_ERROR` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
 | `BALANCE_MAINTENANCE` | 수동 보정 락(`ticket:maint:{creatorId}:{userId}`)이 걸려 있음(issue #172, HTTP 503, `EntryErrorCode.BALANCE_MAINTENANCE`) |
 
-`fingerprint`는 클라이언트가 보내지 않는다. `EntrySpendServiceImpl`이 `eventId+userId+ticketCount`를 SHA-256으로 해시해서 계산한다(FR-P2-029).
+`fingerprint`는 클라이언트가 보내지 않는다. `EntrySpendServiceImpl`이 `eventId+userId+ticketCount`를 SHA-256으로 해시해서 계산한다(FR-P2-029). `couponType=COMMON`이면 해시 전 payload 끝에 `:COMMON`을 붙인다 — `CREATOR` fingerprint는 배포 전과 동일한 값을 유지해 그 시점 진행 중이던 요청의 재시도가 `IDEMPOTENCY_CONFLICT`로 깨지지 않게 한다(이슈 #243).
+
+## couponType (이슈 #243)
+
+응모 요청의 `couponType`(`CREATOR`|`COMMON`, 생략 시 `CREATOR`)이 어느 잔액·보정 락 키를 검증·차감할지 정한다 — 이벤트가 아니라 요청의 속성이다. `EntrySpendServiceImpl`이 이미 키를 골라서 넘기므로 **Lua 안에는 쿠폰 종류별 분기가 없다**. ARGV로 받은 `couponType`은 XADD Stream 필드에 그대로 실려 Consumer(`SpendCommand`)가 어느 Ledger·잔액에 반영할지 결정한다. 필드가 없는 배포 전 메시지·Dead Stream 원본은 `CREATOR`로 해석한다.
 
 ## Redis 타임아웃과 SYSTEM_ERROR
 
