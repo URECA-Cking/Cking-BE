@@ -33,6 +33,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 ## POST /api/creators/{creatorId}/missions/{missionId}/complete
 
 - 권한: `USER`
+- Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
 - Path Variable `creatorId`: 필수, 양수 Long.
 - Path Variable `missionId`: 필수, 양수 Long.
 
