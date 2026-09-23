@@ -8,3 +8,8 @@ spring:
     redis:
       host: localhost
       port: 6379
+
+cking:
+  auth:
+    # 로컬 Vite 개발 서버의 OAuth 완료 화면으로 redirect한다.
+    frontend-callback-url: http://localhost:5173/oauth/callback

@@ -42,5 +42,5 @@ cking:
     username: ""
     password: ""
   auth:
-    # OAuth 성공·실패 후 Code 또는 error만 전달할 Frontend callback 주소다.
-    frontend-callback-url: ${FRONTEND_CALLBACK_URL:http://localhost:5173/oauth/callback}
+    # 운영은 FRONTEND_CALLBACK_URL을 반드시 주입한다. 프로필별 기본값은 application-<profile>.yml에 둔다.
+    frontend-callback-url: ${FRONTEND_CALLBACK_URL}

@@ -24,7 +24,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final OAuthUserInfoResolver oauthUserInfoResolver;
     private final OAuthLoginService oauthLoginService;
     private final LoginCodeService loginCodeService;
-    @Value("${cking.auth.frontend-callback-url:http://localhost:5173/oauth/callback}")
+    @Value("${cking.auth.frontend-callback-url}")
     private String frontendCallbackUrl;
 
     /** OAuth 사용자 정보를 Member에 연결하고 성공 또는 처리 실패 callback으로 redirect한다. */

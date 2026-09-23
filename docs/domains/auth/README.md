@@ -101,7 +101,12 @@ Login Code는 OAuth 로그인 결과를 Frontend로 안전하게 전달하는 1�
   `POST /api/auth/token`으로 교환한다. JWT를 redirect URL query parameter에 넣지 않는다.
 - Redis key는 `auth:login-code:<SHA-256(code)>`, value는 `memberId`다. Lua의 `GET`과 `DEL`을
   한 원자 연산으로 실행해 동시 교환도 하나만 성공시킨다.
-- Frontend callback 주소는 `cking.auth.frontend-callback-url` 또는 `FRONTEND_CALLBACK_URL`로 설정한다.
+- Frontend callback 주소는 `cking.auth.frontend-callback-url`로 설정한다. 로컬은
+  `application-local.yml`의 `http://localhost:5173/oauth/callback`, 개발 배포는
+  `application-dev.yml`의 `https://dev.cking.co.kr/oauth/callback`을 사용한다.
+- 운영 Frontend URL은 아직 확정되지 않아 `application-prod.yml`을 만들지 않는다. 운영 배포 전에는
+  `FRONTEND_CALLBACK_URL=https://<운영-frontend>/oauth/callback`을 반드시 주입해야 하며, 누락하면
+  애플리케이션이 기동하지 않는다.
 
 ### Access Token
 

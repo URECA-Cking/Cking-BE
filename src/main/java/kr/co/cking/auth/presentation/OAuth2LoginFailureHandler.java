@@ -17,7 +17,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @Component
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
-    @Value("${cking.auth.frontend-callback-url:http://localhost:5173/oauth/callback}")
+    @Value("${cking.auth.frontend-callback-url}")
     private String frontendCallbackUrl;
 
     /** 실패 세부 정보를 노출하지 않고 허용된 error 값으로 callback redirect한다. */
