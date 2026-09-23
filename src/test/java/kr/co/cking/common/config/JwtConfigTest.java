@@ -48,8 +48,22 @@ class JwtConfigTest {
                 .isInstanceOf(JwtValidationException.class);
         assertThatThrownBy(() -> decoder.decode(issue("cking", Instant.now().plusSeconds(60), "CREATOR")))
                 .isInstanceOf(JwtValidationException.class);
+        assertThatThrownBy(() -> decoder.decode(issueWithoutRole("cking", Instant.now().plusSeconds(60))))
+                .isInstanceOf(JwtValidationException.class);
         assertThatThrownBy(() -> decoder.decode(issue(otherSecretKey(), "cking", Instant.now().plusSeconds(60), "USER")))
                 .isInstanceOf(JwtException.class);
+    }
+
+    /** role Claim이 없는 JWT도 예외 없이 검증 실패로 처리하는지 확인한다. */
+    private String issueWithoutRole(String issuer, Instant expiresAt) {
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(issuer)
+                .subject("17")
+                .issuedAt(expiresAt.minusSeconds(60))
+                .expiresAt(expiresAt)
+                .build();
+        return jwtConfig.jwtEncoder(secretKey()).encode(JwtEncoderParameters.from(
+                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }
 
     /** 테스트용 Access JWT를 실제 Encoder로 서명한다. */

@@ -19,7 +19,8 @@ public class AccessTokenJwtValidator implements OAuth2TokenValidator<Jwt> {
     /** subject의 양수 Member ID와 USER·ADMIN role Claim을 모두 확인한다. */
     @Override
     public OAuth2TokenValidatorResult validate(Jwt token) {
-        if (!isPositiveMemberId(token.getSubject()) || !MEMBER_ROLES.contains(token.getClaimAsString("role"))) {
+        String role = token.getClaimAsString("role");
+        if (!isPositiveMemberId(token.getSubject()) || role == null || !MEMBER_ROLES.contains(role)) {
             return OAuth2TokenValidatorResult.failure(INVALID_ACCESS_TOKEN);
         }
         return OAuth2TokenValidatorResult.success();
