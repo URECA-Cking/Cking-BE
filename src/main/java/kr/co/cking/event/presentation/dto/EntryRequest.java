@@ -15,7 +15,6 @@ import kr.co.cking.ticket.domain.CouponType;
  * 어떤 응모권을 쓸지 정한다.
  */
 public record EntryRequest(
-        @NotNull Long userId,
         @NotNull UUID requestId,
         @NotNull @Min(1) @Max(100) Integer ticketCount,
         CouponType couponType

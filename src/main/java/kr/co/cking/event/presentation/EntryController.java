@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Positive;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.event.application.EntryStatusQueryService;
 import kr.co.cking.event.application.EventEntryQueryService;
 import kr.co.cking.event.application.EventEntryService;
@@ -42,13 +43,14 @@ public class EntryController {
                     + "size의 기본값은 20이며 1~100 범위입니다."
     )
     @GetMapping("/api/events/{eventId}/entries/me")
+    /** 인증된 사용자의 Event 응모 이력을 조회한다. */
     public ApiResponse<EntryHistoryPage> getMyEntries(
             @PathVariable @Positive Long eventId,
-            @RequestParam @Positive Long userId,
+            @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String cursor
     ) {
-        return ApiResponse.success(eventEntryQueryService.getMyEntries(eventId, userId, size, cursor));
+        return ApiResponse.success(eventEntryQueryService.getMyEntries(eventId, memberId, size, cursor));
     }
 
     @Operation(
@@ -73,9 +75,14 @@ public class EntryController {
                     + "크리에이터 무관 공용 응모권을 대신 씁니다."
     )
     @PostMapping("/api/events/{eventId}/entries")
-    public ApiResponse<EntryResponse> apply(@PathVariable Long eventId, @Valid @RequestBody EntryRequest request) {
+    /** 인증된 사용자의 응모권으로 Event 응모를 요청한다. */
+    public ApiResponse<EntryResponse> apply(
+            @PathVariable Long eventId,
+            @CurrentMemberId Long memberId,
+            @Valid @RequestBody EntryRequest request
+    ) {
         CouponType couponType = request.couponType() != null ? request.couponType() : CouponType.CREATOR;
-        EntryCommand command = new EntryCommand(request.userId(), request.requestId(), request.ticketCount(), couponType);
+        EntryCommand command = new EntryCommand(memberId, request.requestId(), request.ticketCount(), couponType);
         EntryOutcome outcome = eventEntryService.apply(eventId, command);
         return ApiResponse.of(outcome.code().name(), EntryResponse.accepted(outcome.requestId(), outcome.eventId()));
     }

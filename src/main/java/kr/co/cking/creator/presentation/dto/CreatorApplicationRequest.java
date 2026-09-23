@@ -9,9 +9,6 @@ public final class CreatorApplicationRequest {
     private CreatorApplicationRequest() {
     }
 
-    public record Apply(@NotNull Long userId) {
-    }
-
     public record Review(@NotNull Long userId) {
     }
 

@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.event.application.dto.EventDetail;
 import kr.co.cking.event.application.dto.EventSummary;
@@ -46,7 +47,8 @@ public class EventController {
             description = "이벤트 정보와 요청 사용자의 해당 크리에이터 보유 응모권 수를 함께 조회합니다."
     )
     @GetMapping("/api/events/{eventId}")
-    public ApiResponse<EventDetail> getEvent(@PathVariable Long eventId, @RequestParam Long userId) {
-        return ApiResponse.success(eventQueryService.getEvent(eventId, userId));
+    /** 인증된 사용자의 응모권 정보를 포함해 Event 상세를 조회한다. */
+    public ApiResponse<EventDetail> getEvent(@PathVariable Long eventId, @CurrentMemberId Long memberId) {
+        return ApiResponse.success(eventQueryService.getEvent(eventId, memberId));
     }
 }

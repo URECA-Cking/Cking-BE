@@ -12,9 +12,7 @@ Creator 신청·심사 API의 상세 계약이다. 모든 성공·실패 응답�
 
 ## POST /api/creator/applications
 
-```json
-{ "userId": 1 }
-```
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 요청 본문은 없다.
 
 | 상황 | HTTP | `data` |
 | --- | --- | --- |
@@ -28,7 +26,7 @@ Creator 신청·심사 API의 상세 계약이다. 모든 성공·실패 응답�
 
 ## GET /api/creator/applications/me
 
-Query: `userId`, `page`, `size`
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query: `page`, `size`
 
 본인의 신청 이력만 반환하며 기본 정렬은 `requestedAt DESC, applicationId DESC`다.
 

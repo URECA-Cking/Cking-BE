@@ -6,14 +6,13 @@
 
 ```json
 {
-  "userId": 1,
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
   "ticketCount": 3,
   "couponType": "COMMON"
 }
 ```
 
-`userId`, UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. `couponType`(`CREATOR`|
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. `couponType`(`CREATOR`|
 `COMMON`)은 선택이며 생략하면 `CREATOR`다 — **이벤트가 아니라 이 요청**이 어떤 응모권을 쓸지
 정한다(이슈 #243). `CREATOR`는 그 이벤트 크리에이터 전용 잔액을, `COMMON`은 크리에이터 무관 공용
 잔액(#219/#224)을 검증·차감한다. Controller는 형식과 범위만 검증하고, Event 개방 여부·잔액·
@@ -48,7 +47,7 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 
 ## GET /api/events/{eventId}/entries/me
 
-USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`, 선택 `cursor`, `size`를 사용한다.
+USER가 자신의 Event 응모 내역을 조회한다. Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query는 선택 `cursor`, `size`를 사용한다.
 `size` 기본값은 20이고 허용 범위는 1~100이다. 응모 내역은 `appliedAt DESC, entryId DESC`로 정렬하며,
 다음 페이지 커서는 마지막 항목의 `(appliedAt, entryId)`를 URL-safe Base64로 인코딩한다.
 

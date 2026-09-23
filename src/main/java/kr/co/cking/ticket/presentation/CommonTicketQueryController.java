@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.ticket.application.CommonTicketQueryService;
 import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.CommonTicketLedgerPage;
@@ -28,8 +29,9 @@ public class CommonTicketQueryController {
             summary = "공용 응모권 잔액 조회",
             description = "크리에이터에 묶이지 않는 사용자의 현재 공용 응모권 잔액을 조회합니다."
     )
-    public ApiResponse<CommonTicketBalanceResponse> getBalance(@RequestParam Long userId) {
-        return ApiResponse.success(commonTicketQueryService.getBalance(userId));
+    /** 인증된 사용자의 공용 응모권 잔액을 조회한다. */
+    public ApiResponse<CommonTicketBalanceResponse> getBalance(@CurrentMemberId Long memberId) {
+        return ApiResponse.success(commonTicketQueryService.getBalance(memberId));
     }
 
     @GetMapping("/api/tickets/common/history")
@@ -38,9 +40,10 @@ public class CommonTicketQueryController {
             description = "사용자의 공용 응모권 적립·사용 이력을 cursor 기반으로 조회합니다. "
                     + "size의 기본값은 20이며 1~100 범위입니다."
     )
-    public ApiResponse<CommonTicketLedgerPage> getHistory(@RequestParam Long userId,
+    /** 인증된 사용자의 공용 응모권 이력을 조회한다. */
+    public ApiResponse<CommonTicketLedgerPage> getHistory(@CurrentMemberId Long memberId,
                                                           @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
                                                           @RequestParam(required = false) String cursor) {
-        return ApiResponse.success(commonTicketQueryService.getLedger(userId, size, cursor));
+        return ApiResponse.success(commonTicketQueryService.getLedger(memberId, size, cursor));
     }
 }

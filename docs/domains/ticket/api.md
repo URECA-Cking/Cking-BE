@@ -1,10 +1,11 @@
 # Ticket 조회 API
 
-모든 응답은 [공통 API 규약](../../common/api.md)의 봉투를 사용한다. `userId`는 현재 인증 미도입 계약에서 호출자 자신을 뜻하는 필수 query parameter다.
+모든 응답은 [공통 API 규약](../../common/api.md)의 봉투를 사용한다. 모든 API는 Bearer Access JWT가
+필수이며, 호출자는 `@CurrentMemberId`로 식별한다. query `userId`는 받지 않는다.
 
 ## GET /api/creators/{creatorId}/tickets
 
-Query: `userId`. Creator별 요청 사용자의 현재 응모권 잔액을 조회한다.
+Creator별 요청 사용자의 현재 응모권 잔액을 조회한다.
 
 ```json
 {
@@ -17,7 +18,7 @@ Query: `userId`. Creator별 요청 사용자의 현재 응모권 잔액을 조�
 
 ## GET /api/creators/{creatorId}/tickets/history
 
-Query: 필수 `userId`, 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범위는 1~100이다. Ledger는 `createdAt DESC, ledgerId DESC` 순서로 조회하며, 다음 페이지 cursor는 마지막 항목의 `(createdAt, ledgerId)`를 URL-safe Base64로 인코딩한다.
+Query: 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범위는 1~100이다. Ledger는 `createdAt DESC, ledgerId DESC` 순서로 조회하며, 다음 페이지 cursor는 마지막 항목의 `(createdAt, ledgerId)`를 URL-safe Base64로 인코딩한다.
 
 ```json
 {
@@ -42,7 +43,7 @@ cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDA
 
 ## GET /api/tickets/common
 
-Query: `userId`. 크리에이터 무관 공용 응모권 잔액을 조회한다(이슈 #219).
+크리에이터 무관 공용 응모권 잔액을 조회한다(이슈 #219).
 
 ```json
 {
@@ -54,7 +55,7 @@ Query: `userId`. 크리에이터 무관 공용 응모권 잔액을 조회한다(
 
 ## GET /api/tickets/common/history
 
-Query: 필수 `userId`, 선택 `cursor`, 선택 `size`(기본 20, 1~100). 형식은 `GET /api/creators/{creatorId}/tickets/history`와 같되 `creatorId`가 없다.
+Query: 선택 `cursor`, 선택 `size`(기본 20, 1~100). 형식은 `GET /api/creators/{creatorId}/tickets/history`와 같되 `creatorId`가 없다.
 
 ```json
 {

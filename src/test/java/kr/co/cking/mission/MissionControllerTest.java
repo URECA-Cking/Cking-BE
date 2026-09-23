@@ -36,9 +36,10 @@ class MissionControllerTest {
     @MockitoBean
     private MissionCompletionService missionCompletionService;
 
+
     @Test
     void 최초_완료는_202와_EARN_ACCEPTED를_반환한다() throws Exception {
-        MissionCompleteRequest request = new MissionCompleteRequest(1L, UUID.randomUUID());
+        MissionCompleteRequest request = new MissionCompleteRequest(UUID.randomUUID());
         MissionCompleteOutcome outcome = new MissionCompleteOutcome(
                 EarnResultCode.EARN_ACCEPTED, 100L, 1, Instant.parse("2026-09-16T10:00:00Z"));
         when(missionCompletionService.complete(eq(10L), eq(100L), any())).thenReturn(outcome);
@@ -54,7 +55,7 @@ class MissionControllerTest {
 
     @Test
     void 재요청은_200과_ALREADY_PROCESSED를_반환한다() throws Exception {
-        MissionCompleteRequest request = new MissionCompleteRequest(1L, UUID.randomUUID());
+        MissionCompleteRequest request = new MissionCompleteRequest(UUID.randomUUID());
         MissionCompleteOutcome outcome = new MissionCompleteOutcome(
                 EarnResultCode.ALREADY_PROCESSED, 100L, 1, Instant.parse("2026-09-16T10:00:00Z"));
         when(missionCompletionService.complete(eq(10L), eq(100L), any())).thenReturn(outcome);

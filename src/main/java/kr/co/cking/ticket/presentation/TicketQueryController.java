@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.ticket.application.TicketQueryService;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.TicketLedgerPage;
@@ -28,9 +29,9 @@ public class TicketQueryController {
             description = "크리에이터별 사용자의 현재 응모권 잔액을 조회합니다."
     )
     @GetMapping("/api/creators/{creatorId}/tickets")
-    public ApiResponse<TicketBalanceResponse> getBalance(@PathVariable Long creatorId,
-                                                         @RequestParam Long userId) {
-        return ApiResponse.success(ticketQueryService.getBalance(creatorId, userId));
+    /** 인증된 사용자의 Creator별 응모권 잔액을 조회한다. */
+    public ApiResponse<TicketBalanceResponse> getBalance(@PathVariable Long creatorId, @CurrentMemberId Long memberId) {
+        return ApiResponse.success(ticketQueryService.getBalance(creatorId, memberId));
     }
 
     @Operation(
@@ -39,10 +40,11 @@ public class TicketQueryController {
                     + "size의 기본값은 20이며 1~100 범위입니다."
     )
     @GetMapping("/api/creators/{creatorId}/tickets/history")
+    /** 인증된 사용자의 Creator별 응모권 이력을 조회한다. */
     public ApiResponse<TicketLedgerPage> getHistory(@PathVariable Long creatorId,
-                                                    @RequestParam Long userId,
+                                                    @CurrentMemberId Long memberId,
                                                     @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
                                                     @RequestParam(required = false) String cursor) {
-        return ApiResponse.success(ticketQueryService.getLedger(creatorId, userId, size, cursor));
+        return ApiResponse.success(ticketQueryService.getLedger(creatorId, memberId, size, cursor));
     }
 }

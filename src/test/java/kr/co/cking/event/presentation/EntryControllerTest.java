@@ -52,6 +52,7 @@ class EntryControllerTest {
     @MockitoBean
     private EntryStatusQueryService entryStatusQueryService;
 
+
     @Test
     void 내_응모내역을_cursor_형식으로_반환한다() throws Exception {
         EntryHistoryItemResponse item = new EntryHistoryItemResponse(
@@ -125,7 +126,7 @@ class EntryControllerTest {
     @Test
     void 정상_응모는_SUCCESS_코드와_accepted_true를_반환한다() throws Exception {
         UUID requestId = UUID.randomUUID();
-        EntryRequest request = new EntryRequest(1L, requestId, 2, null);
+        EntryRequest request = new EntryRequest(requestId, 2, null);
         EntryOutcome outcome = new EntryOutcome(EntryResultCode.SUCCESS, requestId, 1L);
         when(eventEntryService.apply(eq(1L), any())).thenReturn(outcome);
 
@@ -141,7 +142,7 @@ class EntryControllerTest {
 
     @Test
     void ticketCount가_0이면_400을_반환한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 0, null);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 0, null);
 
         mockMvc.perform(post("/api/events/1/entries")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -152,7 +153,7 @@ class EntryControllerTest {
 
     @Test
     void ticketCount가_100_초과면_400을_반환한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 101, null);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 101, null);
 
         mockMvc.perform(post("/api/events/1/entries")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -164,7 +165,7 @@ class EntryControllerTest {
     // 이슈 #243: couponType을 생략하면 EntryCommand에 CREATOR로 확정돼 넘어가야 한다.
     @Test
     void couponType을_생략하면_CREATOR로_확정해서_전달한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 2, null);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 2, null);
         when(eventEntryService.apply(eq(1L), any()))
                 .thenReturn(new EntryOutcome(EntryResultCode.SUCCESS, request.requestId(), 1L));
 
@@ -180,7 +181,7 @@ class EntryControllerTest {
 
     @Test
     void couponType_COMMON을_보내면_그대로_전달한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 2, CouponType.COMMON);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 2, CouponType.COMMON);
         when(eventEntryService.apply(eq(1L), any()))
                 .thenReturn(new EntryOutcome(EntryResultCode.SUCCESS, request.requestId(), 1L));
 

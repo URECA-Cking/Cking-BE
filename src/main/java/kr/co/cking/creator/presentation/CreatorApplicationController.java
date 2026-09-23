@@ -3,7 +3,10 @@ package kr.co.cking.creator.presentation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.creator.application.CreatorApplicationService;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.presentation.dto.CreatorApplicationRequest;
@@ -28,27 +31,30 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping
+@Tag(name = "Creator 신청", description = "Creator 신청과 신청 이력 조회 API")
 public class CreatorApplicationController {
 
     private final CreatorApplicationService creatorApplicationService;
 
     @PostMapping("/api/creator/applications")
-    public ResponseEntity<ApiResponse<CreatorApplicationResponse.Result>> apply(
-            @Valid @RequestBody CreatorApplicationRequest.Apply request
-    ) {
-        CreatorApplicationService.ApplyResult result = creatorApplicationService.apply(request.userId());
+    @Operation(summary = "Creator 신청", description = "인증된 사용자의 Creator 신청을 생성하거나 기존 PENDING 신청을 반환합니다.")
+    /** 인증된 사용자의 Creator 신청을 처리한다. */
+    public ResponseEntity<ApiResponse<CreatorApplicationResponse.Result>> apply(@CurrentMemberId Long memberId) {
+        CreatorApplicationService.ApplyResult result = creatorApplicationService.apply(memberId);
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status)
                 .body(ApiResponse.success(CreatorApplicationResponse.Result.from(result.application())));
     }
 
     @GetMapping("/api/creator/applications/me")
+    @Operation(summary = "내 Creator 신청 조회", description = "인증된 사용자의 Creator 신청 이력을 페이지로 조회합니다.")
+    /** 인증된 사용자의 Creator 신청 이력을 조회한다. */
     public ApiResponse<CreatorApplicationResponse.PageResult<CreatorApplicationResponse.Mine>> findMine(
-            @RequestParam Long userId,
+            @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        Page<CreatorApplication> applications = creatorApplicationService.findMine(userId, PageRequest.of(page, size));
+        Page<CreatorApplication> applications = creatorApplicationService.findMine(memberId, PageRequest.of(page, size));
         List<CreatorApplicationResponse.Mine> items = applications.stream()
                 .map(application -> new CreatorApplicationResponse.Mine(
                         application.getId(), application.getStatus(), application.getRequestedAt().toInstant(java.time.ZoneOffset.UTC),
