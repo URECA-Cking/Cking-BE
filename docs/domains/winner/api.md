@@ -90,7 +90,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 | 코드 | 조건 |
 | --- | --- |
-| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `RESOURCE_NOT_FOUND` | 인증된 memberId에 해당하는 Member가 존재하지 않음 |
 
 ## 당첨 포기
 
@@ -118,7 +118,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 | 코드 | 조건 |
 | --- | --- |
 | `VALIDATION_FAILED` | winnerId가 누락·0 이하이거나 형식이 올바르지 않음 |
-| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `RESOURCE_NOT_FOUND` | 인증된 memberId에 해당하는 Member가 존재하지 않음 |
 | `WINNER_NOT_FOUND` | winnerId에 해당하는 Winner가 존재하지 않음 |
 | `WINNER_MANAGEMENT_NOT_FOUND` | Winner에 연결된 WinnerManagement가 존재하지 않음 |
 | `FORBIDDEN` | 요청 Member가 Winner의 소유자가 아님 |
