@@ -171,6 +171,9 @@ MySQL은 `3306`, Redis는 `6379` 포트를 사용합니다.
 
 # 5. 애플리케이션 실행
 
+Access JWT 서명·검증을 위해 실행 전에 `JWT_SECRET`을 설정해야 합니다. 값의 조건과 모든 환경변수는
+[런타임 환경변수 문서](docs/operations/runtime-configuration.md)를 확인하세요.
+
 ## Windows
 
 ```powershell

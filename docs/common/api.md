@@ -22,9 +22,11 @@
 
 ## 사용자 식별
 
-### 현재: 인증 시스템 미도입 단계
+### 현재: Access JWT 도입, 업무 API 전환 전 단계
 
-- 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
+- Access JWT는 `POST /api/auth/token`에서 발급하고 Resource Server가 검증한다. 새 인증 필요 API는
+  `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
+- 전환되지 않은 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
 - GET·DELETE 요청은 query parameter `userId`를 사용한다.
 - POST·PATCH 요청은 body의 `userId`를 사용한다.
 - `/api/me/**` 경로도 `userId`를 요청에 포함한다.
@@ -32,7 +34,7 @@
 
 Controller는 요청에서 호출자 `userId`를 추출해 Application/Service에 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
 
-### 향후: 인증 시스템 도입 단계
+### 이후: 업무 API 호출자 식별 전환 단계
 
 호출자 자신을 나타내는 Request의 `userId`는 제거한다. Controller는 인증된 사용자 정보에서 사용자 ID를 추출해 기존 Application/Service의 actor ID로 전달한다.
 
@@ -82,15 +84,13 @@ Controller는 요청에서 호출자 `userId`를 추출해 Application/Service�
 - 업무 의미가 있는 오류는 해당 도메인 `*ErrorCode` enum에 둔다.
 - 각 API 문서는 그 API가 반환할 수 있는 오류 코드만 적는다.
 
-인증 도입 후 `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`도 전 도메인 공통
-오류로서 `CommonErrorCode`에 둔다. `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`처럼 Auth 업무
-의미가 있는 오류만 `AuthErrorCode`에 둔다.
+`VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`는 전 도메인 공통 오류로서
+`CommonErrorCode`에 둔다. `INVALID_LOGIN_CODE`처럼 Auth 업무 의미가 있는 오류만 `AuthErrorCode`에 둔다.
 
 ### 인증 도입 후 오류 기준
 
 - Access Token 없음·만료·변조·형식 오류는 공통 `UNAUTHORIZED`(401)로 통합한다.
-- Login Code의 만료·소비·잘못된 값은 `INVALID_LOGIN_CODE`로, Refresh Token의 만료·폐기·재사용·
-  잘못된 값은 `INVALID_REFRESH_TOKEN`으로 각각 통합한다.
+- Login Code의 만료·소비·잘못된 값은 `INVALID_LOGIN_CODE`로 통합한다.
 - token의 세부 실패 원인은 외부 오류 코드로 노출하지 않고 서버 로그·모니터링에서만 구분한다.
 - 인증된 호출자의 업무 권한 부족은 `FORBIDDEN`(403), 요청 형식 오류는 `VALIDATION_FAILED`, 예상하지
   못한 오류는 `SYSTEM_ERROR`을 사용한다.

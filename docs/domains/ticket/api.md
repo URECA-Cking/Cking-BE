@@ -39,3 +39,37 @@ Query: 필수 `userId`, 선택 `cursor`, 선택 `size`. `size` 기본값은 20�
 ```
 
 cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDATION_FAILED`다.
+
+## GET /api/tickets/common
+
+Query: `userId`. 크리에이터 무관 공용 응모권 잔액을 조회한다(이슈 #219).
+
+```json
+{
+  "userId": 1,
+  "balance": 5,
+  "updatedAt": "2026-09-18T00:00:00Z"
+}
+```
+
+## GET /api/tickets/common/history
+
+Query: 필수 `userId`, 선택 `cursor`, 선택 `size`(기본 20, 1~100). 형식은 `GET /api/creators/{creatorId}/tickets/history`와 같되 `creatorId`가 없다.
+
+```json
+{
+  "userId": 1,
+  "items": [{
+    "ledgerId": 10,
+    "deltaAmount": 1,
+    "type": "EARN",
+    "missionId": 100,
+    "eventId": null,
+    "reason": null,
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-09-18T00:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```

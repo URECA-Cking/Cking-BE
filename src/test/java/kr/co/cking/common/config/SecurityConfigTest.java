@@ -2,6 +2,10 @@ package kr.co.cking.common.config;
 
 import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
+import kr.co.cking.common.security.AccessTokenJwtValidator;
+import kr.co.cking.common.security.JwtAuthenticationConverterConfig;
+import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
+import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.presentation.MemberController;
 import kr.co.cking.member.presentation.UserSummary;
@@ -23,6 +27,7 @@ import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD;
+import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.http.HttpHeaders.ORIGIN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -34,13 +39,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = MemberController.class)
 @Import({
         SecurityConfig.class,
+        JwtConfig.class,
+        JwtAuthenticationConverterConfig.class,
         CorsConfig.class,
+        AccessTokenJwtValidator.class,
         RestAuthenticationEntryPoint.class,
         RestAccessDeniedHandler.class
 })
 @TestPropertySource(properties = {
         "cking.cors.allowed-origins=https://frontend.cking.co.kr",
-        "cking.cors.allow-credentials=false"
+        "cking.cors.allow-credentials=false",
+        "cking.auth.jwt.secret=2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA="
 })
 class SecurityConfigTest {
 
@@ -49,6 +58,12 @@ class SecurityConfigTest {
 
     @MockitoBean
     private MemberQueryService memberQueryService;
+
+    @MockitoBean
+    private OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
+
+    @MockitoBean
+    private OAuth2LoginFailureHandler oauth2LoginFailureHandler;
 
     /** 인증 전환 전 API가 인증 없이도 기존처럼 호출되는지 검증한다. */
     @Test
@@ -69,6 +84,14 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/users"))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+    }
+
+    /** 서명 또는 형식이 잘못된 Bearer JWT는 공통 UNAUTHORIZED 응답으로 거절하는지 검증한다. */
+    @Test
+    void 유효하지_않은_Bearer_JWT는_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/users").header(AUTHORIZATION, "Bearer invalid-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
     /** Authorization 헤더를 포함한 허용 origin의 사전 요청을 처리하는지 검증한다. */

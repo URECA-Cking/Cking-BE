@@ -62,7 +62,9 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                             EntryRedisKeys.balance(creatorId, userId),
                             EntryRedisKeys.idem(requestId),
                             EntryRedisKeys.spendGuard(requestId),
-                            EntryRedisKeys.maintenance(creatorId, userId)
+                            EntryRedisKeys.maintenance(creatorId, userId),
+                            EntryRedisKeys.entryTotal(eventId),
+                            EntryRedisKeys.entrants(eventId)
                     ),
                     String.valueOf(ticketCount),
                     fingerprint,

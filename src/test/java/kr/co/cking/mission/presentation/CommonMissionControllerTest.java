@@ -1,0 +1,89 @@
+package kr.co.cking.mission.presentation;
+
+import tools.jackson.databind.ObjectMapper;
+import kr.co.cking.mission.application.CommonMissionCompletionService;
+import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
+import kr.co.cking.mission.presentation.dto.MissionCompleteRequest;
+import kr.co.cking.ticket.application.dto.EarnResultCode;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(CommonMissionController.class)
+class CommonMissionControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @MockitoBean
+    private CommonMissionCompletionService commonMissionCompletionService;
+
+    @Test
+    void 최초_완료는_202와_EARN_ACCEPTED를_반환한다() throws Exception {
+        MissionCompleteRequest request = new MissionCompleteRequest(1L, UUID.randomUUID());
+        MissionCompleteOutcome outcome = new MissionCompleteOutcome(
+                EarnResultCode.EARN_ACCEPTED, 100L, 1, Instant.parse("2026-09-16T10:00:00Z"));
+        when(commonMissionCompletionService.complete(eq(100L), any())).thenReturn(outcome);
+
+        mockMvc.perform(post("/api/missions/100/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.code").value("EARN_ACCEPTED"))
+                .andExpect(jsonPath("$.data.missionId").value(100))
+                .andExpect(jsonPath("$.data.rewardAmount").value(1));
+    }
+
+    @Test
+    void 재요청은_200과_ALREADY_PROCESSED를_반환한다() throws Exception {
+        MissionCompleteRequest request = new MissionCompleteRequest(1L, UUID.randomUUID());
+        MissionCompleteOutcome outcome = new MissionCompleteOutcome(
+                EarnResultCode.ALREADY_PROCESSED, 100L, 1, Instant.parse("2026-09-16T10:00:00Z"));
+        when(commonMissionCompletionService.complete(eq(100L), any())).thenReturn(outcome);
+
+        mockMvc.perform(post("/api/missions/100/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("ALREADY_PROCESSED"));
+    }
+
+    @Test
+    void missionId가_양수가_아니면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
+        String request = "{\"userId\":1,\"requestId\":\"" + UUID.randomUUID() + "\"}";
+
+        mockMvc.perform(post("/api/missions/0/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(commonMissionCompletionService);
+    }
+
+    @Test
+    void userId가_없으면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/missions/100/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestId\":\"" + UUID.randomUUID() + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+}

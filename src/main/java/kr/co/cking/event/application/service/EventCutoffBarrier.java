@@ -22,6 +22,9 @@ public class EventCutoffBarrier {
     // 관례와 맞춰 'CLOSED'를 쓴다 - CLOSING이라는 별도 Gate 값을 새로 만들지 않는다.
     private static final String CLOSED_GATE_VALUE = "CLOSED";
 
+    // 실시간 응모 현황(FR-P2-045~050) 집계 키의 마감 후 만료. 24시간 = 86_400_000ms.
+    private static final String AGGREGATE_TTL_MILLIS = "86400000";
+
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<String> eventCloseBarrierLuaScript;
 
@@ -43,10 +46,13 @@ public class EventCutoffBarrier {
                 List.of(
                         EntryRedisKeys.status(eventId),
                         EntryRedisKeys.cutoff(eventId),
-                        entryStreamKey
+                        entryStreamKey,
+                        EntryRedisKeys.entryTotal(eventId),
+                        EntryRedisKeys.entrants(eventId)
                 ),
                 CLOSED_GATE_VALUE,
-                String.valueOf(eventId)
+                String.valueOf(eventId),
+                AGGREGATE_TTL_MILLIS
         );
     }
 }
