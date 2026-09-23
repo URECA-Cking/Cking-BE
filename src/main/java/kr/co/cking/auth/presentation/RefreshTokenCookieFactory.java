@@ -20,7 +20,7 @@ public class RefreshTokenCookieFactory {
     /** Refresh Token TTL과 HTTPS 환경의 Secure 여부를 설정값에서 받는다. */
     public RefreshTokenCookieFactory(
             @Value("${cking.auth.refresh-token-ttl:P14D}") Duration refreshTokenTtl,
-            @Value("${cking.auth.refresh-cookie-secure:false}") boolean secure
+            @Value("${cking.auth.refresh-cookie-secure}") boolean secure
     ) {
         this.refreshTokenTtl = refreshTokenTtl;
         this.secure = secure;

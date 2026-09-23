@@ -15,5 +15,6 @@ cking:
     allow-credentials: true
   auth:
     frontend-callback-url: http://localhost:5173/oauth/callback
+    refresh-cookie-secure: false
     jwt:
       secret: ${JWT_SECRET}

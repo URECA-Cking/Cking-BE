@@ -50,5 +50,5 @@ cking:
       issuer: cking
       access-token-ttl: PT30M
     refresh-token-ttl: P14D
-    # local HTTP는 false, HTTPS 환경은 REFRESH_COOKIE_SECURE=true를 주입한다.
-    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:false}
+    # 운영 HTTPS 환경은 반드시 REFRESH_COOKIE_SECURE=true를 명시적으로 주입한다.
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE}
