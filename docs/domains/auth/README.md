@@ -201,3 +201,19 @@ Application/Service에 전달한다.
 다만 Entity의 `memberId`/`userId`, Stream payload·Snapshot의 `userId`, Winner·Entry 등의
 사용자 식별자, `requestedBy`·`reviewedBy`·`createdBy`와 기타 도메인 데이터는 유지한다.
 Application/Service 파라미터의 `userId`, `memberId`, `actorId`도 업무 수행 주체를 뜻하면 유지한다.
+
+### AUTH-08 USER API 전환 설계
+
+AUTH-08은 USER API의 외부 호출자 식별만 JWT로 전환한다. Security는 해당 endpoint에
+`authenticated()`를 적용하고, Controller는 `@CurrentMemberId Long memberId`를 받아 기존
+Application/Service의 actor 파라미터로 전달한다. Application/Domain에는 Security·JWT 타입을 추가하지 않는다.
+
+| 범위 | 호출자 `userId` 제거 위치 | 유지하는 업무 데이터 |
+| --- | --- | --- |
+| Mission·Ticket·Event 상세 | query parameter | 완료·잔액·응답의 사용자 식별자 |
+| Event 응모·내 응모 | body 또는 query parameter | EntryCommand와 Redis/Lua의 `userId` |
+| Notification·내 Winner·포기 | body 또는 query parameter | Notification/Winner 소유자와 이력 작성자 |
+| Creator 신청·내 신청 조회 | body 또는 query parameter | 신청자 `memberId`, `reviewedBy` 등 |
+
+Bearer Token 누락·만료·변조는 공통 `UNAUTHORIZED`(401)로 처리한다. 인증된 사용자의 소유권과 상태
+검증은 기존 Application/Domain이 계속 담당한다.

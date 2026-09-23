@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.mission.application.CommonMissionCompletionService;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
@@ -32,16 +33,18 @@ public class CommonMissionController {
 
     private final CommonMissionCompletionService commonMissionCompletionService;
 
-    @PostMapping("/api/missions/{missionId}/complete")
+    /** 인증된 사용자의 공용 미션 완료 요청을 처리한다. */
     @Operation(
             summary = "공용 미션 완료",
             description = "크리에이터에 묶이지 않는 공용 미션을 완료 처리합니다. requestId로 재시도해도 재적립되지 않습니다."
     )
+    @PostMapping("/api/missions/{missionId}/complete")
     public ResponseEntity<ApiResponse<MissionCompleteResponse>> complete(
             @PathVariable @Positive Long missionId,
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody MissionCompleteRequest request
     ) {
-        MissionCompleteCommand command = new MissionCompleteCommand(request.userId(), request.requestId());
+        MissionCompleteCommand command = new MissionCompleteCommand(memberId, request.requestId());
         MissionCompleteOutcome outcome = commonMissionCompletionService.complete(missionId, command);
 
         HttpStatus status = outcome.code() == EarnResultCode.EARN_ACCEPTED

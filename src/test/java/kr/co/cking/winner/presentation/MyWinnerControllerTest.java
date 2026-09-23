@@ -23,6 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(MyWinnerController.class)
+@kr.co.cking.common.security.WithMockJwt(memberId = "2")
 class MyWinnerControllerTest {
 
     @Autowired
@@ -41,7 +42,7 @@ class MyWinnerControllerTest {
                 winner(101L, 21L, 1, DrawingType.REDRAW, WinnerManagementStatus.RECEIVED)
         ));
 
-        mockMvc.perform(get("/api/me/winners").param("userId", "2"))
+        mockMvc.perform(get("/api/me/winners"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data[0].winnerId").value(100))
@@ -54,76 +55,46 @@ class MyWinnerControllerTest {
     }
 
     @Test
+    @kr.co.cking.common.security.WithMockJwt(memberId = "999")
     void 존재하지_않는_Member는_리소스_없음_응답을_반환한다() throws Exception {
         when(myWinnerQueryService.getMyWinners(999L))
                 .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
-        mockMvc.perform(get("/api/me/winners").param("userId", "999"))
+        mockMvc.perform(get("/api/me/winners"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
-    void userId가_누락되면_입력_검증_오류를_반환한다() throws Exception {
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_401과_UNAUTHORIZED를_반환한다() throws Exception {
         mockMvc.perform(get("/api/me/winners"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-    }
-
-    @Test
-    void userId가_양수가_아니면_입력_검증_오류를_반환한다() throws Exception {
-        mockMvc.perform(get("/api/me/winners").param("userId", "0"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
     void 본인_Winner의_당첨_포기를_성공_응답으로_반환한다() throws Exception {
-        mockMvc.perform(post("/api/me/winners/100/decline")
-                        .contentType("application/json")
-                        .content("{\"userId\":2}"))
+        mockMvc.perform(post("/api/me/winners/100/decline"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
 
-    @Test
-    void 당첨_포기_요청의_userId가_누락되면_입력_검증_오류를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/me/winners/100/decline")
-                        .contentType("application/json")
-                        .content("{}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-    }
-
     /** 당첨 포기 대상 winnerId가 0이면 Controller 경계에서 입력 검증 오류로 처리한다. */
     @Test
     void 당첨_포기_대상_winnerId가_0이면_입력_검증_오류를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/me/winners/0/decline")
-                        .contentType("application/json")
-                        .content("{\"userId\":2}"))
+        mockMvc.perform(post("/api/me/winners/0/decline"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
-    /** 당첨 포기 요청의 userId가 0이면 본문 입력 검증 오류로 처리한다. */
     @Test
-    void 당첨_포기_요청의_userId가_0이면_입력_검증_오류를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/me/winners/100/decline")
-                        .contentType("application/json")
-                        .content("{\"userId\":0}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-    }
-
-    /** 당첨 포기 요청의 userId가 음수이면 본문 입력 검증 오류로 처리한다. */
-    @Test
-    void 당첨_포기_요청의_userId가_음수이면_입력_검증_오류를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/me/winners/100/decline")
-                        .contentType("application/json")
-                        .content("{\"userId\":-1}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_당첨_포기는_401과_UNAUTHORIZED를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/me/winners/100/decline"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     /** 이미 종결된 Winner의 포기는 상태 충돌 오류로 변환한다. */
@@ -132,9 +103,7 @@ class MyWinnerControllerTest {
         org.mockito.Mockito.doThrow(new BusinessException(WinnerErrorCode.INVALID_STATE))
                 .when(winnerDeclineService).decline(100L, 2L);
 
-        mockMvc.perform(post("/api/me/winners/100/decline")
-                        .contentType("application/json")
-                        .content("{\"userId\":2}"))
+        mockMvc.perform(post("/api/me/winners/100/decline"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_STATE"));
     }
@@ -144,9 +113,7 @@ class MyWinnerControllerTest {
         org.mockito.Mockito.doThrow(new BusinessException(WinnerErrorCode.WINNER_NOT_FOUND))
                 .when(winnerDeclineService).decline(999L, 2L);
 
-        mockMvc.perform(post("/api/me/winners/999/decline")
-                        .contentType("application/json")
-                        .content("{\"userId\":2}"))
+        mockMvc.perform(post("/api/me/winners/999/decline"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("WINNER_NOT_FOUND"));
     }

@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(EntryController.class)
+@kr.co.cking.common.security.WithMockJwt
 class EntryControllerTest {
 
     @Autowired
@@ -52,6 +53,7 @@ class EntryControllerTest {
     @MockitoBean
     private EntryStatusQueryService entryStatusQueryService;
 
+
     @Test
     void 내_응모내역을_cursor_형식으로_반환한다() throws Exception {
         EntryHistoryItemResponse item = new EntryHistoryItemResponse(
@@ -59,7 +61,7 @@ class EntryControllerTest {
         when(eventEntryQueryService.getMyEntries(2L, 1L, 20, null))
                 .thenReturn(new EntryHistoryPage(List.of(item), null, false));
 
-        mockMvc.perform(get("/api/events/2/entries/me").queryParam("userId", "1"))
+        mockMvc.perform(get("/api/events/2/entries/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].entryId").value(10))
@@ -72,11 +74,12 @@ class EntryControllerTest {
     }
 
     @Test
+    @kr.co.cking.common.security.WithMockJwt(memberId = "7")
     void 실시간_응모_현황을_조회한다() throws Exception {
-        when(entryStatusQueryService.getStatus(2L, 1L))
+        when(entryStatusQueryService.getStatus(2L, 7L))
                 .thenReturn(new EntryStatusResponse(2L, 3L, 7L, 4L, true));
 
-        mockMvc.perform(get("/api/events/2/entry-status").queryParam("userId", "1"))
+        mockMvc.perform(get("/api/events/2/entry-status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(2))
@@ -85,18 +88,15 @@ class EntryControllerTest {
                 .andExpect(jsonPath("$.data.myTicketCount").value(4))
                 .andExpect(jsonPath("$.data.realtime").value(true));
 
-        verify(entryStatusQueryService).getStatus(2L, 1L);
+        verify(entryStatusQueryService).getStatus(2L, 7L);
     }
 
     @Test
-    void userId_없이도_실시간_응모_현황을_조회한다() throws Exception {
-        when(entryStatusQueryService.getStatus(2L, null))
-                .thenReturn(new EntryStatusResponse(2L, 3L, 7L, null, false));
-
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_실시간_응모_현황은_401과_UNAUTHORIZED를_반환한다() throws Exception {
         mockMvc.perform(get("/api/events/2/entry-status"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.myTicketCount").doesNotExist())
-                .andExpect(jsonPath("$.data.realtime").value(false));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
@@ -109,15 +109,14 @@ class EntryControllerTest {
     @Test
     void 응모내역_size가_100을_초과하면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/events/2/entries/me")
-                        .queryParam("userId", "1")
                         .queryParam("size", "101"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
-    void 응모내역의_eventId와_userId는_양수여야_한다() throws Exception {
-        mockMvc.perform(get("/api/events/0/entries/me").queryParam("userId", "0"))
+    void 응모내역의_eventId는_양수여야_한다() throws Exception {
+        mockMvc.perform(get("/api/events/0/entries/me"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
@@ -125,7 +124,7 @@ class EntryControllerTest {
     @Test
     void 정상_응모는_SUCCESS_코드와_accepted_true를_반환한다() throws Exception {
         UUID requestId = UUID.randomUUID();
-        EntryRequest request = new EntryRequest(1L, requestId, 2, null);
+        EntryRequest request = new EntryRequest(requestId, 2, null);
         EntryOutcome outcome = new EntryOutcome(EntryResultCode.SUCCESS, requestId, 1L);
         when(eventEntryService.apply(eq(1L), any())).thenReturn(outcome);
 
@@ -141,7 +140,7 @@ class EntryControllerTest {
 
     @Test
     void ticketCount가_0이면_400을_반환한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 0, null);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 0, null);
 
         mockMvc.perform(post("/api/events/1/entries")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -152,7 +151,7 @@ class EntryControllerTest {
 
     @Test
     void ticketCount가_100_초과면_400을_반환한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 101, null);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 101, null);
 
         mockMvc.perform(post("/api/events/1/entries")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -164,7 +163,7 @@ class EntryControllerTest {
     // 이슈 #243: couponType을 생략하면 EntryCommand에 CREATOR로 확정돼 넘어가야 한다.
     @Test
     void couponType을_생략하면_CREATOR로_확정해서_전달한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 2, null);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 2, null);
         when(eventEntryService.apply(eq(1L), any()))
                 .thenReturn(new EntryOutcome(EntryResultCode.SUCCESS, request.requestId(), 1L));
 
@@ -180,7 +179,7 @@ class EntryControllerTest {
 
     @Test
     void couponType_COMMON을_보내면_그대로_전달한다() throws Exception {
-        EntryRequest request = new EntryRequest(1L, UUID.randomUUID(), 2, CouponType.COMMON);
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 2, CouponType.COMMON);
         when(eventEntryService.apply(eq(1L), any()))
                 .thenReturn(new EntryOutcome(EntryResultCode.SUCCESS, request.requestId(), 1L));
 
@@ -197,7 +196,7 @@ class EntryControllerTest {
     @Test
     void couponType이_CREATOR_COMMON_외의_값이면_400을_반환한다() throws Exception {
         String invalidBody = """
-                {"userId":1,"requestId":"%s","ticketCount":2,"couponType":"INVALID"}
+                {"requestId":"%s","ticketCount":2,"couponType":"INVALID"}
                 """.formatted(UUID.randomUUID());
 
         mockMvc.perform(post("/api/events/1/entries")

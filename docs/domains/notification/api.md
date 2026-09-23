@@ -4,7 +4,7 @@
 
 ## GET /api/me/notifications
 
-Query: `userId`(필수 양수), `page`(기본 0), `size`(기본 20, 최대 100).
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query는 `page`(기본 0), `size`(기본 20, 최대 100)다.
 
 요청 Member가 존재해야 하며, 해당 Member의 Notification만 반환한다. 정렬은 `createdAt DESC, notificationId DESC`다. `readAt`이 `null`이면 읽지 않음이며, 값이 있으면 읽음이다.
 
@@ -33,7 +33,7 @@ Query: `userId`(필수 양수), `page`(기본 0), `size`(기본 20, 최대 100).
 
 ## PATCH /api/me/notifications/{notificationId}/read
 
-사용자가 자신의 인앱 알림을 읽음 처리한다. 경로의 `notificationId`와 요청 본문의 `userId`는 모두 양수여야 한다.
+Bearer Access JWT가 필수다. 사용자가 자신의 인앱 알림을 읽음 처리하며 요청 본문은 없다. 경로의 `notificationId`는 양수여야 한다.
 
 ```json
 {

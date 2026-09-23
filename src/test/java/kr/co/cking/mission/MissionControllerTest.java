@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(MissionController.class)
+@kr.co.cking.common.security.WithMockJwt
 class MissionControllerTest {
 
     @Autowired
@@ -36,9 +37,10 @@ class MissionControllerTest {
     @MockitoBean
     private MissionCompletionService missionCompletionService;
 
+
     @Test
     void 최초_완료는_202와_EARN_ACCEPTED를_반환한다() throws Exception {
-        MissionCompleteRequest request = new MissionCompleteRequest(1L, UUID.randomUUID());
+        MissionCompleteRequest request = new MissionCompleteRequest(UUID.randomUUID());
         MissionCompleteOutcome outcome = new MissionCompleteOutcome(
                 EarnResultCode.EARN_ACCEPTED, 100L, 1, Instant.parse("2026-09-16T10:00:00Z"));
         when(missionCompletionService.complete(eq(10L), eq(100L), any())).thenReturn(outcome);
@@ -54,7 +56,7 @@ class MissionControllerTest {
 
     @Test
     void 재요청은_200과_ALREADY_PROCESSED를_반환한다() throws Exception {
-        MissionCompleteRequest request = new MissionCompleteRequest(1L, UUID.randomUUID());
+        MissionCompleteRequest request = new MissionCompleteRequest(UUID.randomUUID());
         MissionCompleteOutcome outcome = new MissionCompleteOutcome(
                 EarnResultCode.ALREADY_PROCESSED, 100L, 1, Instant.parse("2026-09-16T10:00:00Z"));
         when(missionCompletionService.complete(eq(10L), eq(100L), any())).thenReturn(outcome);
@@ -67,41 +69,27 @@ class MissionControllerTest {
     }
 
     @Test
-    void userId가_없으면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_401과_UNAUTHORIZED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/creators/10/missions/100/complete")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"requestId\":\"" + UUID.randomUUID() + "\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
     void requestId가_없으면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/creators/10/missions/100/complete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-    }
-
-    @Test
-    void userId가_양수가_아니면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/creators/10/missions/100/complete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":0,\"requestId\":\"" + UUID.randomUUID() + "\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-
-        mockMvc.perform(post("/api/creators/10/missions/100/complete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":-1,\"requestId\":\"" + UUID.randomUUID() + "\"}"))
+                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
     void creatorId_또는_missionId가_양수가_아니면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
-        String request = "{\"userId\":1,\"requestId\":\"" + UUID.randomUUID() + "\"}";
+        String request = "{\"requestId\":\"" + UUID.randomUUID() + "\"}";
 
         mockMvc.perform(post("/api/creators/0/missions/100/complete")
                         .contentType(MediaType.APPLICATION_JSON)

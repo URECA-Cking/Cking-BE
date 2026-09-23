@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CreatorApplicationController.class)
+@kr.co.cking.common.security.WithMockJwt(memberId = "10")
 class CreatorApplicationControllerTest {
 
     @Autowired

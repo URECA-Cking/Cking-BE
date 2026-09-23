@@ -6,14 +6,13 @@
 
 ```json
 {
-  "userId": 1,
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
   "ticketCount": 3,
   "couponType": "COMMON"
 }
 ```
 
-`userId`, UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. `couponType`(`CREATOR`|
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. UUID 형식 `requestId`, 1~100 범위의 정수 `ticketCount`가 필수다. `couponType`(`CREATOR`|
 `COMMON`)은 선택이며 생략하면 `CREATOR`다 — **이벤트가 아니라 이 요청**이 어떤 응모권을 쓸지
 정한다(이슈 #243). `CREATOR`는 그 이벤트 크리에이터 전용 잔액을, `COMMON`은 크리에이터 무관 공용
 잔액(#219/#224)을 검증·차감한다. Controller는 형식과 범위만 검증하고, Event 개방 여부·잔액·
@@ -48,7 +47,7 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 
 ## GET /api/events/{eventId}/entries/me
 
-USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`, 선택 `cursor`, `size`를 사용한다.
+USER가 자신의 Event 응모 내역을 조회한다. Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query는 선택 `cursor`, `size`를 사용한다.
 `size` 기본값은 20이고 허용 범위는 1~100이다. 응모 내역은 `appliedAt DESC, entryId DESC`로 정렬하며,
 다음 페이지 커서는 마지막 항목의 `(appliedAt, entryId)`를 URL-safe Base64로 인코딩한다.
 
@@ -64,14 +63,15 @@ USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`,
 }
 ```
 
-조회 조건은 `event_entry.member_id = userId`와 `event_entry.event_id = eventId`를 모두 사용한다. 없는 Member 또는
+조회 조건은 `event_entry.member_id = 인증된 memberId`와 `event_entry.event_id = eventId`를 모두 사용한다. 없는 Member 또는
 존재하지 않거나 삭제된 Event는 `RESOURCE_NOT_FOUND`, 식별자·size 범위·cursor 형식 오류는
 `VALIDATION_FAILED`다.
 
 ## GET /api/events/{eventId}/entry-status
 
-실시간 응모 현황(FR-P2-045~051)을 조회한다. Query는 선택 `userId`. 폴링 조회용이며 **당첨 확률·
-`cutoffStreamId`·`pendingCount`·Stream lag는 반환하지 않는다** - 응모 승인이나 추첨 근거로 쓰지 않는다.
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 실시간 응모 현황(FR-P2-045~051)을
+조회하며, 폴링 조회용이다. **당첨 확률·`cutoffStreamId`·`pendingCount`·Stream lag는 반환하지 않는다** - 응모
+승인이나 추첨 근거로 쓰지 않는다.
 
 ```json
 {
@@ -87,11 +87,11 @@ USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`,
 | --- | --- |
 | `participantCount` | 1장 이상 응모한 고유 사용자 수 |
 | `totalTicketCount` | 누적 사용 응모권 수 |
-| `myTicketCount` | `userId` 전달 시 해당 사용자의 사용 응모권 수, 미전달 시 `null` |
+| `myTicketCount` | 인증된 사용자의 사용 응모권 수 |
 | `realtime` | `true`면 Redis 집계(응모 수락 기준), `false`면 DB `event_entry` 집계(Consumer 반영 기준, CLOSED 이후는 Drain이 끝난 확정값) |
 
 `event.status`가 `OPEN`/`CLOSING`이고 집계 키(`event:entry-total`)가 있으면 Redis를, 그 외에는 DB
 집계를 쓴다(자세한 조건은 [응모 Lua API](lua-api.md#실시간-응모-현황-집계-fr-p2-045050) 참고).
 `realtime=true`일 때 `myTicketCount`는 수락 기준이라 DB 기준인 `/entries/me` 합계보다 일시적으로 클
 수 있다. 없거나 삭제·비공개 상태인 Event는 Event 전용 `EVENT_NOT_FOUND`(`GET /api/events/{eventId}`와
-동일 규칙), `userId`를 전달했는데 존재하지 않는 사용자면 공통 `RESOURCE_NOT_FOUND`다.
+동일 규칙), 인증된 사용자가 존재하지 않으면 공통 `RESOURCE_NOT_FOUND`다.

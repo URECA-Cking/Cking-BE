@@ -4,7 +4,8 @@
 
 ## GET /api/creators/{creatorId}/missions
 
-`userId`는 필수 양수 Long query parameter다. 존재하지 않는 사용자나 Creator는 공통 `RESOURCE_NOT_FOUND`로 응답한다.
+Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 query `userId`를 받지 않는다.
+존재하지 않는 사용자나 Creator는 공통 `RESOURCE_NOT_FOUND`로 응답한다.
 
 해당 Creator의 활성 ATTENDANCE/LIKE 미션만 반환한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
 
@@ -32,17 +33,16 @@
 ## POST /api/creators/{creatorId}/missions/{missionId}/complete
 
 - 권한: `USER`
+- Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
 - Path Variable `creatorId`: 필수, 양수 Long.
 - Path Variable `missionId`: 필수, 양수 Long.
 
 ```json
 {
-  "userId": 1,
   "requestId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-- `userId`: 필수, 양수 Long.
 - `requestId`: 필수 UUID. 멱등성 키다.
 
 ## 응답
@@ -84,7 +84,7 @@
 
 | 코드 | HTTP | 의미 |
 | --- | --- | --- |
-| `VALIDATION_FAILED` | 400 | 요청 형식 또는 `creatorId`·`missionId`·`userId` 범위 오류 |
+| `VALIDATION_FAILED` | 400 | 요청 형식 또는 `creatorId`·`missionId` 범위 오류 |
 | `RESOURCE_NOT_FOUND` | 404 | 존재하지 않는 Member |
 | `MISSION_NOT_FOUND` | 404 | 존재하지 않는 Mission |
 | `MISSION_INACTIVE` | 409 | 활성 기간이 아닌 미션에 대한 신규 요청 |
@@ -100,13 +100,15 @@
 
 ### GET /api/missions
 
-`userId`는 필수 양수 Long query parameter다. 응답 형식은 위 `GET /api/creators/{creatorId}/missions`와 같다(`type`은 `CommonMissionType`).
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 응답 형식은 위 API와 같다(`type`은 `CommonMissionType`).
 
 ### POST /api/missions/{missionId}/complete
 
+- 권한: `USER`
+- Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
+
 ```json
 {
-  "userId": 1,
   "requestId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```

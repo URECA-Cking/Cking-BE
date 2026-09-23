@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(EventController.class)
+@kr.co.cking.common.security.WithMockJwt(memberId = "100")
 class EventControllerTest {
 
     @Autowired

@@ -31,8 +31,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * API 인증 전환을 위한 Spring Security 진입점이다.
- * Resource Server는 Bearer JWT를 검증하고, 현재 API는 기존 호출자 {@code userId} 계약을 유지하므로
- * 모두 허용한다. 업무 API 전환 작업에서 경로별 인증 규칙을 단계적으로 교체한다.
+ * Resource Server는 Bearer JWT를 검증하고, 인증 전환한 업무 API는 경로별로 인증을 요구한다.
  * Swagger는 전용 Basic Auth 체인에서 보호하고, actuator는 필요한 상태 확인 경로만 공개한다.
  */
 @Configuration
@@ -77,7 +76,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** 기존 API 호환과 actuator 공개 범위를 함께 보장하는 기본 보안 체인을 구성한다. */
+    /** 인증 전환 API와 기존 공개 API의 접근 범위를 함께 보장하는 기본 보안 체인을 구성한다. */
     @Bean
     @Order(2)
     public SecurityFilterChain applicationSecurityFilterChain(HttpSecurity http) throws Exception {
@@ -96,6 +95,26 @@ public class SecurityConfig {
                                 "/api/admin/redraw-requests/**"
                         ).hasRole("ADMIN")
                         .requestMatchers("/api/winners/*/history").authenticated()
+                        .requestMatchers(
+                                "/api/creators/*/missions",
+                                "/api/creators/*/missions/*/complete",
+                                "/api/missions",
+                                "/api/missions/*/complete",
+                                "/api/creators/*/tickets",
+                                "/api/creators/*/tickets/history",
+                                "/api/tickets/common",
+                                "/api/tickets/common/history",
+                                "/api/events/*",
+                                "/api/events/*/entries",
+                                "/api/events/*/entries/me",
+                                "/api/events/*/entry-status",
+                                "/api/me/notifications",
+                                "/api/me/notifications/**",
+                                "/api/me/winners",
+                                "/api/me/winners/**",
+                                "/api/creator/applications",
+                                "/api/creator/applications/me"
+                        ).authenticated()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())

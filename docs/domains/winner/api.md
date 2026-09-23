@@ -56,8 +56,8 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 ### `GET /api/me/winners`
 
 - 권한: `USER`
-- Query Parameter: `userId` (`Long`, 양수, 필수). 인증 미도입 단계의 호출자 식별자다.
-- 먼저 Member 존재를 검증한 뒤, `memberId = userId`인 Winner만 반환한다. 따라서 다른 사용자의
+- Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다.
+- 먼저 Member 존재를 검증한 뒤, `memberId = authenticated memberId`인 Winner만 반환한다. 따라서 다른 사용자의
   Winner는 조회 결과에 포함되지 않는다.
 - `PUBLIC`·`COMPLETED` Drawing에 속한 Winner의 불변 데이터와 1:1 WinnerManagement의 현재 상태를
   함께 반환한다. PRIVATE 또는 미완료 Drawing 결과는 당첨자 본인에게도 노출하지 않는다. 공개된
@@ -90,8 +90,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | userId가 누락·0 이하이거나 형식이 올바르지 않음 |
-| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `RESOURCE_NOT_FOUND` | 인증된 memberId에 해당하는 Member가 존재하지 않음 |
 
 ## 당첨 포기
 
@@ -99,16 +98,12 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 - 권한: `USER`
 - Path Variable: `winnerId` (`Long`, 양수, 필수)
-- Request Body의 `userId`는 인증 미도입 단계의 호출자 식별자이며 `Long` 양수여야 한다.
+- Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 요청 본문은 없다.
 - Member 존재를 검증한 뒤, Winner 존재와 본인 소유 여부를 검증한다. Winner 원본은 변경하지 않는다.
 - WinnerManagement를 쓰기 잠금으로 조회해 동일 Winner의 동시 상태 변경을 직렬화한다. `SELECTED`일 때만
   `DECLINED`로 전이할 수 있으며 `DECLINED`는 종결 상태다. 이미 종결된 Winner의 재변경은 허용하지 않는다.
 - 상태 전이와 `WinnerStatusHistory`의 상태·변경 주체·변경 시각 저장은 하나의 Transaction으로 처리한다.
 - 별도 멱등 키는 사용하지 않는다. 같은 Winner의 재요청은 현재 상태가 `SELECTED`가 아니므로 실패한다.
-
-```json
-{ "userId": 1 }
-```
 
 성공 시 `200 OK`와 공통 성공 응답을 반환한다.
 
@@ -122,8 +117,8 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | winnerId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
-| `RESOURCE_NOT_FOUND` | userId에 해당하는 Member가 존재하지 않음 |
+| `VALIDATION_FAILED` | winnerId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | 인증된 memberId에 해당하는 Member가 존재하지 않음 |
 | `WINNER_NOT_FOUND` | winnerId에 해당하는 Winner가 존재하지 않음 |
 | `WINNER_MANAGEMENT_NOT_FOUND` | Winner에 연결된 WinnerManagement가 존재하지 않음 |
 | `FORBIDDEN` | 요청 Member가 Winner의 소유자가 아님 |

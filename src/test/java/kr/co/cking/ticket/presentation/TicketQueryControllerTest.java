@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(TicketQueryController.class)
+@kr.co.cking.common.security.WithMockJwt
 class TicketQueryControllerTest {
 
     @Autowired

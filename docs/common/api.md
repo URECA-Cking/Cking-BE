@@ -22,10 +22,14 @@
 
 ## 사용자 식별
 
-### 현재: Access JWT 도입, 업무 API 전환 진행 중
+### 현재: Access JWT 도입, 단계적 업무 API 전환
 
 - Access JWT는 `POST /api/auth/token`에서 발급하고 Resource Server가 검증한다. 새 인증 필요 API는
   `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
+- AUTH-08 전환 API는 Bearer Access JWT가 필수이며, Controller가 `@CurrentMemberId Long memberId`로
+  호출자를 받는다. Request의 호출자 `userId`는 사용하지 않는다.
+- 전환 범위는 Mission 수행·조회, Ticket 조회, Event 상세·응모·내 응모·실시간 응모 현황, Notification,
+  내 Winner·포기, Creator 신청·내 신청 조회다.
 - 전환되지 않은 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
 - Creator Event 관리(`GET`/`POST`/`PATCH`/`DELETE /api/creator/events/**`, 승인 요청)와 수동 마감
   (`POST /api/events/{eventId}/close`), Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification,
@@ -37,7 +41,8 @@
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
 - 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
 
-인증 전환되지 않은 API의 Controller는 요청에서 호출자 `userId`를 추출해 Application/Service에 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
+Controller는 전환 API에서는 인증된 `memberId`, 그 외에는 요청의 호출자 `userId`를 기존
+Application/Service의 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
 
 ### 이후: 업무 API 호출자 식별 전환 단계
 
