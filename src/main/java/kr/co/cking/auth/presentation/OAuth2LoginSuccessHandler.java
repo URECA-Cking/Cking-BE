@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpSession;
 import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.OAuthLoginService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -18,6 +19,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 /** OAuth 로그인 완료 후 1회용 Login Code만 Frontend callback에 전달한다. */
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
@@ -39,6 +41,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             Long memberId = oauthLoginService.login(oauthUserInfoResolver.resolve(oauthAuthentication));
             redirect(response, "code", loginCodeService.issue(memberId));
         } catch (RuntimeException exception) {
+            log.error("OAuth 로그인 완료 처리 중 오류가 발생했습니다.", exception);
             redirect(response, "error", "login_processing_failed");
         } finally {
             clearSession(request);
