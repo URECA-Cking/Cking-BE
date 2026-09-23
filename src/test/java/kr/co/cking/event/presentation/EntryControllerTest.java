@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(EntryController.class)
+@kr.co.cking.common.security.WithMockJwt
 class EntryControllerTest {
 
     @Autowired

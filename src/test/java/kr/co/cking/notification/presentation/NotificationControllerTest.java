@@ -31,6 +31,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /** NotificationController의 조회·읽음 처리 HTTP 계약을 검증한다. */
 @WebMvcTest(NotificationController.class)
+@kr.co.cking.common.security.WithMockJwt
 class NotificationControllerTest {
 
     @Autowired
