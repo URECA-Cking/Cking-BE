@@ -11,8 +11,6 @@ spring:
 
 cking:
   auth:
-    # 로컬 Vite 개발 서버의 OAuth 완료 화면으로 redirect한다.
     frontend-callback-url: http://localhost:5173/oauth/callback
     jwt:
-      # 로컬 전용 256비트 키다. 개발·운영에서는 환경변수 JWT_SECRET을 사용한다.
-      secret: 2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA=
+      secret: ${JWT_SECRET}

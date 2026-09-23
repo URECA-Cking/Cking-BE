@@ -69,7 +69,7 @@ JWT는 `iss=cking`, `sub=memberId`, `role=USER|ADMIN`, `iat`, `exp` Claim을 포
 | `VALIDATION_FAILED` | 400 | Login Code 요청 형식이 올바르지 않음 | 요청을 수정해 다시 시도 |
 | `UNAUTHORIZED` | 401 | Access Token 없음·만료·변조·형식 오류 | OAuth 로그인을 다시 시작 |
 | `INVALID_LOGIN_CODE` | 401 | Login Code 만료·소비·잘못된 값 | OAuth 로그인을 처음부터 다시 시작 |
-| `FORBIDDEN` | 403 | 인증되었지만 endpoint 권한이 부족함 | Refresh하지 않고 권한 없음으로 처리 |
+| `FORBIDDEN` | 403 | 인증되었지만 endpoint 권한이 부족함 | 재인증하지 않고 권한 없음으로 처리 |
 | `SYSTEM_ERROR` | 500 | 예상하지 못한 인증 서버 오류 | 재시도 안내 또는 로그인 화면으로 이동 |
 
 `POST /api/auth/token`의 Login Code 소비는 동시 요청에서도 한 번만 성공하도록 원자적으로 처리한다.

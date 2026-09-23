@@ -77,8 +77,8 @@ OAuthAccount를 조회·연결한다.
 
 ### OAuth Client 설정
 
-- OAuth Provider credential은 저장소에 두지 않고 `oauth` 프로필의 환경변수로만 주입한다. 로컬 실행에서
-  OAuth 로그인이 필요하면 `SPRING_PROFILES_ACTIVE=local,oauth`와 함께 네 credential 값을 모두 설정한다.
+- OAuth Provider credential은 저장소에 두지 않고 `oauth` 프로필의 환경변수로만 주입한다. 필요한 변수와
+  프로필 조합은 [런타임 환경변수](../../operations/runtime-configuration.md#oauth-프로필)를 따른다.
 - Google은 Spring Security의 기본 Provider 설정과 `OAUTH_GOOGLE_CLIENT_ID`,
   `OAUTH_GOOGLE_CLIENT_SECRET`, `profile,email` scope를 사용한다.
 - Kakao의 `OAUTH_KAKAO_CLIENT_ID`는 REST API 키이며, `OAUTH_KAKAO_CLIENT_SECRET`은 Kakao Client
@@ -114,12 +114,8 @@ Login Code는 OAuth 로그인 결과를 Frontend로 안전하게 전달하는 1�
   `POST /api/auth/token`으로 교환한다. JWT를 redirect URL query parameter에 넣지 않는다.
 - Redis key는 `auth:login-code:<SHA-256(code)>`, value는 `memberId`다. Lua의 `GET`과 `DEL`을
   한 원자 연산으로 실행해 동시 교환도 하나만 성공시킨다.
-- Frontend callback 주소는 `cking.auth.frontend-callback-url`로 설정한다. 로컬은
-  `application-local.yml`의 `http://localhost:5173/oauth/callback`, 개발 배포는
-  `application-dev.yml`의 `https://dev.cking.co.kr/oauth/callback`을 사용한다.
-- 운영 Frontend URL은 아직 확정되지 않아 `application-prod.yml`을 만들지 않는다. 운영 배포 전에는
-  `FRONTEND_CALLBACK_URL=https://<운영-frontend>/oauth/callback`을 반드시 주입해야 하며, 누락하면
-  애플리케이션이 기동하지 않는다.
+- Frontend callback 주소는 `cking.auth.frontend-callback-url`로 설정한다. 환경별 값과 운영의
+  `FRONTEND_CALLBACK_URL` 필수 조건은 [런타임 환경변수](../../operations/runtime-configuration.md#공통)를 따른다.
 
 ### Access Token
 
@@ -134,6 +130,33 @@ iat, exp
 ```
 
 Creator 여부는 JWT claim에 넣지 않는다.
+
+### Refresh Token (후속 구현 범위)
+
+Refresh Token은 아직 발급·회전·Cookie·갱신·Logout endpoint를 구현하지 않았다. 다음 계약은 후속 인증
+작업을 위한 보존 규칙이며, 구현 전까지 [Auth API](api.md)에 `POST /api/auth/refresh` 또는
+`POST /api/auth/logout`을 노출하지 않는다.
+
+- Refresh Token은 JWT가 아닌 opaque random token이며 TTL은 14일이다.
+- Redis에는 원문 token을 key나 value로 저장하지 않고 `SHA-256(token)` 기반 key로만 저장·조회·삭제한다.
+- Refresh Cookie 이름은 `refresh_token`이며 `HttpOnly`, `Path=/api/auth`, `Domain` 미지정(host-only)을
+  사용한다. 운영 환경에서는 `Secure=true`를 사용한다.
+- `SameSite`는 배포 구조에 따라 정한다. same-site 배포는 `Lax`, cross-site Cookie가 필요하면
+  `None`과 `Secure=true`를 함께 사용한다.
+- Refresh 성공 시 기존 token을 원자적으로 한 번 소비하고 새 token을 저장·발급하는 rotation을 수행한다.
+  소비된 token은 재사용할 수 없다.
+- Logout은 Redis의 Refresh Token을 삭제하고 Refresh Cookie를 만료시킨다.
+- Cookie 기반 Refresh·Logout 요청은 설정된 허용 origin과 일치하는 `Origin`만 허용해 CSRF를 방어한다.
+
+Login Code와 Refresh Token의 만료·소비·폐기 같은 내부 상태는 외부 API에서 세분화하지 않는다.
+
+| 대상 | 외부 오류 코드 | 통합하는 상태 |
+| --- | --- | --- |
+| Login Code | `INVALID_LOGIN_CODE` | 만료, 소비됨, 잘못된 값 |
+| Refresh Token | `INVALID_REFRESH_TOKEN` | 만료, 폐기, 재사용, rotation 후 사용, 잘못된 값 |
+
+세부 원인은 서버 로그와 모니터링에서만 구분한다. 외부 오류 구분을 위해 Redis에 tombstone 또는 meta
+상태를 별도로 유지하지 않는다.
 
 Login Code의 만료·소비·잘못된 값은 외부에서 모두 `INVALID_LOGIN_CODE`로 통합한다. 세부 원인은
 서버 로그와 모니터링에서만 구분한다.
