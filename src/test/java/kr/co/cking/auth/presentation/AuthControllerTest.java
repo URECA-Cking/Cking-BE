@@ -11,6 +11,8 @@ import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
 import kr.co.cking.auth.application.dto.AccessTokenResult;
 import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
+import kr.co.cking.auth.domain.AuthErrorCode;
+import kr.co.cking.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -44,7 +46,8 @@ class AuthControllerTest {
     @Test
     void LoginCode를_AccessToken으로_교환한다() throws Exception {
         when(loginCodeService.consume("one-time-code")).thenReturn(17L);
-        when(accessTokenService.issue(17L)).thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
+                .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
         when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
         when(refreshTokenCookieFactory.create("refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
@@ -59,7 +62,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.expiresIn").value(1800));
 
         verify(loginCodeService).consume("one-time-code");
-        verify(accessTokenService).issue(17L);
+        verify(accessTokenService).issue(17L, AuthErrorCode.INVALID_LOGIN_CODE);
         verify(refreshTokenService).issue(17L);
     }
 
@@ -78,7 +81,8 @@ class AuthControllerTest {
     void RefreshToken을_회전해_AccessToken을_갱신한다() throws Exception {
         when(refreshTokenService.rotate("old-refresh-token"))
                 .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
-        when(accessTokenService.issue(17L)).thenReturn(new AccessTokenResult("next-access-token", "Bearer", 1800));
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenReturn(new AccessTokenResult("next-access-token", "Bearer", 1800));
         when(refreshTokenCookieFactory.create("next-refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
 
@@ -93,6 +97,25 @@ class AuthControllerTest {
 
         verify(refreshRequestOriginValidator).validate("https://dev.cking.co.kr");
         verify(refreshTokenService).rotate("old-refresh-token");
+    }
+
+    /** 삭제된 Member의 Refresh Token은 회전 뒤 다음 Token을 폐기하고 Refresh 오류로 통합한다. */
+    @Test
+    void 존재하지_않는_Member의_RefreshToken은_401로_거절한다() throws Exception {
+        when(refreshTokenService.rotate("old-refresh-token"))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(refreshTokenCookieFactory.create("next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://dev.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "old-refresh-token")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+
+        verify(refreshTokenService).revoke("next-refresh-token");
     }
 
     /** Logout이 Redis 폐기 호출과 만료 Cookie 응답을 함께 수행하는지 검증한다. */

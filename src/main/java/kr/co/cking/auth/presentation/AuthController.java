@@ -7,6 +7,9 @@ import kr.co.cking.auth.application.AccessTokenService;
 import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
 import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
+import kr.co.cking.auth.domain.AuthErrorCode;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -57,7 +60,13 @@ public class AuthController {
     ) {
         refreshRequestOriginValidator.validate(origin);
         RefreshTokenRotationResult result = refreshTokenService.rotate(refreshToken);
-        return tokenResponse(result.memberId(), result.refreshToken());
+        try {
+            return tokenResponse(result.memberId(), result.refreshToken(), AuthErrorCode.INVALID_REFRESH_TOKEN);
+        } catch (BusinessException exception) {
+            // Member가 사라진 경우 회전으로 만든 다음 Token도 폐기해 고아 key를 남기지 않는다.
+            refreshTokenService.revoke(result.refreshToken());
+            throw exception;
+        }
     }
 
     /** 현재 브라우저의 Refresh Token을 폐기하고 만료 Cookie를 응답한다. */
@@ -81,8 +90,15 @@ public class AuthController {
 
     /** Access JWT 응답과 동일한 속성의 새 Refresh Cookie를 함께 반환한다. */
     private ResponseEntity<ApiResponse<TokenResponse>> tokenResponse(Long memberId, String refreshToken) {
+        return tokenResponse(memberId, refreshToken, AuthErrorCode.INVALID_LOGIN_CODE);
+    }
+
+    /** 호출한 인증 수단의 오류 계약에 맞춰 Access JWT와 Refresh Cookie를 함께 반환한다. */
+    private ResponseEntity<ApiResponse<TokenResponse>> tokenResponse(
+            Long memberId, String refreshToken, ErrorCode invalidCredentialError
+    ) {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookieFactory.create(refreshToken).toString())
-                .body(ApiResponse.success(TokenResponse.from(accessTokenService.issue(memberId))));
+                .body(ApiResponse.success(TokenResponse.from(accessTokenService.issue(memberId, invalidCredentialError))));
     }
 }

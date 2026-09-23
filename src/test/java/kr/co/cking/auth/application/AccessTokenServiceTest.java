@@ -53,4 +53,14 @@ class AccessTokenServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_LOGIN_CODE));
     }
+
+    /** Refresh Token으로 식별한 Member가 없으면 Refresh Token 오류 계약을 사용한다. */
+    @Test
+    void 존재하지_않는_Member의_RefreshToken은_유효하지_않다() {
+        when(memberRepository.findById(17L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+    }
 }
