@@ -11,6 +11,7 @@ import kr.co.cking.auth.domain.AuthErrorCode;
 import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** OAuth Login Code를 Cking Access Token으로 교환하는 인증 API를 제공한다. */
 @RestController
+@Slf4j
 @RequiredArgsConstructor
 @Tag(name = "Auth", description = "OAuth Login Code 교환, Access JWT 갱신 및 Logout API")
 public class AuthController {
@@ -46,7 +48,7 @@ public class AuthController {
             return tokenResponse(memberId, refreshToken);
         } catch (RuntimeException exception) {
             // 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기해 고아 key를 남기지 않는다.
-            refreshTokenService.revoke(refreshToken);
+            revokeUnsentRefreshToken(refreshToken, exception);
             throw exception;
         }
     }
@@ -70,7 +72,7 @@ public class AuthController {
             return tokenResponse(result.memberId(), result.refreshToken(), AuthErrorCode.INVALID_REFRESH_TOKEN);
         } catch (RuntimeException exception) {
             // 응답 생성이 실패하면 클라이언트에 전달되지 않은 다음 Token을 폐기해 고아 key를 남기지 않는다.
-            refreshTokenService.revoke(result.refreshToken());
+            revokeUnsentRefreshToken(result.refreshToken(), exception);
             throw exception;
         }
     }
@@ -106,5 +108,15 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookieFactory.create(refreshToken).toString())
                 .body(ApiResponse.success(TokenResponse.from(accessTokenService.issue(memberId, invalidCredentialError))));
+    }
+
+    /** 응답에 실리지 못한 Refresh Token을 폐기하되, 폐기 실패가 원래 예외를 가리지 않게 한다. */
+    private void revokeUnsentRefreshToken(String refreshToken, RuntimeException originalException) {
+        try {
+            refreshTokenService.revoke(refreshToken);
+        } catch (RuntimeException cleanupException) {
+            originalException.addSuppressed(cleanupException);
+            log.warn("미전달 Refresh Token 폐기에 실패했습니다.", cleanupException);
+        }
     }
 }

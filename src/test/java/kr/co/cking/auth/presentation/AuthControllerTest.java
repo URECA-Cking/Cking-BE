@@ -1,5 +1,7 @@
 package kr.co.cking.auth.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -159,6 +161,29 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value("SYSTEM_ERROR"));
 
         verify(refreshTokenService).revoke("next-refresh-token");
+    }
+
+    /** Refresh Token 폐기에 실패해도 응답 생성의 원래 오류를 유지하고 cleanup 오류를 함께 보존한다. */
+    @Test
+    void RefreshToken_폐기실패가_원래예외를_가리지_않는다() {
+        BusinessException originalException = new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        IllegalStateException cleanupException = new IllegalStateException("Redis 폐기 실패");
+        when(refreshTokenService.rotate("old-refresh-token"))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(refreshTokenCookieFactory.create("next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN)).thenThrow(originalException);
+        doThrow(cleanupException).when(refreshTokenService).revoke("next-refresh-token");
+        AuthController controller = new AuthController(
+                loginCodeService,
+                accessTokenService,
+                refreshTokenService,
+                refreshTokenCookieFactory,
+                refreshRequestOriginValidator);
+
+        assertThatThrownBy(() -> controller.refresh("old-refresh-token", "https://dev.cking.co.kr"))
+                .isSameAs(originalException);
+        assertThat(originalException.getSuppressed()).containsExactly(cleanupException);
     }
 
     /** Refresh Cookie가 없으면 Refresh Token 오류 계약으로 거절하는지 검증한다. */
