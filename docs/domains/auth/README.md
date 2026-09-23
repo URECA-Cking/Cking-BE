@@ -7,8 +7,10 @@ Server 의존성, REST 401/403 응답 처리가 구성되어 있으나 OAuth2 �
 
 ## 현재 Security 기반
 
-- Security 필터 체인은 `/api/**`, `/oauth2/**`, `/login/**`에만 적용한다. Swagger UI와 OpenAPI JSON은
-  기존 Servlet Basic Auth 필터가 단독으로 보호하므로 Spring Security와 인증 방식이 충돌하지 않는다.
+- Security 필터 체인은 모든 요청을 처리한다. Swagger UI와 OpenAPI JSON은 전용 SecurityFilterChain에서
+  Basic Auth로 보호한다. 문서 계정 설정이 비어 있는 로컬·CI 환경에서는 Basic Auth를 적용하지 않는다.
+- `/actuator/health`, `/actuator/info`는 ALB와 모니터링의 상태 확인을 위해 인증 없이 노출·허용한다.
+  그 외 actuator 경로는 공개하지 않는다.
 - 인증 전환 전에는 위 경로를 모두 `permitAll`로 둔다. 기존 API의 호출자 `userId`를 요청에서 제거하거나
   업무 권한 검증을 Spring Security로 대체하지 않는다.
 - CSRF는 현재 세션 기반 인증을 사용하지 않는 기존 API 호환을 위해 비활성화한다. CORS는

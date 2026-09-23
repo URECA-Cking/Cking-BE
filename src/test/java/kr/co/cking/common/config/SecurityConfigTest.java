@@ -86,7 +86,7 @@ class SecurityConfigTest {
                         .isNull());
     }
 
-    /** Swagger 경로는 Security 체인의 인증 대상으로 잡히지 않는지 검증한다. */
+    /** 문서 계정이 없는 로컬 환경에서는 Swagger 경로를 Basic Auth 없이 처리하는지 검증한다. */
     @Test
     void Swagger_경로는_Security_인증으로_거부되지_않는다() throws Exception {
         mockMvc.perform(get("/swagger-ui/index.html"))
