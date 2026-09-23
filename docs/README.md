@@ -36,7 +36,8 @@
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
 - [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계
 - [Mission API](domains/mission/api.md): 미션 완료 API 계약
-- [Auth](domains/auth/README.md): OAuth2, JWT, Login Code, Refresh Token과 인증·인가 책임 경계
-- [Auth API](domains/auth/api.md): OAuth 로그인, Token 교환, Refresh, Logout, 현재 사용자 API 목표 계약
+- [Auth](domains/auth/README.md): OAuth2, Access JWT, Login Code와 인증·인가 책임 경계
+- [Auth API](domains/auth/api.md): OAuth 로그인과 Login Code 기반 Access JWT 교환 계약
+- [Access JWT 설계](domains/auth/access-jwt-design.md): AUTH-06 JWT Claim·검증·Principal 주입 경계
 
 빈 도메인 문서나 디렉터리는 미리 만들지 않는다. 문서는 원칙적으로 300줄 이하로 유지하며, 이를 넘으면 관심사별 파일로 분리한다.
