@@ -10,6 +10,9 @@ spring:
       port: 6379
 
 cking:
+  cors:
+    allowed-origins: http://localhost:5173
+    allow-credentials: true
   auth:
     frontend-callback-url: http://localhost:5173/oauth/callback
     jwt:
