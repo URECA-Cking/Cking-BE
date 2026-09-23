@@ -104,7 +104,7 @@ Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만
 
 구현 시 오류 응답은 공통 `ApiResponse`와 `ErrorCode` 규칙을 따른다. `VALIDATION_FAILED`,
 `UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`의 정본은 `CommonErrorCode`다. Auth 전용
-`AuthErrorCode`에는 `INVALID_LOGIN_CODE`를 둔다.
+`AuthErrorCode`에는 `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`을 둔다.
 
 | 코드 | HTTP | 상황 | 클라이언트 처리 |
 | --- | --- | --- | --- |
