@@ -146,6 +146,14 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"FORBIDDEN\"}"));
     }
 
+    /** USER·ADMIN 공용 Winner 이력 API도 JWT 인증 없이는 호출할 수 없다. */
+    @Test
+    void Winner_상태_이력_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/winners/10/history"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
     /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
     @Test
     void 만료된_Access_JWT와_LoginCode로_AccessToken을_발급한다() throws Exception {
