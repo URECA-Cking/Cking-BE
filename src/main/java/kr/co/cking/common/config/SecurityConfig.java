@@ -11,7 +11,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.core.annotation.Order;
@@ -40,14 +39,13 @@ public class SecurityConfig {
     /** Swagger UI와 OpenAPI JSON에만 적용할 Basic Auth 보안 체인을 구성한다. */
     @Bean
     @Order(1)
-    public SecurityFilterChain docsSecurityFilterChain(HttpSecurity http, UserDetailsService docsUserDetailsService)
-            throws Exception {
+    public SecurityFilterChain docsSecurityFilterChain(HttpSecurity http) throws Exception {
         http.securityMatcher("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.disable());
 
         if (isDocsAuthenticationEnabled()) {
-            http.userDetailsService(docsUserDetailsService)
+            http.userDetailsService(createDocsUserDetailsService())
                     .httpBasic(basic -> basic.realmName("Cking API Docs"))
                     .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated());
         } else {
@@ -74,13 +72,8 @@ public class SecurityConfig {
                 .build();
     }
 
-    /** 문서 Basic Auth에 사용할 단일 인메모리 계정을 등록한다. */
-    @Bean
-    public UserDetailsService docsUserDetailsService() {
-        if (!isDocsAuthenticationEnabled()) {
-            return new InMemoryUserDetailsManager();
-        }
-
+    /** 문서 보안 체인에서만 사용할 단일 인메모리 계정을 만든다. */
+    private InMemoryUserDetailsManager createDocsUserDetailsService() {
         UserDetails docsUser = User.withUsername(docsUsername)
                 .password("{noop}" + docsPassword)
                 .roles("DOCS")
