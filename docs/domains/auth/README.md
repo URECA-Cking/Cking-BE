@@ -158,9 +158,6 @@ Login Code와 Refresh Token의 만료·소비·폐기 같은 내부 상태는 �
 세부 원인은 서버 로그와 모니터링에서만 구분한다. 외부 오류 구분을 위해 Redis에 tombstone 또는 meta
 상태를 별도로 유지하지 않는다.
 
-Login Code의 만료·소비·잘못된 값은 외부에서 모두 `INVALID_LOGIN_CODE`로 통합한다. 세부 원인은
-서버 로그와 모니터링에서만 구분한다.
-
 ## 인증과 업무 권한
 
 Spring Security는 인증 여부, JWT 검증, coarse-grained 접근 제어와 ADMIN endpoint의 1차 접근 제어를
