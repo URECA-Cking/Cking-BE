@@ -145,8 +145,9 @@ Access JWT와 함께 Refresh Cookie를 발급한다. `POST /api/auth/refresh`와
 - Refresh 성공 시 기존 token을 원자적으로 한 번 소비하고 새 token을 저장·발급하는 rotation을 수행한다.
   소비된 token은 재사용할 수 없다.
 - Logout은 Redis의 Refresh Token을 삭제하고 Refresh Cookie를 만료시킨다.
-- Refresh·Logout은 Access JWT와 독립적인 Cookie 흐름이다. 두 경로는 `Authorization: Bearer`를
-  읽지 않으므로 만료된 Access JWT가 함께 전송되어도 Refresh Cookie를 처리한다.
+- Login Code 교환·Refresh·Logout은 기존 Access JWT와 독립적인 인증 수단 흐름이다. 세 경로는
+  `Authorization: Bearer`를 읽지 않으므로 만료된 Access JWT가 함께 전송되어도 Login Code 또는
+  Refresh Cookie를 처리한다.
 - Cookie 기반 Refresh·Logout 요청은 설정된 허용 origin과 일치하는 `Origin`만 허용해 CSRF를 방어한다.
   허용 origin은 `cking.cors.allowed-origins`로 관리하며, Cookie를 받는 교차 origin 환경에서는
   `cking.cors.allow-credentials=true`를 함께 설정한다.

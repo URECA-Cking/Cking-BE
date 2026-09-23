@@ -43,6 +43,8 @@ Redirect URL에는 성공 시 `code` 또는 실패 시 `error` 중 하나만 넣
 
 - 권한: `PUBLIC`
 - Request Body의 `code`는 Login Code 원문이다.
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  Login Code 교환을 수행한다.
 
 ```json
 { "code": "..." }

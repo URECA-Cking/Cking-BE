@@ -129,6 +129,26 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
+    /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
+    @Test
+    void 만료된_Access_JWT와_LoginCode로_AccessToken을_발급한다() throws Exception {
+        when(loginCodeService.consume("one-time-code")).thenReturn(17L);
+        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
+                .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
+        when(refreshTokenCookieFactory.create("refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType("application/json")
+                        .content("{\"code\":\"one-time-code\"}")
+                        .header(AUTHORIZATION, "Bearer " + expiredAccessToken()))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+
+        verify(loginCodeService).consume("one-time-code");
+    }
+
     /** 만료된 Access JWT가 자동 첨부되어도 Refresh Cookie 인증 흐름을 차단하지 않는다. */
     @Test
     void 만료된_Access_JWT와_RefreshCookie로_AccessToken을_갱신한다() throws Exception {
