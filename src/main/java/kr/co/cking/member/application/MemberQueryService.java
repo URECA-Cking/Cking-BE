@@ -4,8 +4,6 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
-import kr.co.cking.member.presentation.UserSelectionResponse;
-import kr.co.cking.member.presentation.UserSummary;
 import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,16 +21,11 @@ public class MemberQueryService {
 
     private final MemberRepository memberRepository;
 
-    public List<UserSummary> findUsers() {
-        return memberRepository.findAll().stream()
-                .map(UserSummary::from)
-                .toList();
-    }
-
-    public UserSelectionResponse selectUser(Long userId) {
-        Member member = memberRepository.findById(userId)
+    /** 인증된 호출자의 Member 프로필을 조회한다. */
+    public MemberProfile getProfile(Long memberId) {
+        Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return UserSelectionResponse.from(member);
+        return MemberProfile.from(member);
     }
 
     /** 호출자 식별에 사용한 Member가 실제로 존재하는지 검증한다. */

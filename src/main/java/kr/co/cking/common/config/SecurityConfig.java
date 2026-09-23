@@ -96,6 +96,7 @@ public class SecurityConfig {
                                 "/api/admin/redraw-requests/**"
                         ).hasRole("ADMIN")
                         .requestMatchers("/api/winners/*/history").authenticated()
+                        .requestMatchers("/api/me").authenticated()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer
