@@ -82,6 +82,10 @@ Controller는 요청에서 호출자 `userId`를 추출해 Application/Service�
 - 업무 의미가 있는 오류는 해당 도메인 `*ErrorCode` enum에 둔다.
 - 각 API 문서는 그 API가 반환할 수 있는 오류 코드만 적는다.
 
+인증 도입 후 `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`도 전 도메인 공통
+오류로서 `CommonErrorCode`에 둔다. `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`처럼 Auth 업무
+의미가 있는 오류만 `AuthErrorCode`에 둔다.
+
 ### 인증 도입 후 오류 기준
 
 - Access Token 없음·만료·변조·형식 오류는 공통 `UNAUTHORIZED`(401)로 통합한다.

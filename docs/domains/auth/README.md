@@ -25,6 +25,10 @@ JWT 인증이 아직 구현되어 있지 않다.** 현재 외부 API의 호출�
 - 외부 identity key는 email이 아니다. Google은 `sub`, Kakao는 `id`를 `providerUserId`로 쓴다.
 - `(provider, providerUserId)`가 외부 Identity의 고유 식별자다. 같은 email이어도 Google과 Kakao
   계정을 자동 병합하지 않는다.
+- DB는 `UNIQUE(provider, provider_user_id)`로 이 고유성을 최종 보장한다.
+- 최초 로그인은 OAuthAccount를 먼저 조회하고, 없으면 `Member`와 OAuthAccount 생성을 시도한다. 동시
+  최초 로그인으로 OAuthAccount INSERT가 충돌하면 Transaction을 정리한 뒤 기존 OAuthAccount를 재조회해
+  연결된 `memberId`를 반환한다. 단일·다중 인스턴스 모두 DB 제약을 최종 방어선으로 사용한다.
 
 ### OAuth 프로필 name 정규화
 
@@ -57,7 +61,8 @@ OAuthAccount를 조회·연결한다.
 
 OAuth 사용자 정보 정규화, `OAuthUserInfo` 생성, `(provider, providerUserId)` 기준 OAuthAccount
 조회, 최초 로그인 시 `Member(USER)`·OAuthAccount 생성, 기존 사용자의 연결 `memberId` 반환을 담당한다.
-최종 결과는 항상 `memberId`다.
+최초 로그인 경쟁 시에는 OAuthAccount의 DB 고유 제약 충돌을 기존 계정 재조회로 복구한다. 최종 결과는
+항상 `memberId`다.
 
 ### 로그인 완료와 Cking 인증 수단 발급
 

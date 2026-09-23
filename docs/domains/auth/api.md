@@ -121,8 +121,9 @@ Set-Cookie: refresh_token=<opaque-token>; Path=/api/auth; Max-Age=1209600; HttpO
 
 ## 오류 계약
 
-구현 시 오류 응답은 공통 `ApiResponse`와 `ErrorCode` 규칙을 따른다. 아래 Auth 전용 코드의
-정본은 향후 `AuthErrorCode` enum이며, `VALIDATION_FAILED`와 `FORBIDDEN`은 기존 공통 코드를 사용한다.
+구현 시 오류 응답은 공통 `ApiResponse`와 `ErrorCode` 규칙을 따른다. `VALIDATION_FAILED`,
+`UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`의 정본은 `CommonErrorCode`다. Auth 전용
+`AuthErrorCode`에는 `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`만 둔다.
 
 | 코드 | HTTP | 상황 | 클라이언트 처리 |
 | --- | --- | --- | --- |
