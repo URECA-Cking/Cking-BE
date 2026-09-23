@@ -2,6 +2,8 @@ package kr.co.cking.common.config;
 
 import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
+import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
+import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.presentation.MemberController;
 import kr.co.cking.member.presentation.UserSummary;
@@ -49,6 +51,12 @@ class SecurityConfigTest {
 
     @MockitoBean
     private MemberQueryService memberQueryService;
+
+    @MockitoBean
+    private OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
+
+    @MockitoBean
+    private OAuth2LoginFailureHandler oauth2LoginFailureHandler;
 
     /** 인증 전환 전 API가 인증 없이도 기존처럼 호출되는지 검증한다. */
     @Test

@@ -2,8 +2,9 @@
 
 Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수단 발급의 경계를 정한다.
 이 문서는 장기 목표 설계의 정본이다. 현재 저장소에는 Spring Security 기반, OAuth2 Client·Resource
-Server 의존성, REST 401/403 응답 처리가 구성되어 있으나 OAuth2 로그인·JWT 발급·검증은 아직 구현되어
-있지 않다. 따라서 현재 외부 API의 호출자 `userId` 계약은 [공통 API 규약](../../common/api.md)을 따른다.
+Server 의존성, OAuth 로그인 완료의 Login Code 발급·전달, REST 401/403 응답 처리가 구성되어 있으나
+JWT 발급·검증은 아직 구현되어 있지 않다. 따라서 현재 외부 API의 호출자 `userId` 계약은
+[공통 API 규약](../../common/api.md)을 따른다.
 
 ## 현재 Security 기반
 
@@ -98,6 +99,9 @@ Login Code는 OAuth 로그인 결과를 Frontend로 안전하게 전달하는 1�
 - `SecureRandom`으로 생성하고 Redis에는 원문 대신 Hash를 key로 저장한다.
 - OAuth 성공 후 `memberId`를 담아 Frontend로 redirect하고, Frontend는
   `POST /api/auth/token`으로 교환한다. JWT를 redirect URL query parameter에 넣지 않는다.
+- Redis key는 `auth:login-code:<SHA-256(code)>`, value는 `memberId`다. Lua의 `GET`과 `DEL`을
+  한 원자 연산으로 실행해 동시 교환도 하나만 성공시킨다.
+- Frontend callback 주소는 `cking.auth.frontend-callback-url` 또는 `FRONTEND_CALLBACK_URL`로 설정한다.
 
 ### Access Token
 

@@ -41,3 +41,6 @@ cking:
     # 둘 중 하나라도 비우면 Swagger Basic Auth를 적용하지 않는다.
     username: ""
     password: ""
+  auth:
+    # OAuth 성공·실패 후 Code 또는 error만 전달할 Frontend callback 주소다.
+    frontend-callback-url: ${FRONTEND_CALLBACK_URL:http://localhost:5173/oauth/callback}
