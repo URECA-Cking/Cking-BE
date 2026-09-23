@@ -52,3 +52,7 @@ hs_err_pid*
 # 운영체제가 생성하는 파일
 .DS_Store
 Thumbs.db
+
+# 개인 작업 컨텍스트 파일 (로컬 전용, 브랜치 전환/커밋에 영향받지 않음)
+CLAUDE.md
+CODEX.md

@@ -11,6 +11,8 @@
 -- KEYS[4] = idem:{requestId}                         String(JSON: {fingerprint, result})
 -- KEYS[5] = entry:spend-guard:{requestId}            String(JSON: {fingerprint})
 -- KEYS[6] = ticket:maint:{creatorId}:{userId}        존재 여부만 확인(issue #172)
+-- KEYS[7] = event:entry-total:{eventId}               String(integer), 실시간 응모 현황 집계(FR-P2-045~050)
+-- KEYS[8] = event:entrants:{eventId}                  Hash(userId -> 사용 응모권 수), 실시간 응모 현황 집계
 --
 -- ARGV[1] = ticketCount
 -- ARGV[2] = fingerprint      (EntrySpendService가 eventId+userId+ticketCount로 계산)
@@ -41,6 +43,8 @@ local balanceKey = KEYS[3]
 local idemKey    = KEYS[4]
 local guardKey   = KEYS[5]
 local maintenanceLockKey = KEYS[6]
+local entryTotalKey = KEYS[7]
+local entrantsKey   = KEYS[8]
 
 local ticketCount = tonumber(ARGV[1])
 local fingerprint = ARGV[2]
@@ -143,6 +147,23 @@ if type(streamId) == 'table' and streamId.err then
     redis.call('INCRBY', balanceKey, ticketCount)
     redis.call('DEL', guardKey)
     return redis.error_reply('XADD_FAILED: ' .. streamId.err)
+end
+
+-- 7) 실시간 응모 현황 집계(FR-P2-045~050). entrants(Hash)는 빈 채로 존재할 수 없어서 "0건째
+-- 첫 응모"(entry-total="0", entrants 아직 없음 - 정상)와 "entrants만 eviction으로 유실"
+-- (entry-total>0인데 entrants 없음 - 비정상)을 entrants의 EXISTS만으로는 구분할 수 없다.
+-- entry-total 값으로 구분한다: "0"이면 최초 증가라 HINCRBY가 entrants를 새로 만들어도 맞고,
+-- 그 외에 entrants가 없으면 유실이므로 이번 요청 하나로 entrants를 조용히 재생성해 과거
+-- 참여자 기록을 잃는 대신 entry-total도 함께 지워 이후 조회가 DB 집계로 완전히 대체되게
+-- 한다. 표시용 집계라 실패가 이미 확정된 응모 결과에 영향을 주면 안 되므로 pcall로 격리한다.
+local currentTotal = redis.call('GET', entryTotalKey)
+if currentTotal ~= false then
+    if currentTotal == '0' or redis.call('EXISTS', entrantsKey) == 1 then
+        redis.pcall('INCRBY', entryTotalKey, ticketCount)
+        redis.pcall('HINCRBY', entrantsKey, userId, ticketCount)
+    else
+        redis.pcall('DEL', entryTotalKey)
+    end
 end
 
 local result = { 'SUCCESS', streamId, tostring(newBalance) }
