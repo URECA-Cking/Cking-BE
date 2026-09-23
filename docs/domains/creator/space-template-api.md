@@ -4,7 +4,7 @@
 
 ## 범위와 권한
 
-- 모든 API는 `member.role == ADMIN`만 호출할 수 있다.
+- 모든 API는 Bearer Access JWT와 `ADMIN` 역할이 필수이며, Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다.
 - 이 API는 템플릿 자체의 CRUD와 활성화만 다룬다. Creator 승인 시점에 활성 템플릿 값을 새 Creator 스페이스로 복사하는 동작은 후속 이슈에서 구현하며, 이 문서의 범위가 아니다.
 - 활성 템플릿을 바꿔도 이미 생성된 Creator 스페이스는 변경되지 않는다. 활성 템플릿은 향후 스페이스 생성 시점에만 참조된다.
 - 응답 시각은 UTC RFC 3339 형식(예: `2026-09-23T00:30:00Z`)이다.
@@ -30,7 +30,6 @@
 
 ```json
 {
-  "userId": 1,
   "introText": "크리에이터와 함께하는 공간이에요",
   "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
   "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
@@ -65,7 +64,7 @@
 
 ## GET /api/admin/creator-space-templates
 
-Query: `userId`, `page`, `size`. 기본 정렬은 `createdAt DESC, templateId DESC`다.
+Query: `page`, `size`. 기본 정렬은 `createdAt DESC, templateId DESC`다.
 
 ```json
 {
@@ -80,17 +79,13 @@ Query: `userId`, `page`, `size`. 기본 정렬은 `createdAt DESC, templateId DE
 
 ## GET /api/admin/creator-space-templates/{templateId}
 
-Query: `userId`. 응답은 생성 API와 같은 형식이다.
+Query parameter는 없다. 응답은 생성 API와 같은 형식이다.
 
 ## PATCH /api/admin/creator-space-templates/{templateId}
 
 요청 본문은 생성 API와 동일한 필드를 모두 포함하며, 전체 필드를 새 값으로 교체한다(부분 patch 아님). 활성 상태와 관계없이 수정할 수 있다. 성공 응답은 생성 API와 같은 형식이다.
 
 ## POST /api/admin/creator-space-templates/{templateId}/activate
-
-```json
-{ "userId": 1 }
-```
 
 대상 템플릿을 활성화한다. 이미 활성인 템플릿을 다시 활성화하면 상태 변화 없이 그대로 반환한다. 성공 응답은 생성 API와 같은 형식이며 `active: true`다.
 

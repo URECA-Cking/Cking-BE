@@ -2,6 +2,7 @@ package kr.co.cking.event.presentation;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.event.application.AdminClosingStatusQueryService;
 import kr.co.cking.event.domain.EventStatus;
 import org.junit.jupiter.api.Test;
@@ -13,11 +14,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AdminClosingStatusController.class)
+@WithMockJwt(memberId = "1")
 class AdminClosingStatusControllerTest {
 
     @Autowired private MockMvc mockMvc;
@@ -28,8 +31,7 @@ class AdminClosingStatusControllerTest {
     void getClosingStatusReturnsOnlyClosingStatus() throws Exception {
         given(adminClosingStatusQueryService.getClosingStatus(1L, 10L)).willReturn(EventStatus.CLOSING);
 
-        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L)
-                        .queryParam("userId", "1"))
+        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.status").value("CLOSING"))
@@ -37,6 +39,8 @@ class AdminClosingStatusControllerTest {
                 .andExpect(jsonPath("$.data.progress").doesNotExist())
                 .andExpect(jsonPath("$.data.pendingCount").doesNotExist())
                 .andExpect(jsonPath("$.data.cutoffStreamId").doesNotExist());
+
+        then(adminClosingStatusQueryService).should().getClosingStatus(1L, 10L);
     }
 
     /** 완료된 마감 조회는 CLOSED 상태를 반환한다. */
@@ -44,31 +48,27 @@ class AdminClosingStatusControllerTest {
     void getClosingStatusReturnsClosedStatus() throws Exception {
         given(adminClosingStatusQueryService.getClosingStatus(1L, 10L)).willReturn(EventStatus.CLOSED);
 
-        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L)
-                        .queryParam("userId", "1"))
+        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CLOSED"));
     }
 
-    /** userId 쿼리 파라미터가 없으면 요청 검증 오류를 반환한다. */
+    /** 호출자 식별자는 쿼리 파라미터 없이 JWT에서 주입한다. */
     @Test
-    void getClosingStatusRejectsMissingUserId() throws Exception {
+    void getClosingStatusUsesJwtMemberIdWithoutUserIdQuery() throws Exception {
+        given(adminClosingStatusQueryService.getClosingStatus(1L, 10L)).willReturn(EventStatus.CLOSING);
+
         mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+                .andExpect(status().isOk());
+
+        then(adminClosingStatusQueryService).should().getClosingStatus(1L, 10L);
     }
 
-    /** 0 이하 Event ID 또는 관리자 ID는 Controller 계층에서 거절한다. */
+    /** 0 이하 Event ID는 Controller 계층에서 거절한다. */
     @ParameterizedTest
     @ValueSource(longs = {0L, -1L})
     void getClosingStatusRejectsNonPositiveIds(long invalidId) throws Exception {
-        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", invalidId)
-                        .queryParam("userId", "1"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-
-        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L)
-                        .queryParam("userId", String.valueOf(invalidId)))
+        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", invalidId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
@@ -79,8 +79,7 @@ class AdminClosingStatusControllerTest {
         given(adminClosingStatusQueryService.getClosingStatus(1L, 10L))
                 .willThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 
-        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L)
-                        .queryParam("userId", "1"))
+        mockMvc.perform(get("/api/admin/events/{eventId}/closing-status", 10L))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }

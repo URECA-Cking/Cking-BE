@@ -218,8 +218,8 @@ Creator가 타인의 Event를 요청하면 `FORBIDDEN`이고, 존재하지 않�
 
 ## GET /api/admin/events/{eventId}/closing-status
 
-`eventId`와 `userId`는 양수 Long이어야 하며, `userId`는 필수 쿼리 파라미터다. 요청 Member가 존재하고
-역할이 `ADMIN`이어야 한다. 대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를
+Bearer Access JWT와 ADMIN 역할이 필수이며, Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로
+전달한다. `eventId`는 양수 Long이어야 한다. 대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를
 확인한다. `CLOSING`이면 마감 진행 중, `CLOSED`이면 마감 완료를 의미한다. 그 외 Event 상태는
 `INVALID_STATE`다.
 
