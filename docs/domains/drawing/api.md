@@ -9,11 +9,7 @@
 #### 요청
 
 - Path Variable: `drawingId` (`Long`, 양수, 필수)
-- Body: 관리자 `userId` (`Long`, 양수, 필수)
-
-```json
-{ "userId": 1 }
-```
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Request Body `userId`는 받지 않는다.
 
 #### 성공 응답
 
@@ -48,7 +44,7 @@
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | drawingId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `VALIDATION_FAILED` | drawingId가 누락·0 이하이거나 형식이 올바르지 않음 |
 | `RESOURCE_NOT_FOUND` | 요청한 Member가 존재하지 않음 |
 | `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
 | `DRAWING_NOT_FOUND` | Drawing이 존재하지 않음 |
@@ -67,11 +63,7 @@
 #### 요청
 
 - Path Variable: `drawingId` (`Long`, 양수, 필수)
-- Body: 관리자 `userId` (`Long`, 양수, 필수)
-
-```json
-{ "userId": 1 }
-```
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Request Body `userId`는 받지 않는다.
 
 #### 성공 응답
 
@@ -103,11 +95,11 @@
   어느 단계든 실패하면 모두 Rollback한다.
 - 이미 `PUBLIC`인 Drawing은 연결 Event도 `PUBLISHED`인 경우에만 상태 변경 없이 성공한다.
 - Drawing과 Event 행을 모두 비관적으로 잠가 동시 요청을 직렬화한다.
-- Controller는 시스템4 `PublicationService.publish(drawingId, userId)`를 한 번만 호출한다.
+- Controller는 JWT에서 얻은 memberId로 시스템4 `PublicationService.publish(drawingId, memberId)`를 한 번만 호출한다.
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | drawingId 또는 userId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `VALIDATION_FAILED` | drawingId가 누락·0 이하이거나 형식이 올바르지 않음 |
 | `RESOURCE_NOT_FOUND` | 요청한 Member가 존재하지 않음 |
 | `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
 | `DRAWING_NOT_FOUND` | Drawing이 존재하지 않음 |

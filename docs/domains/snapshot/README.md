@@ -72,8 +72,9 @@ Drawing 모듈은 Snapshot Entity나 Repository를 직접 사용하지 않고 �
 ### `GET /api/admin/events/{eventId}/snapshot`
 
 - 권한: `ADMIN`
-- 사용자 식별: 필수 query parameter `userId` (`Long`)
-- 처리 순서: Member 존재 여부와 `ADMIN` 권한을 확인한 뒤 Event의 공식 Snapshot을 조회한다.
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); query parameter `userId`는 받지 않는다.
+- Spring Security가 `ADMIN`을 먼저 인가한 뒤, Application이 Member 존재와 업무 권한을 다시 확인하고
+  Event의 공식 Snapshot을 조회한다.
 - 조회는 read-only이며 Snapshot과 Candidate를 변경하지 않는다.
 - Candidate는 `userId ASC` 순서로 반환한다.
 

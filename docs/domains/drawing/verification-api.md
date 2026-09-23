@@ -35,7 +35,7 @@
 ## `POST /api/admin/drawings/{drawingId}/verify`
 
 - 권한: `ADMIN`
-- 요청 Body: `{ "userId": 1 }`
+- 호출자 식별: Access JWT의 `@CurrentMemberId`; Request Body `userId`는 받지 않는다.
 - 대상: `COMPLETED` Drawing
 - 검증 불일치는 HTTP 오류로 변환하지 않고 `200 OK`의 `status=VERIFICATION_FAILED`로 기록·반환한다.
 - 리소스 없음, 권한 없음, 미완료 Drawing은 공통 오류 응답을 반환하며 검증 이력을 만들지 않는다.
@@ -90,7 +90,7 @@
 ## `GET /api/admin/drawings/{drawingId}/verification-history`
 
 - 권한: `ADMIN`
-- 사용자 식별: query parameter `userId`
+- 호출자 식별: Access JWT의 `@CurrentMemberId`; query parameter `userId`는 받지 않는다.
 - Page query: `page` 기본 0, `size` 기본 20·최대 100
 - 정렬: `verifiedAt DESC`, 동일 시각이면 `id DESC`
 - 응답: 공통 Page 형식의 `items`에 POST 응답과 같은 검증 결과를 반환한다.
