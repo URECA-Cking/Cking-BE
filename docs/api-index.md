@@ -68,5 +68,10 @@
 | 62 | 외부 | Stream | ADMIN | GET | `/api/admin/dead-streams` | Dead Stream 목록 조회 | - |
 | 63 | 외부 | Stream | ADMIN | POST | `/api/admin/dead-streams/{id}/replay` | Dead Stream 수동 replay | 상태 기반 |
 | 64 | 외부 | Ticket | ADMIN | POST | `/api/admin/tickets/resync` | 잔액 수동 재동기화(Redis를 DB 기준으로) | 상태 기반 |
+| 65 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates` | 기본 템플릿 생성 | - |
+| 66 | 외부 | Creator Space Template | ADMIN | GET | `/api/admin/creator-space-templates` | 템플릿 목록 | - |
+| 67 | 외부 | Creator Space Template | ADMIN | GET | `/api/admin/creator-space-templates/{templateId}` | 템플릿 상세 | - |
+| 68 | 외부 | Creator Space Template | ADMIN | PATCH | `/api/admin/creator-space-templates/{templateId}` | 템플릿 수정 | 상태 기반 |
+| 69 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/{templateId}/activate` | 템플릿 활성화 | 상태 기반 |
 
 No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

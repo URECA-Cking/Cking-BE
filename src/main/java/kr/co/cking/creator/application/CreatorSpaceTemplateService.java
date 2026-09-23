@@ -1,0 +1,101 @@
+package kr.co.cking.creator.application;
+
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
+import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.repository.CreatorSpaceTemplateRepository;
+import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
+import kr.co.cking.member.repository.MemberRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
+
+/**
+ * 관리자 기본 크리에이터 스페이스 템플릿의 생성·조회·수정·활성화를 담당한다.
+ * Creator 승인 시 스페이스를 자동 생성하는 일(후속 이슈)은 이 서비스의 범위가 아니며,
+ * {@link #findActive()}로 활성 템플릿을 읽어가는 소비자만 지원한다.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class CreatorSpaceTemplateService {
+
+    private final MemberRepository memberRepository;
+    private final CreatorSpaceTemplateRepository templateRepository;
+    private final CreatorSpaceTemplateLockManager lockManager;
+
+    public CreatorSpaceTemplate create(Long adminId, CreatorSpaceTemplateFields fields) {
+        requireAdmin(adminId);
+        return templateRepository.save(new CreatorSpaceTemplate(
+                adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule(),
+                fields.homeTabEnabled(), fields.missionsTabEnabled(), fields.postsTabEnabled(), fields.eventsTabEnabled()
+        ));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CreatorSpaceTemplate> findAllForAdmin(Long adminId, Pageable pageable) {
+        requireAdmin(adminId);
+        return templateRepository.findAllByOrderByCreatedAtDescTemplateIdDesc(pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public CreatorSpaceTemplate findForAdmin(Long adminId, Long templateId) {
+        requireAdmin(adminId);
+        return getTemplate(templateId);
+    }
+
+    public CreatorSpaceTemplate update(Long adminId, Long templateId, CreatorSpaceTemplateFields fields) {
+        requireAdmin(adminId);
+        CreatorSpaceTemplate template = getTemplate(templateId);
+        template.update(
+                adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule(),
+                fields.homeTabEnabled(), fields.missionsTabEnabled(), fields.postsTabEnabled(), fields.eventsTabEnabled()
+        );
+        return template;
+    }
+
+    /** 대상 템플릿을 활성화하고, 기존에 활성이던 템플릿이 있으면 함께 비활성화한다. */
+    public CreatorSpaceTemplate activate(Long adminId, Long templateId) {
+        return lockManager.execute(() -> activateLocked(adminId, templateId));
+    }
+
+    private CreatorSpaceTemplate activateLocked(Long adminId, Long templateId) {
+        requireAdmin(adminId);
+        CreatorSpaceTemplate target = getTemplate(templateId);
+        if (target.isActive()) {
+            return target;
+        }
+        templateRepository.findByActiveMarker(CreatorSpaceTemplate.ACTIVE_MARKER)
+                .ifPresent(current -> current.deactivate(adminId));
+        target.activate(adminId);
+        return target;
+    }
+
+    /**
+     * 현재 활성 템플릿을 읽는다. Creator 승인 시점에 값을 복사할 후속 이슈가 쓸 내부 조회이며,
+     * 관리자 권한 검증을 하지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<CreatorSpaceTemplate> findActive() {
+        return templateRepository.findByActiveMarker(CreatorSpaceTemplate.ACTIVE_MARKER);
+    }
+
+    private CreatorSpaceTemplate getTemplate(Long templateId) {
+        return templateRepository.findById(templateId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    private void requireAdmin(Long adminId) {
+        Member admin = memberRepository.findById(adminId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (admin.getRole() != MemberRole.ADMIN) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        }
+    }
+}

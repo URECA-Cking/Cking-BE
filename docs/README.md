@@ -36,6 +36,7 @@
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
 - [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계
 - [Mission API](domains/mission/api.md): 미션 완료 API 계약
+- [Creator Space Template API](domains/creator/space-template-api.md): 관리자 기본 크리에이터 스페이스 템플릿 관리 API 계약
 - [Auth](domains/auth/README.md): OAuth2, JWT, Login Code, Refresh Token과 인증·인가 책임 경계
 - [Auth API](domains/auth/api.md): OAuth 로그인, Token 교환, Refresh, Logout, 현재 사용자 API 목표 계약
 
