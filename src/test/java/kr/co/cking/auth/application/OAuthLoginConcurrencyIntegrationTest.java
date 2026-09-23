@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -13,6 +14,7 @@ import kr.co.cking.auth.application.model.OAuthUserInfo;
 import kr.co.cking.auth.domain.OAuthAccount;
 import kr.co.cking.auth.domain.OAuthProvider;
 import kr.co.cking.auth.repository.OAuthAccountRepository;
+import kr.co.cking.auth.security.oauth.OAuthMemberLoginService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class OAuthLoginConcurrencyIntegrationTest {
 
     @Autowired private OAuthLoginService oauthLoginService;
+    @Autowired private OAuthMemberLoginService oauthMemberLoginService;
     @Autowired private OAuthAccountRepository oauthAccountRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -86,13 +89,34 @@ class OAuthLoginConcurrencyIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         String sharedEmail = "shared-" + suffix + "@example.com";
         OAuthUserInfo google = new OAuthUserInfo(OAuthProvider.GOOGLE, "google-" + suffix, sharedEmail, "Google 사용자");
-        OAuthUserInfo kakao = new OAuthUserInfo(OAuthProvider.KAKAO, "kakao-" + suffix, sharedEmail, "Kakao 사용자");
+        String kakaoUserId = Long.toString(UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE);
+        OAuthUserInfo kakao = new OAuthUserInfo(OAuthProvider.KAKAO, kakaoUserId, sharedEmail, "Kakao 사용자");
         createdUsers.addAll(List.of(google, kakao));
 
-        Long googleMemberId = oauthLoginService.login(google);
-        Long kakaoMemberId = oauthLoginService.login(kakao);
+        Long googleMemberId = oauthMemberLoginService.login("google", Map.of(
+                "sub", google.providerUserId(),
+                "email", google.email(),
+                "name", google.name()
+        ));
+        Long googleReloginMemberId = oauthMemberLoginService.login("google", Map.of(
+                "sub", google.providerUserId(),
+                "email", google.email(),
+                "name", google.name()
+        ));
+        Long kakaoMemberId = oauthMemberLoginService.login("kakao", Map.of(
+                "id", Long.parseLong(kakao.providerUserId()),
+                "properties", Map.of("nickname", kakao.name()),
+                "kakao_account", Map.of("email", kakao.email())
+        ));
+        Long kakaoReloginMemberId = oauthMemberLoginService.login("kakao", Map.of(
+                "id", Long.parseLong(kakao.providerUserId()),
+                "properties", Map.of("nickname", kakao.name()),
+                "kakao_account", Map.of("email", kakao.email())
+        ));
 
         assertThat(googleMemberId).isNotEqualTo(kakaoMemberId);
+        assertThat(googleReloginMemberId).isEqualTo(googleMemberId);
+        assertThat(kakaoReloginMemberId).isEqualTo(kakaoMemberId);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM oauth_account WHERE member_id IN (?, ?)",
                 Integer.class,
