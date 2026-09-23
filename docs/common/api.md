@@ -22,7 +22,7 @@
 
 ## 사용자 식별
 
-### 현재: Access JWT 도입, 업무 API 전환 전 단계
+### 현재: Access JWT 도입, 업무 API 전환 진행 중
 
 - Access JWT는 `POST /api/auth/token`에서 발급하고 Resource Server가 검증한다. 새 인증 필요 API는
   `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
@@ -36,9 +36,8 @@
   USER 본인 여부와 ADMIN 업무 권한은 Application이 검증한다. 각 상세 계약은 해당 도메인 API 문서를 따른다.
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
 - 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
-- 전환되지 않은 `/api/me/**` 경로도 `userId`를 요청에 포함한다.
 
-Controller는 요청에서 호출자 `userId`를 추출해 Application/Service에 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
+인증 전환되지 않은 API의 Controller는 요청에서 호출자 `userId`를 추출해 Application/Service에 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
 
 ### 이후: 업무 API 호출자 식별 전환 단계
 
