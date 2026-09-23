@@ -15,6 +15,17 @@ public interface EventEntryRepository extends JpaRepository<EventEntry, Long> {
 
     Optional<EventEntry> findByRequestId(String requestId);
 
+    // 실시간 응모 현황(FR-P2-045~050): Gate 최초 적재 시 이 값으로 Redis 집계 키를 초기화하고,
+    // 집계 키가 없을 때(realtime=false) 조회를 대체한다. member_id 순서는 결과에 영향을 주지
+    // 않으므로 정렬을 강제하지 않는다.
+    @Query("""
+            select e.memberId as memberId, sum(e.usedTicketCount) as ticketCount
+            from EventEntry e
+            where e.eventId = :eventId
+            group by e.memberId
+            """)
+    List<EventEntryAggregate> aggregateByEvent(@Param("eventId") Long eventId);
+
     @Query("""
             select e.entryId as entryId, e.usedTicketCount as usedTicketCount, e.appliedAt as appliedAt
             from EventEntry e

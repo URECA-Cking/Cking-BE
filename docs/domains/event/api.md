@@ -191,6 +191,10 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 
 [응모 API](entry-api.md#get-apieventseventidentriesme)를 따른다.
 
+## GET /api/events/{eventId}/entry-status
+
+[응모 API](entry-api.md#get-apieventseventidentry-status)를 따른다.
+
 ## POST /api/events/{eventId}/close
 
 ```json

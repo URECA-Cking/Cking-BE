@@ -1,11 +1,13 @@
 package kr.co.cking.event.presentation;
 
 import tools.jackson.databind.ObjectMapper;
+import kr.co.cking.event.application.EntryStatusQueryService;
 import kr.co.cking.event.application.EventEntryService;
 import kr.co.cking.event.application.EventEntryQueryService;
 import kr.co.cking.event.application.dto.EntryHistoryItemResponse;
 import kr.co.cking.event.application.dto.EntryHistoryPage;
 import kr.co.cking.event.application.dto.EntryOutcome;
+import kr.co.cking.event.application.dto.EntryStatusResponse;
 import kr.co.cking.event.domain.EntryResultCode;
 import kr.co.cking.event.presentation.dto.EntryRequest;
 import org.junit.jupiter.api.Test;
@@ -43,6 +45,9 @@ class EntryControllerTest {
     @MockitoBean
     private EventEntryQueryService eventEntryQueryService;
 
+    @MockitoBean
+    private EntryStatusQueryService entryStatusQueryService;
+
     @Test
     void 내_응모내역을_cursor_형식으로_반환한다() throws Exception {
         EntryHistoryItemResponse item = new EntryHistoryItemResponse(
@@ -60,6 +65,41 @@ class EntryControllerTest {
                 .andExpect(jsonPath("$.data.hasNext").value(false));
 
         verify(eventEntryQueryService).getMyEntries(2L, 1L, 20, null);
+    }
+
+    @Test
+    void 실시간_응모_현황을_조회한다() throws Exception {
+        when(entryStatusQueryService.getStatus(2L, 1L))
+                .thenReturn(new EntryStatusResponse(2L, 3L, 7L, 4L, true));
+
+        mockMvc.perform(get("/api/events/2/entry-status").queryParam("userId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.eventId").value(2))
+                .andExpect(jsonPath("$.data.participantCount").value(3))
+                .andExpect(jsonPath("$.data.totalTicketCount").value(7))
+                .andExpect(jsonPath("$.data.myTicketCount").value(4))
+                .andExpect(jsonPath("$.data.realtime").value(true));
+
+        verify(entryStatusQueryService).getStatus(2L, 1L);
+    }
+
+    @Test
+    void userId_없이도_실시간_응모_현황을_조회한다() throws Exception {
+        when(entryStatusQueryService.getStatus(2L, null))
+                .thenReturn(new EntryStatusResponse(2L, 3L, 7L, null, false));
+
+        mockMvc.perform(get("/api/events/2/entry-status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.myTicketCount").doesNotExist())
+                .andExpect(jsonPath("$.data.realtime").value(false));
+    }
+
+    @Test
+    void 응모_현황_eventId는_양수여야_한다() throws Exception {
+        mockMvc.perform(get("/api/events/0/entry-status"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test

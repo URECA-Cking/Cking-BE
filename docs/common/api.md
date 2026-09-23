@@ -82,6 +82,19 @@ Controller는 요청에서 호출자 `userId`를 추출해 Application/Service�
 - 업무 의미가 있는 오류는 해당 도메인 `*ErrorCode` enum에 둔다.
 - 각 API 문서는 그 API가 반환할 수 있는 오류 코드만 적는다.
 
+인증 도입 후 `VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`도 전 도메인 공통
+오류로서 `CommonErrorCode`에 둔다. `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`처럼 Auth 업무
+의미가 있는 오류만 `AuthErrorCode`에 둔다.
+
+### 인증 도입 후 오류 기준
+
+- Access Token 없음·만료·변조·형식 오류는 공통 `UNAUTHORIZED`(401)로 통합한다.
+- Login Code의 만료·소비·잘못된 값은 `INVALID_LOGIN_CODE`로, Refresh Token의 만료·폐기·재사용·
+  잘못된 값은 `INVALID_REFRESH_TOKEN`으로 각각 통합한다.
+- token의 세부 실패 원인은 외부 오류 코드로 노출하지 않고 서버 로그·모니터링에서만 구분한다.
+- 인증된 호출자의 업무 권한 부족은 `FORBIDDEN`(403), 요청 형식 오류는 `VALIDATION_FAILED`, 예상하지
+  못한 오류는 `SYSTEM_ERROR`을 사용한다.
+
 ## Swagger UI 문서화
 
 - Swagger UI는 `/swagger-ui/index.html`, OpenAPI JSON은 `/v3/api-docs`에서 제공한다.
