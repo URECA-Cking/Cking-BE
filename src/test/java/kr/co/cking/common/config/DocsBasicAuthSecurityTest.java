@@ -40,6 +40,13 @@ class DocsBasicAuthSecurityTest {
                 .andExpect(status().isOk());
     }
 
+    /** Swagger 문서는 잘못된 Basic Auth 인증 정보를 거부하는지 검증한다. */
+    @Test
+    void Swagger_잘못된_인증_정보는_거부된다() throws Exception {
+        mockMvc.perform(get("/v3/api-docs").with(httpBasic("docs-user", "wrong-password")))
+                .andExpect(status().isUnauthorized());
+    }
+
     /** ALB 상태 확인에 필요한 health endpoint가 인증 없이 열려 있는지 검증한다. */
     @Test
     void actuator_health는_인증_없이_조회할_수_있다() throws Exception {
