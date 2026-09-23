@@ -73,6 +73,10 @@ public class CreatorSpaceTemplateService {
         }
         templateRepository.findByActiveMarker(CreatorSpaceTemplate.ACTIVE_MARKER)
                 .ifPresent(current -> current.deactivate(adminId));
+        // 비활성화를 먼저 DB에 반영해야 한다. flush 없이 두면 Hibernate가 새 템플릿의
+        // active_marker=1 UPDATE를 기존 템플릿의 NULL UPDATE보다 먼저 내보낼 수 있어
+        // uk_creator_space_template_active UNIQUE 제약을 순간적으로 위반할 수 있다.
+        templateRepository.flush();
         target.activate(adminId);
         return target;
     }

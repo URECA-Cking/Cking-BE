@@ -99,6 +99,7 @@ class CreatorSpaceTemplateServiceTest {
         assertThat(activated).isSameAs(target);
         assertThat(target.isActive()).isTrue();
         assertThat(current.isActive()).isFalse();
+        verify(templateRepository).flush();
     }
 
     @Test
@@ -118,6 +119,7 @@ class CreatorSpaceTemplateServiceTest {
         service.activate(1L, 20L);
 
         verify(templateRepository, never()).findByActiveMarker(any());
+        verify(templateRepository, never()).flush();
     }
 
     @Test
