@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import kr.co.cking.auth.domain.OAuthAccount;
 import kr.co.cking.auth.domain.OAuthProvider;
@@ -24,6 +25,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -49,6 +51,7 @@ class OAuthLoginCodeFlowIntegrationTest {
     @Autowired private OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
     @Autowired private OAuthAccountRepository oauthAccountRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private StringRedisTemplate stringRedisTemplate;
     @Autowired private JwtDecoder jwtDecoder;
     @Autowired private MockMvc mockMvc;
 
@@ -152,6 +155,8 @@ class OAuthLoginCodeFlowIntegrationTest {
 
     @Test
     void 잘못된_Kakao_ID는_Member나_LoginCode를_생성하지_않고_실패_redirect한다() throws Exception {
+        long memberCountBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM member", Long.class);
+        long loginCodeKeyCountBefore = loginCodeKeyCount();
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpSession session = new MockHttpSession();
         request.setSession(session);
@@ -168,6 +173,14 @@ class OAuthLoginCodeFlowIntegrationTest {
                 .isEqualTo("http://localhost:5173/oauth/callback?error=login_processing_failed");
         assertThat(oauthAccountRepository.findByProviderAndProviderUserId(OAuthProvider.KAKAO, "not-a-number"))
                 .isEmpty();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM member", Long.class))
+                .isEqualTo(memberCountBefore);
+        assertThat(loginCodeKeyCount()).isEqualTo(loginCodeKeyCountBefore);
+    }
+
+    private long loginCodeKeyCount() {
+        Set<String> keys = stringRedisTemplate.keys("auth:login-code:*");
+        return keys == null ? 0 : keys.size();
     }
 
     private LoginResult loginAndExchange(String registrationId, String nameAttributeKey, Map<String, Object> attributes)
