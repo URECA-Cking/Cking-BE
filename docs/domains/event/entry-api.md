@@ -89,4 +89,5 @@ USER가 자신의 Event 응모 내역을 조회한다. Query는 필수 `userId`,
 `event.status`가 `OPEN`/`CLOSING`이고 집계 키(`event:entry-total`)가 있으면 Redis를, 그 외에는 DB
 집계를 쓴다(자세한 조건은 [응모 Lua API](lua-api.md#실시간-응모-현황-집계-fr-p2-045050) 참고).
 `realtime=true`일 때 `myTicketCount`는 수락 기준이라 DB 기준인 `/entries/me` 합계보다 일시적으로 클
-수 있다. 없거나 삭제·비노출 Event, 존재하지 않는 `userId`는 `RESOURCE_NOT_FOUND`.
+수 있다. 없거나 삭제·비공개 상태인 Event는 Event 전용 `EVENT_NOT_FOUND`(`GET /api/events/{eventId}`와
+동일 규칙), `userId`를 전달했는데 존재하지 않는 사용자면 공통 `RESOURCE_NOT_FOUND`다.

@@ -131,4 +131,22 @@ class EventGateLoaderAggregateIntegrationTest {
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(eventId))).isNull();
         assertThat(redisTemplate.hasKey(EntryRedisKeys.entrants(eventId))).isFalse();
     }
+
+    // status 키만 evict되고(부분 eviction) 집계 키는 살아남는 경우, DB 스냅샷으로 되돌리면
+    // 그사이 Redis에는 반영됐지만 Consumer가 아직 DB에 못 옮긴 증가분이 사라진다.
+    // "Gate 없음 = 집계도 없음"을 전제하면 안 된다.
+    @Test
+    void status만_유실되고_집계_키가_살아있으면_DB_스냅샷으로_덮어쓰지_않는다() {
+        insertEntry(MEMBER_A_ID, 3L); // DB 집계는 3이지만
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(eventId), "99"); // Redis에는 더 최신 값이 남아있다
+        redisTemplate.opsForHash().put(EntryRedisKeys.entrants(eventId), String.valueOf(MEMBER_A_ID), "99");
+
+        eventGateLoader.load(event());
+
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(eventId))).isEqualTo("99");
+        assertThat(redisTemplate.opsForHash().get(EntryRedisKeys.entrants(eventId), String.valueOf(MEMBER_A_ID)))
+                .isEqualTo("99");
+        // Gate 자체는 정상적으로 복원돼야 한다.
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.status(eventId))).isEqualTo("OPEN");
+    }
 }

@@ -69,7 +69,7 @@ Redis Lua는 명령 하나가 에러를 던져도 그 전에 실행된 쓰기를
 
 `event:entry-total:{eventId}`·`event:entrants:{eventId}`는 `GET /api/events/{eventId}/entry-status`(참여자 수·누적 사용 응모권 수 조회, 표시 전용 - 응모 승인·추첨 근거 아님)가 읽는 집계 키다. "키 없음 = 0 금지" 원칙을 그대로 적용해, 집계 키가 없으면 0으로 증가시키지 않고 조회 쪽이 DB `event_entry` 집계로 대체한다(`EntryStatusQueryService`).
 
-- **초기화**: `event-gate-load.lua`가 Gate가 처음 열릴 때(`event:status` 키가 아직 없을 때)만 DB 집계값으로 두 키를 채운다. Gate가 이미 있으면(정상 운영 중 대부분의 호출) 집계에 손대지 않는다 - `EventGateLoader`가 Redis `EXISTS` 사전 확인으로 매 틱 DB를 조회하지 않게 하고, Lua가 KEYS 존재 여부를 다시 확인하므로 그 사이 경합에도 이중 초기화는 없다.
+- **초기화**: `event-gate-load.lua`가 Gate가 처음 열릴 때(`event:status` 키가 아직 없을 때)만 DB 집계값으로 두 키를 채운다. Gate가 이미 있으면(정상 운영 중 대부분의 호출) 집계에 손대지 않는다 - `EventGateLoader`가 Redis `EXISTS` 사전 확인으로 매 틱 DB를 조회하지 않게 하고, Lua가 KEYS 존재 여부를 다시 확인하므로 그 사이 경합에도 이중 초기화는 없다. 이때 `event:entry-total`·`event:entrants`는 **서로 독립적으로 존재 여부를 확인**하고 각자 없을 때만 채운다 - `event:status`만 부분적으로 유실되고(Redis eviction 등) 집계 키는 살아 있는 경우, DB 스냅샷으로 덮어쓰면 그사이 Redis에는 반영됐지만 Consumer가 아직 DB에 옮기지 못한 증가분이 사라지기 때문이다.
 - **증가**: `entry-spend.lua`의 신규 SUCCESS 경로(XADD 성공 직후, idem 저장 전)에서만 `INCRBY`/`HINCRBY`로 증가한다. `DUPLICATE_REPLAY`(idem·guard 경로)와 모든 실패 코드는 반영하지 않으므로 재전송에도 이중 집계가 없다. 집계 실패가 이미 확정된 응모 결과를 바꾸면 안 되므로 `pcall`로 격리한다.
 - **만료**: `event-close-barrier.lua`가 새 cutoff를 확정할 때만 두 키에 24시간 만료(`PEXPIRE`)를 건다. 마감 이후 신규 증가가 없으므로 CLOSED 이후 조회는 DB로 넘어가면 충분하고, 키가 영구히 남지 않는다. 기존 cutoff를 그대로 반환하는 재시도 경로에는 적용하지 않는다(이미 걸려 있음).
 - **조회 출처**: Event 상태가 `OPEN`/`CLOSING`이고 집계 키가 있으면 Redis(`realtime=true`), 그 외는 DB `event_entry` 집계(`realtime=false`, CLOSED 이후는 Drain이 끝난 확정값).

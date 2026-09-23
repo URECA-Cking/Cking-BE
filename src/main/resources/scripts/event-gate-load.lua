@@ -26,11 +26,17 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
     return 1
 end
 
-redis.call('DEL', KEYS[5])
-for i = 3, #ARGV, 2 do
-    redis.call('HSET', KEYS[5], ARGV[i], ARGV[i + 1])
+-- 집계 키는 status와 별도로 각자 존재 여부를 확인한다. status만 유실되고(예: 부분 eviction)
+-- entry-total·entrants가 살아 있는 경우, DB 스냅샷으로 덮어쓰면 그사이 Redis에는 반영됐지만
+-- Consumer가 아직 DB에 옮기지 못한 증가분이 사라진다 - 이미 있는 집계 키는 절대 건드리지 않는다.
+if redis.call('EXISTS', KEYS[4]) == 0 then
+    redis.call('SET', KEYS[4], ARGV[2])
 end
-redis.call('SET', KEYS[4], ARGV[2])
+if redis.call('EXISTS', KEYS[5]) == 0 then
+    for i = 3, #ARGV, 2 do
+        redis.call('HSET', KEYS[5], ARGV[i], ARGV[i + 1])
+    end
+end
 
 -- entry-spend.lua는 status·endat 두 키가 모두 있어야 Gate로 인정한다. status를 마지막에 써서
 -- 반쯤 열린 상태를 막는다. 집계 키는 그 이전에 채워 넣어 Gate가 열리자마자 조회 가능하게 한다.
