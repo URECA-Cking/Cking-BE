@@ -25,7 +25,7 @@ import kr.co.cking.mission.CommonMissionCompletionRepository;
  * 후에만 XACK하는지 끝까지(end-to-end) 검증한다. 운영 stream 키와 겹치지 않도록
  * 테스트 전용 키/그룹으로 오버라이드한다.
  *
- * <p>공용 미션(ATTENDANCE)은 유형당 하나뿐(uk_common_mission_type)이라 V14 마이그레이션이
+ * <p>공용 미션(ATTENDANCE)은 유형당 하나뿐(uk_common_mission_type)이라 V15 마이그레이션이
  * 시딩한 행을 그대로 쓴다 — 이 테스트가 별도로 만들지 않는다.
  */
 @SpringBootTest(properties = {

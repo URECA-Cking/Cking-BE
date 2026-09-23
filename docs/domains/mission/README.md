@@ -46,5 +46,5 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 완료 판�
 - **판정 로직은 크리에이터별 미션과 완전히 동일하다.** `CommonMissionCompletionService.complete()`는 `MissionCompletionService.complete()`와 순서(기존 requestId 조회 → 활성 검증 → EARN 호출)가 같고, `MissionCompleteCommand`/`MissionCompleteOutcome`/`MissionErrorCode`도 원래 creatorId를 안 담는 범용 타입이라 그대로 재사용한다.
 - **API 경로에 creatorId가 없다** — `GET /api/missions`, `POST /api/missions/{missionId}/complete`.
 - **적립은 별도의 공용 EARN 경로를 탄다.** `CommonTicketEarnService`/`common-ticket-earn.lua`/`stream:common-ticket-earned`가 `TicketEarnService`/`ticket-earn.lua`/`stream:ticket-earned`와 같은 원자성·멱등성을 크리에이터 축 없이 재현한다. 자세한 계약은 [Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219)을 참고한다.
-- **공용 미션은 유형당 하나뿐이라(`uk_common_mission_type`) 생성 계기(Creator 승인 같은)가 없다.** `V14__add_common_ticket.sql`이 기본 출석 미션(reward 1, 상시 활성)을 직접 시딩한다 — 이슈 #185의 크리에이터별 기본 미션 초기화와 동일한 정책이지만 코드가 아니라 데이터로 고정했다.
+- **공용 미션은 유형당 하나뿐이라(`uk_common_mission_type`) 생성 계기(Creator 승인 같은)가 없다.** `V15__add_common_ticket.sql`이 기본 출석 미션(reward 1, 상시 활성)을 직접 시딩한다 — 이슈 #185의 크리에이터별 기본 미션 초기화와 동일한 정책이지만 코드가 아니라 데이터로 고정했다.
 - **알려진 제약(미해결)**: 공용 EARN Stream Consumer는 기본 소비+XACK만 구현했고, PEL 회수(`EarnStreamPelRecoveryScheduler` 대응)·잔액 수동 보정(`TicketCompensationService` 대응)은 아직 없다. 후속 이슈로 남긴다.
