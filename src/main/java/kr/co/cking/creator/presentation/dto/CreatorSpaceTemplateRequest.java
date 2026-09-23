@@ -32,7 +32,4 @@ public final class CreatorSpaceTemplateRequest {
             @NotNull Boolean eventsTabEnabled
     ) {
     }
-
-    public record Activate() {
-    }
 }
