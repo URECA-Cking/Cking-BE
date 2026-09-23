@@ -37,12 +37,12 @@ public class EntryController {
     private final EventEntryQueryService eventEntryQueryService;
     private final EntryStatusQueryService entryStatusQueryService;
 
+    /** 인증된 사용자의 Event 응모 이력을 조회한다. */
     @Operation(
             summary = "내 응모 내역 조회",
             description = "사용자가 특정 이벤트에 응모한 내역을 appliedAt DESC, entryId DESC 순으로 cursor 기반 조회합니다. "
                     + "size의 기본값은 20이며 1~100 범위입니다."
     )
-    /** 인증된 사용자의 Event 응모 이력을 조회한다. */
     @GetMapping("/api/events/{eventId}/entries/me")
     public ApiResponse<EntryHistoryPage> getMyEntries(
             @PathVariable @Positive Long eventId,
@@ -68,13 +68,13 @@ public class EntryController {
         return ApiResponse.success(entryStatusQueryService.getStatus(eventId, userId));
     }
 
+    /** 인증된 사용자의 응모권으로 Event 응모를 요청한다. */
     @Operation(
             summary = "이벤트 응모",
             description = "사용자의 응모권으로 이벤트에 응모합니다. requestId가 같은 재요청은 멱등하게 처리됩니다. "
                     + "couponType을 생략하면 CREATOR(해당 크리에이터 전용 응모권)로 처리하고, COMMON을 주면 "
                     + "크리에이터 무관 공용 응모권을 대신 씁니다."
     )
-    /** 인증된 사용자의 응모권으로 Event 응모를 요청한다. */
     @PostMapping("/api/events/{eventId}/entries")
     public ApiResponse<EntryResponse> apply(
             @PathVariable Long eventId,

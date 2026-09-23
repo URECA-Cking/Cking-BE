@@ -24,22 +24,22 @@ public class TicketQueryController {
 
     private final TicketQueryService ticketQueryService;
 
+    /** 인증된 사용자의 Creator별 응모권 잔액을 조회한다. */
     @Operation(
             summary = "응모권 잔액 조회",
             description = "크리에이터별 사용자의 현재 응모권 잔액을 조회합니다."
     )
-    /** 인증된 사용자의 Creator별 응모권 잔액을 조회한다. */
     @GetMapping("/api/creators/{creatorId}/tickets")
     public ApiResponse<TicketBalanceResponse> getBalance(@PathVariable Long creatorId, @CurrentMemberId Long memberId) {
         return ApiResponse.success(ticketQueryService.getBalance(creatorId, memberId));
     }
 
+    /** 인증된 사용자의 Creator별 응모권 이력을 조회한다. */
     @Operation(
             summary = "응모권 이력 조회",
             description = "크리에이터별 사용자의 응모권 적립·사용 이력을 cursor 기반으로 조회합니다. "
                     + "size의 기본값은 20이며 1~100 범위입니다."
     )
-    /** 인증된 사용자의 Creator별 응모권 이력을 조회한다. */
     @GetMapping("/api/creators/{creatorId}/tickets/history")
     public ApiResponse<TicketLedgerPage> getHistory(@PathVariable Long creatorId,
                                                     @CurrentMemberId Long memberId,

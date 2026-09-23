@@ -26,12 +26,12 @@ public class CommonMissionQueryController {
 
     private final CommonMissionQueryService commonMissionQueryService;
 
-    @GetMapping("/api/missions")
+    /** 인증된 사용자의 공용 미션과 완료 여부를 조회한다. */
     @Operation(
             summary = "공용 미션 목록 조회",
             description = "크리에이터에 묶이지 않는 공용 미션과, userId 기준 UTC periodKey의 오늘 완료 여부를 조회합니다."
     )
-    /** 인증된 사용자의 공용 미션과 완료 여부를 조회한다. */
+    @GetMapping("/api/missions")
     public ApiResponse<List<CommonMissionQueryItem>> findMissions(@CurrentMemberId Long memberId) {
         return ApiResponse.success(commonMissionQueryService.findMissions(memberId));
     }

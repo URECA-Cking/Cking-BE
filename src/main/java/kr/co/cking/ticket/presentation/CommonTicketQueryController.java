@@ -24,23 +24,23 @@ public class CommonTicketQueryController {
 
     private final CommonTicketQueryService commonTicketQueryService;
 
-    @GetMapping("/api/tickets/common")
+    /** 인증된 사용자의 공용 응모권 잔액을 조회한다. */
     @Operation(
             summary = "공용 응모권 잔액 조회",
             description = "크리에이터에 묶이지 않는 사용자의 현재 공용 응모권 잔액을 조회합니다."
     )
-    /** 인증된 사용자의 공용 응모권 잔액을 조회한다. */
+    @GetMapping("/api/tickets/common")
     public ApiResponse<CommonTicketBalanceResponse> getBalance(@CurrentMemberId Long memberId) {
         return ApiResponse.success(commonTicketQueryService.getBalance(memberId));
     }
 
-    @GetMapping("/api/tickets/common/history")
+    /** 인증된 사용자의 공용 응모권 이력을 조회한다. */
     @Operation(
             summary = "공용 응모권 이력 조회",
             description = "사용자의 공용 응모권 적립·사용 이력을 cursor 기반으로 조회합니다. "
                     + "size의 기본값은 20이며 1~100 범위입니다."
     )
-    /** 인증된 사용자의 공용 응모권 이력을 조회한다. */
+    @GetMapping("/api/tickets/common/history")
     public ApiResponse<CommonTicketLedgerPage> getHistory(@CurrentMemberId Long memberId,
                                                           @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
                                                           @RequestParam(required = false) String cursor) {

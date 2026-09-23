@@ -33,12 +33,12 @@ public class CommonMissionController {
 
     private final CommonMissionCompletionService commonMissionCompletionService;
 
-    @PostMapping("/api/missions/{missionId}/complete")
+    /** 인증된 사용자의 공용 미션 완료 요청을 처리한다. */
     @Operation(
             summary = "공용 미션 완료",
             description = "크리에이터에 묶이지 않는 공용 미션을 완료 처리합니다. requestId로 재시도해도 재적립되지 않습니다."
     )
-    /** 인증된 사용자의 공용 미션 완료 요청을 처리한다. */
+    @PostMapping("/api/missions/{missionId}/complete")
     public ResponseEntity<ApiResponse<MissionCompleteResponse>> complete(
             @PathVariable @Positive Long missionId,
             @CurrentMemberId Long memberId,
