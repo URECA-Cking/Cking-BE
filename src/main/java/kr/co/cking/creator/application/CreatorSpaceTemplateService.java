@@ -26,9 +26,11 @@ import java.util.Optional;
 @Transactional
 public class CreatorSpaceTemplateService {
 
+    private static final String ACTIVATION_LOCK_KEY = "creator-space-template:activation";
+
     private final MemberRepository memberRepository;
     private final CreatorSpaceTemplateRepository templateRepository;
-    private final CreatorSpaceTemplateLockManager lockManager;
+    private final CreatorApplicationLockManager lockManager;
 
     public CreatorSpaceTemplate create(Long adminId, CreatorSpaceTemplateFields fields) {
         requireAdmin(adminId);
@@ -60,17 +62,23 @@ public class CreatorSpaceTemplateService {
         return template;
     }
 
-    /** 대상 템플릿을 활성화하고, 기존에 활성이던 템플릿이 있으면 함께 비활성화한다. */
+    /**
+     * 대상 템플릿을 활성화하고, 기존에 활성이던 템플릿이 있으면 함께 비활성화한다.
+     * 관리자 검증과 템플릿 조회는 advisory lock을 잡기 전에 끝낸다 — lock key가
+     * 템플릿별이 아니라 전역이라, 잘못된 요청(없는 templateId·비관리자)이 lock부터
+     * 잡아버리면 무관한 다른 템플릿의 정상 동시 활성화 요청까지 CONCURRENT_COMMAND로
+     * 스퓨리어스하게 거부될 수 있기 때문이다.
+     */
     public CreatorSpaceTemplate activate(Long adminId, Long templateId) {
-        return lockManager.execute(() -> activateLocked(adminId, templateId));
-    }
-
-    private CreatorSpaceTemplate activateLocked(Long adminId, Long templateId) {
         requireAdmin(adminId);
         CreatorSpaceTemplate target = getTemplate(templateId);
         if (target.isActive()) {
             return target;
         }
+        return lockManager.execute(ACTIVATION_LOCK_KEY, () -> activateLocked(adminId, target));
+    }
+
+    private CreatorSpaceTemplate activateLocked(Long adminId, CreatorSpaceTemplate target) {
         templateRepository.findByActiveMarker(CreatorSpaceTemplate.ACTIVE_MARKER)
                 .ifPresent(current -> current.deactivate(adminId));
         // 비활성화를 먼저 DB에 반영해야 한다. flush 없이 두면 Hibernate가 새 템플릿의
