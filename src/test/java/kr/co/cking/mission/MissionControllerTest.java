@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(MissionController.class)
+@kr.co.cking.common.security.WithMockJwt
 class MissionControllerTest {
 
     @Autowired
@@ -68,12 +69,13 @@ class MissionControllerTest {
     }
 
     @Test
-    void userId가_없으면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_401과_UNAUTHORIZED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/creators/10/missions/100/complete")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"requestId\":\"" + UUID.randomUUID() + "\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
@@ -81,21 +83,6 @@ class MissionControllerTest {
         mockMvc.perform(post("/api/creators/10/missions/100/complete")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":1}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-    }
-
-    @Test
-    void userId가_양수가_아니면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(post("/api/creators/10/missions/100/complete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":0,\"requestId\":\"" + UUID.randomUUID() + "\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-
-        mockMvc.perform(post("/api/creators/10/missions/100/complete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":-1,\"requestId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }

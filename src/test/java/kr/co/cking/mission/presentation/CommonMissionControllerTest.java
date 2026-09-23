@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CommonMissionController.class)
+@kr.co.cking.common.security.WithMockJwt
 class CommonMissionControllerTest {
 
     @Autowired
@@ -80,11 +81,12 @@ class CommonMissionControllerTest {
     }
 
     @Test
-    void userId가_없으면_400과_VALIDATION_FAILED를_반환한다() throws Exception {
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_401과_UNAUTHORIZED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/missions/100/complete")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"requestId\":\"" + UUID.randomUUID() + "\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 }
