@@ -18,11 +18,13 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.ticket.application.TicketAdminService;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
 import kr.co.cking.ticket.domain.TicketErrorCode;
 
 @WebMvcTest(TicketAdminController.class)
+@WithMockJwt(memberId = "1")
 class TicketAdminControllerTest {
 
     @Autowired
@@ -32,7 +34,7 @@ class TicketAdminControllerTest {
     private TicketAdminService ticketAdminService;
 
     private static final String BODY = """
-            {"userId":1,"memberId":2,"creatorId":3,"reason":"정합성 배치 지속 불일치"}
+            {"memberId":2,"creatorId":3,"reason":"정합성 배치 지속 불일치"}
             """;
 
     @Test
@@ -54,7 +56,7 @@ class TicketAdminControllerTest {
         mockMvc.perform(post("/api/admin/tickets/resync")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"memberId":2,"creatorId":3,"reason":""}
+                                {"memberId":2,"creatorId":3,"reason":""}
                                 """))
                 .andExpect(status().isBadRequest());
 
@@ -68,7 +70,7 @@ class TicketAdminControllerTest {
 
         mockMvc.perform(post("/api/admin/tickets/resync")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":1,\"memberId\":2,\"creatorId\":3,\"reason\":\"%s\"}".formatted(tooLong)))
+                        .content("{\"memberId\":2,\"creatorId\":3,\"reason\":\"%s\"}".formatted(tooLong)))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(ticketAdminService);

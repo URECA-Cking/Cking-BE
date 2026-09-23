@@ -10,7 +10,6 @@ public final class CreatorSpaceTemplateRequest {
     }
 
     public record Create(
-            @NotNull Long userId,
             @NotBlank @Size(max = 500) String introText,
             @NotBlank @Size(max = 500) String profileImageUrl,
             @NotBlank @Size(max = 500) String bannerImageUrl,
@@ -23,7 +22,6 @@ public final class CreatorSpaceTemplateRequest {
     }
 
     public record Update(
-            @NotNull Long userId,
             @NotBlank @Size(max = 500) String introText,
             @NotBlank @Size(max = 500) String profileImageUrl,
             @NotBlank @Size(max = 500) String bannerImageUrl,
@@ -33,8 +31,5 @@ public final class CreatorSpaceTemplateRequest {
             @NotNull Boolean postsTabEnabled,
             @NotNull Boolean eventsTabEnabled
     ) {
-    }
-
-    public record Activate(@NotNull Long userId) {
     }
 }

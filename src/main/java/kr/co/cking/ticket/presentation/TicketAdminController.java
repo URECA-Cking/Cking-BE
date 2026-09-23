@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.ticket.application.TicketAdminService;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
 import kr.co.cking.ticket.presentation.dto.TicketResyncRequest;
@@ -27,8 +28,12 @@ public class TicketAdminController {
                     + "미반영 SPEND·EARN 메시지가 남아 있으면 보정을 거부합니다."
     )
     @PostMapping("/api/admin/tickets/resync")
-    public ApiResponse<TicketBalanceResponse> resync(@Valid @RequestBody TicketResyncRequest request) {
+    /** 인증된 관리자가 대상 Member의 응모권 잔액을 DB 기준으로 재동기화한다. */
+    public ApiResponse<TicketBalanceResponse> resync(
+            @CurrentMemberId Long memberId,
+            @Valid @RequestBody TicketResyncRequest request
+    ) {
         return ApiResponse.success(ticketAdminService.resync(
-                request.userId(), request.memberId(), request.creatorId(), request.reason()));
+                memberId, request.memberId(), request.creatorId(), request.reason()));
     }
 }

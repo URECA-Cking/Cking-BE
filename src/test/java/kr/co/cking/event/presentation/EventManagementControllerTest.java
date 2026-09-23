@@ -239,11 +239,11 @@ class EventManagementControllerTest {
         Event event = event(7L, "심사 대기 팬미팅");
         event.requestApproval();
         EventApprovalRequest request = new EventApprovalRequest(7L, 1, 1L);
-        given(eventReviewService.findPending(org.mockito.ArgumentMatchers.eq(99L), any()))
+        given(eventReviewService.findPending(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(
                         new EventReviewService.PendingEvent(request, event, "크리에이터"))));
 
-        mockMvc.perform(get("/api/admin/events/pending").param("userId", "99"))
+        mockMvc.perform(get("/api/admin/events/pending"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].eventId").value(7))
@@ -257,12 +257,12 @@ class EventManagementControllerTest {
     @Test
     void approveEventReturnsScheduledResultEnvelope() throws Exception {
         mockMvc.perform(post("/api/admin/events/{eventId}/approve", 7L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":99}"))
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(7))
                 .andExpect(jsonPath("$.data.status").value("SCHEDULED"));
+        then(eventReviewService).should().approve(1L, 7L);
     }
 
     /** 관리자 거절 API가 거절 상태를 공통 응답 봉투로 반환하는지 검증한다. */
@@ -270,11 +270,12 @@ class EventManagementControllerTest {
     void rejectEventReturnsRejectedResultEnvelope() throws Exception {
         mockMvc.perform(post("/api/admin/events/{eventId}/reject", 7L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":99,\"rejectReason\":\"일정 조정이 필요합니다.\"}"))
+                        .content("{\"rejectReason\":\"일정 조정이 필요합니다.\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.eventId").value(7))
                 .andExpect(jsonPath("$.data.status").value("REJECTED"));
+        then(eventReviewService).should().reject(1L, 7L, "일정 조정이 필요합니다.");
     }
 
     private Event event(Long eventId, String title) {

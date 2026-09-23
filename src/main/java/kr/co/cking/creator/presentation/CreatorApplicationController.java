@@ -63,14 +63,16 @@ public class CreatorApplicationController {
         return ApiResponse.success(CreatorApplicationResponse.PageResult.from(applications, items));
     }
 
+    /** 인증된 관리자가 Creator 신청 목록을 심사 순서대로 조회한다. */
     @GetMapping("/api/admin/creator-applications")
+    @Operation(summary = "Creator 신청 관리자 목록", description = "ADMIN 권한의 인증된 관리자가 심사 대기와 이력 신청을 페이지로 조회합니다.")
     public ApiResponse<CreatorApplicationResponse.PageResult<CreatorApplicationResponse.Admin>> findAllForAdmin(
-            @RequestParam Long userId,
+            @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         Page<CreatorApplicationService.AdminApplication> applications = creatorApplicationService.findAllForAdmin(
-                userId, PageRequest.of(page, size));
+                memberId, PageRequest.of(page, size));
         List<CreatorApplicationResponse.Admin> items = applications.stream()
                 .map(application -> CreatorApplicationResponse.Admin.from(
                         application.application(), application.applicantName()))
@@ -78,22 +80,25 @@ public class CreatorApplicationController {
         return ApiResponse.success(CreatorApplicationResponse.PageResult.from(applications, items));
     }
 
+    /** 인증된 관리자가 대기 중인 Creator 신청을 승인한다. */
     @PostMapping("/api/admin/creator-applications/{applicationId}/approve")
-    public ApiResponse<CreatorApplicationResponse.Result> approve(
-            @PathVariable Long applicationId,
-            @Valid @RequestBody CreatorApplicationRequest.Review request
-    ) {
+    @Operation(summary = "Creator 신청 승인", description = "ADMIN 권한의 인증된 관리자가 PENDING 신청을 승인하고 기본 미션을 초기화합니다.")
+    public ApiResponse<CreatorApplicationResponse.Result> approve(@PathVariable Long applicationId,
+                                                                    @CurrentMemberId Long memberId) {
         return ApiResponse.success(CreatorApplicationResponse.Result.from(
-                creatorApplicationService.approve(request.userId(), applicationId)));
+                creatorApplicationService.approve(memberId, applicationId)));
     }
 
+    /** 인증된 관리자가 거절 사유를 기록하며 Creator 신청을 거절한다. */
     @PostMapping("/api/admin/creator-applications/{applicationId}/reject")
+    @Operation(summary = "Creator 신청 거절", description = "ADMIN 권한의 인증된 관리자가 거절 사유를 기록하고 PENDING 신청을 거절합니다.")
     public ApiResponse<CreatorApplicationResponse.Result> reject(
             @PathVariable Long applicationId,
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody CreatorApplicationRequest.Reject request
     ) {
         return ApiResponse.success(CreatorApplicationResponse.Result.from(
-                creatorApplicationService.reject(request.userId(), applicationId, request.rejectReason())));
+                creatorApplicationService.reject(memberId, applicationId, request.rejectReason())));
     }
 
 }

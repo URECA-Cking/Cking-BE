@@ -51,7 +51,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 ## GET /api/admin/creator-applications
 
-Query: `userId`, `page`, `size`. `userId`는 관리자 식별자다. 기본 정렬은 `requestedAt ASC, applicationId ASC`다.
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 `page`, `size`다. 기본 정렬은 `requestedAt ASC, applicationId ASC`다.
 
 ```json
 {
@@ -75,11 +75,7 @@ Query: `userId`, `page`, `size`. `userId`는 관리자 식별자다. 기본 정�
 
 ## POST /api/admin/creator-applications/{id}/approve
 
-```json
-{ "userId": 1 }
-```
-
-관리자만 PENDING 신청을 승인할 수 있다. 승인, Creator 생성, 기본 미션(ATTENDANCE·LIKE) 초기화는 하나의 DB transaction으로 처리한다. 미션 초기화가 실패하면 승인과 Creator 생성도 함께 롤백되며, Member당 Creator는 하나만 존재해야 한다.
+Request Body는 없다. 인증된 관리자만 PENDING 신청을 승인할 수 있다. 승인, Creator 생성, 기본 미션(ATTENDANCE·LIKE) 초기화는 하나의 DB transaction으로 처리한다. 미션 초기화가 실패하면 승인과 Creator 생성도 함께 롤백되며, Member당 Creator는 하나만 존재해야 한다.
 
 ```json
 { "applicationId": 1, "status": "APPROVED" }
@@ -90,7 +86,7 @@ Query: `userId`, `page`, `size`. `userId`는 관리자 식별자다. 기본 정�
 ## POST /api/admin/creator-applications/{id}/reject
 
 ```json
-{ "userId": 1, "rejectReason": "거절 사유" }
+{ "rejectReason": "거절 사유" }
 ```
 
 - `rejectReason`은 필수이며 null, blank, trim 후 빈 문자열을 허용하지 않는다.

@@ -4,13 +4,13 @@ import jakarta.validation.constraints.Positive;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.event.application.AdminClosingStatusQueryService;
 import kr.co.cking.event.presentation.dto.ClosingStatusResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 관리자 마감 상태 조회 HTTP 요청을 처리한다. */
@@ -31,9 +31,9 @@ public class AdminClosingStatusController {
     @GetMapping("/api/admin/events/{eventId}/closing-status")
     public ApiResponse<ClosingStatusResponse> getClosingStatus(
             @PathVariable @Positive Long eventId,
-            @RequestParam @Positive Long userId
+            @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(ClosingStatusResponse.from(
-                adminClosingStatusQueryService.getClosingStatus(userId, eventId)));
+                adminClosingStatusQueryService.getClosingStatus(memberId, eventId)));
     }
 }

@@ -136,7 +136,7 @@ EventApprovalRequest를 새 차수로 생성한 뒤 `EventCommandService.request
 
 ## GET /api/admin/events/pending
 
-Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PENDING_APPROVAL Event와 승인 요청을 반환한다. 기본 정렬은 `requestedAt ASC, approvalRequestId ASC`다.
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 `page`, `size`다. 현재 PENDING_APPROVAL Event와 승인 요청을 반환하며 기본 정렬은 `requestedAt ASC, approvalRequestId ASC`다.
 
 ```json
 {
@@ -164,16 +164,12 @@ Query: `userId`, `page`, `size`. 관리자만 호출할 수 있으며 현재 PEN
 
 ## POST /api/admin/events/{eventId}/approve
 
-```json
-{ "userId": 1 }
-```
-
-관리자만 `PENDING_APPROVAL` Event를 `EventCommandService.approve(eventId)`로 SCHEDULED로 전이할 수 있다. `endAt <= now`면 `INVALID_STATE`다. 현재 PENDING 승인 요청을 APPROVED로 기록하고 심사자·심사 시각을 저장한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "SCHEDULED" }`다.
+Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `EventCommandService.approve(eventId)`로 SCHEDULED로 전이할 수 있다. `endAt <= now`면 `INVALID_STATE`다. 현재 PENDING 승인 요청을 APPROVED로 기록하고 심사자·심사 시각을 저장한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "SCHEDULED" }`다.
 
 ## POST /api/admin/events/{eventId}/reject
 
 ```json
-{ "userId": 1, "rejectReason": "거절 사유" }
+{ "rejectReason": "거절 사유" }
 ```
 
 거절 사유는 null·blank·trim 후 빈 문자열을 허용하지 않는다. `EventCommandService.reject(eventId, beforeTransition)`이 Event를 잠근 상태에서 현재 PENDING 승인 요청을 REJECTED로 기록(사유 포함)한 뒤 Event를 REJECTED로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "REJECTED" }`다.
@@ -222,8 +218,8 @@ Creator가 타인의 Event를 요청하면 `FORBIDDEN`이고, 존재하지 않�
 
 ## GET /api/admin/events/{eventId}/closing-status
 
-`eventId`와 `userId`는 양수 Long이어야 하며, `userId`는 필수 쿼리 파라미터다. 요청 Member가 존재하고
-역할이 `ADMIN`이어야 한다. 대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를
+Bearer Access JWT와 ADMIN 역할이 필수이며, Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로
+전달한다. `eventId`는 양수 Long이어야 한다. 대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를
 확인한다. `CLOSING`이면 마감 진행 중, `CLOSED`이면 마감 완료를 의미한다. 그 외 Event 상태는
 `INVALID_STATE`다.
 

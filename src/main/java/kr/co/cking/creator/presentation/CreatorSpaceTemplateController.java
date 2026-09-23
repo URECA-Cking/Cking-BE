@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.creator.application.CreatorSpaceTemplateService;
 import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
@@ -45,9 +46,10 @@ public class CreatorSpaceTemplateController {
     )
     @PostMapping("/api/admin/creator-space-templates")
     public ResponseEntity<ApiResponse<CreatorSpaceTemplateResponse.Detail>> create(
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody CreatorSpaceTemplateRequest.Create request
     ) {
-        CreatorSpaceTemplate template = templateService.create(request.userId(), toFields(
+        CreatorSpaceTemplate template = templateService.create(memberId, toFields(
                 request.introText(), request.profileImageUrl(), request.bannerImageUrl(), request.slugRule(),
                 request.homeTabEnabled(), request.missionsTabEnabled(), request.postsTabEnabled(), request.eventsTabEnabled()));
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -60,11 +62,11 @@ public class CreatorSpaceTemplateController {
     )
     @GetMapping("/api/admin/creator-space-templates")
     public ApiResponse<CreatorApplicationResponse.PageResult<CreatorSpaceTemplateResponse.Detail>> findAll(
-            @RequestParam Long userId,
+            @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        Page<CreatorSpaceTemplate> templates = templateService.findAllForAdmin(userId, PageRequest.of(page, size));
+        Page<CreatorSpaceTemplate> templates = templateService.findAllForAdmin(memberId, PageRequest.of(page, size));
         List<CreatorSpaceTemplateResponse.Detail> items = templates.stream()
                 .map(CreatorSpaceTemplateResponse.Detail::from)
                 .toList();
@@ -78,10 +80,10 @@ public class CreatorSpaceTemplateController {
     @GetMapping("/api/admin/creator-space-templates/{templateId}")
     public ApiResponse<CreatorSpaceTemplateResponse.Detail> find(
             @PathVariable Long templateId,
-            @RequestParam Long userId
+            @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(
-                CreatorSpaceTemplateResponse.Detail.from(templateService.findForAdmin(userId, templateId)));
+                CreatorSpaceTemplateResponse.Detail.from(templateService.findForAdmin(memberId, templateId)));
     }
 
     @Operation(
@@ -91,9 +93,10 @@ public class CreatorSpaceTemplateController {
     @PatchMapping("/api/admin/creator-space-templates/{templateId}")
     public ApiResponse<CreatorSpaceTemplateResponse.Detail> update(
             @PathVariable Long templateId,
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody CreatorSpaceTemplateRequest.Update request
     ) {
-        CreatorSpaceTemplate template = templateService.update(request.userId(), templateId, toFields(
+        CreatorSpaceTemplate template = templateService.update(memberId, templateId, toFields(
                 request.introText(), request.profileImageUrl(), request.bannerImageUrl(), request.slugRule(),
                 request.homeTabEnabled(), request.missionsTabEnabled(), request.postsTabEnabled(), request.eventsTabEnabled()));
         return ApiResponse.success(CreatorSpaceTemplateResponse.Detail.from(template));
@@ -107,10 +110,10 @@ public class CreatorSpaceTemplateController {
     @PostMapping("/api/admin/creator-space-templates/{templateId}/activate")
     public ApiResponse<CreatorSpaceTemplateResponse.Detail> activate(
             @PathVariable Long templateId,
-            @Valid @RequestBody CreatorSpaceTemplateRequest.Activate request
+            @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(
-                CreatorSpaceTemplateResponse.Detail.from(templateService.activate(request.userId(), templateId)));
+                CreatorSpaceTemplateResponse.Detail.from(templateService.activate(memberId, templateId)));
     }
 
     private CreatorSpaceTemplateFields toFields(
