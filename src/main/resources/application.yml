@@ -29,6 +29,8 @@ cking:
   cors:
     # 비우면 교차 출처 요청을 허용하지 않는다. 로컬은 Vite 프록시로 같은 출처 요청이 된다.
     allowed-origins: ""
+    # Refresh Cookie를 사용하는 인증 전환 전까지 credential을 허용하지 않는다.
+    allow-credentials: false
   docs:
     # 비우면 API 문서 인증 필터를 등록하지 않는다.
     username: ""

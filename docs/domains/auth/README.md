@@ -1,9 +1,22 @@
 # Auth 도메인
 
 Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수단 발급의 경계를 정한다.
-이 문서는 장기 목표 설계의 정본이다. **현재 저장소에는 Spring Security, OAuth2 Client,
-JWT 인증이 아직 구현되어 있지 않다.** 현재 외부 API의 호출자 `userId` 계약은
-[공통 API 규약](../../common/api.md)을 따른다.
+이 문서는 장기 목표 설계의 정본이다. 현재 저장소에는 Spring Security 기반, OAuth2 Client·Resource
+Server 의존성, REST 401/403 응답 처리가 구성되어 있으나 OAuth2 로그인·JWT 발급·검증은 아직 구현되어
+있지 않다. 따라서 현재 외부 API의 호출자 `userId` 계약은 [공통 API 규약](../../common/api.md)을 따른다.
+
+## 현재 Security 기반
+
+- Security 필터 체인은 `/api/**`, `/oauth2/**`, `/login/**`에만 적용한다. Swagger UI와 OpenAPI JSON은
+  기존 Servlet Basic Auth 필터가 단독으로 보호하므로 Spring Security와 인증 방식이 충돌하지 않는다.
+- 인증 전환 전에는 위 경로를 모두 `permitAll`로 둔다. 기존 API의 호출자 `userId`를 요청에서 제거하거나
+  업무 권한 검증을 Spring Security로 대체하지 않는다.
+- CSRF는 현재 세션 기반 인증을 사용하지 않는 기존 API 호환을 위해 비활성화한다. CORS는
+  `cking.cors.allowed-origins`와 `cking.cors.allow-credentials` 설정을 사용하며, credential 기본값은
+  `false`다. Refresh Cookie를 실제 도입하는 작업에서 배포 구조에 맞는 허용 origin과 credential을 함께
+  활성화한다.
+- 이후 JWT 인증을 도입하면 인증 실패는 `RestAuthenticationEntryPoint`가 공통 `UNAUTHORIZED`(401)로,
+  인증 후 인가 실패는 `RestAccessDeniedHandler`가 `FORBIDDEN`(403)으로 응답한다.
 
 ## 지원 범위와 모델
 

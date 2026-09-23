@@ -1,8 +1,8 @@
 # Auth API
 
-이 문서는 Auth 외부 API의 **Sprint 2 목표 계약**이다. 현재 저장소에는 이 endpoint와
-인증 구현이 없으며, 실제 인증 전환 전의 기존 API `userId` 계약은
-[공통 API 규약](../../common/api.md)을 그대로 따른다.
+이 문서는 Auth 외부 API의 **Sprint 2 목표 계약**이다. 현재 저장소에는 이 endpoint와 OAuth2 로그인·JWT
+인증 구현이 없으며, 실제 인증 전환 전의 기존 API `userId` 계약은 [공통 API 규약](../../common/api.md)을
+그대로 따른다. Spring Security의 기반 설정은 준비되어 있으나 `/api/**`는 현재 모두 허용된다.
 
 모든 구현 완료 후 응답은 공통 `ApiResponse` 봉투를 사용한다. 아래 JSON 예시는 `data` 값이다.
 
