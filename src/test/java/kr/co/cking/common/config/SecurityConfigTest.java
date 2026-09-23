@@ -93,4 +93,11 @@ class SecurityConfigTest {
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }
 
+    /** SpringDoc 기본 진입 경로도 문서 보안 체인에서 처리하는지 검증한다. */
+    @Test
+    void Swagger_기본_진입_경로는_Security_인증으로_거부되지_않는다() throws Exception {
+        mockMvc.perform(get("/swagger-ui.html"))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
 }

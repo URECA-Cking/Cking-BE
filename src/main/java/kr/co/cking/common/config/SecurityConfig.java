@@ -42,7 +42,7 @@ public class SecurityConfig {
     @Order(1)
     public SecurityFilterChain docsSecurityFilterChain(HttpSecurity http, UserDetailsService docsUserDetailsService)
             throws Exception {
-        http.securityMatcher("/swagger-ui/**", "/v3/api-docs/**")
+        http.securityMatcher("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.disable());
 
