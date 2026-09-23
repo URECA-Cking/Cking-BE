@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.List;
 
 import kr.co.cking.auth.domain.AuthErrorCode;
 import kr.co.cking.common.exception.BusinessException;
@@ -67,6 +69,34 @@ class LoginCodeServiceTest {
         when(redisTemplate.execute(eq(loginCodeConsumeScript), anyList())).thenReturn(null);
 
         assertThatThrownBy(() -> loginCodeService.consume("expired-code"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_LOGIN_CODE));
+    }
+
+    /** null 또는 공백 Code는 Redis를 조회하지 않고 동일한 Login Code 오류로 거절하는지 검증한다. */
+    @Test
+    void null_또는_공백_LoginCode는_INVALID_LOGIN_CODE를_반환한다() {
+        assertInvalidLoginCode(null);
+        for (String code : List.of("", "  ")) {
+            assertInvalidLoginCode(code);
+        }
+
+        verifyNoInteractions(redisTemplate);
+    }
+
+    /** 내부 회원 ID가 없으면 Code를 만들기 전에 개발자 오류로 거절하는지 검증한다. */
+    @Test
+    void null_회원_ID로는_LoginCode를_발급할_수_없다() {
+        assertThatThrownBy(() -> loginCodeService.issue(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("memberId는 필수입니다.");
+
+        verifyNoInteractions(redisTemplate);
+    }
+
+    /** 잘못된 외부 Code가 Auth 오류로 통합되는지 공통 검증한다. */
+    private void assertInvalidLoginCode(String code) {
+        assertThatThrownBy(() -> loginCodeService.consume(code))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_LOGIN_CODE));
     }

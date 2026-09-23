@@ -7,6 +7,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 
 import kr.co.cking.auth.domain.AuthErrorCode;
 import kr.co.cking.common.exception.BusinessException;
@@ -32,6 +33,7 @@ public class LoginCodeService {
 
     /** 회원 ID를 교환할 새 Login Code를 생성하고 해시 key만 Redis에 저장한다. */
     public String issue(Long memberId) {
+        Objects.requireNonNull(memberId, "memberId는 필수입니다.");
         String code = createCode();
         redisTemplate.opsForValue().set(redisKey(code), memberId.toString(), TTL);
         return code;
@@ -39,6 +41,9 @@ public class LoginCodeService {
 
     /** 원문 Code를 원자적으로 한 번 소비하고 연결된 회원 ID를 반환한다. */
     public Long consume(String code) {
+        if (code == null || code.isBlank()) {
+            throw new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE);
+        }
         String memberId = redisTemplate.execute(loginCodeConsumeScript, List.of(redisKey(code)));
         if (memberId == null) {
             throw new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE);
