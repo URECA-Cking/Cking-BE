@@ -18,17 +18,24 @@ public record EventSummary(
         Integer winnerCount,
         String drawMethod,
         String prizeAlgorithmVersion,
-        List<PrizeResult> prizes
+        List<PrizeResult> prizes,
+        Long myCommonTicketBalance
 ) {
 
     public EventSummary(Long eventId, Long creatorId, String title, Instant startAt, Instant endAt, EventStatus status,
                         DisplayStatus displayStatus, Integer winnerCount, String drawMethod) {
         this(eventId, creatorId, title, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
-                "PRIZE_WEIGHTED_V1", List.of());
+                "PRIZE_WEIGHTED_V1", List.of(), null);
     }
 
     public EventSummary {
         prizes = List.copyOf(prizes);
+    }
+
+    /** userId를 준 목록 조회에서만 채운다 — 캐시 밖에서 사용자별로 붙이므로 캐시 키에 영향이 없다. */
+    public EventSummary withMyCommonTicketBalance(long balance) {
+        return new EventSummary(eventId, creatorId, title, startAt, endAt, status, displayStatus, winnerCount,
+                drawMethod, prizeAlgorithmVersion, prizes, balance);
     }
 
     public static EventSummary from(Event event, Instant now) {
@@ -43,7 +50,8 @@ public record EventSummary(
                 event.getWinnerCount(),
                 event.getDrawMethod(),
                 event.getPrizeAlgorithmVersion(),
-                event.getPrizeConfigs().stream().map(PrizeResult::from).toList()
+                event.getPrizeConfigs().stream().map(PrizeResult::from).toList(),
+                null
         );
     }
 
@@ -60,7 +68,8 @@ public record EventSummary(
                 event.winnerCount(),
                 event.drawMethod(),
                 event.prizeAlgorithmVersion(),
-                event.prizes().stream().map(PrizeResult::from).toList()
+                event.prizes().stream().map(PrizeResult::from).toList(),
+                null
         );
     }
 }

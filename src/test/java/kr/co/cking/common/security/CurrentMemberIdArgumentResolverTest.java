@@ -47,6 +47,14 @@ class CurrentMemberIdArgumentResolverTest {
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class);
     }
 
+    /** required=false면 공개 API에서 인증 정보가 없을 때 거절 대신 null을 전달하는지 검증한다. */
+    @Test
+    void required가_false면_인증_정보가_없을_때_null을_전달한다() throws Exception {
+        Method method = SampleController.class.getDeclaredMethod("optionalMemberId", Long.class);
+
+        assertThat(resolver.resolveArgument(new MethodParameter(method, 0), null, null, null)).isNull();
+    }
+
     /** 테스트마다 공유 SecurityContext를 비운다. */
     @AfterEach
     void clearSecurityContext() {
@@ -74,6 +82,10 @@ class CurrentMemberIdArgumentResolverTest {
 
         /** 현재 Member ID 주입 대상 메서드다. */
         void currentMemberId(@CurrentMemberId Long memberId) {
+        }
+
+        /** 인증이 선택인 공개 API용 메서드다. */
+        void optionalMemberId(@CurrentMemberId(required = false) Long memberId) {
         }
 
         /** 일반 Long 파라미터의 비교 대상 메서드다. */
