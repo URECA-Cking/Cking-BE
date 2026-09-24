@@ -51,4 +51,23 @@ public class DeadStreamMessageQueryRepository {
                 .query(Boolean.class)
                 .single();
     }
+
+    /**
+     * 해당 memberId의 미해결 공용 응모권 Dead Stream이 있는지 확인한다(이슈 #256). 공용 EARN
+     * ({@code COMMON_EARN})과 couponType=COMMON인 SPEND가 대상이며, 크리에이터 잔액 메시지는 제외한다.
+     */
+    public boolean existsUnresolvedCommonByMember(Long memberId) {
+        return jdbcClient.sql("""
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM dead_stream_message
+                            WHERE resolution_status = 'UNRESOLVED'
+                              AND payload ->> '$.userId' = :memberId
+                              AND (stream_type = 'COMMON_EARN' OR payload ->> '$.couponType' = 'COMMON')
+                        )
+                        """)
+                .param("memberId", String.valueOf(memberId))
+                .query(Boolean.class)
+                .single();
+    }
 }

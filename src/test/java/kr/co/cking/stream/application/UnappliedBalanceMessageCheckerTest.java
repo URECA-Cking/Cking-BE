@@ -30,6 +30,8 @@ class UnappliedBalanceMessageCheckerTest {
     private static final String SPEND_GROUP = "cg:ticket-history:unapplied-test";
     private static final String EARN_KEY = "stream:ticket-earned:unapplied-test";
     private static final String EARN_GROUP = "cg:ticket-earn:unapplied-test";
+    private static final String COMMON_EARN_KEY = "stream:common-ticket-earned:unapplied-test";
+    private static final String COMMON_EARN_GROUP = "cg:common-ticket-earn:unapplied-test";
     private static final Long MEMBER_ID = 97501L;
     private static final Long CREATOR_ID = 97601L;
 
@@ -48,13 +50,15 @@ class UnappliedBalanceMessageCheckerTest {
     void setUp() {
         cleanUp();
         checker = new UnappliedBalanceMessageChecker(
-                redisTemplate, deadStreamMessageQueryRepository, SPEND_KEY, SPEND_GROUP, EARN_KEY, EARN_GROUP);
+                redisTemplate, deadStreamMessageQueryRepository, SPEND_KEY, SPEND_GROUP, EARN_KEY, EARN_GROUP,
+                COMMON_EARN_KEY, COMMON_EARN_GROUP);
     }
 
     @AfterEach
     void cleanUp() {
         redisTemplate.delete(SPEND_KEY);
         redisTemplate.delete(EARN_KEY);
+        redisTemplate.delete(COMMON_EARN_KEY);
         jdbcTemplate.update("DELETE FROM dead_stream_message WHERE source_stream_id LIKE 'unapplied-test-%'");
     }
 
@@ -187,6 +191,36 @@ class UnappliedBalanceMessageCheckerTest {
         insertDeadStream("unapplied-test-5", "EARN", MEMBER_ID, CREATOR_ID + 1, "UNRESOLVED");
 
         assertThat(checker.exists(MEMBER_ID, CREATOR_ID)).isFalse();
+    }
+
+    // 이슈 #256: 공용 잔액 보정 검사.
+    @Test
+    void 공용_검사는_미반영_COMMON_SPEND와_공용_EARN_메시지를_찾는다() {
+        addSpendWithCouponType(MEMBER_ID, CREATOR_ID, "COMMON");
+        createGroupFromZero(SPEND_KEY, SPEND_GROUP);
+        assertThat(checker.existsCommon(MEMBER_ID)).isTrue();
+        redisTemplate.delete(SPEND_KEY);
+
+        redisTemplate.opsForStream().add(MapRecord.create(COMMON_EARN_KEY, Map.of("userId", String.valueOf(MEMBER_ID))));
+        assertThat(checker.existsCommon(MEMBER_ID)).isTrue();
+    }
+
+    @Test
+    void 공용_검사는_크리에이터_SPEND와_다른_사용자_메시지를_무시한다() {
+        add(SPEND_KEY, MEMBER_ID, CREATOR_ID);
+        redisTemplate.opsForStream().add(
+                MapRecord.create(COMMON_EARN_KEY, Map.of("userId", String.valueOf(MEMBER_ID + 1))));
+
+        assertThat(checker.existsCommon(MEMBER_ID)).isFalse();
+    }
+
+    @Test
+    void 공용_검사는_공용_Dead_Stream만_본다() {
+        insertDeadStreamPayload("unapplied-test-c1", "SPEND", "{\"userId\":\"%d\",\"creatorId\":\"1\"}".formatted(MEMBER_ID), "UNRESOLVED");
+        assertThat(checker.existsCommon(MEMBER_ID)).isFalse();
+
+        insertDeadStreamPayload("unapplied-test-c2", "COMMON_EARN", "{\"userId\":\"%d\"}".formatted(MEMBER_ID), "UNRESOLVED");
+        assertThat(checker.existsCommon(MEMBER_ID)).isTrue();
     }
 
     private RecordId add(String key, Long userId, Long creatorId) {
