@@ -33,6 +33,7 @@ public class CreatorApplicationService {
     private final CreatorApplicationRepository applicationRepository;
     private final CreatorApplicationLockManager lockManager;
     private final MissionInitializationService missionInitializationService;
+    private final CreatorSpaceService creatorSpaceService;
 
     public ApplyResult apply(Long memberId) {
         return lockManager.execute("creator-application:member:" + memberId, () -> applyLocked(memberId));
@@ -81,7 +82,7 @@ public class CreatorApplicationService {
                 () -> approveLocked(adminId, applicationId));
     }
 
-    /** 신청을 승인하고 Creator 및 기본 미션을 하나의 트랜잭션으로 생성한다. */
+    /** 신청을 승인하고 Creator·기본 미션·Creator Space를 하나의 트랜잭션으로 생성한다. */
     private CreatorApplication approveLocked(Long adminId, Long applicationId) {
         requireAdmin(adminId);
         CreatorApplication application = getApplication(applicationId);
@@ -94,6 +95,7 @@ public class CreatorApplicationService {
                 new Creator(application.getMemberId(), applicant.getName())
         );
         missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
+        creatorSpaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId());
         return application;
     }
 

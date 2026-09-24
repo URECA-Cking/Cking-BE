@@ -8,6 +8,7 @@ import static org.mockito.Mockito.reset;
 
 import java.util.ArrayList;
 import java.util.List;
+import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.domain.CreatorApplicationStatus;
@@ -30,8 +31,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 @SpringBootTest
 class CreatorApprovalMissionInitializationIntegrationTest {
 
+    private static final CreatorSpaceTemplateFields TEMPLATE_FIELDS = new CreatorSpaceTemplateFields(
+            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}", true, true, true, true
+    );
+
     @Autowired
     private CreatorApplicationService creatorApplicationService;
+
+    @Autowired
+    private CreatorSpaceTemplateService creatorSpaceTemplateService;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -96,17 +104,22 @@ class CreatorApprovalMissionInitializationIntegrationTest {
         reset(missionRepository);
         memberIds.forEach(memberId -> {
             jdbcTemplate.update(
+                    "DELETE FROM creator_space WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
+                    memberId
+            );
+            jdbcTemplate.update(
                     "DELETE FROM mission WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
                     memberId
             );
             jdbcTemplate.update("DELETE FROM creator WHERE member_id = ?", memberId);
+            jdbcTemplate.update("DELETE FROM creator_space_template WHERE created_by = ?", memberId);
         });
         applicationIds.forEach(applicationId -> jdbcTemplate.update(
                 "DELETE FROM creator_application WHERE id = ?", applicationId));
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId));
     }
 
-    /** 관리자·신청자·PENDING 신청으로 승인 가능한 테스트 데이터를 만든다. */
+    /** 관리자·신청자·PENDING 신청과 활성 기본 템플릿으로 승인 가능한 테스트 데이터를 만든다. */
     private ApprovalFixture createApprovalFixture() {
         Member admin = memberRepository.saveAndFlush(new Member("미션초기화관리자", null, null, MemberRole.ADMIN));
         Member applicant = memberRepository.saveAndFlush(new Member("미션초기화신청자", null, null, MemberRole.USER));
@@ -116,6 +129,8 @@ class CreatorApprovalMissionInitializationIntegrationTest {
         memberIds.add(admin.getMemberId());
         memberIds.add(applicant.getMemberId());
         applicationIds.add(application.getId());
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         return new ApprovalFixture(admin.getMemberId(), applicant.getMemberId(), application.getId());
     }
 
