@@ -85,6 +85,73 @@ class CreatorSpaceTemplateControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
+    /** slugRule에 {creatorId} 자리표시자가 없으면 두 번째 승인부터 slug가 충돌하므로 생성 단계에서 막는다. */
+    @Test
+    void slugRuleWithoutCreatorIdPlaceholderReturnsValidationFailedEnvelope() throws Exception {
+        mockMvc.perform(post("/api/admin/creator-space-templates")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "소개",
+                                  "profileImageUrl": "https://img/profile.png",
+                                  "bannerImageUrl": "https://img/banner.png",
+                                  "slugRule": "creator-space",
+                                  "homeTabEnabled": true,
+                                  "missionsTabEnabled": true,
+                                  "postsTabEnabled": true,
+                                  "eventsTabEnabled": true
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** {creatorId}가 두 번 들어간 slugRule도 생성 단계에서 막는다. */
+    @Test
+    void slugRuleWithDuplicatedCreatorIdPlaceholderReturnsValidationFailedEnvelope() throws Exception {
+        mockMvc.perform(post("/api/admin/creator-space-templates")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "소개",
+                                  "profileImageUrl": "https://img/profile.png",
+                                  "bannerImageUrl": "https://img/banner.png",
+                                  "slugRule": "{creatorId}-creator-{creatorId}",
+                                  "homeTabEnabled": true,
+                                  "missionsTabEnabled": true,
+                                  "postsTabEnabled": true,
+                                  "eventsTabEnabled": true
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /**
+     * creatorId는 최대 19자리로 치환될 수 있어({creatorId} 11자 대비 최대 8자 증가), slugRule이
+     * 92자를 넘으면 결과 slug가 creator_space.slug 컬럼(VARCHAR(100))을 초과할 수 있다.
+     */
+    @Test
+    void slugRuleLongerThanNinetyTwoCharsReturnsValidationFailedEnvelope() throws Exception {
+        String tooLongSlugRule = "a".repeat(82) + "{creatorId}";
+        mockMvc.perform(post("/api/admin/creator-space-templates")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "소개",
+                                  "profileImageUrl": "https://img/profile.png",
+                                  "bannerImageUrl": "https://img/banner.png",
+                                  "slugRule": "%s",
+                                  "homeTabEnabled": true,
+                                  "missionsTabEnabled": true,
+                                  "postsTabEnabled": true,
+                                  "eventsTabEnabled": true
+                                }
+                                """.formatted(tooLongSlugRule)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
     @Test
     void listUsesJwtMemberIdWithoutUserIdQuery() throws Exception {
         given(templateService.findAllForAdmin(1L, PageRequest.of(0, 20)))
@@ -147,6 +214,27 @@ class CreatorSpaceTemplateControllerTest {
                 .andExpect(jsonPath("$.data.eventsTabEnabled").value(true));
 
         then(templateService).should().update(eq(1L), eq(10L), any());
+    }
+
+    /** 수정 API도 slugRule에 {creatorId} 자리표시자가 없으면 막는다. */
+    @Test
+    void updateWithSlugRuleWithoutCreatorIdPlaceholderReturnsValidationFailedEnvelope() throws Exception {
+        mockMvc.perform(patch("/api/admin/creator-space-templates/{templateId}", 10L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "slugRule": "new-space",
+                                  "homeTabEnabled": false,
+                                  "missionsTabEnabled": false,
+                                  "postsTabEnabled": false,
+                                  "eventsTabEnabled": true
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     private CreatorSpaceTemplate templateWithId(Long templateId) {

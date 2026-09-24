@@ -5,7 +5,7 @@
 ## 범위와 권한
 
 - 모든 API는 Bearer Access JWT와 `ADMIN` 역할이 필수이며, Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다.
-- 이 API는 템플릿 자체의 CRUD와 활성화만 다룬다. Creator 승인 시점에 활성 템플릿 값을 새 Creator 스페이스로 복사하는 동작은 후속 이슈에서 구현하며, 이 문서의 범위가 아니다.
+- 이 API는 템플릿 자체의 CRUD와 활성화만 다룬다. Creator 승인 시점에 활성 템플릿 값을 새 Creator 스페이스로 복사하는 동작은 [creator/README.md](README.md#creator-space-자동-생성이슈-270)를 참고한다 — 이 문서의 범위가 아니다.
 - 활성 템플릿을 바꿔도 이미 생성된 Creator 스페이스는 변경되지 않는다. 활성 템플릿은 향후 스페이스 생성 시점에만 참조된다.
 - 응답 시각은 UTC RFC 3339 형식(예: `2026-09-23T00:30:00Z`)이다.
 
@@ -16,7 +16,7 @@
 | `introText` | 기본 소개 문구 (최대 500자) |
 | `profileImageUrl` | 기본 프로필 이미지 URL (최대 500자) |
 | `bannerImageUrl` | 기본 배너 이미지 URL (최대 500자) |
-| `slugRule` | 공유 URL slug 생성 규칙 문자열 (최대 100자). 실제 slug는 Creator 스페이스 생성 시점(후속 이슈)에 이 규칙으로부터 만들어지며, 템플릿 자체는 규칙만 보관한다. |
+| `slugRule` | 공유 URL slug 생성 규칙 문자열 (최대 92자). `{creatorId}`를 정확히 한 번 포함해야 한다. 실제 slug는 Creator 스페이스 생성 시점([creator/README.md](README.md#creator-space-자동-생성이슈-270))에 이 규칙의 `{creatorId}`를 실제 creatorId로 치환해 만들어지며, 템플릿 자체는 규칙만 보관한다. |
 | `homeTabEnabled`, `missionsTabEnabled`, `postsTabEnabled`, `eventsTabEnabled` | 새 스페이스에 노출할 홈·미션·게시물·이벤트 탭 여부 |
 
 ## 활성 템플릿 유일성
@@ -93,5 +93,5 @@ Query parameter는 없다. 응답은 생성 API와 같은 형식이다.
 
 - 없는 Member 또는 템플릿은 `RESOURCE_NOT_FOUND`다.
 - 관리자가 아닌 호출자는 `FORBIDDEN`이다.
-- 유효하지 않은 요청 필드(빈 문자열, 길이 초과, 누락)는 `VALIDATION_FAILED`다.
+- 유효하지 않은 요청 필드(빈 문자열, 길이 초과, 누락, `slugRule`에 `{creatorId}`가 없거나 두 번 이상 포함됨)는 `VALIDATION_FAILED`다.
 - 동시 활성화 요청 경합은 `CONCURRENT_COMMAND`다.

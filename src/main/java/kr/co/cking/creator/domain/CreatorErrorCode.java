@@ -7,7 +7,9 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum CreatorErrorCode implements ErrorCode {
     INVALID_STATE(HttpStatus.CONFLICT, "현재 상태에서는 수행할 수 없습니다."),
-    CONCURRENT_COMMAND(HttpStatus.CONFLICT, "동일 대상에 대한 명령이 충돌했습니다.");
+    CONCURRENT_COMMAND(HttpStatus.CONFLICT, "동일 대상에 대한 명령이 충돌했습니다."),
+    NO_ACTIVE_SPACE_TEMPLATE(HttpStatus.CONFLICT, "활성화된 기본 Creator Space 템플릿이 없습니다."),
+    INVALID_ACTIVE_SPACE_TEMPLATE(HttpStatus.CONFLICT, "활성화된 기본 Creator Space 템플릿의 slug 생성 규칙이 올바르지 않습니다.");
 
     private final HttpStatus status;
     private final String message;
