@@ -4,7 +4,8 @@
 
 **API 문서 (Swagger UI)**
 
-애플리케이션 실행 후 http://localhost:8080/swagger-ui/index.html 에서 확인합니다.
+- 개발 서버: https://dev-api.cking.co.kr/swagger-ui/index.html
+- 로컬: 애플리케이션 실행 후 http://localhost:8080/swagger-ui/index.html
 
 ## 목차
 
@@ -171,18 +172,27 @@ MySQL은 `3306`, Redis는 `6379` 포트를 사용합니다.
 
 # 5. 애플리케이션 실행
 
-Access JWT 서명·검증을 위해 실행 전에 `JWT_SECRET`을 설정해야 합니다. 값의 조건과 모든 환경변수는
-[런타임 환경변수 문서](docs/operations/runtime-configuration.md)를 확인하세요.
+실행 전에 아래 환경변수를 설정해야 합니다. `JWT_SECRET`은 `openssl rand -base64 32`로 생성합니다.
 
 ## Windows
 
 ```powershell
+$env:JWT_SECRET="..."
+$env:OAUTH_GOOGLE_CLIENT_ID="..."
+$env:OAUTH_GOOGLE_CLIENT_SECRET="..."
+$env:OAUTH_KAKAO_CLIENT_ID="..."
+$env:OAUTH_KAKAO_CLIENT_SECRET="..."
 .\gradlew.bat bootRun
 ```
 
 ## macOS
 
 ```bash
+export JWT_SECRET=...
+export OAUTH_GOOGLE_CLIENT_ID=...
+export OAUTH_GOOGLE_CLIENT_SECRET=...
+export OAUTH_KAKAO_CLIENT_ID=...
+export OAUTH_KAKAO_CLIENT_SECRET=...
 ./gradlew bootRun
 ```
 
