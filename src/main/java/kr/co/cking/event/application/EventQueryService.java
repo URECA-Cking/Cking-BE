@@ -11,6 +11,7 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.ticket.application.CommonTicketBalanceQueryService;
 import kr.co.cking.ticket.application.TicketBalanceQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -35,6 +36,7 @@ public class EventQueryService {
     private final EventRepository eventRepository;
     private final Clock clock;
     private final TicketBalanceQueryService ticketBalanceQueryService;
+    private final CommonTicketBalanceQueryService commonTicketBalanceQueryService;
     private final EventCache eventCache;
     private final EventListCache eventListCache;
     private final MemberRepository memberRepository;
@@ -47,12 +49,22 @@ public class EventQueryService {
      * <p>FR-P2-003: creatorId·displayStatus·page·size 조합을 키로 캐싱한다(TTL 5초,
      * endAt 초과 금지 — {@link EventListCache}). displayStatus는 원본 Event가 아니라
      * 읽는 시점의 now로 매번 다시 계산해서, 캐시 적중 시에도 굳지 않게 한다.
+     *
+     * <p>userId를 주면 각 항목에 공통 응모권 잔액(myCommonTicketBalance)을 캐시 밖에서 붙인다.
      */
-    public Page<EventSummary> getEvents(Long creatorId, DisplayStatus displayStatus, int page, int size) {
+    public Page<EventSummary> getEvents(Long creatorId, DisplayStatus displayStatus, Long userId, int page, int size) {
+        if (userId != null && !memberRepository.existsById(userId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+        }
         Instant now = clock.instant();
-        return eventListCache.find(creatorId, displayStatus, page, size)
+        Page<EventSummary> events = eventListCache.find(creatorId, displayStatus, page, size)
                 .map(cached -> toSummaryPage(cached, page, size, now))
                 .orElseGet(() -> loadAndCacheList(creatorId, displayStatus, page, size, now));
+        if (userId == null) {
+            return events;
+        }
+        long commonBalance = commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
+        return events.map(e -> e.withMyCommonTicketBalance(commonBalance));
     }
 
     private Page<EventSummary> loadAndCacheList(Long creatorId, DisplayStatus displayStatus, int page, int size,
@@ -79,7 +91,8 @@ public class EventQueryService {
         }
         CachedEvent event = getCachedEvent(eventId);
         long myTicketBalance = ticketBalanceQueryService.getBalance(event.creatorId(), userId);
-        return EventDetail.of(event, clock.instant(), myTicketBalance);
+        long myCommonTicketBalance = commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
+        return EventDetail.of(event, clock.instant(), myTicketBalance, myCommonTicketBalance);
     }
 
     /**

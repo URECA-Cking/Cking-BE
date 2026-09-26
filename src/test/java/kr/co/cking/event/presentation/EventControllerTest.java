@@ -38,11 +38,13 @@ class EventControllerTest {
         EventSummary summary = new EventSummary(1L, 2L, "여름 이벤트",
                 Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-30T00:00:00Z"),
                 EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED");
-        when(eventQueryService.getEvents(any(), any(), anyInt(), anyInt()))
+        when(eventQueryService.getEvents(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(new PageImpl<>(List.of(summary), PageRequest.of(0, 10), 1));
 
         mockMvc.perform(get("/api/events"))
                 .andExpect(status().isOk())
+                .andDo(r -> org.mockito.Mockito.verify(eventQueryService)
+                        .getEvents(any(), any(), org.mockito.ArgumentMatchers.eq(100L), anyInt(), anyInt()))
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].title").value("여름 이벤트"))
                 .andExpect(jsonPath("$.data.items[0].status").value("OPEN"))
@@ -78,13 +80,14 @@ class EventControllerTest {
     void 이벤트_상세조회는_내_잔액을_포함한다() throws Exception {
         EventDetail detail = new EventDetail(1L, 2L, "여름 이벤트", "설명",
                 Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-30T00:00:00Z"),
-                EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED", 42L);
+                EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED", 42L, 9L);
         when(eventQueryService.getEvent(1L, 100L)).thenReturn(detail);
 
-        mockMvc.perform(get("/api/events/1").param("userId", "100"))
+        mockMvc.perform(get("/api/events/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("OPEN"))
                 .andExpect(jsonPath("$.data.drawMethod").value("WEIGHTED"))
-                .andExpect(jsonPath("$.data.myTicketBalance").value(42));
+                .andExpect(jsonPath("$.data.myTicketBalance").value(42))
+                .andExpect(jsonPath("$.data.myCommonTicketBalance").value(9));
     }
 }
