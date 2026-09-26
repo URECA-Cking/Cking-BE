@@ -57,6 +57,29 @@ class EventEntryRepositoryJpaTest {
         assertThat(next).extracting(EventEntryView::getEntryId).containsExactly(oldestId);
     }
 
+    // 응모권 종류는 event_entry에 없고, SPEND Ledger가 공용 Ledger에 있는지로 판별한다.
+    @Test
+    void 공용_Ledger에_SPEND가_있는_응모만_common으로_조회한다() {
+        long memberId = insertMember("종류조회사용자");
+        long creatorId = insertCreator(memberId);
+        long eventId = insertEvent(creatorId, memberId, "종류 이벤트");
+        long creatorEntryId = insertEntry(memberId, eventId, 1L, "2026-09-18 01:00:00.000000");
+        long commonEntryId = insertEntry(memberId, eventId, 2L, "2026-09-18 02:00:00.000000");
+        entityManager.createNativeQuery("""
+                        INSERT INTO common_ticket_ledger (member_id, event_entry_id, delta_amount, type, request_id)
+                        VALUES (:memberId, :entryId, -2, 'SPEND', :requestId)
+                        """)
+                .setParameter("memberId", memberId)
+                .setParameter("entryId", commonEntryId)
+                .setParameter("requestId", UUID.randomUUID().toString())
+                .executeUpdate();
+
+        List<EventEntryView> views = entryRepository.findFirstPageView(memberId, eventId, PageRequest.of(0, 10));
+
+        assertThat(views).extracting(EventEntryView::getEntryId).containsExactly(commonEntryId, creatorEntryId);
+        assertThat(views).extracting(EventEntryView::getCommon).containsExactly(true, false);
+    }
+
     private long insertMember(String name) {
         entityManager.createNativeQuery("INSERT INTO member (name, role) VALUES (:name, 'USER')")
                 .setParameter("name", name)

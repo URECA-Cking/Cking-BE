@@ -7,6 +7,7 @@ import kr.co.cking.event.application.EventEntryQueryService;
 import kr.co.cking.event.application.dto.EntryCommand;
 import kr.co.cking.event.application.dto.EntryHistoryItemResponse;
 import kr.co.cking.event.application.dto.EntryHistoryPage;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.event.application.dto.EntryOutcome;
 import kr.co.cking.event.application.dto.EntryStatusResponse;
 import kr.co.cking.event.domain.EntryResultCode;
@@ -57,7 +58,7 @@ class EntryControllerTest {
     @Test
     void 내_응모내역을_cursor_형식으로_반환한다() throws Exception {
         EntryHistoryItemResponse item = new EntryHistoryItemResponse(
-                10L, 3L, Instant.parse("2026-09-18T02:00:00Z"));
+                10L, 3L, CouponType.COMMON, Instant.parse("2026-09-18T02:00:00Z"));
         when(eventEntryQueryService.getMyEntries(2L, 1L, 20, null))
                 .thenReturn(new EntryHistoryPage(List.of(item), null, false));
 
@@ -66,6 +67,7 @@ class EntryControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].entryId").value(10))
                 .andExpect(jsonPath("$.data.items[0].usedTicketCount").value(3))
+                .andExpect(jsonPath("$.data.items[0].couponType").value("COMMON"))
                 .andExpect(jsonPath("$.data.items[0].appliedAt").value("2026-09-18T02:00:00Z"))
                 .andExpect(jsonPath("$.data.nextCursor").doesNotExist())
                 .andExpect(jsonPath("$.data.hasNext").value(false));

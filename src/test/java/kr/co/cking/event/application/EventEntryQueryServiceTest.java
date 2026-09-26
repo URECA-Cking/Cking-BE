@@ -8,6 +8,7 @@ import kr.co.cking.event.repository.EventEntryRepository;
 import kr.co.cking.event.repository.EventEntryView;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.ticket.domain.CouponType;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageRequest;
 
@@ -32,7 +33,9 @@ class EventEntryQueryServiceTest {
     @Test
     void 내_응모내역을_최신순으로_조회하고_다음_cursor를_반환한다() {
         EventEntryView first = view(12L, 3L, "2026-09-18T02:00:00Z");
+        when(first.getCommon()).thenReturn(true);
         EventEntryView second = view(11L, 2L, "2026-09-18T01:00:00Z");
+        when(second.getCommon()).thenReturn(false);
         EventEntryView third = view(10L, 1L, "2026-09-18T00:00:00Z");
         when(memberRepository.existsById(1L)).thenReturn(true);
         when(eventRepository.existsByEventIdAndDeletedAtIsNull(2L)).thenReturn(true);
@@ -45,6 +48,8 @@ class EventEntryQueryServiceTest {
                 .containsExactly(12L, 11L);
         assertThat(result.items()).extracting(EntryHistoryItemResponse::usedTicketCount)
                 .containsExactly(3L, 2L);
+        assertThat(result.items()).extracting(EntryHistoryItemResponse::couponType)
+                .containsExactly(CouponType.COMMON, CouponType.CREATOR);
         assertThat(result.hasNext()).isTrue();
         assertThat(result.nextCursor()).isNotBlank();
 
