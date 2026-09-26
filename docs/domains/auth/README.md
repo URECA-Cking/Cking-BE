@@ -81,7 +81,8 @@ OAuthAccount를 조회·연결한다.
 
 ### OAuth Client 설정
 
-- OAuth Provider credential은 저장소에 두지 않고 환경변수로만 주입한다.
+- OAuth Provider credential은 저장소에 두지 않고 `oauth` 프로필의 환경변수로만 주입한다. 필요한 변수와
+  실행 방법은 [README](../../../README.md#5-애플리케이션-실행)를 따른다.
 - Google은 Spring Security의 기본 Provider 설정과 `OAUTH_GOOGLE_CLIENT_ID`,
   `OAUTH_GOOGLE_CLIENT_SECRET`, `profile,email` scope를 사용한다.
 - Kakao의 `OAUTH_KAKAO_CLIENT_ID`는 REST API 키이며, `OAUTH_KAKAO_CLIENT_SECRET`은 Kakao Client
@@ -117,8 +118,8 @@ Login Code는 OAuth 로그인 결과를 Frontend로 안전하게 전달하는 1�
   `POST /api/auth/token`으로 교환한다. JWT를 redirect URL query parameter에 넣지 않는다.
 - Redis key는 `auth:login-code:<SHA-256(code)>`, value는 `memberId`다. Lua의 `GET`과 `DEL`을
   한 원자 연산으로 실행해 동시 교환도 하나만 성공시킨다.
-- Frontend callback 주소는 `cking.auth.frontend-callback-url`로 설정한다. 환경별 값은
-  `application-<profile>.yml`에 두고, 운영은 `FRONTEND_CALLBACK_URL`을 주입한다.
+- Frontend callback 주소는 `cking.auth.frontend-callback-url`로 설정하고, 환경별 값은
+  `application-<profile>.yml`에 둔다.
 
 ### Access Token
 

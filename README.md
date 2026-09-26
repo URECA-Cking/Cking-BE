@@ -172,16 +172,20 @@ MySQL은 `3306`, Redis는 `6379` 포트를 사용합니다.
 
 # 5. 애플리케이션 실행
 
-실행 전에 아래 환경변수를 설정해야 합니다. `JWT_SECRET`은 `openssl rand -base64 32`로 생성합니다.
+`JWT_SECRET`은 `openssl rand -base64 32`로 생성합니다. 시크릿 값은 저장소, 로그, Issue, PR에 남기지 않습니다.
 
 ## Windows
 
 ```powershell
 $env:JWT_SECRET="..."
+
+# 소셜 로그인을 사용할 때만
+$env:SPRING_PROFILES_ACTIVE="local,oauth"
 $env:OAUTH_GOOGLE_CLIENT_ID="..."
 $env:OAUTH_GOOGLE_CLIENT_SECRET="..."
 $env:OAUTH_KAKAO_CLIENT_ID="..."
 $env:OAUTH_KAKAO_CLIENT_SECRET="..."
+
 .\gradlew.bat bootRun
 ```
 
@@ -189,10 +193,14 @@ $env:OAUTH_KAKAO_CLIENT_SECRET="..."
 
 ```bash
 export JWT_SECRET=...
+
+# 소셜 로그인을 사용할 때만
+export SPRING_PROFILES_ACTIVE=local,oauth
 export OAUTH_GOOGLE_CLIENT_ID=...
 export OAUTH_GOOGLE_CLIENT_SECRET=...
 export OAUTH_KAKAO_CLIENT_ID=...
 export OAUTH_KAKAO_CLIENT_SECRET=...
+
 ./gradlew bootRun
 ```
 
