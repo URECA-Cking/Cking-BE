@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import kr.co.cking.event.application.config.EntryRedisKeys;
 import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
+import kr.co.cking.ticket.application.TicketBalanceKeyLoader;
 import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.domain.CouponType;
 import lombok.extern.slf4j.Slf4j;
@@ -29,13 +30,16 @@ public class EntrySpendServiceImpl implements EntrySpendService {
 
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> entrySpendLuaScript;
+    private final TicketBalanceKeyLoader balanceKeyLoader;
 
     public EntrySpendServiceImpl(
             StringRedisTemplate redisTemplate,
-            @Qualifier("entrySpendLuaScript") DefaultRedisScript<List> entrySpendLuaScript
+            @Qualifier("entrySpendLuaScript") DefaultRedisScript<List> entrySpendLuaScript,
+            TicketBalanceKeyLoader balanceKeyLoader
     ) {
         this.redisTemplate = redisTemplate;
         this.entrySpendLuaScript = entrySpendLuaScript;
+        this.balanceKeyLoader = balanceKeyLoader;
     }
 
     // FR-P2-034 / 취합v1.5.4 §5.3 확정값. 실제 운영 키는 기본값 그대로 쓰고,
@@ -46,6 +50,23 @@ public class EntrySpendServiceImpl implements EntrySpendService {
 
     @Override
     public EntrySpendResult spend(
+            Long eventId,
+            Long userId,
+            Long creatorId,
+            String requestId,
+            int ticketCount,
+            CouponType couponType
+    ) {
+        EntrySpendResult result = execute(eventId, userId, creatorId, requestId, ticketCount, couponType);
+        // FR-P2-056: 잔액 키가 없으면 안전 조건에서만 DB 기준으로 적재하고 정확히 1회만 다시 실행한다.
+        if (result.code() == EntrySpendResultCode.BALANCE_NOT_LOADED
+                && balanceKeyLoader.load(couponType, creatorId, userId)) {
+            return execute(eventId, userId, creatorId, requestId, ticketCount, couponType);
+        }
+        return result;
+    }
+
+    private EntrySpendResult execute(
             Long eventId,
             Long userId,
             Long creatorId,
