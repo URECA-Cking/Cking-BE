@@ -27,7 +27,9 @@ public interface EventEntryRepository extends JpaRepository<EventEntry, Long> {
     List<EventEntryAggregate> aggregateByEvent(@Param("eventId") Long eventId);
 
     @Query("""
-            select e.entryId as entryId, e.usedTicketCount as usedTicketCount, e.appliedAt as appliedAt
+            select e.entryId as entryId, e.usedTicketCount as usedTicketCount, e.appliedAt as appliedAt,
+                   case when exists (select 1 from CommonTicketLedger l where l.eventEntryId = e.entryId)
+                        then true else false end as common
             from EventEntry e
             where e.memberId = :memberId and e.eventId = :eventId
             order by e.appliedAt desc, e.entryId desc
@@ -37,7 +39,9 @@ public interface EventEntryRepository extends JpaRepository<EventEntry, Long> {
                                            Pageable pageable);
 
     @Query("""
-            select e.entryId as entryId, e.usedTicketCount as usedTicketCount, e.appliedAt as appliedAt
+            select e.entryId as entryId, e.usedTicketCount as usedTicketCount, e.appliedAt as appliedAt,
+                   case when exists (select 1 from CommonTicketLedger l where l.eventEntryId = e.entryId)
+                        then true else false end as common
             from EventEntry e
             where e.memberId = :memberId and e.eventId = :eventId
               and (e.appliedAt < :appliedAt
