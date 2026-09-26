@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 
 @SpringBootTest(properties = {
+        "spring.profiles.active=local,oauth",
         "OAUTH_GOOGLE_CLIENT_ID=test-google-client-id",
         "OAUTH_GOOGLE_CLIENT_SECRET=test-google-client-secret",
         "OAUTH_KAKAO_CLIENT_ID=test-kakao-rest-api-key",
@@ -20,7 +21,7 @@ class OAuthClientRegistrationConfigurationTest {
     @Autowired private ClientRegistrationRepository clientRegistrationRepository;
 
     @Test
-    void configuresGoogleAndKakaoClientRegistrations() {
+    void configuresGoogleAndKakaoClientRegistrationsFromOAuthProfile() {
         ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
         ClientRegistration kakao = clientRegistrationRepository.findByRegistrationId("kakao");
 

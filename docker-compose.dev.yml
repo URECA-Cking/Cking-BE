@@ -33,7 +33,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: dev,oauth
       DB_HOST: ${DB_HOST:?DB_HOST가 지정되지 않았습니다}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME이 지정되지 않았습니다}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD가 지정되지 않았습니다}

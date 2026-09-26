@@ -1,7 +1,4 @@
 spring:
-  # 컨트롤러 슬라이스 테스트는 SecurityConfig를 올리지 않으므로 OAuth2 기본 보안 체인 생성을 막는다.
-  autoconfigure:
-    exclude: org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration
   datasource:
     hikari:
       # 다수의 Spring 테스트 컨텍스트가 동시에 생성해도 MySQL 연결 한도를 넘지 않도록 제한한다.
@@ -14,9 +11,3 @@ cking:
     jwt:
       # 테스트 전용 키이며 런타임 환경변수로 사용하지 않는다.
       secret: 2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA=
-
-# 테스트 전용 값이며 런타임 환경변수로 사용하지 않는다.
-OAUTH_GOOGLE_CLIENT_ID: test-google-client-id
-OAUTH_GOOGLE_CLIENT_SECRET: test-google-client-secret
-OAUTH_KAKAO_CLIENT_ID: test-kakao-rest-api-key
-OAUTH_KAKAO_CLIENT_SECRET: test-kakao-client-secret
