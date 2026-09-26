@@ -99,7 +99,7 @@ guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 �
 | `GATE_NOT_LOADED` | Gate 키 자체가 없음 (없음 = OPEN으로 간주 금지) |
 | `EVENT_NOT_OPEN` | `event:status` != `OPEN` |
 | `EVENT_CLOSED` | `now >= endAt` |
-| `BALANCE_NOT_LOADED` | Balance 키 자체가 없음 (없음 = 0 취급 금지) |
+| `BALANCE_NOT_LOADED` | Balance 키 자체가 없음 (없음 = 0 취급 금지). Lua는 적재하지 않고 Java가 처리한다 — 아래 "잔액 키 적재" 참고 |
 | `INSUFFICIENT_BALANCE` | 보유 응모권 < 요청 수량 |
 | `INVALID_TICKET_COUNT` | ticketCount가 1 미만이거나 100 초과 |
 | `SYSTEM_ERROR` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
@@ -163,3 +163,12 @@ Gate 최초 적재 시 DB 집계로 두 키를 초기화하는지는 `EventGateL
 | 경합 | 300 | SUCCESS 150 / INSUFFICIENT_BALANCE 150 | 10345 | 14ms | 22ms | 22ms |
 
 참고용 1회 측정치이며 SLA로 확정한 값은 아니다.
+
+## 잔액 키 적재 (FR-P2-056, issue #275)
+
+`EntrySpendServiceImpl`은 Lua가 `BALANCE_NOT_LOADED`를 반환하면 `TicketBalanceKeyLoader`로 DB 잔액을 Redis에 `SET NX` 적재하고 **같은 요청을 1회만** 다시 실행한다. CREATOR·COMMON 공통이다.
+
+- 적재 조건: 보정 락(`ticket:maint:...`)을 잡을 수 있고, 해당 스코프에 미반영 메시지(PEL·미읽음·미해결 Dead Stream)가 없어야 한다. 미반영 차감분이 있는 채 DB 값으로 적재하면 잔액이 되살아나기 때문이다.
+- DB 잔액 행이 없으면 0으로 적재하므로 응답은 `INSUFFICIENT_BALANCE`가 된다.
+- 조건을 채우지 못하거나 재실행 후에도 키가 없으면 `BALANCE_NOT_LOADED`(503)를 그대로 반환한다.
+- 락은 재실행 전에 풀어 재실행이 `BALANCE_MAINTENANCE`가 되지 않게 한다. `SET NX`라 그 사이 EARN이 키를 먼저 만들었다면 덮어쓰지 않는다.
