@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -102,5 +103,15 @@ class TicketBalanceKeyLoaderTest {
 
         verify(checker, never()).existsCommon(MEMBER_ID);
         verify(values, never()).setIfAbsent(anyString(), anyString());
+    }
+
+    @Test
+    void 적재_중_저장소_오류는_false로_삼키고_락은_푼다() {
+        when(lock.acquireCommon(MEMBER_ID)).thenReturn(TOKEN);
+        when(checker.existsCommon(MEMBER_ID)).thenThrow(new QueryTimeoutException("timeout"));
+
+        assertThat(loader.load(CouponType.COMMON, CREATOR_ID, MEMBER_ID)).isFalse();
+
+        verify(lock).releaseCommon(MEMBER_ID, TOKEN);
     }
 }

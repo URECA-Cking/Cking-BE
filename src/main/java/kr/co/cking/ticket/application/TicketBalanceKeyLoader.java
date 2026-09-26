@@ -1,5 +1,6 @@
 package kr.co.cking.ticket.application;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -55,6 +56,11 @@ public class TicketBalanceKeyLoader {
             log.warn("Redis 잔액 키를 DB 기준으로 적재했습니다. couponType={}, memberId={}, creatorId={}, balance={}",
                     couponType, memberId, creatorId, balance);
             return true;
+        } catch (DataAccessException e) {
+            // 적재는 최선 노력이다. Redis·DB 오류를 응모 500으로 키우지 않고 기존 BALANCE_NOT_LOADED(503)로 남긴다.
+            log.error("Redis 잔액 키 적재 중 오류가 발생했습니다. couponType={}, memberId={}, creatorId={}",
+                    couponType, memberId, creatorId, e);
+            return false;
         } finally {
             if (common) {
                 maintenanceLock.releaseCommon(memberId, token);
