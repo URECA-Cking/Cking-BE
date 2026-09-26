@@ -5,7 +5,9 @@ import org.springframework.stereotype.Service;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
+import kr.co.cking.ticket.repository.UserCommonTicketBalanceRepository;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +24,9 @@ public class TicketAdminService {
     private final UserTicketBalanceRepository userTicketBalanceRepository;
     private final TicketCompensationService ticketCompensationService;
     private final TicketBalanceQueryService ticketBalanceQueryService;
+    private final UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
+    private final CommonTicketCompensationService commonTicketCompensationService;
+    private final CommonTicketBalanceQueryService commonTicketBalanceQueryService;
 
     public TicketBalanceResponse resync(Long adminId, Long memberId, Long creatorId, String reason) {
         memberQueryService.validateAdmin(adminId);
@@ -30,5 +35,15 @@ public class TicketAdminService {
         }
         ticketCompensationService.resyncRedisToDb(memberId, creatorId, reason);
         return ticketBalanceQueryService.getBalanceDetail(creatorId, memberId);
+    }
+
+    /** 공용 응모권(이슈 #256) 수동 재동기화. */
+    public CommonTicketBalanceResponse resyncCommon(Long adminId, Long memberId, String reason) {
+        memberQueryService.validateAdmin(adminId);
+        if (!userCommonTicketBalanceRepository.existsById(memberId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "보정 대상 공용 Balance가 없습니다.");
+        }
+        commonTicketCompensationService.resyncRedisToDb(memberId, reason);
+        return commonTicketBalanceQueryService.getBalanceDetail(memberId);
     }
 }
