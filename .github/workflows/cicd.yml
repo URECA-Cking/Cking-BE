@@ -207,21 +207,23 @@ jobs:
           echo "배포 결과 확인 시간 초과 (10분)"
           exit 1
 
-  smoke:
-    name: Smoke test
-    # deploy.sh의 헬스체크는 앱 기동만 보므로, 사용자와 같은 경로(ALB·인증서)로 설정까지 검증한다.
-    needs: [build-and-push, deploy]
-    if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
+      # 배포 권한이 있는 job이라 서드파티 액션 대신 공식 릴리스를 받아 지문을 확인한 뒤 설치한다.
+      - name: k6 설치
+        env:
+          K6_VERSION: v2.2.0
+          K6_SHA256: b5a8003c86f35f5cd5ceef1490312c48e587696c94d998cefc6d7b3b4cb1597d
+        run: |
+          curl -fsSLo k6.tar.gz "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz"
+          echo "${K6_SHA256}  k6.tar.gz" | sha256sum -c -
+          tar -xzf k6.tar.gz
+          sudo mv "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
 
-    env:
-      BASE_URL: https://dev-api.cking.co.kr
-      FRONTEND_ORIGIN: https://dev.cking.co.kr
-      EXPECTED_IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: grafana/setup-k6-action@v1
-
-      - run: k6 run k6/smoke.js
+      # deploy.sh의 헬스체크는 앱 기동만 보므로, 사용자와 같은 경로(ALB·인증서)로 설정까지 검증한다.
+      # 연속 배포 시 다음 배포가 끼어들지 않도록 배포 잠금 안에서 실행한다.
+      - name: 스모크 테스트
+        env:
+          BASE_URL: https://dev-api.cking.co.kr
+          FRONTEND_ORIGIN: https://dev.cking.co.kr
+          EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: k6 run k6/smoke.js
