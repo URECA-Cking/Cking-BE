@@ -19,6 +19,7 @@ export default function () {
   version();
   eventList();
   authRequired();
+  notFound();
   docsProtected();
   corsAllowed();
   oauthLogin('google', 'accounts.google.com');
@@ -54,6 +55,14 @@ function authRequired() {
   check(res, {
     'me 401': (r) => r.status === 401,
     'me UNAUTHORIZED': (r) => r.json('code') === 'UNAUTHORIZED',
+  });
+}
+
+function notFound() {
+  const res = http.get(`${BASE_URL}/api/does-not-exist`, { tags: { name: 'not-found' } });
+  check(res, {
+    'not found 404': (r) => r.status === 404,
+    'not found RESOURCE_NOT_FOUND': (r) => r.json('code') === 'RESOURCE_NOT_FOUND',
   });
 }
 
