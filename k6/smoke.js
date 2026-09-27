@@ -51,7 +51,10 @@ function eventList() {
 }
 
 function authRequired() {
-  const res = http.get(`${BASE_URL}/api/me`, { tags: { name: 'auth-required' } });
+  const res = http.get(`${BASE_URL}/api/me`, {
+    responseCallback: http.expectedStatuses(401),
+    tags: { name: 'auth-required' },
+  });
   check(res, {
     'me 401': (r) => r.status === 401,
     'me UNAUTHORIZED': (r) => r.json('code') === 'UNAUTHORIZED',
@@ -59,7 +62,10 @@ function authRequired() {
 }
 
 function notFound() {
-  const res = http.get(`${BASE_URL}/api/does-not-exist`, { tags: { name: 'not-found' } });
+  const res = http.get(`${BASE_URL}/api/does-not-exist`, {
+    responseCallback: http.expectedStatuses(404),
+    tags: { name: 'not-found' },
+  });
   check(res, {
     'not found 404': (r) => r.status === 404,
     'not found RESOURCE_NOT_FOUND': (r) => r.json('code') === 'RESOURCE_NOT_FOUND',
@@ -67,7 +73,10 @@ function notFound() {
 }
 
 function docsProtected() {
-  const res = http.get(`${BASE_URL}/swagger-ui/index.html`, { tags: { name: 'swagger' } });
+  const res = http.get(`${BASE_URL}/swagger-ui/index.html`, {
+    responseCallback: http.expectedStatuses(401),
+    tags: { name: 'swagger' },
+  });
   check(res, {
     'swagger 401': (r) => r.status === 401,
     'swagger Basic 인증': (r) => (r.headers['Www-Authenticate'] || '').startsWith('Basic'),
