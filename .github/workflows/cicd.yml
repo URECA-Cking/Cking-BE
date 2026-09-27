@@ -206,3 +206,22 @@ jobs:
           done
           echo "배포 결과 확인 시간 초과 (10분)"
           exit 1
+
+  smoke:
+    name: Smoke test
+    # deploy.sh의 헬스체크는 앱 기동만 보므로, 사용자와 같은 경로(ALB·인증서)로 설정까지 검증한다.
+    needs: [build-and-push, deploy]
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+
+    env:
+      BASE_URL: https://dev-api.cking.co.kr
+      FRONTEND_ORIGIN: https://dev.cking.co.kr
+      EXPECTED_IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: grafana/setup-k6-action@v1
+
+      - run: k6 run k6/smoke.js
