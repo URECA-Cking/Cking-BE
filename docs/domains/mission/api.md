@@ -36,6 +36,8 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 - Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
 - Path Variable `creatorId`: 필수, 양수 Long.
 - Path Variable `missionId`: 필수, 양수 Long.
+- 지원 유형: `ATTENDANCE`, `LIKE`.
+- `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 필요한 유형이므로 이 API에서 완료할 수 없다.
 
 ```json
 {
@@ -68,9 +70,10 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 
 1. `userId`로 Member 존재를 확인한다. 없으면 `RESOURCE_NOT_FOUND`.
 2. `creatorId`+`missionId`로 Mission을 조회한다. 없으면 `MISSION_NOT_FOUND`.
-3. `TicketEarnService#findExisting()`으로 동일 `requestId`의 기존 처리 결과를 조회한다(활성 검증보다 먼저 — 아래 "종료 후 동일 requestId 재시도" 참고).
-4. 기존 결과가 없으면(`NOT_FOUND`) `Mission.isActiveAt(now)`로 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
-5. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
+3. `YOUTUBE_SUBSCRIPTION`이면 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 이 경우 Ticket EARN 조회나 적립을 호출하지 않는다.
+4. `TicketEarnService#findExisting()`으로 동일 `requestId`의 기존 처리 결과를 조회한다(활성 검증보다 먼저 — 아래 "종료 후 동일 requestId 재시도" 참고).
+5. 기존 결과가 없으면(`NOT_FOUND`) `Mission.isActiveAt(now)`로 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
+6. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
 
 ## 일일 중복 적립 기준
 
@@ -78,7 +81,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 
 ## 종료 후 동일 requestId 재시도
 
-미션이 종료된 뒤 종료 전에 성공했던 `requestId`가 재전송되면, 활성 검증보다 먼저 수행하는 `findExisting()` 조회가 기존 성공 기록을 찾아 `MISSION_INACTIVE` 대신 원래의 EARN 결과(`ALREADY_PROCESSED`)를 반환한다(Issue #125, FR-P1-018). `findExisting()`이 `NOT_FOUND`를 반환했을 때만 활성 검증을 수행하므로, 종료된 미션에 대한 진짜 신규 요청은 여전히 `MISSION_INACTIVE`다.
+`ATTENDANCE`와 `LIKE` 미션이 종료된 뒤 종료 전에 성공했던 `requestId`가 재전송되면, 활성 검증보다 먼저 수행하는 `findExisting()` 조회가 기존 성공 기록을 찾아 `MISSION_INACTIVE` 대신 원래의 EARN 결과(`ALREADY_PROCESSED`)를 반환한다(Issue #125, FR-P1-018). `findExisting()`이 `NOT_FOUND`를 반환했을 때만 활성 검증을 수행하므로, 종료된 미션에 대한 진짜 신규 요청은 여전히 `MISSION_INACTIVE`다. `YOUTUBE_SUBSCRIPTION`은 일반 완료 API의 멱등 조회 대상이 아니며 그보다 먼저 `MISSION_REQUIRES_VERIFICATION`으로 차단한다.
 
 ## 오류 코드
 
@@ -88,6 +91,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 | `RESOURCE_NOT_FOUND` | 404 | 존재하지 않는 Member |
 | `MISSION_NOT_FOUND` | 404 | 존재하지 않는 Mission |
 | `MISSION_INACTIVE` | 409 | 활성 기간이 아닌 미션에 대한 신규 요청 |
+| `MISSION_REQUIRES_VERIFICATION` | 409 | 별도 이미지 인증이 필요한 미션을 일반 완료 API로 요청함 |
 | `DUPLICATE_MISSION` | 409 | 같은 `periodKey`에 이미 완료함 |
 | `REQUEST_ID_CONFLICT` | 409 | 동일 `requestId`로 다른 요청 내용이 전달됨 |
 | `EARN_PROCESSING_FAILED` | 503 | 응모권 적립 처리 실패(재시도 필요) |

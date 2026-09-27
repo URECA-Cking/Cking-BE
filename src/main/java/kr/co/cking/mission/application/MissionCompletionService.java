@@ -8,6 +8,7 @@ import kr.co.cking.mission.MissionRepository;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.MissionErrorCode;
+import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.ticket.application.TicketEarnService;
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
@@ -56,6 +57,10 @@ public class MissionCompletionService {
 
         Mission mission = missionRepository.findByMissionIdAndCreatorId(missionId, creatorId)
                 .orElseThrow(() -> new BusinessException(MissionErrorCode.MISSION_NOT_FOUND));
+
+        if (mission.getType() == MissionType.YOUTUBE_SUBSCRIPTION) {
+            throw new BusinessException(MissionErrorCode.MISSION_REQUIRES_VERIFICATION);
+        }
 
         Instant now = clock.instant();
         String periodKey = periodKeyOf(now);

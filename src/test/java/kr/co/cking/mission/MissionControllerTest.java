@@ -1,8 +1,10 @@
 package kr.co.cking.mission;
 
 import tools.jackson.databind.ObjectMapper;
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.mission.application.MissionCompletionService;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
+import kr.co.cking.mission.domain.MissionErrorCode;
 import kr.co.cking.mission.presentation.MissionController;
 import kr.co.cking.mission.presentation.dto.MissionCompleteRequest;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
@@ -66,6 +68,19 @@ class MissionControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("ALREADY_PROCESSED"));
+    }
+
+    @Test
+    void 별도_인증이_필요한_미션은_409를_반환한다() throws Exception {
+        MissionCompleteRequest request = new MissionCompleteRequest(UUID.randomUUID());
+        when(missionCompletionService.complete(eq(10L), eq(100L), any()))
+                .thenThrow(new BusinessException(MissionErrorCode.MISSION_REQUIRES_VERIFICATION));
+
+        mockMvc.perform(post("/api/creators/10/missions/100/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MISSION_REQUIRES_VERIFICATION"));
     }
 
     @Test

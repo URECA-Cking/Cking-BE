@@ -56,6 +56,10 @@ class MissionCompletionServiceTest {
         return new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null);
     }
 
+    private Mission youtubeSubscriptionMission() {
+        return new Mission(CREATOR_ID, MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null);
+    }
+
     private void stubMemberAndMission(Mission mission) {
         when(memberRepository.findById(USER_ID)).thenReturn(Optional.of(mock(Member.class)));
         when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID))
@@ -79,6 +83,23 @@ class MissionCompletionServiceTest {
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(outcome.rewardAmount()).isEqualTo(1);
+    }
+
+    @Test
+    void 유튜브_구독_미션은_일반_완료_API에서_EARN_조회_전에_차단한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(youtubeSubscriptionMission());
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                        CREATOR_ID,
+                        MISSION_ID,
+                        new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_REQUIRES_VERIFICATION);
+
+        verify(ticketEarnService, never()).findExisting(any());
+        verify(ticketEarnService, never()).earn(any());
     }
 
     @Test
