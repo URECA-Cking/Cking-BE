@@ -35,11 +35,12 @@ import java.util.Locale;
  * 써버리면 Consumer가 재전달로 오판해 Ledger·Balance 반영을 건너뛰므로, 이 클래스는
  * Redis/Stream 계층(EARN 결과코드) 밖의 어떤 영속 상태도 직접 만들지 않는다.
  *
- * <p><b>기존 requestId 조회를 미션 활성 검증보다 먼저 한다(Issue #125)</b>: 미션이
- * 종료된 뒤 이미 성공했던 requestId가 재전송되면, {@link TicketEarnService#findExisting}로
- * 먼저 확인해 {@code MISSION_INACTIVE}가 아니라 기존 성공 결과를 반환해야 한다
- * (FR-P1-018). 활성 검증은 {@code findExisting()}이 {@code NOT_FOUND}(진짜 신규 요청)를
- * 반환했을 때만 수행한다.
+ * <p><b>일반 완료 유형은 기존 requestId 조회를 미션 활성 검증보다 먼저 한다(Issue
+ * #125)</b>: LIKE 미션이 종료된 뒤 이미 성공했던 requestId가 재전송되면,
+ * {@link TicketEarnService#findExisting}로 먼저 확인해 {@code MISSION_INACTIVE}가 아니라
+ * 기존 성공 결과를 반환해야 한다(FR-P1-018). 레거시 Creator ATTENDANCE도 기존 성공
+ * requestId replay만 보존한다. 이미지 인증이 필요한 YOUTUBE_SUBSCRIPTION은 Ticket EARN
+ * 조회보다 먼저 별도 인증 경계로 차단한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -58,6 +59,10 @@ public class MissionCompletionService {
 
         Mission mission = missionRepository.findByMissionIdAndCreatorId(missionId, creatorId)
                 .orElseThrow(() -> new BusinessException(MissionErrorCode.MISSION_NOT_FOUND));
+
+        if (mission.getType() == MissionType.YOUTUBE_SUBSCRIPTION) {
+            throw new BusinessException(MissionErrorCode.MISSION_REQUIRES_VERIFICATION);
+        }
 
         Instant now = clock.instant();
         String periodKey = periodKeyOf(now);
