@@ -1,6 +1,7 @@
 package kr.co.cking.ticket.application;
 
 import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.CommonEarnCommand;
 import kr.co.cking.ticket.domain.TicketEarnRequest;
 import kr.co.cking.ticket.domain.TicketEarnRequestStatus;
 import kr.co.cking.ticket.repository.TicketEarnRequestRepository;
@@ -22,19 +23,22 @@ public class TicketEarnRequestClaimService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public TicketEarnRequestClaim claim(EarnCommand command) {
-        String fingerprint = command.computeFingerprint();
-        String requestId = command.requestId().toString();
-        return repository.findByRequestId(requestId)
-                .map(request -> claimOf(request, fingerprint, command.rewardPolicy().name()))
-                .orElseGet(() -> createClaim(requestId, fingerprint, command.rewardPolicy().name()));
+        return claim(command.requestId().toString(), command.computeFingerprint(), command.rewardPolicy().name());
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public TicketEarnRequestClaim claim(CommonEarnCommand command) {
+        return claim(command.requestId().toString(), command.computeFingerprint(), "COMMON");
     }
 
     @Transactional(readOnly = true)
     public TicketEarnRequestClaim find(EarnCommand command) {
-        String fingerprint = command.computeFingerprint();
-        return repository.findByRequestId(command.requestId().toString())
-                .map(request -> claimOf(request, fingerprint, command.rewardPolicy().name()))
-                .orElse(null);
+        return find(command.requestId().toString(), command.computeFingerprint(), command.rewardPolicy().name());
+    }
+
+    @Transactional(readOnly = true)
+    public TicketEarnRequestClaim find(CommonEarnCommand command) {
+        return find(command.requestId().toString(), command.computeFingerprint(), "COMMON");
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -54,6 +58,18 @@ public class TicketEarnRequestClaimService {
         return repository.findByRequestId(requestId)
                 .map(request -> claimOf(request, fingerprint, rewardPolicy))
                 .orElseThrow(() -> new IllegalStateException("전역 EARN request 충돌 대상을 찾을 수 없습니다."));
+    }
+
+    private TicketEarnRequestClaim claim(String requestId, String fingerprint, String rewardPolicy) {
+        return repository.findByRequestId(requestId)
+                .map(request -> claimOf(request, fingerprint, rewardPolicy))
+                .orElseGet(() -> createClaim(requestId, fingerprint, rewardPolicy));
+    }
+
+    private TicketEarnRequestClaim find(String requestId, String fingerprint, String rewardPolicy) {
+        return repository.findByRequestId(requestId)
+                .map(request -> claimOf(request, fingerprint, rewardPolicy))
+                .orElse(null);
     }
 
     private TicketEarnRequestClaim claimOf(TicketEarnRequest request, String fingerprint, String rewardPolicy) {

@@ -67,7 +67,7 @@ class TicketEarnServiceImplErrorMappingTest {
     void 다른_정책에서_이미_사용한_requestId는_Redis_실행_전에_차단한다() {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         TicketEarnRequestClaimService claimService = mock(TicketEarnRequestClaimService.class);
-        when(claimService.claim(any())).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
+        when(claimService.claim(any(EarnCommand.class))).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
         TicketEarnServiceImpl service = new TicketEarnServiceImpl(
                 redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService);
 

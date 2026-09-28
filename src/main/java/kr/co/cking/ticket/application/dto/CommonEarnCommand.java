@@ -1,5 +1,9 @@
 package kr.co.cking.ticket.application.dto;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
 
@@ -21,6 +25,17 @@ public record CommonEarnCommand(
         String periodKey,
         Long amount
 ) {
+    /** requestId를 제외한 공용 EARN 요청 내용을 해시해 전역 requestId claim에 사용한다. */
+    public String computeFingerprint() {
+        String payload = userId + ":" + missionType + ":" + missionId + ":" + amount;
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(payload.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
+        }
+    }
+
     public static CommonEarnCommand fromStreamFields(Map<String, String> fields) {
         return new CommonEarnCommand(
                 UUID.fromString(fields.get("requestId")),

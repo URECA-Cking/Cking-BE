@@ -78,7 +78,7 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
     private EarnResult globalClaimResult(EarnCommand command) {
         return switch (requestClaimService.claim(command)) {
             case PENDING -> null;
-            case ACCEPTED -> new EarnResult(EarnResultCode.ALREADY_PROCESSED);
+            case ACCEPTED -> recoverOnceAccepted(command);
             case REQUEST_ID_CONFLICT -> new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
         };
     }
@@ -89,8 +89,21 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
             return null;
         }
         return claim == TicketEarnRequestClaim.ACCEPTED
-                ? new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED)
+                ? new EarnLookupResult(recoverOnceAccepted(command).code() == EarnResultCode.REQUEST_ID_CONFLICT
+                        ? EarnLookupStatus.REQUEST_ID_CONFLICT
+                        : EarnLookupStatus.ALREADY_PROCESSED)
                 : new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
+    }
+
+    private EarnResult recoverOnceAccepted(EarnCommand command) {
+        TicketOnceEarnRequestClaim claim = claimService.find(command.requestId().toString(), command.computeFingerprint());
+        if (claim == TicketOnceEarnRequestClaim.REQUEST_ID_CONFLICT) {
+            return new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
+        }
+        if (claim == TicketOnceEarnRequestClaim.PENDING) {
+            claimService.accept(command.requestId().toString());
+        }
+        return new EarnResult(EarnResultCode.ALREADY_PROCESSED);
     }
 
 }

@@ -28,7 +28,7 @@ class TicketOnceEarnServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        when(requestClaimService.claim(any())).thenReturn(TicketEarnRequestClaim.PENDING);
+        when(requestClaimService.claim(any(EarnCommand.class))).thenReturn(TicketEarnRequestClaim.PENDING);
     }
 
     @Test
@@ -54,12 +54,26 @@ class TicketOnceEarnServiceImplTest {
 
     @Test
     void DAILY에서_이미_사용한_requestId는_ONCE_durable_선점_전에_차단한다() {
-        when(requestClaimService.claim(any())).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
+        when(requestClaimService.claim(any(EarnCommand.class))).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
 
         EarnResult result = service.earn(onceCommand());
 
         assertThat(result.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
         verify(claimService, never()).claim(any(), any());
+        verify(claimedExecutor, never()).earnClaimed(any());
+    }
+
+    @Test
+    void 전역_claim이_ACCEPTED이고_ONCE_claim이_PENDING이면_ONCE를_복구한다() {
+        EarnCommand command = onceCommand();
+        when(requestClaimService.claim(command)).thenReturn(TicketEarnRequestClaim.ACCEPTED);
+        when(claimService.find(command.requestId().toString(), command.computeFingerprint()))
+                .thenReturn(TicketOnceEarnRequestClaim.PENDING);
+
+        EarnResult result = service.earn(command);
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(claimService).accept(command.requestId().toString());
         verify(claimedExecutor, never()).earnClaimed(any());
     }
 

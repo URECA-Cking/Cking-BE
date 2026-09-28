@@ -62,7 +62,7 @@ public class MissionController {
     @PostMapping("/api/creators/{creatorId}/missions/share/complete")
     @Operation(
             summary = "Creator Space 공유 미션 완료",
-            description = "인증된 사용자의 Creator Space 공유를 requestId로 멱등 처리합니다. 서버 UTC 날짜를 기준으로 Creator별 하루 한 번만 전용 응모권을 적립합니다."
+            description = "인증된 사용자의 Creator Space 공유를 requestId로 멱등 처리합니다. 사용자·Creator·SHARE 미션 기준으로 전용 응모권을 평생 한 번만 적립합니다."
     )
     public ResponseEntity<ApiResponse<MissionCompleteResponse>> completeShare(
             @PathVariable @Positive Long creatorId,

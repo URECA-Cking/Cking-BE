@@ -1,5 +1,6 @@
 package kr.co.cking.ticket.application;
 
+import kr.co.cking.ticket.application.dto.CommonEarnCommand;
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,17 @@ class TicketEarnRequestClaimServiceIntegrationTest {
         assertThat(claimService.claim(daily)).isEqualTo(TicketEarnRequestClaim.PENDING);
         assertThat(claimService.claim(once)).isEqualTo(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
         assertThat(claimService.find(once)).isEqualTo(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
+    }
+
+    @Test
+    void 공용_EARN과_Creator_EARN은_같은_requestId를_공유할_수_없다() {
+        UUID requestId = UUID.randomUUID();
+        CommonEarnCommand common = new CommonEarnCommand(requestId, 1L, "ATTENDANCE", 3L, "2026-09-16", 1L);
+        EarnCommand creator = command(requestId, EarnRewardPolicy.DAILY);
+
+        assertThat(claimService.claim(common)).isEqualTo(TicketEarnRequestClaim.PENDING);
+        assertThat(claimService.claim(creator)).isEqualTo(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
+        assertThat(claimService.find(creator)).isEqualTo(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
     }
 
     private EarnCommand command(UUID requestId, EarnRewardPolicy rewardPolicy) {
