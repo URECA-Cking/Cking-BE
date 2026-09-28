@@ -43,7 +43,7 @@
 ```
 
 - `channelName`: 필수, trim 후 blank 불가, 최대 100자
-- `channelHandle`: 필수, 정규화 후 `@` prefix를 포함하며 최대 100자
+- `channelHandle`: 필수, 정규화 후 `@` prefix를 포함하며 최대 100자. 본문은 Unicode 문자·숫자와 `.`, `_`, `-`만 허용
 - `channelUrl`은 받지 않고 정규화 handle로 서버가 만든다.
 - 최초 설정이면 HTTP 201, 수정 또는 동일 값 재적용이면 HTTP 200을 반환한다.
 - 최초 설정 Transaction에서 `YOUTUBE_SUBSCRIPTION` Mission이 없으면 `rewardAmount=1`, 상시 활성으로 생성한다.

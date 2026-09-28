@@ -13,5 +13,7 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
 
     Optional<Mission> findByMissionIdAndCreatorId(Long missionId, Long creatorId);
 
+    Optional<Mission> findByCreatorIdAndType(Long creatorId, MissionType type);
+
     List<Mission> findByCreatorIdAndTypeIn(Long creatorId, Collection<MissionType> types);
 }

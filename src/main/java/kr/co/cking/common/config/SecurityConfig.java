@@ -109,13 +109,15 @@ public class SecurityConfig {
                                 "/api/creator/applications/me",
                                 "/api/creator/space",
                                 "/api/creator/calendar/**",
+                                "/api/creator/youtube-channel",
                                 "/api/creator/space/slug"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/creators/*/calendar/schedules",
-                                "/api/creators/*/calendar/schedules/*"
+                                "/api/creators/*/calendar/schedules/*",
+                                "/api/creators/*/youtube-channel"
                         ).permitAll()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
