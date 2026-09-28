@@ -31,6 +31,9 @@ public class CurrentMemberIdArgumentResolver implements HandlerMethodArgumentRes
     ) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication) || !authentication.isAuthenticated()) {
+            if (!parameter.getParameterAnnotation(CurrentMemberId.class).required()) {
+                return null;
+            }
             throw new AuthenticationCredentialsNotFoundException("검증된 JWT 인증 정보가 필요합니다.");
         }
 

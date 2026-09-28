@@ -30,3 +30,7 @@ cking:
     jwt:
       secret: ${JWT_SECRET}
     refresh-cookie-secure: true
+
+info:
+  image:
+    tag: ${IMAGE_TAG:unknown}

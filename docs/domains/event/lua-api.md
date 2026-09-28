@@ -15,7 +15,7 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 크리에이터 전용 응모권 잔액. `couponType=COMMON`이면 대신 `ticket:balance:common:{userId}`를 쓴다(이슈 #243) |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
-| `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172). `couponType=COMMON`이면 `ticket:maint:common:{userId}`를 대신 확인한다 — 공용 보정 기능 자체는 아직 없어 항상 미존재(EXISTS=false) |
+| `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172). `couponType=COMMON`이면 `ticket:maint:common:{userId}`를 대신 확인한다 — `CommonTicketCompensationService.resyncRedisToDb()`(이슈 #256)가 공용 보정 중에만 이 키를 잡으므로, 평소에는 미존재(EXISTS=false)다 |
 | `event:entry-total:{eventId}` | STRING(integer) | 실시간 응모 현황(FR-P2-045~050) 누적 사용 응모권 수. `event-gate-load.lua`가 Gate 최초 적재 시 DB 집계로 초기화하고, 이 스크립트가 신규 SUCCESS 경로에서만 증가시킨다 |
 | `event:entrants:{eventId}` | HASH(userId → 사용 응모권 수) | 실시간 응모 현황 참여자별 집계. `HLEN`이 참여자 수다. 초기화·증가 시점은 위와 같다 |
 
