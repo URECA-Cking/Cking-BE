@@ -1,6 +1,7 @@
 package kr.co.cking.creator.application;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
@@ -15,6 +16,7 @@ import kr.co.cking.creator.repository.CreatorSpaceTemplateRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -81,6 +83,10 @@ class CreatorSpaceProfileIntegrationTest {
     @AfterEach
     void cleanUp() {
         memberIds.forEach(memberId -> {
+            jdbcTemplate.update(
+                    "DELETE FROM creator_space_slug_reservation WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
+                    memberId
+            );
             jdbcTemplate.update(
                     "DELETE FROM creator_space WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
                     memberId
@@ -230,6 +236,41 @@ class CreatorSpaceProfileIntegrationTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
         }
+    }
+
+    /**
+     * 버린 이전 slug는 다른 Creator가 가져갈 수 없고, 버린 본인은 14일 변경 제한 안에서도 되돌릴 수 있다(이슈 #301).
+     * 되돌리면서 버린 커스텀 slug도 예약되어 다른 Creator가 가져갈 수 없다.
+     */
+    @Test
+    void 버린_slug는_다른_Creator가_못_쓰고_본인은_되돌릴_수_있다() {
+        Member admin = createMember("예약관리자", MemberRole.ADMIN);
+        Member owner = createMember("예약주인", MemberRole.USER);
+        Member other = createMember("예약도전자", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, owner);
+        approve(admin, other);
+        Creator ownerCreator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
+        String autoSlug = "creator-" + ownerCreator.getCreatorId();
+        String customSlug = "reserved-" + ownerCreator.getCreatorId();
+
+        profileService.changeSlug(owner.getMemberId(), customSlug);
+
+        assertSlugTaken(() -> profileService.changeSlug(other.getMemberId(), autoSlug));
+        assertThat(profileService.changeSlug(owner.getMemberId(), autoSlug).space().getSlug()).isEqualTo(autoSlug);
+        assertSlugTaken(() -> profileService.changeSlug(other.getMemberId(), customSlug));
+        assertThatThrownBy(() -> profileService.findBySlug(customSlug))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    private void assertSlugTaken(ThrowingCallable call) {
+        assertThatThrownBy(call)
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CreatorErrorCode.SLUG_ALREADY_TAKEN);
     }
 
     private void approve(Member admin, Member applicant) {

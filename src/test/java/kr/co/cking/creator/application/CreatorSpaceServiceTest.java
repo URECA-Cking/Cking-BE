@@ -3,11 +3,16 @@ package kr.co.cking.creator.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.domain.CreatorSpaceSlugReservation;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +35,7 @@ class CreatorSpaceServiceTest {
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
         given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         CreatorSpace space = service.createFromActiveTemplateIfAbsent(42L);
 
@@ -55,11 +60,30 @@ class CreatorSpaceServiceTest {
         given(spaceRepository.existsBySlug("creator-43-2")).willReturn(true);
         given(spaceRepository.existsBySlug("creator-43-3")).willReturn(false);
         given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         CreatorSpace space = service.createFromActiveTemplateIfAbsent(43L);
 
         assertThat(space.getSlug()).isEqualTo("creator-43-3");
+    }
+
+    /** 다른 Creator가 버려서 예약 중인 slug도 사용 중으로 보고 대체 slug를 쓴다(이슈 #301). */
+    @Test
+    void usesNumberedSlugWhenAutoSlugIsReservedByAnotherCreator() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        given(spaceRepository.findByCreatorId(43L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "p", "b", "creator-{creatorId}"
+        )));
+        given(reservationRepository.findBySlug("creator-43"))
+                .willReturn(Optional.of(CreatorSpaceSlugReservation.reserve("creator-43", 42L, NOW.minusDays(1))));
+        given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        CreatorSpace space = service.createFromActiveTemplateIfAbsent(43L);
+
+        assertThat(space.getSlug()).isEqualTo("creator-43-2");
     }
 
     /** 이미 Space가 있으면 활성 템플릿을 조회하지도, 새로 저장하지도 않는다 — 승인 재시도·중복 호출에도 Space가 두 개 생기지 않게 한다. */
@@ -72,7 +96,7 @@ class CreatorSpaceServiceTest {
         );
         CreatorSpace existing = CreatorSpace.fromTemplate(42L, template, "creator-42");
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.of(existing));
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         CreatorSpace result = service.createFromActiveTemplateIfAbsent(42L);
 
@@ -88,7 +112,7 @@ class CreatorSpaceServiceTest {
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.empty());
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(42L))
                 .isInstanceOf(BusinessException.class)
@@ -112,7 +136,7 @@ class CreatorSpaceServiceTest {
         );
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(42L))
                 .isInstanceOf(BusinessException.class)
@@ -131,7 +155,7 @@ class CreatorSpaceServiceTest {
         );
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(42L))
                 .isInstanceOf(BusinessException.class)
@@ -149,7 +173,7 @@ class CreatorSpaceServiceTest {
         );
         given(spaceRepository.findByCreatorId(1L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(1L))
                 .isInstanceOf(BusinessException.class)
@@ -174,12 +198,23 @@ class CreatorSpaceServiceTest {
         );
         given(spaceRepository.findByCreatorId(Long.MAX_VALUE)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
-        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+        CreatorSpaceService service = newService(spaceRepository, templateService);
 
         assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(Long.MAX_VALUE))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CreatorErrorCode.INVALID_ACTIVE_SPACE_TEMPLATE);
         verify(spaceRepository, never()).save(any());
+    }
+
+    private static final LocalDateTime NOW = LocalDateTime.of(2026, 9, 28, 3, 0);
+
+    private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
+
+    private CreatorSpaceService newService(CreatorSpaceRepository spaceRepository, CreatorSpaceTemplateService templateService) {
+        return new CreatorSpaceService(
+                spaceRepository, templateService,
+                new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
+                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
     }
 }
