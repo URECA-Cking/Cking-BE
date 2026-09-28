@@ -6,7 +6,8 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 - [Creator 신청 API](api.md): 신청·심사 외부 API 계약
 - [Creator Space Template 관리자 API](space-template-api.md): 기본 템플릿 CRUD·활성화 외부 API 계약
-- [Creator Space API](space-api.md): Space 홈·프로필 공개 조회와 Creator 본인 조회·수정 외부 API 계약
+- [Creator Space API](space-api.md): Space 공개 조회(creatorId·slug), Creator 본인 조회·수정·커스텀 slug 변경 외부 API 계약
+- [Creator Space slug 정책](space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 
 ## Creator Space 자동 생성(이슈 #270)
 
@@ -35,7 +36,19 @@ Creator Space 생성은 승인 트랜잭션에 참여한다(기본 전파, `REQU
 
 ### 기존 승인 Creator 백필(V19)
 
-V18 이전에 승인된 Creator에게는 Space가 없으므로, `V19__backfill_creator_space.sql`이 배포 시 한 번 활성 템플릿 값으로 Space를 채운다. Space가 없는 Creator만 대상으로 해 다시 실행해도 결과가 같고, slug는 승인 경로와 같은 규칙으로 만든다.
+V18 이전에 승인된 Creator에게는 Space가 없으므로, `V19__backfill_creator_space.sql`이 배포 시 한 번 활성 템플릿 값으로 Space를 채운다. Space가 없는 Creator만 대상으로 해 다시 실행해도 결과가 같다. V20 이후 수동 백필은 현재 승인 경로처럼 slug 선점 시 대체 slug도 찾는다.
 
-- 활성 템플릿이 없거나, 활성 템플릿의 `slugRule`이 위 형식이 아니거나, 치환 결과가 100자를 넘으면 배포를 막지 않고 아무것도 넣지 않는다. 이때 기존 Creator는 Space 없이 남는다. 템플릿을 활성화하거나 고친 뒤 V19의 `INSERT ... SELECT`를 운영자가 한 번 직접 실행해 채운다. 이미 Space가 있는 Creator는 건너뛴다.
-- 신규 승인과 달리 백필은 Creator마다 따로 성공·실패하지 않는다. 조건을 만족하는 Creator 전체에 한 번에 들어가거나, 하나도 들어가지 않는다.
+- 활성 템플릿이 없거나, 활성 템플릿의 `slugRule`이 위 형식이 아니거나, 치환 결과가 100자를 넘으면 배포를 막지 않고 아무것도 넣지 않는다. 이때 기존 Creator는 Space 없이 남는다. 템플릿을 활성화하거나 고친 뒤 아래 SQL을 운영자가 한 번 직접 실행해 채운다. 이미 Space가 있는 Creator는 건너뛴다.
+- V19 배포 마이그레이션은 단일 INSERT라 조건을 만족하는 Creator 전체에 한 번에 들어가거나, 하나도 들어가지 않는다. V20 이후 수동 백필은 비어 있는 slug 후보가 없는 Creator를 건너뛸 수 있으므로 실행 뒤 누락 여부를 확인한다.
+- V20에서 탭 컬럼을 삭제했으므로 V19 파일의 SQL은 현재 스키마에서 그대로 실행할 수 없다. 수동 백필에는 [현재 스키마용 SQL](manual-space-backfill.sql)을 쓴다. 이미 사용 중인 자동 slug는 승인 경로처럼 `-2`부터 `-100`까지 비어 있는 대체 slug를 찾는다. 실행 후 Space가 없는 Creator가 남았는지 확인하고, 남았다면 활성 템플릿과 slug 후보를 점검한다.
+
+## 탭 노출 설정 제거(이슈 #290)
+
+템플릿과 Space에 있던 탭(홈·미션·게시물·이벤트) on/off 값은 V20에서 삭제했다. 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다. 탭 값을 읽어 기능을 막는 코드는 원래 없었으므로 기능 동작은 바뀌지 않는다.
+
+## 커스텀 slug(이슈 #290)
+
+Creator는 승인 때 받은 자동 slug를 인스타 아이디처럼 원하는 값으로 바꿀 수 있다(`PATCH /api/creator/space/slug`). 공유 링크는 slug로 연다(`GET /api/creator-spaces/{slug}`). 형식·예약어·중복 규칙과 변경 시 예전 링크 처리는 [space-slug-policy.md](space-slug-policy.md)가 정본이다.
+
+- 위 "slug 생성과 slugRule 검증"의 보장(끝 숫자열 = creatorId라 겹치지 않음)은 자동 slug끼리만 성립한다. 커스텀 slug가 아직 승인되지 않은 Creator의 자동 slug를 먼저 가져갔을 수 있으므로, `CreatorSpaceService`는 승인 시 자동 slug가 이미 쓰이고 있으면 `-2`, `-3`을 붙인 대체 slug를 쓴다. 승인은 slug 충돌로 실패하지 않는다.
+- slug는 바뀔 수 있으므로 다른 도메인(공유 미션 등)은 slug가 아니라 `creatorId`로 기록한다.

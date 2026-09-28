@@ -6,15 +6,20 @@ import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
+import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -33,11 +38,7 @@ class CreatorSpaceControllerTest {
             {
               "introText": "새 소개",
               "profileImageUrl": "https://img/p2.png",
-              "bannerImageUrl": "https://img/b2.png",
-              "homeTabEnabled": true,
-              "missionsTabEnabled": false,
-              "postsTabEnabled": true,
-              "eventsTabEnabled": false
+              "bannerImageUrl": "https://img/b2.png"
             }
             """;
 
@@ -50,18 +51,19 @@ class CreatorSpaceControllerTest {
     @MockitoBean
     private MemberRepository memberRepository;
 
+    /** slug 변경 이력(slugChangeableAt)은 본인에게만 필요하므로 공개 응답에는 담지 않는다. */
     @Test
     void publicSpaceIsReadableWithoutJwt() throws Exception {
-        given(profileService.findByCreatorId(42L)).willReturn(view());
+        given(profileService.findByCreatorId(42L)).willReturn(slugChangedView());
 
         mockMvc.perform(get("/api/creators/{creatorId}/space", 42L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.creatorId").value(42))
                 .andExpect(jsonPath("$.data.creatorName").value("크리에이터"))
-                .andExpect(jsonPath("$.data.slug").value("creator-42"))
+                .andExpect(jsonPath("$.data.slug").value("iu-official"))
                 .andExpect(jsonPath("$.data.introText").value("소개"))
-                .andExpect(jsonPath("$.data.missionsTabEnabled").value(false));
+                .andExpect(jsonPath("$.data.slugChangeableAt").doesNotExist());
     }
 
     @Test
@@ -98,11 +100,12 @@ class CreatorSpaceControllerTest {
     @Test
     @WithMockJwt(memberId = "7")
     void mySpaceUsesJwtMemberId() throws Exception {
-        given(profileService.findMine(7L)).willReturn(view());
+        given(profileService.findMine(7L)).willReturn(slugChangedView());
 
         mockMvc.perform(get("/api/creator/space"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.slug").value("creator-42"));
+                .andExpect(jsonPath("$.data.slug").value("iu-official"))
+                .andExpect(jsonPath("$.data.slugChangeableAt").value("2026-10-12T03:00:00Z"));
     }
 
     @Test
@@ -126,7 +129,7 @@ class CreatorSpaceControllerTest {
     @WithMockJwt(memberId = "7")
     void updateMySpacePassesAllProfileFields() throws Exception {
         CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
-                "새 소개", "https://img/p2.png", "https://img/b2.png", true, false, true, false
+                "새 소개", "https://img/p2.png", "https://img/b2.png"
         );
         given(profileService.updateMine(7L, expected)).willReturn(view());
 
@@ -143,7 +146,7 @@ class CreatorSpaceControllerTest {
         then(profileService).should(never()).updateMine(any(), any());
     }
 
-    /** 모든 필드를 한 번에 교체하므로 누락된 탭 값도 검증 실패다. */
+    /** 모든 필드를 한 번에 교체하므로 공백이거나 누락된 필드는 검증 실패다. */
     @Test
     @WithMockJwt(memberId = "7")
     void updateMySpaceRejectsBlankOrMissingFields() throws Exception {
@@ -152,9 +155,7 @@ class CreatorSpaceControllerTest {
                         .content("""
                                 {
                                   "introText": " ",
-                                  "profileImageUrl": "https://img/p2.png",
-                                  "bannerImageUrl": "https://img/b2.png",
-                                  "homeTabEnabled": true
+                                  "profileImageUrl": "https://img/p2.png"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -172,11 +173,87 @@ class CreatorSpaceControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
+    @Test
+    void spaceIsReadableBySlugWithoutJwt() throws Exception {
+        given(profileService.findBySlug("iu-official")).willReturn(slugChangedView());
+
+        mockMvc.perform(get("/api/creator-spaces/{slug}", "iu-official"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").value(42))
+                .andExpect(jsonPath("$.data.slug").value("iu-official"))
+                .andExpect(jsonPath("$.data.slugChangeableAt").doesNotExist());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugUsesJwtMemberId() throws Exception {
+        given(profileService.changeSlug(7L, "iu-official")).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-official\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+        then(profileService).should().changeSlug(7L, "iu-official");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IU", "ab", "iu.official", "-iu"})
+    @WithMockJwt(memberId = "7")
+    void changeSlugRejectsInvalidFormat(String slug) throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"%s\"}".formatted(slug)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileService).should(never()).changeSlug(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugReturnsConflictWhenTaken() throws Exception {
+        given(profileService.changeSlug(7L, "taken"))
+                .willThrow(new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"taken\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SLUG_ALREADY_TAKEN"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugReturnsConflictWithinFourteenDays() throws Exception {
+        given(profileService.changeSlug(7L, "iu-2026"))
+                .willThrow(new BusinessException(CreatorErrorCode.SLUG_CHANGE_TOO_SOON));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-2026\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SLUG_CHANGE_TOO_SOON"));
+    }
+
+    @Test
+    void changeSlugRequiresJwt() throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-official\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
     private CreatorSpaceView view() {
         CreatorSpace space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, false, true, false
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         ), "creator-42");
         return new CreatorSpaceView(space, "크리에이터");
+    }
+
+    /** 2026-09-28T03:00Z에 slug를 바꿔 14일 뒤(2026-10-12T03:00Z)에 다시 바꿀 수 있는 Space. */
+    private CreatorSpaceView slugChangedView() {
+        CreatorSpaceView view = view();
+        view.space().changeSlug("iu-official", LocalDateTime.of(2026, 9, 28, 3, 0));
+        return view;
     }
 }

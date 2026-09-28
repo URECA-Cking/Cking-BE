@@ -52,11 +52,7 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "소개",
                                   "profileImageUrl": "https://img/profile.png",
                                   "bannerImageUrl": "https://img/banner.png",
-                                  "slugRule": "creator-{creatorId}",
-                                  "homeTabEnabled": true,
-                                  "missionsTabEnabled": true,
-                                  "postsTabEnabled": true,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "creator-{creatorId}"
                                 }
                                 """))
                 .andExpect(status().isCreated())
@@ -76,11 +72,7 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "   ",
                                   "profileImageUrl": "https://img/profile.png",
                                   "bannerImageUrl": "https://img/banner.png",
-                                  "slugRule": "creator-{creatorId}",
-                                  "homeTabEnabled": true,
-                                  "missionsTabEnabled": true,
-                                  "postsTabEnabled": true,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "creator-{creatorId}"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -97,11 +89,7 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "소개",
                                   "profileImageUrl": "https://img/profile.png",
                                   "bannerImageUrl": "https://img/banner.png",
-                                  "slugRule": "creator-space",
-                                  "homeTabEnabled": true,
-                                  "missionsTabEnabled": true,
-                                  "postsTabEnabled": true,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "creator-space"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -118,11 +106,7 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "소개",
                                   "profileImageUrl": "https://img/profile.png",
                                   "bannerImageUrl": "https://img/banner.png",
-                                  "slugRule": "{creatorId}-creator-{creatorId}",
-                                  "homeTabEnabled": true,
-                                  "missionsTabEnabled": true,
-                                  "postsTabEnabled": true,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "{creatorId}-creator-{creatorId}"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -139,11 +123,7 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "소개",
                                   "profileImageUrl": "https://img/profile.png",
                                   "bannerImageUrl": "https://img/banner.png",
-                                  "slugRule": "%s",
-                                  "homeTabEnabled": true,
-                                  "missionsTabEnabled": true,
-                                  "postsTabEnabled": true,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "%s"
                                 }
                                 """.formatted(slugRule)))
                 .andExpect(status().isBadRequest())
@@ -164,11 +144,7 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "소개",
                                   "profileImageUrl": "https://img/profile.png",
                                   "bannerImageUrl": "https://img/banner.png",
-                                  "slugRule": "%s",
-                                  "homeTabEnabled": true,
-                                  "missionsTabEnabled": true,
-                                  "postsTabEnabled": true,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "%s"
                                 }
                                 """.formatted(tooLongSlugRule)))
                 .andExpect(status().isBadRequest())
@@ -214,7 +190,7 @@ class CreatorSpaceTemplateControllerTest {
     @Test
     void updateReturnsUpdatedTemplate() throws Exception {
         CreatorSpaceTemplate template = templateWithId(10L);
-        template.update(1L, "새 소개", "https://img/p2.png", "https://img/b2.png", "new-{creatorId}", false, false, false, true);
+        template.update(1L, "새 소개", "https://img/p2.png", "https://img/b2.png", "new-{creatorId}");
         given(templateService.update(eq(1L), eq(10L), any())).willReturn(template);
 
         mockMvc.perform(patch("/api/admin/creator-space-templates/{templateId}", 10L)
@@ -224,17 +200,11 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "새 소개",
                                   "profileImageUrl": "https://img/p2.png",
                                   "bannerImageUrl": "https://img/b2.png",
-                                  "slugRule": "new-{creatorId}",
-                                  "homeTabEnabled": false,
-                                  "missionsTabEnabled": false,
-                                  "postsTabEnabled": false,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "new-{creatorId}"
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.introText").value("새 소개"))
-                .andExpect(jsonPath("$.data.missionsTabEnabled").value(false))
-                .andExpect(jsonPath("$.data.eventsTabEnabled").value(true));
+                .andExpect(jsonPath("$.data.introText").value("새 소개"));
 
         then(templateService).should().update(eq(1L), eq(10L), any());
     }
@@ -249,11 +219,7 @@ class CreatorSpaceTemplateControllerTest {
                                   "introText": "새 소개",
                                   "profileImageUrl": "https://img/p2.png",
                                   "bannerImageUrl": "https://img/b2.png",
-                                  "slugRule": "new-space",
-                                  "homeTabEnabled": false,
-                                  "missionsTabEnabled": false,
-                                  "postsTabEnabled": false,
-                                  "eventsTabEnabled": true
+                                  "slugRule": "new-space"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -262,8 +228,7 @@ class CreatorSpaceTemplateControllerTest {
 
     private CreatorSpaceTemplate templateWithId(Long templateId) {
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, true, true, true
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         );
         ReflectionTestUtils.setField(template, "templateId", templateId);
         return template;

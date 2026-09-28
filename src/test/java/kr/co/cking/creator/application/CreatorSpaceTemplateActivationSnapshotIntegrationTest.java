@@ -106,8 +106,7 @@ class CreatorSpaceTemplateActivationSnapshotIntegrationTest {
 
     private CreatorSpaceTemplate newTemplate() {
         return new CreatorSpaceTemplate(
-                adminId, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, true, true, true
+                adminId, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         );
     }
 

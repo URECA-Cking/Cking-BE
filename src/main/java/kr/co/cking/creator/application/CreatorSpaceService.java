@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class CreatorSpaceService {
 
+    private static final int MAX_FALLBACK_SUFFIX = 100;
+
     private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceTemplateService templateService;
 
@@ -31,8 +33,28 @@ public class CreatorSpaceService {
     private CreatorSpace createNew(Long creatorId) {
         CreatorSpaceTemplate template = templateService.findActive()
                 .orElseThrow(() -> new BusinessException(CreatorErrorCode.NO_ACTIVE_SPACE_TEMPLATE));
-        String slug = buildSlug(template.getSlugRule(), creatorId);
+        String slug = availableSlug(buildSlug(template.getSlugRule(), creatorId));
         return spaceRepository.save(CreatorSpace.fromTemplate(creatorId, template, slug));
+    }
+
+    /**
+     * 다른 Creator가 커스텀 slug로 이 자동 slug를 먼저 가져갔을 수 있다. 그때는 `-2`, `-3`처럼
+     * 번호를 붙여 비어 있는 값을 써서 승인이 slug 충돌로 실패하지 않게 한다.
+     */
+    private String availableSlug(String base) {
+        if (!spaceRepository.existsBySlug(base)) {
+            return base;
+        }
+        for (int suffix = 2; suffix <= MAX_FALLBACK_SUFFIX; suffix++) {
+            String candidate = base + "-" + suffix;
+            if (candidate.length() > CreatorSpaceSlugRule.MAX_SLUG_LENGTH) {
+                break;
+            }
+            if (!spaceRepository.existsBySlug(candidate)) {
+                return candidate;
+            }
+        }
+        throw new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN);
     }
 
     private String buildSlug(String slugRule, Long creatorId) {

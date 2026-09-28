@@ -17,7 +17,6 @@
 | `profileImageUrl` | 기본 프로필 이미지 URL (최대 500자) |
 | `bannerImageUrl` | 기본 배너 이미지 URL (최대 500자) |
 | `slugRule` | 공유 URL slug 생성 규칙 문자열 (최대 92자). 소문자·숫자·하이픈(`[a-z0-9-]`)으로 된 접두사 뒤 **맨 끝에** `{creatorId}`를 정확히 한 번 둬야 하고, 접두사가 있으면 마지막 글자는 숫자가 아니어야 한다(정규식 `^(?:[a-z0-9-]*[a-z-])?\{creatorId\}$`, 예: `creator-{creatorId}`). 그래야 slug 끝 숫자열이 곧 creatorId가 돼, 템플릿을 바꿔도 서로 다른 Creator의 slug가 겹치지 않는다. 실제 slug는 Creator 스페이스 생성 시점([creator/README.md](README.md#creator-space-자동-생성이슈-270))에 이 규칙의 `{creatorId}`를 실제 creatorId로 치환해 만들어지며, 템플릿 자체는 규칙만 보관한다. |
-| `homeTabEnabled`, `missionsTabEnabled`, `postsTabEnabled`, `eventsTabEnabled` | 새 스페이스에 노출할 홈·미션·게시물·이벤트 탭 여부 |
 
 ## 활성 템플릿 유일성
 
@@ -33,11 +32,7 @@
   "introText": "크리에이터와 함께하는 공간이에요",
   "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
   "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
-  "slugRule": "creator-{creatorId}",
-  "homeTabEnabled": true,
-  "missionsTabEnabled": true,
-  "postsTabEnabled": true,
-  "eventsTabEnabled": true
+  "slugRule": "creator-{creatorId}"
 }
 ```
 
@@ -50,10 +45,6 @@
   "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
   "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
   "slugRule": "creator-{creatorId}",
-  "homeTabEnabled": true,
-  "missionsTabEnabled": true,
-  "postsTabEnabled": true,
-  "eventsTabEnabled": true,
   "active": false,
   "createdBy": 1,
   "updatedBy": 1,

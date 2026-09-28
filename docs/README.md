@@ -41,8 +41,11 @@
 - [YouTube 구독 인증 비동기 처리](domains/subscription-verification/processing.md): VLM 판정, Processing Claim과 Recovery 계약
 - [Creator](domains/creator/README.md): 신청·승인, 기본 템플릿, 승인 시 Creator Space 자동 생성 책임 경계
 - [Creator Space Template API](domains/creator/space-template-api.md): 관리자 기본 크리에이터 스페이스 템플릿 관리 API 계약
-- [Creator Space API](domains/creator/space-api.md): Creator Space 홈·프로필 조회·수정 API 계약
+- [Creator Space API](domains/creator/space-api.md): Creator Space 조회, 홈·프로필 수정, 커스텀 slug 변경 API 계약
+- [Creator Space slug 정책](domains/creator/space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 - [Auth](domains/auth/README.md): OAuth2, Access JWT, Login Code와 인증·인가 책임 경계
 - [Auth API](domains/auth/api.md): OAuth 로그인과 Login Code 기반 Access JWT 교환 계약
+- [Calendar](domains/calendar/README.md): 크리에이터 일정과 Event 분리 경계
+- [Calendar API](domains/calendar/api.md): 크리에이터 일정 CRUD·공개 조회 API 계약
 
 빈 도메인 문서나 디렉터리는 미리 만들지 않는다. 문서는 원칙적으로 300줄 이하로 유지하며, 이를 넘으면 관심사별 파일로 분리한다.
