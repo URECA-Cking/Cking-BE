@@ -20,7 +20,22 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 | `slug` | 공유 링크(`/space/{slug}`)에 쓰는 식별 문자열. 승인 시 자동으로 만들어지고 Creator가 바꿀 수 있다 |
 | `introText` | 소개 문구 |
 | `profileImageUrl`, `bannerImageUrl` | 프로필·배너 이미지 URL |
-| `slugChangeableAt` | slug를 다시 바꿀 수 있는 시각(UTC RFC 3339). 한 번도 바꾸지 않았으면 `null`이며 바로 바꿀 수 있다 |
+| `slugChangeableAt` | **본인 API 응답에만 있다.** slug를 다시 바꿀 수 있는 시각(UTC RFC 3339). 한 번도 바꾸지 않았으면 `null`이며 바로 바꿀 수 있다. slug 변경 이력이라 공개 조회 응답에는 담지 않는다 |
+
+공개 조회 응답:
+
+```json
+{
+  "creatorId": 42,
+  "creatorName": "크리에이터",
+  "slug": "iu-official",
+  "introText": "크리에이터와 함께하는 공간이에요",
+  "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
+  "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png"
+}
+```
+
+본인 API 응답(`GET`·`PATCH /api/creator/space`, `PATCH /api/creator/space/slug`)은 위 필드에 `slugChangeableAt`이 더해진다.
 
 ```json
 {
@@ -36,19 +51,19 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 
 ## GET /api/creators/{creatorId}/space
 
-creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 위 응답 필드와 같다.
+creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 위 공개 조회 응답이다.
 
 ## GET /api/creator-spaces/{slug}
 
-slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓴다. 인증이 필요 없다. 응답은 위 응답 필드와 같다. slug를 바꾸면 예전 slug로는 조회되지 않는다.
+slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓴다. 인증이 필요 없다. 응답은 위 공개 조회 응답이다. slug를 바꾸면 예전 slug로는 조회되지 않는다. 대소문자는 구분하지 않는다([space-slug-policy.md](space-slug-policy.md#형식)).
 
 ## GET /api/creator/space
 
-호출자 본인의 Creator Space를 조회한다. 응답은 위 응답 필드와 같다.
+호출자 본인의 Creator Space를 조회한다. 응답은 위 본인 API 응답이다.
 
 ## PATCH /api/creator/space
 
-호출자 본인의 Creator Space 홈·프로필을 수정한다. 모든 필드를 한 번에 교체하므로 전부 필수다. slug는 아래 slug 변경 API로 바꾼다. 응답은 수정된 Space이며 위 응답 필드와 같다.
+호출자 본인의 Creator Space 홈·프로필을 수정한다. 모든 필드를 한 번에 교체하므로 전부 필수다. slug는 아래 slug 변경 API로 바꾼다. 응답은 수정된 Space이며 위 본인 API 응답이다.
 
 ```json
 {
@@ -64,7 +79,7 @@ slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓴다. 인증�
 
 ## PATCH /api/creator/space/slug
 
-호출자 본인의 Creator Space slug를 커스텀 slug로 바꾼다. 응답은 바뀐 Space이며 위 응답 필드와 같다. 지금 slug와 같은 값이면 아무것도 바꾸지 않고 성공한다. 마지막 변경 후 14일이 지나야 다시 바꿀 수 있으며, 첫 변경(자동 slug → 커스텀)은 바로 된다.
+호출자 본인의 Creator Space slug를 커스텀 slug로 바꾼다. 응답은 바뀐 Space이며 위 본인 API 응답이다. 지금 slug와 같은 값이면 아무것도 바꾸지 않고 성공한다. 마지막 변경 후 14일이 지나야 다시 바꿀 수 있으며, 첫 변경(자동 slug → 커스텀)은 바로 된다.
 
 ```json
 {

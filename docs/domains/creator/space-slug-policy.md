@@ -21,6 +21,7 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 - 처음과 끝은 소문자나 숫자여야 한다. `-iu`, `iu_`는 안 된다.
 - 정규식: `^[a-z0-9][a-z0-9_-]{1,28}[a-z0-9]$`
 - 대문자는 자동으로 바꾸지 않고 거부한다. 입력 화면에서 소문자로 바꿔 보낸다.
+- 조회(`GET /api/creator-spaces/{slug}`)는 대소문자를 구분하지 않는다. 아래 collation 때문에 `IU-Official`로 요청해도 `iu-official`이 열린다. 저장되는 slug는 항상 소문자라 중복 판단에는 영향이 없다.
 
 소문자 ASCII로 제한하는 이유: `creator_space.slug` 컬럼의 collation(`utf8mb4_0900_ai_ci`)이 대소문자·악센트·전각 문자를 같은 값으로 비교한다. 허용하면 `IU`와 `iu`, `iu１`과 `iu1`이 화면에서는 달라 보여도 DB에서는 같은 slug로 취급된다.
 

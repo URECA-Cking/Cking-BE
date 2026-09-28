@@ -44,8 +44,8 @@ public class CreatorSpaceController {
 
     @Operation(summary = "내 Creator Space 조회", description = "Creator 본인만 조회할 수 있습니다.")
     @GetMapping("/api/creator/space")
-    public ApiResponse<CreatorSpaceResponse.Detail> findMine(@CurrentMemberId Long memberId) {
-        return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.findMine(memberId)));
+    public ApiResponse<CreatorSpaceResponse.Mine> findMine(@CurrentMemberId Long memberId) {
+        return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.findMine(memberId)));
     }
 
     @Operation(
@@ -53,13 +53,13 @@ public class CreatorSpaceController {
             description = "Creator 본인만 수정할 수 있습니다. 모든 필드를 한 번에 교체합니다. slug는 slug 변경 API로 바꿉니다."
     )
     @PatchMapping("/api/creator/space")
-    public ApiResponse<CreatorSpaceResponse.Detail> updateMine(
+    public ApiResponse<CreatorSpaceResponse.Mine> updateMine(
             @CurrentMemberId Long memberId,
             @Valid @RequestBody CreatorSpaceRequest.UpdateProfile request
     ) {
         CreatorSpaceProfileFields fields = new CreatorSpaceProfileFields(
                 request.introText(), request.profileImageUrl(), request.bannerImageUrl());
-        return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.updateMine(memberId, fields)));
+        return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.updateMine(memberId, fields)));
     }
 
     @Operation(
@@ -69,10 +69,10 @@ public class CreatorSpaceController {
                     + "바꾸면 이전 slug 링크는 더 이상 열리지 않습니다."
     )
     @PatchMapping("/api/creator/space/slug")
-    public ApiResponse<CreatorSpaceResponse.Detail> changeSlug(
+    public ApiResponse<CreatorSpaceResponse.Mine> changeSlug(
             @CurrentMemberId Long memberId,
             @Valid @RequestBody CreatorSpaceRequest.ChangeSlug request
     ) {
-        return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.changeSlug(memberId, request.slug())));
+        return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.changeSlug(memberId, request.slug())));
     }
 }
