@@ -95,5 +95,11 @@
 | 91 | 내부 | Ticket | INTERNAL | CALL | `TicketOnceEarnService.earn(command)` | 구독 인증 등 평생 1회 보상의 영구 멱등 적립 | requestId·ONCE Business Key |
 | 92 | 외부 | Creator Space | PUBLIC | GET | `/api/creator-spaces/{slug}` | slug로 Creator Space 조회(공유 링크) | - |
 | 93 | 외부 | Creator Space | CREATOR | PATCH | `/api/creator/space/slug` | 내 Creator Space 커스텀 slug 변경 | 상태 기반 |
+| 94 | 외부 | Calendar | CREATOR | POST | /api/creator/calendar/schedules | 크리에이터 일정 생성 | - |
+| 95 | 외부 | Calendar | CREATOR | PATCH | /api/creator/calendar/schedules/{scheduleId} | 크리에이터 일정 수정(전체 필드 교체) | 상태 기반 |
+| 96 | 외부 | Calendar | CREATOR | DELETE | /api/creator/calendar/schedules/{scheduleId} | 크리에이터 일정 삭제(하드 삭제) | 상태 기반 |
+| 97 | 외부 | Calendar | CREATOR | GET | /api/creator/calendar/schedules | 내 일정 기간 조회 | - |
+| 98 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules | 크리에이터 캘린더 기간 조회 | - |
+| 99 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules/{scheduleId} | 크리에이터 일정 상세 조회 | - |
 
 No. 9, No. 50~61, No. 89~91은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
