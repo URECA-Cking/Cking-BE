@@ -6,6 +6,7 @@ import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.CommonMission;
 import kr.co.cking.mission.CommonMissionRepository;
+import kr.co.cking.mission.MissionCompletionRepository;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.CommonMissionType;
@@ -39,10 +40,12 @@ class CommonMissionCompletionServiceTest {
 
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CommonMissionRepository missionRepository = mock(CommonMissionRepository.class);
+    private final MissionCompletionRepository creatorCompletionRepository = mock(MissionCompletionRepository.class);
     private final CommonTicketEarnService ticketEarnService = mock(CommonTicketEarnService.class);
 
     private CommonMissionCompletionService serviceWith(Clock clock) {
-        return new CommonMissionCompletionService(memberRepository, missionRepository, ticketEarnService, clock);
+        return new CommonMissionCompletionService(
+                memberRepository, missionRepository, creatorCompletionRepository, ticketEarnService, clock);
     }
 
     private CommonMission attendanceMission() {
@@ -161,5 +164,53 @@ class CommonMissionCompletionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
+    }
+
+    @Test
+    void 기존_다른_크리에이터의_ATTENDANCE_완료가_있으면_공용_출석을_추가_지급하지_않는다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(attendanceMission());
+        stubNoExistingReplay();
+        when(creatorCompletionRepository.existsByMemberIdAndPeriodKeyAndMissionType(
+                USER_ID, "2026-09-16", kr.co.cking.mission.domain.MissionType.ATTENDANCE.name()))
+                .thenReturn(1L);
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.DUPLICATE_MISSION);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 기존_LIKE_완료만_있으면_공용_출석을_지급한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(attendanceMission());
+        stubNoExistingReplay();
+        when(creatorCompletionRepository.existsByMemberIdAndPeriodKeyAndMissionType(
+                USER_ID, "2026-09-16", kr.co.cking.mission.domain.MissionType.ATTENDANCE.name()))
+                .thenReturn(0L);
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        assertThat(serviceWith(clock).complete(
+                MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())).code())
+                .isEqualTo(EarnResultCode.EARN_ACCEPTED);
+    }
+
+    @Test
+    void 기존_크리에이터_ATTENDANCE가_전날이면_공용_출석을_지급한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(attendanceMission());
+        stubNoExistingReplay();
+        when(creatorCompletionRepository.existsByMemberIdAndPeriodKeyAndMissionType(
+                USER_ID, "2026-09-16", kr.co.cking.mission.domain.MissionType.ATTENDANCE.name()))
+                .thenReturn(0L);
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        assertThat(serviceWith(clock).complete(
+                MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())).code())
+                .isEqualTo(EarnResultCode.EARN_ACCEPTED);
     }
 }

@@ -68,9 +68,9 @@ class MissionCompletionServiceTest {
     }
 
     @Test
-    void 출석_미션을_최초_완료하면_EARN_ACCEPTED를_반환한다() {
+    void 좋아요_미션을_최초_완료하면_EARN_ACCEPTED를_반환한다() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        stubMemberAndMission(attendanceMission());
+        stubMemberAndMission(likeMission());
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
@@ -82,12 +82,41 @@ class MissionCompletionServiceTest {
     }
 
     @Test
+    void 크리에이터별_출석_미션은_공용_미션_경로를_사용하므로_완료할_수_없다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(attendanceMission());
+        stubNoExistingReplay();
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 기존_creator_출석_requestId_replay는_기존_성공_결과를_반환한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(attendanceMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
     void periodKey는_UTC_날짜를_그대로_사용한다() {
         // now=2026-09-16T23:30:00Z: KST로 환산하면 다음날 08:30(9/17)이지만,
         // RTM FR-P1-006/FR-P1-021/FR-P2-006(UTC 확정, PR #63 리뷰)에 따라
         // periodKey는 변환 없이 UTC 날짜인 2026-09-16이어야 한다.
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T23:30:00Z"), ZoneOffset.UTC);
-        stubMemberAndMission(attendanceMission());
+        stubMemberAndMission(likeMission());
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
@@ -105,7 +134,7 @@ class MissionCompletionServiceTest {
         // requestId를 재시도할 때 fingerprint가 달라져 ALREADY_PROCESSED 대신
         // REQUEST_ID_CONFLICT가 반환된다 — 그래서 missionKey는 periodKey가 바뀌어도
         // 항상 같아야 한다.
-        stubMemberAndMission(attendanceMission());
+        stubMemberAndMission(likeMission());
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
@@ -142,30 +171,6 @@ class MissionCompletionServiceTest {
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
         verify(ticketEarnService).earn(captor.capture());
         assertThat(captor.getValue().missionType()).isEqualTo("LIKE");
-    }
-
-    @Test
-    void 같은_creator의_출석과_좋아요는_missionType과_missionKey가_달라_서로_다른_적립_단위로_구분된다() {
-        // Redis EARN Guard 키(mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd},
-        // FR-P2-006)는 missionType으로 미션 유형을 구분한다. 출석 완료가 좋아요 적립을
-        // 막거나(또는 반대로) 서로 간섭하지 않으려면, 같은 creator라도 두 EarnCommand의
-        // missionType·missionKey가 달라야 한다.
-        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        stubNoExistingReplay();
-        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
-
-        stubMemberAndMission(attendanceMission());
-        serviceWith(clock).complete(CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
-
-        stubMemberAndMission(likeMission());
-        serviceWith(clock).complete(CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
-
-        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
-        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
-        var commands = captor.getAllValues();
-        assertThat(commands.get(0).missionType()).isEqualTo("ATTENDANCE");
-        assertThat(commands.get(1).missionType()).isEqualTo("LIKE");
-        assertThat(commands.get(0).missionKey()).isNotEqualTo(commands.get(1).missionKey());
     }
 
     @Test
@@ -234,7 +239,7 @@ class MissionCompletionServiceTest {
     @Test
     void 활성_기간이_지난_미션은_기존_요청이_없으면_MISSION_INACTIVE다() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        Mission expired = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
                 Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
         stubMemberAndMission(expired);
         stubNoExistingReplay();
@@ -253,7 +258,7 @@ class MissionCompletionServiceTest {
         // Issue #125 재현 시나리오: 활성 상태에서 성공한 requestId를 미션 종료 후
         // 재전송해도 MISSION_INACTIVE가 아니라 기존 성공 결과를 반환해야 한다(FR-P1-018).
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        Mission expired = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
                 Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
         stubMemberAndMission(expired);
         when(ticketEarnService.findExisting(any()))
@@ -269,7 +274,7 @@ class MissionCompletionServiceTest {
     @Test
     void 종료된_미션에_다른_payload로_같은_requestId가_오면_REQUEST_ID_CONFLICT다() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        Mission expired = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
                 Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
         stubMemberAndMission(expired);
         when(ticketEarnService.findExisting(any()))
@@ -287,7 +292,7 @@ class MissionCompletionServiceTest {
     @Test
     void 기존_요청_조회가_UNAVAILABLE이면_활성_상태와_무관하게_시스템_오류다() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        stubMemberAndMission(attendanceMission());
+        stubMemberAndMission(likeMission());
         when(ticketEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.UNAVAILABLE));
 
@@ -305,7 +310,7 @@ class MissionCompletionServiceTest {
         // "활성 상태와 무관하게"라는 이름값을 실제로 비활성 미션으로도 검증한다 —
         // 활성 검증이 UNAVAILABLE보다 먼저 오도록 실수로 순서가 바뀌는 회귀를 잡는다.
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        Mission expired = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
                 Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
         stubMemberAndMission(expired);
         when(ticketEarnService.findExisting(any()))
@@ -326,7 +331,7 @@ class MissionCompletionServiceTest {
         // now == activeTo인 경계는 활성이 아니어야 한다.
         Instant activeTo = Instant.parse("2026-09-16T00:00:00Z");
         Clock clock = Clock.fixed(activeTo, ZoneOffset.UTC);
-        Mission mission = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+        Mission mission = new Mission(CREATOR_ID, MissionType.LIKE, 1,
                 Instant.parse("2026-09-01T00:00:00Z"), activeTo);
         stubMemberAndMission(mission);
         stubNoExistingReplay();
@@ -344,7 +349,7 @@ class MissionCompletionServiceTest {
     void activeTo_직전_시각은_활성이다() {
         Instant activeTo = Instant.parse("2026-09-16T00:00:00Z");
         Clock clock = Clock.fixed(activeTo.minusMillis(1), ZoneOffset.UTC);
-        Mission mission = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1,
+        Mission mission = new Mission(CREATOR_ID, MissionType.LIKE, 1,
                 Instant.parse("2026-09-01T00:00:00Z"), activeTo);
         stubMemberAndMission(mission);
         stubNoExistingReplay();
@@ -361,7 +366,7 @@ class MissionCompletionServiceTest {
         // findExisting()이 NOT_FOUND였다가(예: idem 캐시가 막 만료), 실제 earn() 호출에서
         // Lua가 가드로 재확인해 ALREADY_PROCESSED를 반환하는 경로도 그대로 성공 처리해야 한다.
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        stubMemberAndMission(attendanceMission());
+        stubMemberAndMission(likeMission());
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.ALREADY_PROCESSED));
 
@@ -378,7 +383,7 @@ class MissionCompletionServiceTest {
     })
     void EARN_실패_결과코드는_대응하는_MissionErrorCode_예외로_변환된다(EarnResultCode code) {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
-        stubMemberAndMission(attendanceMission());
+        stubMemberAndMission(likeMission());
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(code));
 

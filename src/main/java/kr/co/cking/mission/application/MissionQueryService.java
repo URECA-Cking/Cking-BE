@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class MissionQueryService {
 
-    private static final List<MissionType> SUPPORTED_TYPES = List.of(MissionType.ATTENDANCE, MissionType.LIKE);
+    private static final List<MissionType> SUPPORTED_TYPES = List.of(MissionType.LIKE);
 
     private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;

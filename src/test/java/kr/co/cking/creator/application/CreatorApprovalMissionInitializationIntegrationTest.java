@@ -59,7 +59,7 @@ class CreatorApprovalMissionInitializationIntegrationTest {
     private final List<Long> memberIds = new ArrayList<>();
     private final List<Long> applicationIds = new ArrayList<>();
 
-    /** 승인에 성공하면 Creator와 상시 활성 기본 미션 두 개를 함께 저장한다. */
+    /** 승인에 성공하면 Creator와 크리에이터별 좋아요 미션을 함께 저장한다. */
     @Test
     void 승인_시_기본_미션을_함께_생성한다() {
         ApprovalFixture fixture = createApprovalFixture();
@@ -68,18 +68,18 @@ class CreatorApprovalMissionInitializationIntegrationTest {
 
         Creator creator = creatorRepository.findByMemberId(fixture.applicantId()).orElseThrow();
         List<Mission> missions = missionRepository.findByCreatorIdAndTypeIn(
-                creator.getCreatorId(), List.of(MissionType.ATTENDANCE, MissionType.LIKE)
+                creator.getCreatorId(), List.of(MissionType.LIKE)
         );
 
         assertThat(creatorApplicationRepository.findById(fixture.applicationId()).orElseThrow().getStatus())
                 .isEqualTo(CreatorApplicationStatus.APPROVED);
-        assertThat(missions).hasSize(2).allSatisfy(mission -> {
+        assertThat(missions).hasSize(1).allSatisfy(mission -> {
             assertThat(mission.getRewardAmount()).isEqualTo(1);
             assertThat(mission.getActiveFrom()).isNull();
             assertThat(mission.getActiveTo()).isNull();
         });
         assertThat(missions).extracting(Mission::getType)
-                .containsExactlyInAnyOrder(MissionType.ATTENDANCE, MissionType.LIKE);
+                .containsExactly(MissionType.LIKE);
     }
 
     /** 미션 저장 실패가 발생하면 Creator 생성과 신청 승인 상태도 모두 롤백한다. */

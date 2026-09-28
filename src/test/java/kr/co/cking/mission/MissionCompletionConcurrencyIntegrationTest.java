@@ -50,7 +50,7 @@ class MissionCompletionConcurrencyIntegrationTest {
         Member creatorOwner = memberRepository.saveAndFlush(new Member("동시완료크리에이터", null, null, MemberRole.USER));
         Creator creator = creatorRepository.saveAndFlush(new Creator(creatorOwner.getMemberId(), creatorOwner.getName()));
         Mission mission = missionRepository.saveAndFlush(
-                new Mission(creator.getCreatorId(), MissionType.ATTENDANCE, 1, null, null));
+                new Mission(creator.getCreatorId(), MissionType.LIKE, 1, null, null));
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -81,7 +81,7 @@ class MissionCompletionConcurrencyIntegrationTest {
         Creator creator = creatorRepository.saveAndFlush(new Creator(creatorOwner.getMemberId(), creatorOwner.getName()));
         Instant activeTo = Instant.now().plusMillis(1500);
         Mission mission = missionRepository.saveAndFlush(
-                new Mission(creator.getCreatorId(), MissionType.ATTENDANCE, 1, null, activeTo));
+                new Mission(creator.getCreatorId(), MissionType.LIKE, 1, null, activeTo));
 
         UUID requestId = UUID.randomUUID();
         MissionCompleteCommand command = new MissionCompleteCommand(member.getMemberId(), requestId);
