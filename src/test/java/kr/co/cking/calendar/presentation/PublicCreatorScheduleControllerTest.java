@@ -6,6 +6,8 @@ import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -64,6 +66,38 @@ class PublicCreatorScheduleControllerTest {
         mockMvc.perform(get("/api/creators/{creatorId}/calendar/schedules/{scheduleId}", 42L, 100L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.title").value("서울 팬사인회"));
+    }
+
+    /** 0 이하 creatorId는 Controller 계층에서 거절한다. */
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void 기간_조회는_creatorId가_양수가_아니면_VALIDATION_FAILED를_반환한다(long invalidId) throws Exception {
+        Instant from = Instant.parse("2026-10-01T00:00:00Z");
+        Instant to = Instant.parse("2026-10-31T00:00:00Z");
+
+        mockMvc.perform(get("/api/creators/{creatorId}/calendar/schedules", invalidId)
+                        .param("from", from.toString())
+                        .param("to", to.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 0 이하 creatorId는 Controller 계층에서 거절한다. */
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void 상세_조회는_creatorId가_양수가_아니면_VALIDATION_FAILED를_반환한다(long invalidId) throws Exception {
+        mockMvc.perform(get("/api/creators/{creatorId}/calendar/schedules/{scheduleId}", invalidId, 100L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 0 이하 scheduleId는 Controller 계층에서 거절한다. */
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void 상세_조회는_scheduleId가_양수가_아니면_VALIDATION_FAILED를_반환한다(long invalidId) throws Exception {
+        mockMvc.perform(get("/api/creators/{creatorId}/calendar/schedules/{scheduleId}", 42L, invalidId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     private CreatorSchedule schedule() {

@@ -8,6 +8,10 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
+import kr.co.cking.member.repository.MemberRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -31,14 +35,32 @@ class CreatorScheduleServiceTest {
     private static final Long MEMBER_ID = 10L;
     private static final Long CREATOR_ID = 1L;
 
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final CreatorScheduleRepository scheduleRepository = mock(CreatorScheduleRepository.class);
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     private final CreatorScheduleService service =
-            new CreatorScheduleService(creatorRepository, scheduleRepository, clock);
+            new CreatorScheduleService(memberRepository, creatorRepository, scheduleRepository, clock);
+
+    @BeforeEach
+    void setUpMember() {
+        given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(member()));
+    }
 
     @Test
-    void 크리에이터가_아니면_생성_시_FORBIDDEN이다() {
+    void 존재하지_않는_Member면_RESOURCE_NOT_FOUND다() {
+        given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(MEMBER_ID, validFields()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+
+        verify(scheduleRepository, never()).save(any());
+    }
+
+    @Test
+    void Member는_있지만_크리에이터가_아니면_생성_시_FORBIDDEN이다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.create(MEMBER_ID, validFields()))
@@ -182,5 +204,9 @@ class CreatorScheduleServiceTest {
         Creator creator = new Creator(MEMBER_ID, "테스트 크리에이터");
         org.springframework.test.util.ReflectionTestUtils.setField(creator, "creatorId", CREATOR_ID);
         return creator;
+    }
+
+    private Member member() {
+        return new Member("테스트 회원", null, null, MemberRole.USER);
     }
 }

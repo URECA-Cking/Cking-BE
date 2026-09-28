@@ -3,6 +3,7 @@ package kr.co.cking.calendar.presentation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import kr.co.cking.calendar.application.CreatorScheduleService;
 import kr.co.cking.calendar.application.dto.CreatorScheduleFields;
 import kr.co.cking.calendar.domain.CreatorSchedule;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
 
 import java.time.Instant;
 import java.util.List;
@@ -28,6 +30,7 @@ import java.util.List;
 /** 인증된 Creator 본인의 캘린더 일정 생성·수정·삭제·조회 HTTP 요청을 처리한다(이슈 #293). */
 @RestController
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "크리에이터 캘린더", description = "인증된 Creator 본인의 캘린더 일정 관리 API를 제공합니다.")
 public class CreatorScheduleController {
 
@@ -51,7 +54,7 @@ public class CreatorScheduleController {
     @PatchMapping("/api/creator/calendar/schedules/{scheduleId}")
     public ApiResponse<CreatorScheduleResponse.Detail> update(
             @CurrentMemberId Long memberId,
-            @PathVariable Long scheduleId,
+            @PathVariable @Positive Long scheduleId,
             @Valid @RequestBody CreatorScheduleRequest.Update request
     ) {
         CreatorSchedule schedule = scheduleService.update(memberId, scheduleId, toFields(request));
@@ -60,7 +63,7 @@ public class CreatorScheduleController {
 
     @Operation(summary = "크리에이터 일정 삭제", description = "인증된 Creator 본인 소유 일정만 삭제할 수 있습니다.")
     @DeleteMapping("/api/creator/calendar/schedules/{scheduleId}")
-    public ResponseEntity<Void> delete(@CurrentMemberId Long memberId, @PathVariable Long scheduleId) {
+    public ResponseEntity<Void> delete(@CurrentMemberId Long memberId, @PathVariable @Positive Long scheduleId) {
         scheduleService.delete(memberId, scheduleId);
         return ResponseEntity.noContent().build();
     }

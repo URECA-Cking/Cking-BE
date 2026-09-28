@@ -22,7 +22,7 @@
 
 ## timeZone 검증
 
-`ZoneId.getAvailableZoneIds()`에 포함된 지역명만 허용한다. `"+09:00"` 같은 고정 오프셋이나 `"EST"` 같은 구식 축약형은 거부한다(`"UTC"`, `"GMT"`는 레지스트리에 포함된 정식 지역명이라 허용한다). 검증을 통과한 값은 `ZoneId#getId()`로 정규화해 저장하므로, 응답의 `timeZone`은 요청과 표기가 다를 수 있다(예: 대소문자 정규화).
+`ZoneId.getAvailableZoneIds()`에 포함된 지역명만 허용한다. `"+09:00"` 같은 고정 오프셋이나 `"EST"` 같은 구식 축약형은 거부한다(`"UTC"`, `"GMT"`는 레지스트리에 포함된 정식 지역명이라 허용한다). 대소문자를 구분해 일치하는 값만 허용하므로, 검증을 통과한 값은 요청과 동일한 표기로 저장·응답된다.
 
 ## POST /api/creator/calendar/schedules
 
@@ -115,3 +115,4 @@
   - 지원하지 않는 `scheduleType`
   - `timeZone`이 null/blank이거나 IANA Zone ID가 아니거나 길이 초과
   - `from >= to`이거나 조회 범위가 365일을 초과
+  - `scheduleId`·`creatorId`가 0 이하이거나 형식이 올바르지 않음

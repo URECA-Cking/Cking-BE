@@ -8,6 +8,8 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -131,6 +133,28 @@ class CreatorScheduleControllerTest {
                 .andExpect(status().isNoContent());
 
         then(scheduleService).should().delete(7L, 5L);
+    }
+
+    /** 0 이하 scheduleId는 Controller 계층에서 거절한다. */
+    @ParameterizedTest
+    @WithMockJwt(memberId = "7")
+    @ValueSource(longs = {0L, -1L})
+    void 수정은_scheduleId가_양수가_아니면_VALIDATION_FAILED를_반환한다(long invalidId) throws Exception {
+        mockMvc.perform(patch("/api/creator/calendar/schedules/{scheduleId}", invalidId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(REQUEST_BODY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 0 이하 scheduleId는 Controller 계층에서 거절한다. */
+    @ParameterizedTest
+    @WithMockJwt(memberId = "7")
+    @ValueSource(longs = {0L, -1L})
+    void 삭제는_scheduleId가_양수가_아니면_VALIDATION_FAILED를_반환한다(long invalidId) throws Exception {
+        mockMvc.perform(delete("/api/creator/calendar/schedules/{scheduleId}", invalidId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
