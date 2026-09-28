@@ -62,9 +62,12 @@ class MissionQueryServiceTest {
                 Set.copyOf(types).equals(Set.of(MissionType.LIKE, MissionType.SHARE)))))
                 .thenReturn(List.of(startsNow, noBounds, endsNow, startsLater));
         when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
-                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L, 102L))),
+                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L))),
                 eq(UTC_PERIOD_KEY)))
                 .thenReturn(List.of(completion(101L, USER_ID, CREATOR_ID, UTC_PERIOD_KEY)));
+        when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(
+                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(102L))), eq("ONCE")))
+                .thenReturn(List.of());
 
         List<MissionQueryItem> result = service.findMissions(CREATOR_ID, USER_ID);
 
@@ -73,7 +76,7 @@ class MissionQueryServiceTest {
         assertThat(result.getFirst().activeFrom()).isEqualTo(NOW);
         assertThat(result.getFirst().activeTo()).isEqualTo(NOW.plusSeconds(60));
         verify(completionRepository).findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
-                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L, 102L))),
+                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L))),
                 eq(UTC_PERIOD_KEY));
     }
 
@@ -112,6 +115,21 @@ class MissionQueryServiceTest {
         verify(completionRepository, never()).findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyCollection(), org.mockito.ArgumentMatchers.any());
+    }
+
+    /** 어제 완료한 SHARE도 평생 1회 정책에 따라 현재 완료 상태로 표시한다. */
+    @Test
+    void SHARE는_이전_날짜_완료_이력이_있어도_완료로_표시한다() {
+        Mission share = mission(102L, MissionType.SHARE, null, null);
+        when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(share));
+        when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(
+                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(102L))), eq("ONCE")))
+                .thenReturn(List.of(completion(102L, USER_ID, CREATOR_ID, "2026-09-15")));
+
+        List<MissionQueryItem> result = service.findMissions(CREATOR_ID, USER_ID);
+
+        assertThat(result).extracting(MissionQueryItem::completedToday).containsExactly(true);
     }
 
     private Mission mission(Long missionId, MissionType type, Instant activeFrom, Instant activeTo) {

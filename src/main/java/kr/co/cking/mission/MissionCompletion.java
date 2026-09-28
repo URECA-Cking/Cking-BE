@@ -36,17 +36,19 @@ public class MissionCompletion {
     private Long creatorId;
     private Long missionId;
     private String periodKey;
+    private String completionKey;
     private String requestId;
     private String payloadFingerprint;
     private Instant completedAt;
 
     @Builder
-    private MissionCompletion(Long memberId, Long creatorId, Long missionId, String periodKey,
+    private MissionCompletion(Long memberId, Long creatorId, Long missionId, String periodKey, String completionKey,
                                String requestId, String payloadFingerprint, Instant completedAt) {
         this.memberId = memberId;
         this.creatorId = creatorId;
         this.missionId = missionId;
         this.periodKey = periodKey;
+        this.completionKey = completionKey;
         this.requestId = requestId;
         this.payloadFingerprint = payloadFingerprint;
         this.completedAt = completedAt;

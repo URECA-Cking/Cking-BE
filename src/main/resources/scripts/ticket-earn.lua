@@ -23,6 +23,7 @@
 -- ARGV[11] = periodKey       (이번 호출 시점에 계산된 값. fingerprint에는 안 쓰이고
 --                             Guard 키 구성과 Stream 발행 필드로만 쓰인다)
 -- ARGV[12] = missionKey
+-- ARGV[13] = rewardPolicy    (DAILY, ONCE)
 --
 -- 반환: { resultCode, ...옵션 필드 } (EarnResultCode 6종 + BALANCE_MAINTENANCE 중
 -- 이 스크립트가 직접 반환하는 코드)
@@ -58,6 +59,7 @@ local missionType = ARGV[9]
 local missionId   = ARGV[10]
 local periodKey   = ARGV[11]
 local missionKey  = ARGV[12]
+local rewardPolicy = ARGV[13]
 
 -- 1) 멱등성 확인
 local stored = redis.call('GET', idemKey)
@@ -114,7 +116,12 @@ end
 -- 다른 레이어의 별도 키다 - 임의로 통합하지 않는다(취합v1.5.4 §4.2).
 -- Guard 선점 오류 시에는 아직 변경된 상태가 없으므로 idem 예약을 정리한다.
 local guardValue = requestId .. ':' .. fingerprint
-local guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+local guardAcquired
+if guardTtl > 0 then
+    guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+else
+    guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX')
+end
 if type(guardAcquired) == 'table' and guardAcquired.err then
     redis.call('DEL', idemKey)
     return redis.error_reply('GUARD_ACQUIRE_FAILED: ' .. guardAcquired.err)
@@ -154,7 +161,8 @@ local streamId = redis.pcall('XADD', streamKey, '*',
     'missionId', missionId,
     'periodKey', periodKey,
     'missionKey', missionKey,
-    'amount', ARGV[1])
+    'amount', ARGV[1],
+    'rewardPolicy', rewardPolicy)
 
 if type(streamId) == 'table' and streamId.err then
     -- Balance는 보상해 원상복구했으므로 이 시도도 안전하게 처음부터 재시도할 수

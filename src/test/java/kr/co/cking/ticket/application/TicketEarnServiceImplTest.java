@@ -24,6 +24,7 @@ import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -85,6 +86,7 @@ class TicketEarnServiceImplTest {
         redisTemplate.delete(TicketRedisKeys.balance(CREATOR_ID, USER_ID));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, NEXT_PERIOD_KEY_GUARD_FORMAT));
+        redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, "once"));
         redisTemplate.delete(TicketRedisKeys.earnGuard(USER_ID, OTHER_MISSION_TYPE, CREATOR_ID, PERIOD_KEY_GUARD_FORMAT));
         redisTemplate.delete(TicketRedisKeys.maintenance(CREATOR_ID, USER_ID));
         redisTemplate.delete(TEST_STREAM_KEY);
@@ -338,6 +340,21 @@ class TicketEarnServiceImplTest {
 
         assertThat(day2.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("2");
+    }
+
+    /** 평생 1회 정책은 UTC 날짜와 다른 requestId가 와도 같은 Creator 미션을 다시 적립하지 않는다. */
+    @Test
+    void ONCE_가드는_다음_날에도_중복_적립을_차단하고_만료되지_않는다() {
+        EarnCommand first = new EarnCommand(UUID.randomUUID(), USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID,
+                PERIOD_KEY, MISSION_KEY, 1L, EarnRewardPolicy.ONCE);
+        EarnCommand nextDay = new EarnCommand(UUID.randomUUID(), USER_ID, CREATOR_ID, MISSION_TYPE, MISSION_ID,
+                NEXT_PERIOD_KEY, MISSION_KEY, 1L, EarnRewardPolicy.ONCE);
+
+        assertThat(earn(first).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(earn(nextDay).code()).isEqualTo(EarnResultCode.DUPLICATE_MISSION);
+        assertThat(redisTemplate.getExpire(
+                TicketRedisKeys.earnGuard(USER_ID, MISSION_TYPE, CREATOR_ID, "once"), TimeUnit.SECONDS))
+                .isEqualTo(-1L);
     }
 
     @Test

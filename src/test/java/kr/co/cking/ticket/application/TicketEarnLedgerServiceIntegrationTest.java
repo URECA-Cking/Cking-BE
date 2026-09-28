@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import kr.co.cking.mission.MissionCompletion;
 import kr.co.cking.mission.MissionCompletionRepository;
 import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
 import kr.co.cking.ticket.domain.TicketLedger;
 import kr.co.cking.ticket.domain.TicketLedgerType;
 import kr.co.cking.ticket.domain.UserTicketBalance;
@@ -135,6 +136,24 @@ class TicketEarnLedgerServiceIntegrationTest {
                 .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)
                 .orElseThrow();
         assertThat(balance.getBalance()).isEqualTo(7L);
+    }
+
+    /** ONCE 완료 키는 날짜가 달라도 같은 Creator 미션의 DB 중복 반영을 막는다. */
+    @Test
+    void ONCE_정책은_다른_날짜의_재처리도_DB에서_한_번만_반영한다() {
+        EarnCommand first = new EarnCommand(UUID.randomUUID(), MEMBER_ID, CREATOR_ID, "SHARE", MISSION_ID,
+                "2026-09-16", "share:" + CREATOR_ID, 1L, EarnRewardPolicy.ONCE);
+        EarnCommand nextDay = new EarnCommand(UUID.randomUUID(), MEMBER_ID, CREATOR_ID, "SHARE", MISSION_ID,
+                "2026-09-17", "share:" + CREATOR_ID, 1L, EarnRewardPolicy.ONCE);
+
+        ticketEarnLedgerService.apply(first);
+
+        assertThatThrownBy(() -> ticketEarnLedgerService.apply(nextDay))
+                .isInstanceOf(DataAccessException.class);
+
+        Integer completionCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM mission_completion WHERE member_id = ?", Integer.class, MEMBER_ID);
+        assertThat(completionCount).isEqualTo(1);
     }
 
     @Test

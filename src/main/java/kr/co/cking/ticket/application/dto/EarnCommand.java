@@ -22,8 +22,21 @@ public record EarnCommand(
          */
         String periodKey,
         String missionKey,
-        Long amount
+        Long amount,
+        EarnRewardPolicy rewardPolicy
 ) {
+    /** 기존 일일 미션 호출부가 DAILY 정책을 유지하도록 호환 생성자를 제공한다. */
+    public EarnCommand(UUID requestId, Long userId, Long creatorId, String missionType, Long missionId,
+                       String periodKey, String missionKey, Long amount) {
+        this(requestId, userId, creatorId, missionType, missionId, periodKey, missionKey, amount,
+                EarnRewardPolicy.DAILY);
+    }
+
+    /** 이 EARN 요청의 DB 완료 이력 중복 방어 키를 만든다. */
+    public String completionKey() {
+        return rewardPolicy.completionKey(periodKey);
+    }
+
     /**
      * {@code stream:ticket-earned} Redis Stream 메시지 필드(정상 소비·PEL 재처리·Dead
      * Stream replay 공통 포맷)를 커맨드로 변환한다.
@@ -37,7 +50,8 @@ public record EarnCommand(
                 Long.valueOf(fields.get("missionId")),
                 fields.get("periodKey"),
                 fields.get("missionKey"),
-                Long.valueOf(fields.get("amount"))
+                Long.valueOf(fields.get("amount")),
+                EarnRewardPolicy.valueOf(fields.getOrDefault("rewardPolicy", EarnRewardPolicy.DAILY.name()))
         );
     }
 }

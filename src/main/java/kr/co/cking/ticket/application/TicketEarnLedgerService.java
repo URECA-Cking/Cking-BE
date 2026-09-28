@@ -69,6 +69,7 @@ public class TicketEarnLedgerService {
                         .creatorId(command.creatorId())
                         .missionId(command.missionId())
                         .periodKey(command.periodKey())
+                        .completionKey(command.completionKey())
                         .requestId(requestId)
                         .payloadFingerprint(fingerprint)
                         .completedAt(now)

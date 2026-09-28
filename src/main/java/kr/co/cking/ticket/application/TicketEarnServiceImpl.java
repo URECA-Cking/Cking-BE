@@ -62,7 +62,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
     @Override
     public EarnResult earn(EarnCommand command) {
         String requestId = command.requestId().toString();
-        String periodKeyGuardFormat = toGuardPeriodKey(command.periodKey());
+        String periodKeyGuardFormat = guardKeySegmentOf(command);
         String fingerprint = computeFingerprint(command);
         List<?> result;
 
@@ -81,14 +81,15 @@ public class TicketEarnServiceImpl implements TicketEarnService {
                     fingerprint,
                     streamKey,
                     String.valueOf(IDEM_TTL_SECONDS),
-                    String.valueOf(GUARD_TTL_SECONDS),
+                    String.valueOf(guardTtlSecondsOf(command)),
                     requestId,
                     String.valueOf(command.userId()),
                     String.valueOf(command.creatorId()),
                     command.missionType(),
                     String.valueOf(command.missionId()),
                     command.periodKey(),
-                    command.missionKey()
+                    command.missionKey(),
+                    command.rewardPolicy().name()
             );
         } catch (QueryTimeoutException e) {
             log.error("EARN Lua 실행이 타임아웃되어 처리 여부를 알 수 없습니다. requestId={}, userId={}",
@@ -154,7 +155,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             String guardKey = storedGuardKey instanceof String s
                     ? s
                     : TicketRedisKeys.earnGuard(command.userId(), command.missionType(), command.creatorId(),
-                            toGuardPeriodKey(command.periodKey()));
+                            guardKeySegmentOf(command));
             guardValue = redisTemplate.opsForValue().get(guardKey);
         } catch (DataAccessException e) {
             log.error("EARN replay 조회 중 Guard 확인에 실패했습니다. requestId={}, userId={}",
@@ -182,6 +183,16 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException("periodKey는 yyyy-MM-dd 형식이어야 합니다: " + periodKey, e);
         }
+    }
+
+    /** 보상 정책에 맞는 Redis Guard 키의 마지막 세그먼트를 만든다. */
+    private String guardKeySegmentOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce() ? "once" : toGuardPeriodKey(command.periodKey());
+    }
+
+    /** DAILY는 25시간, ONCE는 만료 없이 Redis Guard를 유지한다. */
+    private long guardTtlSecondsOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce() ? 0L : GUARD_TTL_SECONDS;
     }
 
     // requestId를 제외한 요청 내용을 해시로 요약해 REQUEST_ID_CONFLICT 판정에 사용한다.

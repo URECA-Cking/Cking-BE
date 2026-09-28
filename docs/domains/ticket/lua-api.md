@@ -10,10 +10,10 @@ Java 연동: `kr.co.cking.ticket.application` (`TicketEarnService`/`TicketEarnSe
 | 키 | 타입 | TTL | 용도 |
 | --- | --- | --- | --- |
 | `idem:mission:{requestId}` | STRING(JSON) | 25시간 | requestId 기준 결과 재현. `{fingerprint, status, guardKey, result?}` |
-| `mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyyMMdd}` | STRING | 25시간 | 하루 1회 중복 적립 방지(FR-P2-006). 값은 `requestId:fingerprint` |
+| `mission:earn-guard:{userId}:{missionType}:{creatorId}:{scope}` | STRING | DAILY: 25시간, ONCE: 없음 | DAILY는 `yyyyMMdd`로 하루 1회, ONCE는 `once`로 평생 1회 중복 적립 방지. 값은 `requestId:fingerprint` |
 | `ticket:maint:{creatorId}:{userId}` | STRING | 보정 서비스 관리 | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인한다(issue #172) |
 
-두 키 모두 25시간으로 통일했다(issue #125) — 서로 다른 TTL로 두면 한쪽만 만료된 비대칭 상태가 생겨 처리를 복잡하게 만든다.
+idem은 항상 25시간이다. DAILY Guard도 25시간으로 유지하지만, Creator Space SHARE의 ONCE Guard는 만료 없이 보존한다. ONCE는 DB의 고정 완료 키와 함께 평생 1회 보상을 방어한다.
 
 Guard는 `requestId:fingerprint`만 저장한다. 신규 idem은 `fingerprint`, `status`, `guardKey`를 저장하고 완료 시 `result`를 추가한다. `guardKey`는 PROCESSING 예약 시 실제로 SET NX한 Guard 키 문자열이며, `COMPLETED`로 확정된 뒤에도 지우지 않고 그대로 남긴다 — 재조회 로직은 안 쓰지만 어떤 Guard로 확정됐는지 추적할 수 있다. `periodKey` 자체는 저장하지 않는다.
 

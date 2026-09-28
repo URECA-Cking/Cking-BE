@@ -94,13 +94,15 @@ Creator Space 공유 완료를 Creator별 SHARE 미션 보상으로 처리한다
 }
 ```
 
-처리 순서는 Member·공유 대상 Creator 검증 → 해당 Creator의 SHARE Mission 조회·소유 검증 → 서버 UTC `periodKey` 생성 → 기존 `requestId` 조회 → 활성 검증 → `TicketEarnService#earn()` 호출이다. EARN은 해당 `creatorId`를 가진 Creator 전용 Balance를 증가시키며, Redis Lua가 같은 `userId + creatorId + missionId + periodKey` Business Key를 차단한다. EARN Stream Consumer가 성공 메시지를 처리하면 `MissionCompletion`과 EARN Ledger·DB Balance를 기록한다.
+실제 외부 SNS 공유 성공 여부는 서버가 검증하지 않는다. 클라이언트가 공유 버튼을 클릭한 뒤 보내는 이 완료 요청을 공유 완료로 간주하는 Mock 방식이며, 공유 취소·실패는 이미 지급된 보상을 회수하지 않는다.
+
+처리 순서는 Member·공유 대상 Creator 검증 → 해당 Creator의 SHARE Mission 조회·소유 검증 → 서버 UTC `periodKey` 생성 → 기존 `requestId` 조회 → 활성 검증 → `TicketEarnService#earn()` 호출이다. EARN은 해당 `creatorId`를 가진 Creator 전용 Balance를 증가시키며, Redis Lua의 만료 없는 `ONCE` Guard와 `mission_completion`의 고정 완료 키가 같은 `userId + creatorId + missionId`를 평생 한 번만 허용한다. EARN Stream Consumer가 성공 메시지를 처리하면 `MissionCompletion`과 EARN Ledger·DB Balance를 기록한다.
 
 성공 응답은 위 일반 완료 API와 같다. 신규 적립은 `202 EARN_ACCEPTED`, 동일 `requestId`의 재요청은 `200 ALREADY_PROCESSED`다. `DUPLICATE_MISSION`, `REQUEST_ID_CONFLICT`, EARN 장애 오류도 위 오류 표와 같은 상태·코드를 사용한다.
 
 ## 일일 중복 적립 기준
 
-업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜이며, LIKE와 Creator Space SHARE 완료 API는 모두 `userId + creatorId + missionId + periodKey` Business Key로 하루 한 번만 적립을 허용한다. 이는 `mission_completion`의 `uk_completion_business` UNIQUE 제약으로 최종 보장되고, Redis EARN Guard가 먼저 중복을 차단한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE·SHARE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
+업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜다. LIKE는 `userId + creatorId + missionId + periodKey`로 하루 한 번, Creator Space SHARE는 `userId + creatorId + missionId`로 평생 한 번만 적립한다. Redis EARN Guard가 먼저 중복을 차단하고 `mission_completion.uk_completion_business`가 최종 보장한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE·SHARE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
 
 ## 종료 후 동일 requestId 재시도
 

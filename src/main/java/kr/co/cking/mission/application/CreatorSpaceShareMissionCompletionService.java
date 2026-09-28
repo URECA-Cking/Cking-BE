@@ -15,6 +15,7 @@ import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -54,7 +55,8 @@ public class CreatorSpaceShareMissionCompletionService {
                 mission.getMissionId(),
                 periodKeyOf(now),
                 missionKeyOf(creatorId),
-                mission.getRewardAmount().longValue()
+                mission.getRewardAmount().longValue(),
+                EarnRewardPolicy.ONCE
         );
 
         EarnLookupStatus lookupStatus = ticketEarnService.findExisting(earnCommand).status();
