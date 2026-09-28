@@ -101,5 +101,6 @@
 | 97 | 외부 | Calendar | CREATOR | GET | /api/creator/calendar/schedules | 내 일정 기간 조회 | - |
 | 98 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules | 크리에이터 캘린더 기간 조회 | - |
 | 99 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules/{scheduleId} | 크리에이터 일정 상세 조회 | - |
+| 100 | 외부 | Mission | USER | POST | `/api/creators/{creatorId}/missions/share/complete` | Creator Space 공유 SHARE 미션 완료 | `requestId` |
 
 No. 9, No. 50~61, No. 89~91은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

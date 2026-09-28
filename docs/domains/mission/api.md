@@ -79,9 +79,28 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 7. `Mission.isActiveAt(now)`로 LIKE 미션의 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
 8. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
 
+## POST /api/creators/{creatorId}/missions/share/complete
+
+Creator Space 공유 완료를 Creator별 SHARE 미션 보상으로 처리한다.
+
+- 권한: `USER`. Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다.
+- Path Variable `creatorId`: 필수, 양수 Long. 공유 대상 Creator다.
+- Body `requestId`: 필수 UUID. 재요청 멱등성 키다.
+- 미션 ID는 클라이언트가 보내지 않는다. 서버가 `creatorId` 기준 SHARE 미션을 조회해, 조회된 `Mission.creatorId == creatorId`를 다시 검증한다.
+
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+처리 순서는 Member·공유 대상 Creator 검증 → 해당 Creator의 SHARE Mission 조회·소유 검증 → 서버 UTC `periodKey` 생성 → 기존 `requestId` 조회 → 활성 검증 → `TicketEarnService#earn()` 호출이다. EARN은 해당 `creatorId`를 가진 Creator 전용 Balance를 증가시키며, Redis Lua가 같은 `userId + creatorId + missionId + periodKey` Business Key를 차단한다. EARN Stream Consumer가 성공 메시지를 처리하면 `MissionCompletion`과 EARN Ledger·DB Balance를 기록한다.
+
+성공 응답은 위 일반 완료 API와 같다. 신규 적립은 `202 EARN_ACCEPTED`, 동일 `requestId`의 재요청은 `200 ALREADY_PROCESSED`다. `DUPLICATE_MISSION`, `REQUEST_ID_CONFLICT`, EARN 장애 오류도 위 오류 표와 같은 상태·코드를 사용한다.
+
 ## 일일 중복 적립 기준
 
-업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜이며, 이 일반 API의 LIKE는 `userId + creatorId + missionId + periodKey` Business Key로 하루 한 번만 적립을 허용한다. 이는 `mission_completion`의 `uk_completion_business` UNIQUE 제약으로 최종 보장되고, Redis EARN Guard가 먼저 중복을 차단한다. SHARE의 중복 적립 계약은 Creator Space 공유 완료 처리(Issue #311)가 담당한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE·SHARE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
+업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜이며, LIKE와 Creator Space SHARE 완료 API는 모두 `userId + creatorId + missionId + periodKey` Business Key로 하루 한 번만 적립을 허용한다. 이는 `mission_completion`의 `uk_completion_business` UNIQUE 제약으로 최종 보장되고, Redis EARN Guard가 먼저 중복을 차단한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE·SHARE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
 
 ## 종료 후 동일 requestId 재시도
 
