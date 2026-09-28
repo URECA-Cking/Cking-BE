@@ -11,6 +11,16 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 미션 계층은 같은 JVM의 `TicketEarnService.earn(EarnCommand)`를 호출한다. Lua가 Redis 잔액 증가와 `stream:ticket-earned` 발행을 처리하고, Consumer가 EARN Ledger와 DB Balance를 저장한다. 외부 HTTP 내부 호출은 사용하지 않는다.
 
+### 평생 1회 보상 ONCE EARN 목표 계약
+
+기존 `TicketEarnService`의 `idem:mission:{requestId}`와 일일 Guard는 25시간 TTL이므로 평생 1회 보상의 재시도 계약으로 사용할 수 없다. `YOUTUBE_SUBSCRIPTION` 승인 보상은 별도 `TicketOnceEarnService`를 사용한다. 상세 호출·상태 계약은 [YouTube 구독 인증 정본](../subscription-verification/README.md#ticket-once-적립의-영구-멱등성)을 따른다.
+
+- Ticket 도메인은 `ticket_once_earn_request` durable request를 소유한다. `request_id`와 `(member_id, creator_id, mission_id)`를 각각 UNIQUE로 두고 `PENDING → ACCEPTED`를 기록한다.
+- ONCE Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:once:{memberId}:{creatorId}:{missionId}`를 TTL 없이 선점한 뒤 Redis Balance 증가와 기존 EARN Stream 발행을 원자 처리한다.
+- ONCE key는 TTL을 설정하거나 성공 후 삭제하지 않는다. 모든 재호출은 Redis 실행 전에 durable request를 조회하고, 이미 DB 조회를 통과한 동시 실행은 영구 Redis key가 방어한다.
+- 기존 EARN Stream Consumer, `mission_completion`, Ledger와 DB Balance 반영은 재사용한다. DB Consumer의 `request_id` UNIQUE는 Redis Balance 중복 증가 방어를 대신하지 않는다.
+- 기존 일일 `TicketEarnService`와 `ticket-earn.lua`의 TTL·Guard 계약은 변경하지 않는다.
+
 ## 정합성 검증과 수동 보정
 
 `TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니다). Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.

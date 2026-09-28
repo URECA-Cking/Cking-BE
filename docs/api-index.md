@@ -84,5 +84,14 @@
 | 80 | 외부 | Creator Space | PUBLIC | GET | `/api/creators/{creatorId}/space` | Creator Space 홈·프로필 조회 | - |
 | 81 | 외부 | Creator Space | CREATOR | GET | `/api/creator/space` | 내 Creator Space 조회 | - |
 | 82 | 외부 | Creator Space | CREATOR | PATCH | `/api/creator/space` | 내 Creator Space 홈·프로필 수정 | 상태 기반 |
+| 83 | 외부 | 구독 인증 | PUBLIC | GET | `/api/creators/{creatorId}/youtube-channel` | Creator YouTube 채널 조회 | - |
+| 84 | 외부 | 구독 인증 | CREATOR | GET | `/api/creator/youtube-channel` | 내 YouTube 채널 설정 조회 | - |
+| 85 | 외부 | 구독 인증 | CREATOR | PUT | `/api/creator/youtube-channel` | YouTube 채널 최초 설정·전체 교체 | 상태 기반 |
+| 86 | 외부 | 구독 인증 | USER | POST | `/api/creators/{creatorId}/missions/{missionId}/subscription-verifications` | 구독 인증 이미지 제출 | `requestId` |
+| 87 | 외부 | 구독 인증 | USER | GET | `/api/subscription-verifications/{verificationId}` | 내 구독 인증 상태 조회 | - |
+| 88 | 외부 | 구독 인증 | USER | GET | `/api/creators/{creatorId}/missions/{missionId}/subscription-verifications/me/latest` | 미션의 내 최신 구독 인증 조회 | - |
+| 89 | 내부 | Mission | INTERNAL | CALL | `YoutubeSubscriptionMissionProvisioningService.ensureForCreator(creatorId)` | 채널 최초 설정 시 구독 미션 멱등 생성 | Creator·Mission 유형 기준 |
+| 90 | 내부 | 구독 인증 | INTERNAL | CALL | `SubscriptionVerificationProcessor.process(verificationId)` | 구독 인증 비동기 판정·보상 시작 | Processing Claim |
+| 91 | 내부 | Ticket | INTERNAL | CALL | `TicketOnceEarnService.earn(command)` | 구독 인증 등 평생 1회 보상의 영구 멱등 적립 | requestId·ONCE Business Key |
 
-No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+No. 9, No. 50~61, No. 89~91은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

@@ -36,6 +36,9 @@
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
 - [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계
 - [Mission API](domains/mission/api.md): 미션 완료 API 계약
+- [YouTube 구독 인증](domains/subscription-verification/README.md): 채널 설정, 이미지 제출, ONCE 인증과 보상 경계
+- [YouTube 구독 인증 API](domains/subscription-verification/api.md): 채널 설정·Verification 제출 및 상태 조회 계약
+- [YouTube 구독 인증 비동기 처리](domains/subscription-verification/processing.md): VLM 판정, Processing Claim과 Recovery 계약
 - [Creator](domains/creator/README.md): 신청·승인, 기본 템플릿, 승인 시 Creator Space 자동 생성 책임 경계
 - [Creator Space Template API](domains/creator/space-template-api.md): 관리자 기본 크리에이터 스페이스 템플릿 관리 API 계약
 - [Creator Space API](domains/creator/space-api.md): Creator Space 홈·프로필 조회·수정 API 계약
