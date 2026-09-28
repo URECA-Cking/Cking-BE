@@ -6,7 +6,8 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 - [Creator 신청 API](api.md): 신청·심사 외부 API 계약
 - [Creator Space Template 관리자 API](space-template-api.md): 기본 템플릿 CRUD·활성화 외부 API 계약
-- [Creator Space API](space-api.md): Space 홈·프로필 공개 조회와 Creator 본인 조회·수정 외부 API 계약
+- [Creator Space API](space-api.md): Space 공개 조회(creatorId·slug), Creator 본인 조회·수정·커스텀 slug 변경 외부 API 계약
+- [Creator Space slug 정책](space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 
 ## Creator Space 자동 생성(이슈 #270)
 
@@ -55,3 +56,10 @@ WHERE REGEXP_LIKE(t.slug_rule, '^([a-z0-9-]*[a-z-])?[{]creatorId[}]$', 'c')
 ## 탭 노출 설정 제거(이슈 #290)
 
 템플릿과 Space에 있던 탭(홈·미션·게시물·이벤트) on/off 값은 V20에서 삭제했다. 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다. 탭 값을 읽어 기능을 막는 코드는 원래 없었으므로 기능 동작은 바뀌지 않는다.
+
+## 커스텀 slug(이슈 #290)
+
+Creator는 승인 때 받은 자동 slug를 인스타 아이디처럼 원하는 값으로 바꿀 수 있다(`PATCH /api/creator/space/slug`). 공유 링크는 slug로 연다(`GET /api/creator-spaces/{slug}`). 형식·예약어·중복 규칙과 변경 시 예전 링크 처리는 [space-slug-policy.md](space-slug-policy.md)가 정본이다.
+
+- 위 "slug 생성과 slugRule 검증"의 보장(끝 숫자열 = creatorId라 겹치지 않음)은 자동 slug끼리만 성립한다. 커스텀 slug가 아직 승인되지 않은 Creator의 자동 slug를 먼저 가져갔을 수 있으므로, `CreatorSpaceService`는 승인 시 자동 slug가 이미 쓰이고 있으면 `-2`, `-3`을 붙인 대체 slug를 쓴다. 승인은 slug 충돌로 실패하지 않는다.
+- slug는 바뀔 수 있으므로 다른 도메인(공유 미션 등)은 slug가 아니라 `creatorId`로 기록한다.

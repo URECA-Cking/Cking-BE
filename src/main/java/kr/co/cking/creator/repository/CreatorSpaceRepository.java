@@ -8,4 +8,8 @@ import java.util.Optional;
 public interface CreatorSpaceRepository extends JpaRepository<CreatorSpace, Long> {
 
     Optional<CreatorSpace> findByCreatorId(Long creatorId);
+
+    Optional<CreatorSpace> findBySlug(String slug);
+
+    boolean existsBySlug(String slug);
 }

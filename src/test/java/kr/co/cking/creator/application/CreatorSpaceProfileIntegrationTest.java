@@ -1,10 +1,13 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorApplication;
+import kr.co.cking.creator.domain.CreatorErrorCode;
+import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorApplicationRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
@@ -22,8 +25,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 승인으로 만든 Space를 공개 조회하고 Creator 본인이 수정하는 흐름을 실제 DB로 검증한다(이슈 #286). */
+/** 승인으로 만든 Space의 조회·수정과 커스텀 slug 변경을 실제 DB로 검증한다(이슈 #286, #290). */
 @SpringBootTest
 class CreatorSpaceProfileIntegrationTest {
 
@@ -36,6 +40,9 @@ class CreatorSpaceProfileIntegrationTest {
 
     @Autowired
     private CreatorApplicationService creatorApplicationService;
+
+    @Autowired
+    private CreatorSpaceService creatorSpaceService;
 
     @Autowired
     private CreatorSpaceTemplateService creatorSpaceTemplateService;
@@ -103,6 +110,37 @@ class CreatorSpaceProfileIntegrationTest {
 
         CreatorSpaceTemplate template = templateRepository.findById(templateId).orElseThrow();
         assertThat(template.getIntroText()).isEqualTo(TEMPLATE_FIELDS.introText());
+    }
+
+    /**
+     * 커스텀 slug로 바꾸면 slug로 조회되고, 같은 slug는 다른 Creator가 가져갈 수 없다.
+     * 누군가 다른 Creator의 자동 slug를 먼저 가져갔으면, 그 Creator의 Space는 번호를 붙인 slug로 만들어진다.
+     */
+    @Test
+    void 커스텀_slug는_중복될_수_없고_선점된_자동_slug는_번호를_붙여_만든다() {
+        Member admin = createMember("slug관리자", MemberRole.ADMIN);
+        Member owner = createMember("slug선점자", MemberRole.USER);
+        Member late = createMember("slug후발자", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, owner);
+        Creator lateCreator = creatorRepository.saveAndFlush(new Creator(late.getMemberId(), "후발 크리에이터"));
+        String lateAutoSlug = "creator-" + lateCreator.getCreatorId();
+
+        profileService.changeSlug(owner.getMemberId(), lateAutoSlug);
+        CreatorSpace lateSpace = creatorSpaceService.createFromActiveTemplateIfAbsent(lateCreator.getCreatorId());
+
+        assertThat(lateSpace.getSlug()).isEqualTo(lateAutoSlug + "-2");
+        assertThat(profileService.findBySlug(lateAutoSlug).creatorName())
+                .isEqualTo(creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow().getName());
+        assertThatThrownBy(() -> profileService.changeSlug(late.getMemberId(), lateAutoSlug))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CreatorErrorCode.SLUG_ALREADY_TAKEN);
+        assertThatThrownBy(() -> profileService.changeSlug(owner.getMemberId(), "slug-again-" + lateCreator.getCreatorId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CreatorErrorCode.SLUG_CHANGE_TOO_SOON);
     }
 
     private void approve(Member admin, Member applicant) {

@@ -6,10 +6,13 @@ import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
+import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -142,6 +145,75 @@ class CreatorSpaceControllerTest {
         mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void spaceIsReadableBySlugWithoutJwt() throws Exception {
+        given(profileService.findBySlug("creator-42")).willReturn(view());
+
+        mockMvc.perform(get("/api/creator-spaces/{slug}", "creator-42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").value(42))
+                .andExpect(jsonPath("$.data.slug").value("creator-42"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugUsesJwtMemberId() throws Exception {
+        given(profileService.changeSlug(7L, "iu-official")).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-official\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+        then(profileService).should().changeSlug(7L, "iu-official");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IU", "ab", "iu.official", "-iu"})
+    @WithMockJwt(memberId = "7")
+    void changeSlugRejectsInvalidFormat(String slug) throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"%s\"}".formatted(slug)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileService).should(never()).changeSlug(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugReturnsConflictWhenTaken() throws Exception {
+        given(profileService.changeSlug(7L, "taken"))
+                .willThrow(new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"taken\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SLUG_ALREADY_TAKEN"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugReturnsConflictWithinFourteenDays() throws Exception {
+        given(profileService.changeSlug(7L, "iu-2026"))
+                .willThrow(new BusinessException(CreatorErrorCode.SLUG_CHANGE_TOO_SOON));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-2026\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SLUG_CHANGE_TOO_SOON"));
+    }
+
+    @Test
+    void changeSlugRequiresJwt() throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-official\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     private CreatorSpaceView view() {

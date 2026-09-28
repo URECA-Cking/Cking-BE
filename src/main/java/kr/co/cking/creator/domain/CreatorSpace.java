@@ -47,6 +47,10 @@ public class CreatorSpace {
     @Column(name = "slug", nullable = false, length = 100)
     private String slug;
 
+    /** 마지막 커스텀 slug 변경 시각(UTC). null이면 자동 slug를 아직 바꾸지 않았다. */
+    @Column(name = "slug_changed_at")
+    private LocalDateTime slugChangedAt;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -66,6 +70,22 @@ public class CreatorSpace {
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
+    }
+
+    /** 커스텀 slug로 바꾼다. 형식·예약어·중복·변경 간격 검증은 호출하는 Application이 먼저 한다. */
+    public void changeSlug(String slug, LocalDateTime changedAt) {
+        this.slug = slug;
+        this.slugChangedAt = changedAt;
+    }
+
+    /** 다음에 slug를 바꿀 수 있는 시각(UTC). 한 번도 바꾸지 않았으면 null이며 바로 바꿀 수 있다. */
+    public LocalDateTime slugChangeableAt() {
+        return slugChangedAt == null ? null : slugChangedAt.plus(CreatorSpaceCustomSlug.CHANGE_INTERVAL);
+    }
+
+    public boolean canChangeSlugAt(LocalDateTime now) {
+        LocalDateTime changeableAt = slugChangeableAt();
+        return changeableAt == null || !now.isBefore(changeableAt);
     }
 
     public static CreatorSpace fromTemplate(Long creatorId, CreatorSpaceTemplate template, String slug) {

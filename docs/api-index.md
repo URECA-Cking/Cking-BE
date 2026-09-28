@@ -84,5 +84,7 @@
 | 80 | 외부 | Creator Space | PUBLIC | GET | `/api/creators/{creatorId}/space` | Creator Space 홈·프로필 조회 | - |
 | 81 | 외부 | Creator Space | CREATOR | GET | `/api/creator/space` | 내 Creator Space 조회 | - |
 | 82 | 외부 | Creator Space | CREATOR | PATCH | `/api/creator/space` | 내 Creator Space 홈·프로필 수정 | 상태 기반 |
+| 83 | 외부 | Creator Space | PUBLIC | GET | `/api/creator-spaces/{slug}` | slug로 Creator Space 조회(공유 링크) | - |
+| 84 | 외부 | Creator Space | CREATOR | PATCH | `/api/creator/space/slug` | 내 Creator Space 커스텀 slug 변경 | 상태 기반 |
 
 No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
