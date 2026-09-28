@@ -96,7 +96,7 @@ Creator Space 공유 완료를 Creator별 SHARE 미션 보상으로 처리한다
 
 실제 외부 SNS 공유 성공 여부는 서버가 검증하지 않는다. 클라이언트가 공유 버튼을 클릭한 뒤 보내는 이 완료 요청을 공유 완료로 간주하는 Mock 방식이며, 공유 취소·실패는 이미 지급된 보상을 회수하지 않는다.
 
-처리 순서는 Member·공유 대상 Creator 검증 → 해당 Creator의 SHARE Mission 조회·소유 검증 → 서버 UTC `periodKey` 생성 → 기존 `requestId` 조회 → 활성 검증 → `TicketEarnService#earn()` 호출이다. EARN은 해당 `creatorId`를 가진 Creator 전용 Balance를 증가시키며, Redis Lua의 만료 없는 `ONCE` Guard와 `mission_completion`의 고정 완료 키가 같은 `userId + creatorId + missionId`를 평생 한 번만 허용한다. EARN Stream Consumer가 성공 메시지를 처리하면 `MissionCompletion`과 EARN Ledger·DB Balance를 기록한다.
+처리 순서는 Member·공유 대상 Creator 검증 → 해당 Creator의 SHARE Mission 조회·소유 검증 → 서버 UTC `periodKey` 생성 → 기존 `requestId` 조회 → 활성 검증 → `TicketOnceEarnService#earn()` 호출이다. `TicketOnceEarnService`는 Redis Lua 전에 `ticket_once_earn_request`의 `userId + creatorId + missionId` durable Business Key를 선점한다. Redis ONCE Guard는 이 claim을 통과한 동시 실행의 1차 방어선이며, Redis Guard 유실 뒤 다른 `requestId`가 와도 durable Business Key가 Redis Balance 증가 전에 차단한다. EARN Stream Consumer가 성공 메시지를 처리하면 `MissionCompletion`과 EARN Ledger·DB Balance를 기록한다.
 
 성공 응답은 위 일반 완료 API와 같다. 신규 적립은 `202 EARN_ACCEPTED`, 동일 `requestId`의 재요청은 `200 ALREADY_PROCESSED`다. `DUPLICATE_MISSION`, `REQUEST_ID_CONFLICT`, EARN 장애 오류도 위 오류 표와 같은 상태·코드를 사용한다.
 

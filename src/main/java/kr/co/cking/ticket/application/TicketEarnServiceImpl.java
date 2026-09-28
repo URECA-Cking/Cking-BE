@@ -62,6 +62,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
     @Override
     public EarnResult earn(EarnCommand command) {
         String requestId = command.requestId().toString();
+        String idemKey = idemKeyOf(command);
         String periodKeyGuardFormat = guardKeySegmentOf(command);
         String fingerprint = computeFingerprint(command);
         List<?> result;
@@ -70,7 +71,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             result = redisTemplate.execute(
                     ticketEarnLuaScript,
                     List.of(
-                            TicketRedisKeys.idemMission(requestId),
+                            idemKey,
                             TicketRedisKeys.earnGuard(
                                     command.userId(), command.missionType(), command.creatorId(), periodKeyGuardFormat
                             ),
@@ -80,7 +81,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
                     String.valueOf(command.amount()),
                     fingerprint,
                     streamKey,
-                    String.valueOf(IDEM_TTL_SECONDS),
+                    String.valueOf(idemTtlSecondsOf(command)),
                     String.valueOf(guardTtlSecondsOf(command)),
                     requestId,
                     String.valueOf(command.userId()),
@@ -111,7 +112,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         String stored;
 
         try {
-            stored = redisTemplate.opsForValue().get(TicketRedisKeys.idemMission(requestId));
+            stored = redisTemplate.opsForValue().get(idemKeyOf(command));
         } catch (DataAccessException e) {
             log.error("EARN replay 조회 중 Redis 접근에 실패했습니다. requestId={}, userId={}",
                     command.requestId(), command.userId(), e);
@@ -193,6 +194,16 @@ public class TicketEarnServiceImpl implements TicketEarnService {
     /** DAILY는 25시간, ONCE는 만료 없이 Redis Guard를 유지한다. */
     private long guardTtlSecondsOf(EarnCommand command) {
         return command.rewardPolicy().isOnce() ? 0L : GUARD_TTL_SECONDS;
+    }
+
+    private String idemKeyOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce()
+                ? TicketRedisKeys.idemMissionOnce(command.requestId().toString())
+                : TicketRedisKeys.idemMission(command.requestId().toString());
+    }
+
+    private long idemTtlSecondsOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce() ? 0L : IDEM_TTL_SECONDS;
     }
 
     // requestId를 제외한 요청 내용을 해시로 요약해 REQUEST_ID_CONFLICT 판정에 사용한다.

@@ -10,7 +10,7 @@ import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.MissionErrorCode;
 import kr.co.cking.mission.domain.MissionType;
-import kr.co.cking.ticket.application.TicketEarnService;
+import kr.co.cking.ticket.application.TicketOnceEarnService;
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
@@ -35,7 +35,7 @@ public class CreatorSpaceShareMissionCompletionService {
     private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;
     private final MissionRepository missionRepository;
-    private final TicketEarnService ticketEarnService;
+    private final TicketOnceEarnService ticketOnceEarnService;
     private final Clock clock;
 
     /** Creator Space 공유를 검증하고 SHARE 미션 보상을 멱등하게 요청한다. */
@@ -59,7 +59,7 @@ public class CreatorSpaceShareMissionCompletionService {
                 EarnRewardPolicy.ONCE
         );
 
-        EarnLookupStatus lookupStatus = ticketEarnService.findExisting(earnCommand).status();
+        EarnLookupStatus lookupStatus = ticketOnceEarnService.findExisting(earnCommand).status();
         if (lookupStatus == EarnLookupStatus.ALREADY_PROCESSED) {
             return outcomeOf(EarnResultCode.ALREADY_PROCESSED, mission, now);
         }
@@ -70,7 +70,7 @@ public class CreatorSpaceShareMissionCompletionService {
             throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
         }
 
-        EarnResult result = ticketEarnService.earn(earnCommand);
+        EarnResult result = ticketOnceEarnService.earn(earnCommand);
         if (result.code() == EarnResultCode.EARN_ACCEPTED || result.code() == EarnResultCode.ALREADY_PROCESSED) {
             return outcomeOf(result.code(), mission, now);
         }

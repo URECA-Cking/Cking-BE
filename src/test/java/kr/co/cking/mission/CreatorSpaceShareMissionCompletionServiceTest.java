@@ -9,7 +9,7 @@ import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.MissionErrorCode;
 import kr.co.cking.mission.domain.MissionType;
-import kr.co.cking.ticket.application.TicketEarnService;
+import kr.co.cking.ticket.application.TicketOnceEarnService;
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
@@ -41,12 +41,12 @@ class CreatorSpaceShareMissionCompletionServiceTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final MissionRepository missionRepository = mock(MissionRepository.class);
-    private final TicketEarnService ticketEarnService = mock(TicketEarnService.class);
+    private final TicketOnceEarnService ticketOnceEarnService = mock(TicketOnceEarnService.class);
 
     /** 고정 시각을 적용한 공유 미션 완료 서비스를 만든다. */
     private CreatorSpaceShareMissionCompletionService serviceWith(Clock clock) {
         return new CreatorSpaceShareMissionCompletionService(
-                memberRepository, creatorRepository, missionRepository, ticketEarnService, clock);
+                memberRepository, creatorRepository, missionRepository, ticketOnceEarnService, clock);
     }
 
     /** 공유 대상 Creator에 속한 기본 SHARE 미션을 만든다. */
@@ -65,7 +65,7 @@ class CreatorSpaceShareMissionCompletionServiceTest {
 
     /** 신규 EARN 요청이 되도록 기존 requestId가 없음을 준비한다. */
     private void stubNoExistingReplay() {
-        when(ticketEarnService.findExisting(any())).thenReturn(new EarnLookupResult(EarnLookupStatus.NOT_FOUND));
+        when(ticketOnceEarnService.findExisting(any())).thenReturn(new EarnLookupResult(EarnLookupStatus.NOT_FOUND));
     }
 
     /** Creator Space 공유는 SHARE 유형의 Creator 전용 EARN을 요청한다. */
@@ -73,14 +73,14 @@ class CreatorSpaceShareMissionCompletionServiceTest {
     void 공유를_최초_완료하면_SHARE_EARN_ACCEPTED를_반환한다() {
         stubShareMission(shareMission());
         stubNoExistingReplay();
-        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        when(ticketOnceEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
         MissionCompleteOutcome outcome = serviceWith(Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC))
                 .complete(CREATOR_ID, new MissionCompleteCommand(MEMBER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
-        verify(ticketEarnService).earn(captor.capture());
+        verify(ticketOnceEarnService).earn(captor.capture());
         assertThat(captor.getValue())
                 .extracting(EarnCommand::creatorId, EarnCommand::missionId, EarnCommand::missionType,
                         EarnCommand::missionKey, EarnCommand::amount)
@@ -92,13 +92,13 @@ class CreatorSpaceShareMissionCompletionServiceTest {
     void periodKey는_서버_UTC_날짜를_사용한다() {
         stubShareMission(shareMission());
         stubNoExistingReplay();
-        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        when(ticketOnceEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
         serviceWith(Clock.fixed(Instant.parse("2026-09-16T23:30:00Z"), ZoneOffset.UTC))
                 .complete(CREATOR_ID, new MissionCompleteCommand(MEMBER_ID, UUID.randomUUID()));
 
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
-        verify(ticketEarnService).earn(captor.capture());
+        verify(ticketOnceEarnService).earn(captor.capture());
         assertThat(captor.getValue().periodKey()).isEqualTo("2026-09-16");
     }
 
@@ -106,14 +106,14 @@ class CreatorSpaceShareMissionCompletionServiceTest {
     @Test
     void 같은_requestId_재요청은_ALREADY_PROCESSED를_반환한다() {
         stubShareMission(shareMission());
-        when(ticketEarnService.findExisting(any()))
+        when(ticketOnceEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
 
         MissionCompleteOutcome outcome = serviceWith(Clock.systemUTC())
                 .complete(CREATOR_ID, new MissionCompleteCommand(MEMBER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
-        verify(ticketEarnService, never()).earn(any());
+        verify(ticketOnceEarnService, never()).earn(any());
     }
 
     /** 같은 날 다른 requestId의 재공유는 Ticket EARN의 Business Key 가드로 차단한다. */
@@ -121,7 +121,7 @@ class CreatorSpaceShareMissionCompletionServiceTest {
     void 동일_Business_Key_재수행은_DUPLICATE_MISSION이다() {
         stubShareMission(shareMission());
         stubNoExistingReplay();
-        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.DUPLICATE_MISSION));
+        when(ticketOnceEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.DUPLICATE_MISSION));
 
         assertThatThrownBy(() -> serviceWith(Clock.systemUTC())
                 .complete(CREATOR_ID, new MissionCompleteCommand(MEMBER_ID, UUID.randomUUID())))
@@ -142,8 +142,8 @@ class CreatorSpaceShareMissionCompletionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
 
-        verify(ticketEarnService, never()).findExisting(any());
-        verify(ticketEarnService, never()).earn(any());
+        verify(ticketOnceEarnService, never()).findExisting(any());
+        verify(ticketOnceEarnService, never()).earn(any());
     }
 
     /** 대상 Creator에게 SHARE 미션이 없으면 보상을 지급하지 않는다. */
@@ -174,14 +174,14 @@ class CreatorSpaceShareMissionCompletionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
 
-        verify(ticketEarnService, never()).earn(any());
+        verify(ticketOnceEarnService, never()).earn(any());
     }
 
     /** 같은 requestId에 다른 공유 요청이 감지되면 EARN 조회 결과를 충돌 오류로 변환한다. */
     @Test
     void 다른_요청의_같은_requestId는_REQUEST_ID_CONFLICT다() {
         stubShareMission(shareMission());
-        when(ticketEarnService.findExisting(any()))
+        when(ticketOnceEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT));
 
         assertThatThrownBy(() -> serviceWith(Clock.systemUTC())
@@ -190,7 +190,7 @@ class CreatorSpaceShareMissionCompletionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(MissionErrorCode.REQUEST_ID_CONFLICT);
 
-        verify(ticketEarnService, never()).earn(any());
+        verify(ticketOnceEarnService, never()).earn(any());
     }
 
     /** 조회 결과가 요청 Creator 소속이 아니면 보상 경계를 넘지 못하게 한다. */
@@ -205,7 +205,7 @@ class CreatorSpaceShareMissionCompletionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
 
-        verify(ticketEarnService, never()).findExisting(any());
-        verify(ticketEarnService, never()).earn(any());
+        verify(ticketOnceEarnService, never()).findExisting(any());
+        verify(ticketOnceEarnService, never()).earn(any());
     }
 }

@@ -4,7 +4,7 @@
 -- 순서(entry-spend.lua와 동일 원칙): 멱등성 확인 -> 중복 적립 가드 -> Balance 증가
 -- -> Stream 발행 -> 성공 시에만 멱등 결과 저장.
 --
--- KEYS[1] = idem:mission:{requestId}                                        String(JSON, TTL 25h)
+-- KEYS[1] = DAILY idem:mission:{requestId}(TTL 25h), ONCE idem:mission-once:{requestId}(TTL 없음)
 -- KEYS[2] = mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd} String(SETNX, FR-P2-006)
 -- KEYS[3] = ticket:balance:{creatorId}:{userId}                             String(integer)
 -- KEYS[4] = ticket:maint:{creatorId}:{userId}                               존재 여부만 확인(issue #172)
@@ -61,6 +61,19 @@ local periodKey   = ARGV[11]
 local missionKey  = ARGV[12]
 local rewardPolicy = ARGV[13]
 
+local function setIdem(key, value, ttl, nx)
+    if ttl > 0 then
+        if nx then
+            return redis.call('SET', key, value, 'NX', 'EX', ttl)
+        end
+        return redis.pcall('SET', key, value, 'EX', ttl)
+    end
+    if nx then
+        return redis.call('SET', key, value, 'NX')
+    end
+    return redis.pcall('SET', key, value)
+end
+
 -- 1) 멱등성 확인
 local stored = redis.call('GET', idemKey)
 if stored then
@@ -87,9 +100,9 @@ if stored then
     local guardValue = requestId .. ':' .. fingerprint
     if redis.call('GET', originalGuardKey) == guardValue then
         local result = { 'ALREADY_PROCESSED' }
-        redis.pcall('SET', idemKey,
+        setIdem(idemKey,
             cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = originalGuardKey }),
-            'EX', idemTtl)
+            idemTtl, false)
         return result
     end
     -- Guard가 없거나 다르면 신규 지급을 막는다.
@@ -104,9 +117,9 @@ if redis.call('EXISTS', maintenanceLockKey) == 1 then
 end
 
 -- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.
-local idemReserved = redis.call('SET', idemKey,
+local idemReserved = setIdem(idemKey,
     cjson.encode({ fingerprint = fingerprint, status = 'PROCESSING', guardKey = guardKey }),
-    'NX', 'EX', idemTtl)
+    idemTtl, true)
 if not idemReserved then
     return redis.error_reply('IDEM_RESERVE_FAILED: unexpected idem conflict for requestId=' .. requestId)
 end
@@ -180,8 +193,8 @@ end
 local result = { 'EARN_ACCEPTED', streamId, tostring(newBalance) }
 
 -- COMPLETED에도 guardKey를 보존해 원래 Guard를 추적한다.
-redis.pcall('SET', idemKey,
+setIdem(idemKey,
     cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = guardKey }),
-    'EX', idemTtl)
+    idemTtl, false)
 
 return result

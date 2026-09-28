@@ -24,9 +24,9 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 이름이 비슷한 키가 서로 다른 목적으로 여러 개 존재한다. RTM이 각각을 별도 레이어로 명시하고 있어(FR-P1-015 비고), 임의로 하나로 합치지 않는다.
 
 1. **RTM 판정 개념** `userId+creatorId+periodKey`: "이 사용자가 이 크리에이터에게서 오늘 이미 보상을 받았는가"를 가리키는 개념적 기준(FR-P1-015)일 뿐, Mission 코드가 이 조합으로 직접 조회·판정하지는 않는다.
-2. **DB Business Key** `userId+creatorId+missionId+completionKey`: `mission_completion`의 `uk_completion_business` UNIQUE 제약으로 구현된 최종 안전망이다. LIKE의 `completionKey`는 UTC `periodKey`라 하루 1회이고, SHARE는 고정값 `ONCE`라 Creator별 평생 1회다. Mission이 아니라 EARN Stream Consumer가 `mission_completion`을 삽입할 때 DB가 강제한다.
+2. **ONCE durable Business Key** `userId+creatorId+missionId`: SHARE는 `ticket_once_earn_request.uk_ticket_once_earn_business`를 Redis 실행 전에 선점한다. Redis Guard 유실 뒤 다른 `requestId`가 오더라도 Redis Balance를 증가시키기 전에 여기서 차단한다. `mission_completion.uk_completion_business`의 SHARE `completionKey=ONCE`는 Consumer 단계의 완료 이력 멱등성 안전망이며 Redis Balance 중복 증가 방어를 대신하지 않는다.
 3. **EARN replay fingerprint** `userId+creatorId+missionType+missionId+missionKey+amount` — **`periodKey`는 포함하지 않는다.** `TicketEarnServiceImpl#computeFingerprint()`가 계산하며, 동일 `requestId` 재요청이 내용까지 같은지(`REQUEST_ID_CONFLICT` 판정)에 쓰인다. `periodKey`를 뺀 이유는 자정을 넘겨 재시도해도 같은 요청으로 인정하기 위해서다(이전에 `missionKey`에 `periodKey`가 섞여 들어가 이 의도가 깨졌던 버그를 수정한 적이 있다). **2번(DB Business Key)과 혼동하지 않는다** — 필드 구성도 다르고(`missionType`/`missionKey`/`amount` 포함, `periodKey` 제외) 목적도 다르다(2번은 하루 중복 방지, 3번은 요청 내용 일치 확인).
-4. **Redis EARN Guard 키** `mission:earn-guard:{userId}:{missionType}:{creatorId}:{scope}`: LIKE의 `scope`는 `yyyymmdd`라 25시간 뒤 만료되고, SHARE의 `scope`는 `once`라 만료 없이 보존된다. `missionId`가 아니라 `missionType`을 쓴다. 1차 MVP는 크리에이터당 유형별 미션이 하나뿐(`uk_mission_creator_type`)이라 결과적으로 `missionId` 기준과 같지만, 여러 미션이 같은 유형을 가질 수 있게 되면 달라질 수 있는 별개 개념이다.
+4. **Redis EARN Guard 키** `mission:earn-guard:{userId}:{missionType}:{creatorId}:{scope}`: LIKE의 `scope`는 `yyyymmdd`라 25시간 뒤 만료되고, SHARE의 `scope`는 `once`라 만료 없이 보존된다. SHARE Guard는 durable claim을 통과한 동시 실행의 Redis 1차 방어선이고, 평생 보상의 영속 보장은 2번 durable Business Key가 맡는다. `missionId`가 아니라 `missionType`을 쓴다. 1차 MVP는 크리에이터당 유형별 미션이 하나뿐(`uk_mission_creator_type`)이라 결과적으로 `missionId` 기준과 같지만, 여러 미션이 같은 유형을 가질 수 있게 되면 달라질 수 있는 별개 개념이다.
 
 **중복 판정은 경로별로 나뉜다.** `MissionCompletionService`는 Creator별 LIKE 신규 요청을 Ticket EARN의 Redis Guard와 DB 제약에 위임하고, Creator ATTENDANCE 신규 요청은 공용 경로로 전환되어 EARN 전에 차단한다. `CommonMissionCompletionService`는 공용 EARN Guard에 더해 같은 사용자·UTC periodKey의 기존 Creator ATTENDANCE 완료 기록을 조회해 서비스 전체 하루 1회 정책을 적용한다. 두 서비스 모두 Guard 키나 fingerprint를 직접 계산하지 않고 EARN 계약에 필요한 값만 전달한다.
 
@@ -35,7 +35,7 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 `MissionType`은 `ATTENDANCE`, `LIKE`, `SHARE`, `YOUTUBE_SUBSCRIPTION`을 지원한다.
 
 - `LIKE`는 일반 완료 API와 Creator별 EARN 경로를 사용한다. 좋아요 취소는 별도 API가 없다. Mock 검증(버튼 클릭 = 완료, FR-P1-011) 방식이라 취소 시 서버에 알리지 않고 이미 지급된 응모권도 회수하지 않는다(FR-P1-012). 같은 날 재좋아요는 Redis EARN Guard가 차단한다(FR-P1-013).
-- `SHARE` 보상은 일반 완료 API가 아닌 `POST /api/creators/{creatorId}/missions/share/complete`가 담당한다. 실제 외부 SNS 공유 성공 여부는 서버가 검증하지 않으며, **클라이언트의 공유 버튼 클릭 후 완료 요청을 공유 완료로 간주하는 Mock 방식**이다. 공유 취소·실패 시 보상은 회수하지 않는다. 대상 Creator와 그 Creator 소속 SHARE 미션을 검증하고, 기본 보상 1장을 Creator 전용 EARN으로 요청한다. 동일 사용자·Creator·미션은 평생 한 번만 적립하며, EARN Stream Consumer가 `MissionCompletion`을 기록한다.
+- `SHARE` 보상은 일반 완료 API가 아닌 `POST /api/creators/{creatorId}/missions/share/complete`가 담당한다. 실제 외부 SNS 공유 성공 여부는 서버가 검증하지 않으며, **클라이언트의 공유 버튼 클릭 후 완료 요청을 공유 완료로 간주하는 Mock 방식**이다. 공유 취소·실패 시 보상은 회수하지 않는다. 대상 Creator와 그 Creator 소속 SHARE 미션을 검증하고, 기본 보상 1장을 `TicketOnceEarnService`로 요청한다. 동일 사용자·Creator·미션은 `ticket_once_earn_request` durable Business Key로 평생 한 번만 적립하며, EARN Stream Consumer가 `MissionCompletion`을 기록한다.
 - `ATTENDANCE` 신규 완료는 `CommonMissionController`/`CommonMissionCompletionService`와 공용 EARN 경로에서 처리한다. 과거 Creator ATTENDANCE의 기존 성공 `requestId` replay는 허용하지만, 신규 요청은 `MissionCompletionService`가 거부한다.
 - `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 선행되어야 한다. 일반 `POST .../complete` 경로에서는 `TicketEarnService.findExisting()`이나 `earn()`을 호출하기 전에 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 따라서 클라이언트가 일반 완료 API로 인증과 보상 경계를 우회할 수 없다. 이미지 제출·판정·보상은 [YouTube 구독 인증 정본](../subscription-verification/README.md)을 따른다.
 

@@ -9,17 +9,17 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 ## EARN과 Stream 반영
 
-미션 계층은 같은 JVM의 `TicketEarnService.earn(EarnCommand)`를 호출한다. Lua가 Redis 잔액 증가와 `stream:ticket-earned` 발행을 처리하고, Consumer가 EARN Ledger와 DB Balance를 저장한다. 외부 HTTP 내부 호출은 사용하지 않는다.
+미션 계층은 일일 보상에는 같은 JVM의 `TicketEarnService.earn(EarnCommand)`를, 평생 1회 보상에는 `TicketOnceEarnService.earn(EarnCommand)`를 호출한다. Lua가 Redis 잔액 증가와 `stream:ticket-earned` 발행을 처리하고, Consumer가 EARN Ledger와 DB Balance를 저장한다. 외부 HTTP 내부 호출은 사용하지 않는다.
 
 ### 평생 1회 보상 ONCE EARN 목표 계약
 
-기존 `TicketEarnService`의 `idem:mission:{requestId}`와 일일 Guard는 25시간 TTL이므로 평생 1회 보상의 재시도 계약으로 사용할 수 없다. `YOUTUBE_SUBSCRIPTION` 승인 보상은 별도 `TicketOnceEarnService`를 사용한다. 상세 호출·상태 계약은 [YouTube 구독 인증 정본](../subscription-verification/README.md#ticket-once-적립의-영구-멱등성)을 따른다.
+기존 `TicketEarnService`의 일일 경로는 25시간 TTL을 사용하므로 평생 1회 보상의 재시도 계약으로 사용할 수 없다. SHARE와 `YOUTUBE_SUBSCRIPTION` 승인 보상은 별도 `TicketOnceEarnService`를 사용한다. 상세 호출·상태 계약은 [YouTube 구독 인증 정본](../subscription-verification/README.md#ticket-once-적립의-영구-멱등성)을 따른다.
 
-- Ticket 도메인은 `ticket_once_earn_request` durable request를 소유한다. `request_id`와 `(member_id, creator_id, mission_id)`를 각각 UNIQUE로 두고 `PENDING → ACCEPTED`를 기록한다.
+- Ticket 도메인은 `ticket_once_earn_request` durable request를 소유한다. `request_id`와 `(member_id, creator_id, mission_id)`를 각각 UNIQUE로 두고 `PENDING → ACCEPTED`를 기록한다. `periodKey`는 최초 claim 값으로 보존하되, 서버 파생값이므로 request payload fingerprint에는 포함하지 않는다.
 - ONCE Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:once:{memberId}:{creatorId}:{missionId}`를 TTL 없이 선점한 뒤 Redis Balance 증가와 기존 EARN Stream 발행을 원자 처리한다.
 - ONCE key는 TTL을 설정하거나 성공 후 삭제하지 않는다. 모든 재호출은 Redis 실행 전에 durable request를 조회하고, 이미 DB 조회를 통과한 동시 실행은 영구 Redis key가 방어한다.
 - 기존 EARN Stream Consumer, `mission_completion`, Ledger와 DB Balance 반영은 재사용한다. DB Consumer의 `request_id` UNIQUE는 Redis Balance 중복 증가 방어를 대신하지 않는다.
-- `TicketEarnService`는 `EarnRewardPolicy`에 따라 DAILY와 ONCE를 함께 처리한다. DAILY Guard는 기존처럼 25시간 TTL을 쓰고, Creator Space SHARE의 ONCE Guard는 만료 없이 보존한다. Stream에는 정책을 함께 기록하며, DB 완료 키도 DAILY는 UTC 날짜·ONCE는 고정값으로 분리한다.
+- `TicketOnceEarnService`는 Redis 실행 전에 durable request를 먼저 claim하고, `PENDING`이면 ONCE Lua를 실행한다. Redis 수락 뒤에는 별도 짧은 Transaction으로 `ACCEPTED`를 기록한다. 따라서 Redis Guard가 유실된 뒤 다른 `requestId`가 와도 DB Business Key가 Redis 잔액 증가 전에 차단한다. Stream에는 정책을 함께 기록하며, DB 완료 키도 DAILY는 UTC 날짜·ONCE는 고정값으로 분리한다.
 
 ## 정합성 검증과 수동 보정
 
