@@ -41,7 +41,7 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 
 ### 검증 범위(caveat)
 
-- **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 크리에이터별 LIKE·SHARE를 각각 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 출석은 `V16__add_common_ticket.sql`이 공용 ATTENDANCE를 시딩하므로 Creator 승인 시 생성하지 않고, `YOUTUBE_SUBSCRIPTION`도 기본 미션으로 자동 생성하지 않는다. 이미 존재하는 유형은 건너뛰므로 재호출해도 안전하다. 이번 배포 전 기존 Creator의 SHARE 누락분은 `V26__add_share_mission_type.sql`이 멱등 시딩하며, 이후 수동 복구가 필요하면 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
+- **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 크리에이터별 LIKE·SHARE를 각각 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 출석은 `V16__add_common_ticket.sql`이 공용 ATTENDANCE를 시딩하므로 Creator 승인 시 생성하지 않고, `YOUTUBE_SUBSCRIPTION`도 기본 미션으로 자동 생성하지 않는다. 이미 존재하는 유형은 건너뛰므로 재호출해도 안전하다. 이번 배포 전 기존 Creator의 SHARE 누락분은 `V27__seed_share_mission.sql`이 멱등 시딩하며, 이후 수동 복구가 필요하면 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
 - **일반 완료 API의 중복 적립 차단은 LIKE에만 적용한다.** `MissionCompletionServiceTest`와 `MissionCompletionConcurrencyIntegrationTest`는 LIKE의 EARN 결과·동시 요청을 검증한다. SHARE의 중복 적립 검증은 Creator Space 공유 완료 처리(Issue #311)에서 해당 경로와 함께 추가한다. 공용 ATTENDANCE의 단일 적립은 `CommonMissionCompletionServiceIntegrationTest`에서 별도로 검증한다.
 
 ## 공용 미션(크리에이터 무관, 이슈 #219)
