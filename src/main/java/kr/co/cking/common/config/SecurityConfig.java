@@ -107,9 +107,15 @@ public class SecurityConfig {
                                 "/api/me/winners/**",
                                 "/api/creator/applications",
                                 "/api/creator/applications/me",
-                                "/api/creator/space"
+                                "/api/creator/space",
+                                "/api/creator/calendar/**"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/creators/*/calendar/schedules",
+                                "/api/creators/*/calendar/schedules/*"
+                        ).permitAll()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer
