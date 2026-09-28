@@ -16,11 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
-/**
- * 관리자 기본 크리에이터 스페이스 템플릿의 생성·조회·수정·활성화를 담당한다.
- * Creator 승인 시 스페이스를 자동 생성하는 일은 이 서비스의 범위가 아니다 —
- * {@link CreatorSpaceService}가 {@link #findActive()}로 활성 템플릿을 읽어간다.
- */
+/** 관리자 기본 Creator Space 템플릿을 관리한다. */
 @Service
 @RequiredArgsConstructor
 @Transactional

@@ -25,11 +25,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Creator 승인 시점의 Creator Space 자동 생성이 실제 DB에서 승인과 하나의 트랜잭션으로
- * 동작하는지, 활성 템플릿이 없을 때 정의한 정책대로 동작하는지, 같은 크리에이터에 대해
- * 두 번 호출해도 Space가 중복 생성되지 않는지 검증한다(이슈 #270).
- */
+/** Creator 승인과 Space 생성의 트랜잭션 경계를 검증한다. */
 @SpringBootTest
 class CreatorApprovalSpaceCreationIntegrationTest {
 
@@ -101,11 +97,6 @@ class CreatorApprovalSpaceCreationIntegrationTest {
         assertThat(space.isMissionsTabEnabled()).isEqualTo(TEMPLATE_FIELDS.missionsTabEnabled());
     }
 
-    /**
-     * 같은 활성 템플릿으로 여러 Creator를 연달아 승인해도 slug가 creatorId로 갈라져 충돌하지
-     * 않는다. slugRule에 {creatorId} 자리표시자가 없으면 두 번째 승인부터
-     * uk_creator_space_slug UNIQUE 제약 위반으로 실패했던 문제의 회귀 테스트다.
-     */
     @Test
     void 같은_템플릿으로_여러_크리에이터를_승인해도_slug가_충돌하지_않는다() {
         Member admin = createMember("복수승인관리자", MemberRole.ADMIN);
@@ -126,13 +117,49 @@ class CreatorApprovalSpaceCreationIntegrationTest {
         assertThat(firstSpace.getSlug()).isNotEqualTo(secondSpace.getSlug());
     }
 
-    /**
-     * Controller의 slugRule Bean Validation은 새로 생성·수정하는 템플릿만 검증한다. 그 검증이
-     * 생기기 전에 저장돼 활성 상태로 남아 있는 템플릿을 흉내 내기 위해, 여기서는 Controller를
-     * 거치지 않고 {@link CreatorSpaceTemplateService#create}를 직접 호출해 {creatorId}
-     * 자리표시자가 없는 슬러그 규칙으로 템플릿을 만든다. 이 상태에서 승인하면 명확한
-     * BusinessException으로 실패하며, Creator 생성과 신청 승인 상태도 함께 롤백돼야 한다.
-     */
+    @Test
+    void 템플릿_slugRule을_바꾼_뒤_순차_승인해도_slug가_충돌하지_않는다() {
+        Member admin = createMember("템플릿변경관리자", MemberRole.ADMIN);
+        Member firstApplicant = createMember("템플릿변경신청자1", MemberRole.USER);
+        Member secondApplicant = createMember("템플릿변경신청자2", MemberRole.USER);
+        Member thirdApplicant = createMember("템플릿변경신청자3", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+
+        creatorApplicationService.approve(admin.getMemberId(), createApplication(firstApplicant.getMemberId()).getId());
+        creatorSpaceTemplateService.update(admin.getMemberId(), templateId, withSlugRule("creator-1-{creatorId}"));
+        creatorApplicationService.approve(admin.getMemberId(), createApplication(secondApplicant.getMemberId()).getId());
+        creatorSpaceTemplateService.update(admin.getMemberId(), templateId, withSlugRule("c{creatorId}"));
+        creatorApplicationService.approve(admin.getMemberId(), createApplication(thirdApplicant.getMemberId()).getId());
+
+        Long firstCreatorId = creatorRepository.findByMemberId(firstApplicant.getMemberId()).orElseThrow().getCreatorId();
+        Long secondCreatorId = creatorRepository.findByMemberId(secondApplicant.getMemberId()).orElseThrow().getCreatorId();
+        Long thirdCreatorId = creatorRepository.findByMemberId(thirdApplicant.getMemberId()).orElseThrow().getCreatorId();
+        assertThat(creatorSpaceRepository.findByCreatorId(firstCreatorId).orElseThrow().getSlug())
+                .isEqualTo("creator-" + firstCreatorId);
+        assertThat(creatorSpaceRepository.findByCreatorId(secondCreatorId).orElseThrow().getSlug())
+                .isEqualTo("creator-1-" + secondCreatorId);
+        assertThat(creatorSpaceRepository.findByCreatorId(thirdCreatorId).orElseThrow().getSlug())
+                .isEqualTo("c" + thirdCreatorId);
+    }
+
+    @Test
+    void 자리표시자가_끝에_오지_않는_레거시_slugRule이면_승인이_롤백된다() {
+        Member admin = createMember("레거시접미사관리자", MemberRole.ADMIN);
+        Member applicant = createMember("레거시접미사신청자", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(
+                admin.getMemberId(), withSlugRule("creator-{creatorId}0")).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        CreatorApplication application = createApplication(applicant.getMemberId());
+
+        assertThatThrownBy(() -> creatorApplicationService.approve(admin.getMemberId(), application.getId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CreatorErrorCode.INVALID_ACTIVE_SPACE_TEMPLATE);
+        assertThat(creatorRepository.existsByMemberId(applicant.getMemberId())).isFalse();
+    }
+
+    // 기존 데이터처럼 검증을 거치지 않은 템플릿을 서비스에서 직접 만든다.
     @Test
     void 활성_템플릿의_slugRule에_자리표시자가_없으면_승인이_롤백된다() {
         Member admin = createMember("레거시템플릿관리자", MemberRole.ADMIN);
@@ -154,7 +181,6 @@ class CreatorApprovalSpaceCreationIntegrationTest {
                 .isEqualTo(CreatorApplicationStatus.PENDING);
     }
 
-    /** 활성 템플릿이 없으면 승인 자체가 실패하며, Creator 생성과 신청 승인 상태도 함께 롤백된다. */
     @Test
     void 활성_템플릿이_없으면_승인_자체가_롤백된다() {
         Member admin = createMember("템플릿없는관리자", MemberRole.ADMIN);
@@ -171,7 +197,6 @@ class CreatorApprovalSpaceCreationIntegrationTest {
                 .isEqualTo(CreatorApplicationStatus.PENDING);
     }
 
-    /** 같은 크리에이터에 대해 두 번 호출해도 Space가 하나만 존재해야 한다(승인 재시도·중복 호출 대비). */
     @Test
     void 동일_크리에이터에_대해_스페이스가_두_번_생성되지_않는다() {
         Member admin = createMember("멱등관리자", MemberRole.ADMIN);
@@ -187,6 +212,14 @@ class CreatorApprovalSpaceCreationIntegrationTest {
         Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM creator_space WHERE creator_id = ?", Long.class, creator.getCreatorId());
         assertThat(count).isEqualTo(1L);
+    }
+
+    private CreatorSpaceTemplateFields withSlugRule(String slugRule) {
+        return new CreatorSpaceTemplateFields(
+                TEMPLATE_FIELDS.introText(), TEMPLATE_FIELDS.profileImageUrl(), TEMPLATE_FIELDS.bannerImageUrl(),
+                slugRule, TEMPLATE_FIELDS.homeTabEnabled(), TEMPLATE_FIELDS.missionsTabEnabled(),
+                TEMPLATE_FIELDS.postsTabEnabled(), TEMPLATE_FIELDS.eventsTabEnabled()
+        );
     }
 
     private Member createMember(String name, MemberRole role) {

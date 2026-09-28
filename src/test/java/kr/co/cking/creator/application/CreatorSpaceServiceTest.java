@@ -123,6 +123,24 @@ class CreatorSpaceServiceTest {
         verify(spaceRepository, never()).save(any());
     }
 
+    @Test
+    void throwsWhenActiveTemplateSlugRuleDoesNotEndWithPlaceholder() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
+                1L, "소개", "p", "b", "creator-{creatorId}0", true, true, true, true
+        );
+        given(spaceRepository.findByCreatorId(1L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(template));
+        CreatorSpaceService service = new CreatorSpaceService(spaceRepository, templateService);
+
+        assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(1L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CreatorErrorCode.INVALID_ACTIVE_SPACE_TEMPLATE);
+        verify(spaceRepository, never()).save(any());
+    }
+
     /**
      * Controller의 @Size(max=92)는 creatorId가 19자리까지 갈 수 있다는 worst-case 가정으로
      * 정한 상한이라, 그보다 느슨했던 과거 규칙(최대 100자)으로 저장된 레거시 템플릿은 실제

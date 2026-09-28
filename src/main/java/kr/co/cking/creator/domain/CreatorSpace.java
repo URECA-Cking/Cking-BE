@@ -14,10 +14,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
-/**
- * 승인된 크리에이터 전용 Creator Space다. 승인 시점에 활성 {@link CreatorSpaceTemplate}의
- * 값을 복사해 만들며, 이후 템플릿이 바뀌어도 이미 만들어진 Space는 영향받지 않는다.
- */
+/** 승인 시점의 템플릿 값을 독립적으로 보관하는 Creator Space. */
 @Entity
 @Table(
         name = "creator_space",
@@ -81,10 +78,6 @@ public class CreatorSpace {
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
-    /**
-     * 템플릿의 현재 값을 값 그대로 복사해 새 인스턴스를 만든다. 템플릿 엔티티를 참조로
-     * 들고 있지 않으므로 이후 템플릿이 수정·비활성화돼도 이 인스턴스는 영향받지 않는다.
-     */
     public static CreatorSpace fromTemplate(Long creatorId, CreatorSpaceTemplate template, String slug) {
         return new CreatorSpace(
                 creatorId,

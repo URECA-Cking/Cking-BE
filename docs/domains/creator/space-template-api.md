@@ -16,7 +16,7 @@
 | `introText` | 기본 소개 문구 (최대 500자) |
 | `profileImageUrl` | 기본 프로필 이미지 URL (최대 500자) |
 | `bannerImageUrl` | 기본 배너 이미지 URL (최대 500자) |
-| `slugRule` | 공유 URL slug 생성 규칙 문자열 (최대 92자). `{creatorId}`를 정확히 한 번 포함해야 한다. 실제 slug는 Creator 스페이스 생성 시점([creator/README.md](README.md#creator-space-자동-생성이슈-270))에 이 규칙의 `{creatorId}`를 실제 creatorId로 치환해 만들어지며, 템플릿 자체는 규칙만 보관한다. |
+| `slugRule` | 공유 URL slug 생성 규칙 문자열 (최대 92자). 소문자·숫자·하이픈(`[a-z0-9-]`)으로 된 접두사 뒤 **맨 끝에** `{creatorId}`를 정확히 한 번 둬야 하고, 접두사가 있으면 마지막 글자는 숫자가 아니어야 한다(정규식 `^(?:[a-z0-9-]*[a-z-])?\{creatorId\}$`, 예: `creator-{creatorId}`). 그래야 slug 끝 숫자열이 곧 creatorId가 돼, 템플릿을 바꿔도 서로 다른 Creator의 slug가 겹치지 않는다. 실제 slug는 Creator 스페이스 생성 시점([creator/README.md](README.md#creator-space-자동-생성이슈-270))에 이 규칙의 `{creatorId}`를 실제 creatorId로 치환해 만들어지며, 템플릿 자체는 규칙만 보관한다. |
 | `homeTabEnabled`, `missionsTabEnabled`, `postsTabEnabled`, `eventsTabEnabled` | 새 스페이스에 노출할 홈·미션·게시물·이벤트 탭 여부 |
 
 ## 활성 템플릿 유일성
@@ -93,5 +93,5 @@ Query parameter는 없다. 응답은 생성 API와 같은 형식이다.
 
 - 없는 Member 또는 템플릿은 `RESOURCE_NOT_FOUND`다.
 - 관리자가 아닌 호출자는 `FORBIDDEN`이다.
-- 유효하지 않은 요청 필드(빈 문자열, 길이 초과, 누락, `slugRule`에 `{creatorId}`가 없거나 두 번 이상 포함됨)는 `VALIDATION_FAILED`다.
+- 유효하지 않은 요청 필드(빈 문자열, 길이 초과, 누락, `slugRule`이 위 형식이 아님 — `{creatorId}`가 없거나 두 번 이상, 맨 끝이 아님, 바로 앞이 숫자, 대문자·밑줄 등 허용되지 않은 문자)는 `VALIDATION_FAILED`다.
 - 동시 활성화 요청 경합은 `CONCURRENT_COMMAND`다.

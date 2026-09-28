@@ -5,6 +5,8 @@ import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
@@ -123,6 +125,27 @@ class CreatorSpaceTemplateControllerTest {
                                   "eventsTabEnabled": true
                                 }
                                 """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"creator-{creatorId}0", "creator1{creatorId}", "Creator-{creatorId}"})
+    void slugRuleThatCanCollideAfterTemplateChangeReturnsValidationFailedEnvelope(String slugRule) throws Exception {
+        mockMvc.perform(post("/api/admin/creator-space-templates")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "소개",
+                                  "profileImageUrl": "https://img/profile.png",
+                                  "bannerImageUrl": "https://img/banner.png",
+                                  "slugRule": "%s",
+                                  "homeTabEnabled": true,
+                                  "missionsTabEnabled": true,
+                                  "postsTabEnabled": true,
+                                  "eventsTabEnabled": true
+                                }
+                                """.formatted(slugRule)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }

@@ -17,10 +17,12 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 ### slug 생성과 slugRule 검증(2단 방어)
 
-템플릿의 `slugRule`(예: `creator-{creatorId}`)에서 `{creatorId}` 자리표시자를 실제 `creatorId`로 치환해 Space의 `slug`를 만든다. `{creatorId}`가 없거나 두 번 이상 있으면 모든(또는 일부) Creator가 같은 slug를 가지려 해 `creator_space.slug` UNIQUE 제약(`uk_creator_space_slug`)을 위반하고, 치환 결과가 `creator_space.slug` 컬럼(VARCHAR(100))보다 길면 컬럼 길이 초과로 실패한다. 이 두 가지를 두 지점에서 막는다.
+템플릿의 `slugRule`(예: `creator-{creatorId}`)에서 `{creatorId}` 자리표시자를 실제 `creatorId`로 치환해 Space의 `slug`를 만든다. `{creatorId}`가 없거나 두 번 이상 있으면 모든(또는 일부) Creator가 같은 slug를 가지려 해 `creator_space.slug` UNIQUE 제약(`uk_creator_space_slug`)을 위반하고, 치환 결과가 `creator_space.slug` 컬럼(VARCHAR(100))보다 길면 컬럼 길이 초과로 실패한다.
 
-1. **입력 시점**([space-template-api.md](space-template-api.md#템플릿-필드)): `CreatorSpaceTemplateRequest`의 `slugRule`은 `{creatorId}`를 정확히 한 번 포함해야 하고 최대 92자다(`{creatorId}`는 11자, creatorId는 `Long`이라 최대 19자리 숫자로 치환될 수 있어 최대 8자가 늘어남 — `92 + 8 = 100`). 새로 생성·수정하는 템플릿만 검증한다.
-2. **사용 시점**(`CreatorSpaceService`): 이 Bean Validation이 생기기 전에 저장돼 활성 상태로 남아 있을 수 있는 템플릿을 대비해, 활성 템플릿을 읽어 slug를 만들기 직전에 같은 규칙(자리표시자 정확히 1회, 치환 결과 100자 이내)을 다시 검증한다. 위반하면 `CreatorErrorCode.INVALID_ACTIVE_SPACE_TEMPLATE`(409)을 던져 DB 제약·컬럼 길이 오류 대신 명확한 원인으로 승인을 실패시킨다.
+자리표시자가 한 번뿐이어도 템플릿을 바꾸면 충돌할 수 있다. `creator-{creatorId}0`으로 id=1의 slug `creator-10`을 만든 뒤 규칙을 `creator-{creatorId}`로 바꾸면 id=10도 `creator-10`이 된다. 그래서 `slugRule`은 `CreatorSpaceSlugRule` 형식만 허용한다: 소문자·숫자·하이픈(`[a-z0-9-]`) 접두사 뒤 **맨 끝에** `{creatorId}`가 한 번 오고, 접두사가 있으면 마지막 글자는 숫자가 아니다. 이러면 slug 끝 숫자열이 곧 creatorId(앞자리 0 없는 양수)라서, 규칙이 몇 번 바뀌어도 서로 다른 Creator의 slug는 같을 수 없다. 소문자 ASCII로 제한하는 이유는 `slug` 컬럼 collation(`utf8mb4_0900_ai_ci`)이 대소문자·전각 숫자 등을 같은 값으로 비교하기 때문이다. 이 규칙과 길이를 두 지점에서 검사한다.
+
+1. **입력 시점**([space-template-api.md](space-template-api.md#템플릿-필드)): `CreatorSpaceTemplateRequest`의 `slugRule`은 위 형식이어야 하고 최대 92자다(`{creatorId}`는 11자, creatorId는 `Long`이라 최대 19자리 숫자로 치환될 수 있어 최대 8자가 늘어남 — `92 + 8 = 100`). 새로 생성·수정하는 템플릿만 검증한다.
+2. **사용 시점**(`CreatorSpaceService`): 이 Bean Validation이 생기거나 강화되기 전에 저장돼 활성 상태로 남아 있을 수 있는 템플릿을 대비해, 활성 템플릿을 읽어 slug를 만들기 직전에 같은 규칙(`CreatorSpaceSlugRule` 형식, 치환 결과 100자 이내)을 다시 검증한다. 위반하면 `CreatorErrorCode.INVALID_ACTIVE_SPACE_TEMPLATE`(409)을 던져 DB 제약·컬럼 길이 오류 대신 명확한 원인으로 승인을 실패시킨다.
 
 ### 트랜잭션 경계와 활성 템플릿 없음·무효 정책
 
@@ -29,3 +31,10 @@ Creator Space 생성은 승인 트랜잭션에 참여한다(기본 전파, `REQU
 ### 멱등성
 
 `CreatorSpaceService.createFromActiveTemplateIfAbsent(creatorId)`는 먼저 `creator_space.creator_id`로 기존 Space를 조회하고, 있으면 새로 만들지 않고 그대로 반환한다. `creator.member_id` UNIQUE 제약상 같은 Member의 승인은 전체 시스템에서 한 번만 성공하므로(재승인 시도는 `requirePending()`이 `INVALID_STATE`로 막는다) 현재 호출 경로에서 동시 중복 생성 경합은 없지만, `creator_space.creator_id` UNIQUE 제약(`uk_creator_space_creator`)이 최종 안전망이다.
+
+### 기존 승인 Creator 백필(V19)
+
+V18 이전에 승인된 Creator에게는 Space가 없으므로, `V19__backfill_creator_space.sql`이 배포 시 한 번 활성 템플릿 값으로 Space를 채운다. Space가 없는 Creator만 대상으로 해 다시 실행해도 결과가 같고, slug는 승인 경로와 같은 규칙으로 만든다.
+
+- 활성 템플릿이 없거나, 활성 템플릿의 `slugRule`이 위 형식이 아니거나, 치환 결과가 100자를 넘으면 배포를 막지 않고 아무것도 넣지 않는다. 이때 기존 Creator는 Space 없이 남는다. 템플릿을 활성화하거나 고친 뒤 V19의 `INSERT ... SELECT`를 운영자가 한 번 직접 실행해 채운다. 이미 Space가 있는 Creator는 건너뛴다.
+- 신규 승인과 달리 백필은 Creator마다 따로 성공·실패하지 않는다. 조건을 만족하는 Creator 전체에 한 번에 들어가거나, 하나도 들어가지 않는다.
