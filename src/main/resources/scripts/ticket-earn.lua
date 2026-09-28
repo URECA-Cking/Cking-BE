@@ -4,7 +4,7 @@
 -- 순서(entry-spend.lua와 동일 원칙): 멱등성 확인 -> 중복 적립 가드 -> Balance 증가
 -- -> Stream 발행 -> 성공 시에만 멱등 결과 저장.
 --
--- KEYS[1] = idem:mission:{requestId}                                        String(JSON, TTL 25h)
+-- KEYS[1] = DAILY idem:mission:{requestId}(TTL 25h), ONCE idem:mission-once:{requestId}(TTL 없음)
 -- KEYS[2] = mission:earn-guard:{userId}:{missionType}:{creatorId}:{yyyymmdd} String(SETNX, FR-P2-006)
 -- KEYS[3] = ticket:balance:{creatorId}:{userId}                             String(integer)
 -- KEYS[4] = ticket:maint:{creatorId}:{userId}                               존재 여부만 확인(issue #172)
@@ -23,6 +23,7 @@
 -- ARGV[11] = periodKey       (이번 호출 시점에 계산된 값. fingerprint에는 안 쓰이고
 --                             Guard 키 구성과 Stream 발행 필드로만 쓰인다)
 -- ARGV[12] = missionKey
+-- ARGV[13] = rewardPolicy    (DAILY, ONCE)
 --
 -- 반환: { resultCode, ...옵션 필드 } (EarnResultCode 6종 + BALANCE_MAINTENANCE 중
 -- 이 스크립트가 직접 반환하는 코드)
@@ -58,6 +59,20 @@ local missionType = ARGV[9]
 local missionId   = ARGV[10]
 local periodKey   = ARGV[11]
 local missionKey  = ARGV[12]
+local rewardPolicy = ARGV[13]
+
+local function setIdem(key, value, ttl, nx)
+    if ttl > 0 then
+        if nx then
+            return redis.call('SET', key, value, 'NX', 'EX', ttl)
+        end
+        return redis.pcall('SET', key, value, 'EX', ttl)
+    end
+    if nx then
+        return redis.call('SET', key, value, 'NX')
+    end
+    return redis.pcall('SET', key, value)
+end
 
 -- 1) 멱등성 확인
 local stored = redis.call('GET', idemKey)
@@ -85,9 +100,9 @@ if stored then
     local guardValue = requestId .. ':' .. fingerprint
     if redis.call('GET', originalGuardKey) == guardValue then
         local result = { 'ALREADY_PROCESSED' }
-        redis.pcall('SET', idemKey,
+        setIdem(idemKey,
             cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = originalGuardKey }),
-            'EX', idemTtl)
+            idemTtl, false)
         return result
     end
     -- Guard가 없거나 다르면 신규 지급을 막는다.
@@ -102,9 +117,9 @@ if redis.call('EXISTS', maintenanceLockKey) == 1 then
 end
 
 -- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.
-local idemReserved = redis.call('SET', idemKey,
+local idemReserved = setIdem(idemKey,
     cjson.encode({ fingerprint = fingerprint, status = 'PROCESSING', guardKey = guardKey }),
-    'NX', 'EX', idemTtl)
+    idemTtl, true)
 if not idemReserved then
     return redis.error_reply('IDEM_RESERVE_FAILED: unexpected idem conflict for requestId=' .. requestId)
 end
@@ -114,7 +129,12 @@ end
 -- 다른 레이어의 별도 키다 - 임의로 통합하지 않는다(취합v1.5.4 §4.2).
 -- Guard 선점 오류 시에는 아직 변경된 상태가 없으므로 idem 예약을 정리한다.
 local guardValue = requestId .. ':' .. fingerprint
-local guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+local guardAcquired
+if guardTtl > 0 then
+    guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+else
+    guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX')
+end
 if type(guardAcquired) == 'table' and guardAcquired.err then
     redis.call('DEL', idemKey)
     return redis.error_reply('GUARD_ACQUIRE_FAILED: ' .. guardAcquired.err)
@@ -154,7 +174,8 @@ local streamId = redis.pcall('XADD', streamKey, '*',
     'missionId', missionId,
     'periodKey', periodKey,
     'missionKey', missionKey,
-    'amount', ARGV[1])
+    'amount', ARGV[1],
+    'rewardPolicy', rewardPolicy)
 
 if type(streamId) == 'table' and streamId.err then
     -- Balance는 보상해 원상복구했으므로 이 시도도 안전하게 처음부터 재시도할 수
@@ -172,8 +193,8 @@ end
 local result = { 'EARN_ACCEPTED', streamId, tostring(newBalance) }
 
 -- COMPLETED에도 guardKey를 보존해 원래 Guard를 추적한다.
-redis.pcall('SET', idemKey,
+setIdem(idemKey,
     cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = guardKey }),
-    'EX', idemTtl)
+    idemTtl, false)
 
 return result

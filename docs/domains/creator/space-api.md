@@ -92,6 +92,10 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 | --- | --- |
 | `slug` | 필수, 최대 100자. 새 slug는 3~30자 소문자·숫자·하이픈·밑줄, 처음과 끝은 소문자나 숫자이며 예약어·중복 불가. 본인이 버린 이전 slug로 되돌릴 때는 형식 검사를 하지 않는다([space-slug-policy.md](space-slug-policy.md)) |
 
+## Creator Space 공유 미션 완료
+
+공유 링크에서 얻은 `creatorId`로 공유 완료를 보상 처리할 때는 Mission API의 `POST /api/creators/{creatorId}/missions/share/complete`를 사용한다. Bearer Access JWT와 UUID `requestId`가 필요하며, 서버가 해당 Creator의 SHARE 미션을 검증한 뒤 Creator 전용 응모권 적립을 요청한다. 이 API는 공유 버튼 클릭을 완료로 간주하는 Mock 방식이고, 사용자·Creator·SHARE 미션 기준으로 평생 한 번만 보상한다. 상세 요청·응답·오류 계약은 [Mission API](../mission/api.md#post-apicreatorscreatoridmissionssharecomplete)를 따른다.
+
 ## 오류
 
 - 공개 조회에서 Creator·Space·slug가 없으면 `RESOURCE_NOT_FOUND`(404)다.

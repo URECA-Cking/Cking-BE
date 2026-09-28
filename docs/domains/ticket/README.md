@@ -9,17 +9,18 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 ## EARN과 Stream 반영
 
-미션 계층은 같은 JVM의 `TicketEarnService.earn(EarnCommand)`를 호출한다. Lua가 Redis 잔액 증가와 `stream:ticket-earned` 발행을 처리하고, Consumer가 EARN Ledger와 DB Balance를 저장한다. 외부 HTTP 내부 호출은 사용하지 않는다.
+미션 계층은 일일 보상에는 같은 JVM의 `TicketEarnService.earn(EarnCommand)`를, 평생 1회 보상에는 `TicketOnceEarnService.earn(EarnCommand)`를 호출한다. Lua가 Redis 잔액 증가와 `stream:ticket-earned` 발행을 처리하고, Consumer가 EARN Ledger와 DB Balance를 저장한다. 외부 HTTP 내부 호출은 사용하지 않는다.
 
 ### 평생 1회 보상 ONCE EARN 목표 계약
 
-기존 `TicketEarnService`의 `idem:mission:{requestId}`와 일일 Guard는 25시간 TTL이므로 평생 1회 보상의 재시도 계약으로 사용할 수 없다. `YOUTUBE_SUBSCRIPTION` 승인 보상은 별도 `TicketOnceEarnService`를 사용한다. 상세 호출·상태 계약은 [YouTube 구독 인증 정본](../subscription-verification/README.md#ticket-once-적립의-영구-멱등성)을 따른다.
+기존 `TicketEarnService`의 일일 경로는 25시간 TTL을 사용하므로 평생 1회 보상의 재시도 계약으로 사용할 수 없다. SHARE와 `YOUTUBE_SUBSCRIPTION` 승인 보상은 별도 `TicketOnceEarnService`를 사용한다. 상세 호출·상태 계약은 [YouTube 구독 인증 정본](../subscription-verification/README.md#ticket-once-적립의-영구-멱등성)을 따른다.
 
-- Ticket 도메인은 `ticket_once_earn_request` durable request를 소유한다. `request_id`와 `(member_id, creator_id, mission_id)`를 각각 UNIQUE로 두고 `PENDING → ACCEPTED`를 기록한다.
-- ONCE Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:once:{memberId}:{creatorId}:{missionId}`를 TTL 없이 선점한 뒤 Redis Balance 증가와 기존 EARN Stream 발행을 원자 처리한다.
+- Ticket 도메인은 모든 EARN의 `request_id`를 `ticket_earn_request` durable request로 Redis 실행 전에 전역 선점한다. DAILY·ONCE가 같은 requestId를 서로 다른 Redis namespace에서 각각 처리하지 않도록 `request_id` UNIQUE와 `PENDING → ACCEPTED`를 기록하며, 정책까지 포함한 요청 내용이 달라지면 `REQUEST_ID_CONFLICT`로 차단한다.
+- 평생 1회 보상은 추가로 `ticket_once_earn_request` durable request를 소유한다. `request_id`와 `(member_id, creator_id, mission_id)`를 각각 UNIQUE로 두고 `PENDING → ACCEPTED`를 기록한다. `periodKey`는 최초 claim 값으로 보존하되, 서버 파생값이므로 request payload fingerprint에는 포함하지 않는다.
+- ONCE Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:{userId}:{missionType}:{creatorId}:once`를 TTL 없이 선점한 뒤 Redis Balance 증가와 기존 EARN Stream 발행을 원자 처리한다.
 - ONCE key는 TTL을 설정하거나 성공 후 삭제하지 않는다. 모든 재호출은 Redis 실행 전에 durable request를 조회하고, 이미 DB 조회를 통과한 동시 실행은 영구 Redis key가 방어한다.
 - 기존 EARN Stream Consumer, `mission_completion`, Ledger와 DB Balance 반영은 재사용한다. DB Consumer의 `request_id` UNIQUE는 Redis Balance 중복 증가 방어를 대신하지 않는다.
-- 기존 일일 `TicketEarnService`와 `ticket-earn.lua`의 TTL·Guard 계약은 변경하지 않는다.
+- `TicketOnceEarnService`는 전역 request claim과 ONCE durable request를 Redis 실행 전에 먼저 claim하고, 둘 다 `PENDING`이면 ONCE Lua를 실행한다. Redis 수락 뒤에는 별도 짧은 Transaction으로 `ACCEPTED`를 기록한다. 따라서 Redis Guard가 유실된 뒤 다른 `requestId`가 와도 DB Business Key가 Redis 잔액 증가 전에 차단한다. Stream에는 정책을 함께 기록하며, DB 완료 키도 DAILY는 UTC 날짜·ONCE는 고정값으로 분리한다.
 
 ## 정합성 검증과 수동 보정
 
@@ -51,7 +52,7 @@ SPEND·EARN Lua도 같은 lock을 확인해 lock이 걸린 동안 새 차감·�
 사용자는 크리에이터별 응모권과 별개로 아무 크리에이터에게나 쓸 수 있는 공용 응모권을 가진다. `user_ticket_balance`/`ticket_ledger`가 `creator_id NOT NULL`이라 이 개념을 담을 수 없어, 크리에이터 축만 뺀 병렬 테이블·경로로 분리했다.
 
 - **저장**: `user_common_ticket_balance`(PK `member_id`만), `common_ticket_ledger`.
-- **EARN**: `CommonTicketEarnService`/`CommonTicketEarnServiceImpl`이 `common-ticket-earn.lua`로 `TicketEarnService`와 동일한 원자성(멱등성 확인 → 중복 적립 가드 → Balance 증가 → Stream 발행)을 재현한다. Redis 키에 `creatorId` 자리가 없다(`ticket:balance:common:{userId}`, `mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd}`, `idem:common-mission:{requestId}`).
+- **EARN**: `CommonTicketEarnService`/`CommonTicketEarnServiceImpl`이 `ticket_earn_request`의 전역 requestId claim 뒤 `common-ticket-earn.lua`로 `TicketEarnService`와 동일한 원자성(멱등성 확인 → 중복 적립 가드 → Balance 증가 → Stream 발행)을 재현한다. 따라서 Common·Creator EARN 사이에서도 같은 requestId는 `REQUEST_ID_CONFLICT`로 차단한다. Redis 키에 `creatorId` 자리가 없다(`ticket:balance:common:{userId}`, `mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd}`, `idem:common-mission:{requestId}`).
 - **Stream**: `stream:common-ticket-earned`를 `cg:common-ticket-earn` Consumer Group으로 소비한다(`CommonEarnStreamListener`/`CommonEarnStreamConfig`). `CommonMissionEarnLedgerService`가 `common_mission_completion` → `common_ticket_ledger` → `user_common_ticket_balance` 반영을 한 트랜잭션으로 묶는다(`TicketEarnLedgerService`와 동일 계약).
 - **PEL 회수·Dead Stream 이관**(이슈 #244): 반영에 실패해 PEL에 남은 메시지는 `CommonEarnStreamPelRecoveryScheduler`가 XCLAIM으로 회수해 `CommonEarnStreamListener.process()`로 재처리한다(consumer `common-earn-pel-recovery`, 기본 30초 주기·idle 60초 이상). 최대 재시도(기본 5회, `common-earn-pel-max-retry`)를 넘기면 `EarnStreamPelRecoveryScheduler`(크리에이터 EARN)와 동일하게 `dead_stream_message`(`stream_type = COMMON_EARN`)로 옮기고 ACK한다 - 영구히 PEL에 남기지 않는다. 절대 성공할 수 없는 메시지가 XPENDING을 계속 채우던 이전 구조(더 긴 간격 재시도·페이지네이션)는 이관이 생기면서 필요 없어져 제거했다.
 - **관리자 조회·replay**: `GET /api/admin/dead-streams`, `POST /api/admin/dead-streams/{id}/replay`(`DeadStreamAdminController`)를 EARN/SPEND와 동일하게 그대로 쓴다 - `streamType`이 `COMMON_EARN`으로 나온다. `DeadStreamReplayService`가 `CommonMissionEarnLedgerService.apply()`로 재적용한다(requestId 멱등이라 반복 replay해도 안전).

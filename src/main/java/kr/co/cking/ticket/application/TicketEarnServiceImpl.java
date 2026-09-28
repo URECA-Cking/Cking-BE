@@ -1,15 +1,12 @@
 package kr.co.cking.ticket.application;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
@@ -35,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Slf4j
 @Service
-public class TicketEarnServiceImpl implements TicketEarnService {
+public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaimedExecutor {
 
     // idem과 일일 Guard의 replay 보존 기간을 동일하게 유지한다.
     private static final long IDEM_TTL_SECONDS = 90_000L;
@@ -46,6 +43,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
     private final DefaultRedisScript<List> ticketEarnLuaScript;
     private final String streamKey;
     private final ObjectMapper objectMapper;
+    private final TicketEarnRequestClaimService requestClaimService;
 
     public TicketEarnServiceImpl(
             StringRedisTemplate redisTemplate,
@@ -53,24 +51,47 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String streamKey,
             ObjectMapper objectMapper
     ) {
+        this(redisTemplate, ticketEarnLuaScript, streamKey, objectMapper, null);
+    }
+
+    @Autowired
+    public TicketEarnServiceImpl(
+            StringRedisTemplate redisTemplate,
+            @Qualifier("ticketEarnLuaScript") DefaultRedisScript<List> ticketEarnLuaScript,
+            @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String streamKey,
+            ObjectMapper objectMapper,
+            TicketEarnRequestClaimService requestClaimService
+    ) {
         this.redisTemplate = redisTemplate;
         this.ticketEarnLuaScript = ticketEarnLuaScript;
         this.streamKey = streamKey;
         this.objectMapper = objectMapper;
+        this.requestClaimService = requestClaimService;
     }
 
     @Override
     public EarnResult earn(EarnCommand command) {
+        EarnResult preClaimResult = preClaimResult(command);
+        if (preClaimResult != null) {
+            return preClaimResult;
+        }
+
+        return earnClaimed(command);
+    }
+
+    @Override
+    public EarnResult earnClaimed(EarnCommand command) {
         String requestId = command.requestId().toString();
-        String periodKeyGuardFormat = toGuardPeriodKey(command.periodKey());
-        String fingerprint = computeFingerprint(command);
+        String idemKey = idemKeyOf(command);
+        String periodKeyGuardFormat = guardKeySegmentOf(command);
+        String fingerprint = command.computeFingerprint();
         List<?> result;
 
         try {
             result = redisTemplate.execute(
                     ticketEarnLuaScript,
                     List.of(
-                            TicketRedisKeys.idemMission(requestId),
+                            idemKey,
                             TicketRedisKeys.earnGuard(
                                     command.userId(), command.missionType(), command.creatorId(), periodKeyGuardFormat
                             ),
@@ -80,15 +101,16 @@ public class TicketEarnServiceImpl implements TicketEarnService {
                     String.valueOf(command.amount()),
                     fingerprint,
                     streamKey,
-                    String.valueOf(IDEM_TTL_SECONDS),
-                    String.valueOf(GUARD_TTL_SECONDS),
+                    String.valueOf(idemTtlSecondsOf(command)),
+                    String.valueOf(guardTtlSecondsOf(command)),
                     requestId,
                     String.valueOf(command.userId()),
                     String.valueOf(command.creatorId()),
                     command.missionType(),
                     String.valueOf(command.missionId()),
                     command.periodKey(),
-                    command.missionKey()
+                    command.missionKey(),
+                    command.rewardPolicy().name()
             );
         } catch (QueryTimeoutException e) {
             log.error("EARN Lua 실행이 타임아웃되어 처리 여부를 알 수 없습니다. requestId={}, userId={}",
@@ -100,17 +122,32 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
         }
 
-        return parse(result, command);
+        EarnResult earnResult = parse(result, command);
+        if (requestClaimService != null && (earnResult.code() == EarnResultCode.EARN_ACCEPTED
+                || earnResult.code() == EarnResultCode.ALREADY_PROCESSED)) {
+            requestClaimService.accept(requestId);
+        }
+        return earnResult;
     }
 
     @Override
     public EarnLookupResult findExisting(EarnCommand command) {
+        EarnLookupResult preClaimResult = findPreClaimResult(command);
+        if (preClaimResult != null) {
+            return preClaimResult;
+        }
+
+        return findExistingClaimed(command);
+    }
+
+    @Override
+    public EarnLookupResult findExistingClaimed(EarnCommand command) {
         String requestId = command.requestId().toString();
-        String fingerprint = computeFingerprint(command);
+        String fingerprint = command.computeFingerprint();
         String stored;
 
         try {
-            stored = redisTemplate.opsForValue().get(TicketRedisKeys.idemMission(requestId));
+            stored = redisTemplate.opsForValue().get(idemKeyOf(command));
         } catch (DataAccessException e) {
             log.error("EARN replay 조회 중 Redis 접근에 실패했습니다. requestId={}, userId={}",
                     command.requestId(), command.userId(), e);
@@ -136,6 +173,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         // 기존 record의 TTL 동안 완료된 성공으로만 취급한다.
         Object status = idemRecord.get("status");
         if (status == null && idemRecord.get("result") != null) {
+            acceptRequest(command);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
@@ -143,6 +181,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
         }
         if ("COMPLETED".equals(status)) {
+            acceptRequest(command);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
@@ -154,7 +193,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             String guardKey = storedGuardKey instanceof String s
                     ? s
                     : TicketRedisKeys.earnGuard(command.userId(), command.missionType(), command.creatorId(),
-                            toGuardPeriodKey(command.periodKey()));
+                            guardKeySegmentOf(command));
             guardValue = redisTemplate.opsForValue().get(guardKey);
         } catch (DataAccessException e) {
             log.error("EARN replay 조회 중 Guard 확인에 실패했습니다. requestId={}, userId={}",
@@ -163,6 +202,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         }
 
         if ((requestId + ":" + fingerprint).equals(guardValue)) {
+            acceptRequest(command);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
@@ -184,20 +224,53 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         }
     }
 
-    // requestId를 제외한 요청 내용을 해시로 요약해 REQUEST_ID_CONFLICT 판정에 사용한다.
-    // periodKey는 서버 파생값이므로 fingerprint에서 제외한다. 자정 이후 재시도는
-    // 동일 요청으로 판정하며, periodKey는 일일 Guard와 MissionCompletion에만 사용한다.
-    private String computeFingerprint(EarnCommand command) {
-        String payload = command.userId() + ":" + command.creatorId() + ":" + command.missionType()
-                + ":" + command.missionId() + ":" + command.missionKey() + ":" + command.amount();
+    /** 보상 정책에 맞는 Redis Guard 키의 마지막 세그먼트를 만든다. */
+    private String guardKeySegmentOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce() ? "once" : toGuardPeriodKey(command.periodKey());
+    }
 
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+    /** DAILY는 25시간, ONCE는 만료 없이 Redis Guard를 유지한다. */
+    private long guardTtlSecondsOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce() ? 0L : GUARD_TTL_SECONDS;
+    }
 
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
+    private String idemKeyOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce()
+                ? TicketRedisKeys.idemMissionOnce(command.requestId().toString())
+                : TicketRedisKeys.idemMission(command.requestId().toString());
+    }
+
+    private long idemTtlSecondsOf(EarnCommand command) {
+        return command.rewardPolicy().isOnce() ? 0L : IDEM_TTL_SECONDS;
+    }
+
+    private EarnResult preClaimResult(EarnCommand command) {
+        if (requestClaimService == null) {
+            return null;
+        }
+        return switch (requestClaimService.claim(command)) {
+            case PENDING -> null;
+            case ACCEPTED -> new EarnResult(EarnResultCode.ALREADY_PROCESSED);
+            case REQUEST_ID_CONFLICT -> new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
+        };
+    }
+
+    private EarnLookupResult findPreClaimResult(EarnCommand command) {
+        if (requestClaimService == null) {
+            return null;
+        }
+        TicketEarnRequestClaim claim = requestClaimService.find(command);
+        if (claim == null || claim == TicketEarnRequestClaim.PENDING) {
+            return null;
+        }
+        return claim == TicketEarnRequestClaim.ACCEPTED
+                ? new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED)
+                : new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
+    }
+
+    private void acceptRequest(EarnCommand command) {
+        if (requestClaimService != null) {
+            requestClaimService.accept(command.requestId().toString());
         }
     }
 

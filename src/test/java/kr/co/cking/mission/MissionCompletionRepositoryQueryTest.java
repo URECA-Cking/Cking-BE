@@ -109,6 +109,7 @@ class MissionCompletionRepositoryQueryTest {
                 .creatorId(creatorId)
                 .missionId(missionId)
                 .periodKey(periodKey)
+                .completionKey(periodKey)
                 .requestId(UUID.randomUUID().toString())
                 .payloadFingerprint("0".repeat(64))
                 .completedAt(Instant.parse("2026-09-16T23:30:00Z"))

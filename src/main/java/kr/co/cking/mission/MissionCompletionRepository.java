@@ -15,6 +15,9 @@ public interface MissionCompletionRepository extends JpaRepository<MissionComple
     List<MissionCompletion> findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
             Long memberId, Long creatorId, Collection<Long> missionIds, String periodKey);
 
+    List<MissionCompletion> findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(
+            Long memberId, Long creatorId, Collection<Long> missionIds, String completionKey);
+
     @Query(value = """
             SELECT CASE WHEN EXISTS (
                 SELECT 1

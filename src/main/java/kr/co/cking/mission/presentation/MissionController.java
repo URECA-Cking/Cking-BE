@@ -6,6 +6,7 @@ import kr.co.cking.common.security.CurrentMemberId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.mission.application.CreatorSpaceShareMissionCompletionService;
 import kr.co.cking.mission.application.MissionCompletionService;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MissionController {
 
     private final MissionCompletionService missionCompletionService;
+    private final CreatorSpaceShareMissionCompletionService creatorSpaceShareMissionCompletionService;
 
     /** 인증된 사용자의 Creator 미션 완료 요청을 처리한다. */
     @PostMapping("/api/creators/{creatorId}/missions/{missionId}/complete")
@@ -47,6 +49,28 @@ public class MissionController {
     ) {
         MissionCompleteCommand command = new MissionCompleteCommand(memberId, request.requestId());
         MissionCompleteOutcome outcome = missionCompletionService.complete(creatorId, missionId, command);
+
+        HttpStatus status = outcome.code() == EarnResultCode.EARN_ACCEPTED
+                ? HttpStatus.ACCEPTED
+                : HttpStatus.OK;
+
+        return ResponseEntity.status(status)
+                .body(ApiResponse.of(outcome.code().name(), MissionCompleteResponse.from(outcome)));
+    }
+
+    /** 인증된 사용자의 Creator Space 공유 완료를 SHARE 미션 보상으로 처리한다. */
+    @PostMapping("/api/creators/{creatorId}/missions/share/complete")
+    @Operation(
+            summary = "Creator Space 공유 미션 완료",
+            description = "인증된 사용자의 Creator Space 공유를 requestId로 멱등 처리합니다. 사용자·Creator·SHARE 미션 기준으로 전용 응모권을 평생 한 번만 적립합니다."
+    )
+    public ResponseEntity<ApiResponse<MissionCompleteResponse>> completeShare(
+            @PathVariable @Positive Long creatorId,
+            @CurrentMemberId Long memberId,
+            @Valid @RequestBody MissionCompleteRequest request
+    ) {
+        MissionCompleteCommand command = new MissionCompleteCommand(memberId, request.requestId());
+        MissionCompleteOutcome outcome = creatorSpaceShareMissionCompletionService.complete(creatorId, command);
 
         HttpStatus status = outcome.code() == EarnResultCode.EARN_ACCEPTED
                 ? HttpStatus.ACCEPTED

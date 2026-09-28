@@ -1,12 +1,8 @@
 package kr.co.cking.ticket.application;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -45,24 +41,32 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
     private final DefaultRedisScript<List> commonTicketEarnLuaScript;
     private final String streamKey;
     private final ObjectMapper objectMapper;
+    private final TicketEarnRequestClaimService requestClaimService;
 
     public CommonTicketEarnServiceImpl(
             StringRedisTemplate redisTemplate,
             @Qualifier("commonTicketEarnLuaScript") DefaultRedisScript<List> commonTicketEarnLuaScript,
             @Value("${cking.ticket.common-earn-stream-key:stream:common-ticket-earned}") String streamKey,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            TicketEarnRequestClaimService requestClaimService
     ) {
         this.redisTemplate = redisTemplate;
         this.commonTicketEarnLuaScript = commonTicketEarnLuaScript;
         this.streamKey = streamKey;
         this.objectMapper = objectMapper;
+        this.requestClaimService = requestClaimService;
     }
 
     @Override
     public EarnResult earn(CommonEarnCommand command) {
+        EarnResult preClaimResult = preClaimResult(command);
+        if (preClaimResult != null) {
+            return preClaimResult;
+        }
+
         String requestId = command.requestId().toString();
         String periodKeyGuardFormat = toGuardPeriodKey(command.periodKey());
-        String fingerprint = computeFingerprint(command);
+        String fingerprint = command.computeFingerprint();
         List<?> result;
 
         try {
@@ -95,13 +99,22 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
             return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
         }
 
-        return parse(result, command);
+        EarnResult earnResult = parse(result, command);
+        if (earnResult.code() == EarnResultCode.EARN_ACCEPTED || earnResult.code() == EarnResultCode.ALREADY_PROCESSED) {
+            requestClaimService.accept(requestId);
+        }
+        return earnResult;
     }
 
     @Override
     public EarnLookupResult findExisting(CommonEarnCommand command) {
+        EarnLookupResult preClaimResult = findPreClaimResult(command);
+        if (preClaimResult != null) {
+            return preClaimResult;
+        }
+
         String requestId = command.requestId().toString();
-        String fingerprint = computeFingerprint(command);
+        String fingerprint = command.computeFingerprint();
         String stored;
 
         try {
@@ -131,6 +144,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
             return new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
         }
         if ("COMPLETED".equals(idemRecord.get("status"))) {
+            requestClaimService.accept(requestId);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
@@ -150,6 +164,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         }
 
         if ((requestId + ":" + fingerprint).equals(guardValue)) {
+            requestClaimService.accept(requestId);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
@@ -165,19 +180,22 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         }
     }
 
-    // periodKey는 서버 파생값이므로 fingerprint에서 제외한다(자정 이후 재시도도 동일 요청으로 판정).
-    private String computeFingerprint(CommonEarnCommand command) {
-        String payload = command.userId() + ":" + command.missionType()
-                + ":" + command.missionId() + ":" + command.amount();
+    private EarnResult preClaimResult(CommonEarnCommand command) {
+        return switch (requestClaimService.claim(command)) {
+            case PENDING -> null;
+            case ACCEPTED -> new EarnResult(EarnResultCode.ALREADY_PROCESSED);
+            case REQUEST_ID_CONFLICT -> new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
+        };
+    }
 
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
-
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
+    private EarnLookupResult findPreClaimResult(CommonEarnCommand command) {
+        TicketEarnRequestClaim claim = requestClaimService.find(command);
+        if (claim == null || claim == TicketEarnRequestClaim.PENDING) {
+            return null;
         }
+        return claim == TicketEarnRequestClaim.ACCEPTED
+                ? new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED)
+                : new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
     }
 
     private EarnResult parse(List<?> luaResult, CommonEarnCommand command) {
