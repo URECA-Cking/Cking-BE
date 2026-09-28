@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Creator별 좋아요·공유 미션 완료 API. 공용 출석은 {@link CommonMissionController}의
+ * Creator별 좋아요 미션 완료 API. 공용 출석은 {@link CommonMissionController}의
  * 크리에이터 무관 경로를 사용한다.
  */
 @RestController
@@ -36,8 +36,8 @@ public class MissionController {
     /** 인증된 사용자의 Creator 미션 완료 요청을 처리한다. */
     @PostMapping("/api/creators/{creatorId}/missions/{missionId}/complete")
     @Operation(
-            summary = "Creator 좋아요·공유 미션 완료",
-            description = "인증된 사용자의 LIKE 또는 SHARE 미션 완료를 requestId로 멱등 처리합니다. 구독 미션은 별도 인증 API를 사용합니다."
+            summary = "Creator 좋아요 미션 완료",
+            description = "인증된 사용자의 LIKE 미션 완료를 requestId로 멱등 처리합니다. SHARE는 Creator Space 공유 완료 처리에서만 보상하며, 구독 미션은 별도 인증 API를 사용합니다."
     )
     public ResponseEntity<ApiResponse<MissionCompleteResponse>> complete(
             @PathVariable @Positive Long creatorId,

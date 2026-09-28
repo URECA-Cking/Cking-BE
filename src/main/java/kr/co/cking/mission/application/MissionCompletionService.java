@@ -22,10 +22,9 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import java.util.Set;
 
 /**
- * Creator별 LIKE·SHARE 미션 완료 처리 + 크리에이터별 EARN 연동(FR-P1-005~008, 014~016).
+ * Creator별 LIKE 미션 완료 처리 + 크리에이터별 EARN 연동(FR-P1-005~008, 014~016).
  * 공용 ATTENDANCE는 {@link CommonMissionCompletionService}가 담당한다.
  *
  * <p>{@code mission_completion} 저장·EARN Ledger·DB Balance 반영은 이 계층의 책임이
@@ -37,7 +36,7 @@ import java.util.Set;
  * Redis/Stream 계층(EARN 결과코드) 밖의 어떤 영속 상태도 직접 만들지 않는다.
  *
  * <p><b>일반 완료 유형은 기존 requestId 조회를 미션 활성 검증보다 먼저 한다(Issue
- * #125)</b>: LIKE·SHARE 미션이 종료된 뒤 이미 성공했던 requestId가 재전송되면,
+ * #125)</b>: LIKE 미션이 종료된 뒤 이미 성공했던 requestId가 재전송되면,
  * {@link TicketEarnService#findExisting}로 먼저 확인해 {@code MISSION_INACTIVE}가 아니라
  * 기존 성공 결과를 반환해야 한다(FR-P1-018). 레거시 Creator ATTENDANCE도 기존 성공
  * requestId replay만 보존한다. 이미지 인증이 필요한 YOUTUBE_SUBSCRIPTION은 Ticket EARN
@@ -48,8 +47,6 @@ import java.util.Set;
 public class MissionCompletionService {
 
     private static final DateTimeFormatter PERIOD_KEY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT);
-    private static final Set<MissionType> GENERAL_COMPLETION_TYPES = Set.of(MissionType.LIKE, MissionType.SHARE);
-
     private final MemberRepository memberRepository;
     private final MissionRepository missionRepository;
     private final TicketEarnService ticketEarnService;
@@ -65,6 +62,11 @@ public class MissionCompletionService {
 
         if (mission.getType() == MissionType.YOUTUBE_SUBSCRIPTION) {
             throw new BusinessException(MissionErrorCode.MISSION_REQUIRES_VERIFICATION);
+        }
+        // SHARE 보상은 Creator Space 공유 완료 처리(Issue #311)만 담당한다. 일반 완료
+        // API가 이 경로를 통과하면 공유 행위 없이 보상을 받는 우회가 가능해진다.
+        if (mission.getType() == MissionType.SHARE) {
+            throw new BusinessException(MissionErrorCode.MISSION_NOT_FOUND);
         }
 
         Instant now = clock.instant();
@@ -95,7 +97,7 @@ public class MissionCompletionService {
         // 출석은 크리에이터와 무관한 CommonMission 경로에서만 신규 완료한다.
         // 다만 이전 creator ATTENDANCE 경로에서 이미 성공한 requestId의 replay는
         // 위 findExisting() 결과를 그대로 반환해 기존 멱등성 계약을 보존한다.
-        if (!GENERAL_COMPLETION_TYPES.contains(mission.getType())) {
+        if (mission.getType() != MissionType.LIKE) {
             throw new BusinessException(MissionErrorCode.MISSION_NOT_FOUND);
         }
 

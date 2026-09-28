@@ -35,14 +35,14 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 `MissionType`은 `ATTENDANCE`, `LIKE`, `SHARE`, `YOUTUBE_SUBSCRIPTION`을 지원한다.
 
 - `LIKE`는 일반 완료 API와 Creator별 EARN 경로를 사용한다. 좋아요 취소는 별도 API가 없다. Mock 검증(버튼 클릭 = 완료, FR-P1-011) 방식이라 취소 시 서버에 알리지 않고 이미 지급된 응모권도 회수하지 않는다(FR-P1-012). 같은 날 재좋아요는 Redis EARN Guard가 차단한다(FR-P1-013).
-- `SHARE`는 일반 완료 API와 Creator별 EARN 경로를 사용한다. 기본 보상은 LIKE와 같은 1장이고, 외부 플랫폼 공유 여부 검증은 이번 범위에 포함하지 않는다. 동일 사용자·Creator·미션·UTC 날짜의 중복 적립은 기존 Business Key와 Redis EARN Guard가 차단한다.
+- `SHARE` 보상은 일반 완료 API가 아닌 Creator Space 공유 완료 처리(Issue #311)가 담당한다. 따라서 일반 `POST .../complete`로는 공유 행위를 우회해 보상받을 수 없다. 기본 보상은 LIKE와 같은 1장이고, 공유 완료 처리에서 동일 사용자·Creator·미션·UTC 날짜의 중복 적립을 기존 Business Key와 Redis EARN Guard로 차단한다.
 - `ATTENDANCE` 신규 완료는 `CommonMissionController`/`CommonMissionCompletionService`와 공용 EARN 경로에서 처리한다. 과거 Creator ATTENDANCE의 기존 성공 `requestId` replay는 허용하지만, 신규 요청은 `MissionCompletionService`가 거부한다.
 - `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 선행되어야 한다. 일반 `POST .../complete` 경로에서는 `TicketEarnService.findExisting()`이나 `earn()`을 호출하기 전에 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 따라서 클라이언트가 일반 완료 API로 인증과 보상 경계를 우회할 수 없다. 이미지 제출·판정·보상은 [YouTube 구독 인증 정본](../subscription-verification/README.md)을 따른다.
 
 ### 검증 범위(caveat)
 
-- **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 크리에이터별 LIKE·SHARE를 각각 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 출석은 `V16__add_common_ticket.sql`이 공용 ATTENDANCE를 시딩하므로 Creator 승인 시 생성하지 않고, `YOUTUBE_SUBSCRIPTION`도 기본 미션으로 자동 생성하지 않는다. 이미 존재하는 유형은 건너뛰므로 재호출해도 안전하다. 기존 Creator의 누락분은 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
-- **LIKE·SHARE의 중복 적립 차단은 기존 EARN 경로를 재사용한다.** `MissionCompletionServiceTest`는 두 유형이 같은 결과 코드 매핑을 사용하는지 검증하고, `MissionCompletionConcurrencyIntegrationTest`는 실제 Redis/MySQL에서 Creator별 일반 미션의 동시 요청을 검증한다. 공용 ATTENDANCE의 단일 적립은 `CommonMissionCompletionServiceIntegrationTest`에서 별도로 검증한다.
+- **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 크리에이터별 LIKE·SHARE를 각각 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 출석은 `V16__add_common_ticket.sql`이 공용 ATTENDANCE를 시딩하므로 Creator 승인 시 생성하지 않고, `YOUTUBE_SUBSCRIPTION`도 기본 미션으로 자동 생성하지 않는다. 이미 존재하는 유형은 건너뛰므로 재호출해도 안전하다. 이번 배포 전 기존 Creator의 SHARE 누락분은 `V26__add_share_mission_type.sql`이 멱등 시딩하며, 이후 수동 복구가 필요하면 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
+- **일반 완료 API의 중복 적립 차단은 LIKE에만 적용한다.** `MissionCompletionServiceTest`와 `MissionCompletionConcurrencyIntegrationTest`는 LIKE의 EARN 결과·동시 요청을 검증한다. SHARE의 중복 적립 검증은 Creator Space 공유 완료 처리(Issue #311)에서 해당 경로와 함께 추가한다. 공용 ATTENDANCE의 단일 적립은 `CommonMissionCompletionServiceIntegrationTest`에서 별도로 검증한다.
 
 ## 공용 미션(크리에이터 무관, 이슈 #219)
 
