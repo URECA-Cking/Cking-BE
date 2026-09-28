@@ -110,7 +110,7 @@ activeTo = null
 | 제출 멱등성 | `request_id` UUID UNIQUE, `request_fingerprint` SHA-256 |
 | 채널 동결 | `target_channel_name`, `target_channel_handle` |
 | 이미지 | `image_object_key`, 정규화 이미지 기준 `image_sha256`, `normalization_version` |
-| 처리 | `status`, `reason_code`, `attempt_count`, `processing_started_at`, `next_attempt_at`, `processed_at` |
+| 처리 | `status`, `reason_code`, `attempt_count`, `processing_token`, `processing_started_at`, `processing_lease_until`, `next_attempt_at`, `processed_at` |
 | 보상 | 서버 생성 `reward_request_id` UUID, `reward_status`(`NOT_REQUESTED`, `PENDING`, `ACCEPTED`, `RETRY_REQUIRED`) |
 | 동시성 | `active_guard`, `approved_guard`, 낙관적 잠금 `version` |
 | 감사 시각 | `created_at`, `updated_at` |
@@ -181,7 +181,7 @@ ONCE 인증 완료의 정본은 `APPROVED` Verification이다. 보상의 영구 
 
 이미지 검증·정규화·Hash는 HTTP 요청 안에서 동기 처리한다. 현재 `SubscriptionImageProcessor` 계약은 JPEG/PNG, 최대 5MB, 최소 480×480, 최대 20MP, 긴 변 2048px 이하, EXIF 방향 보정, metadata 제거, canonical JPEG다. `imageSha256`은 정규화된 bytes 기준이다.
 
-공통 Object Storage port는 호출자가 지정한 key로 `put/get/delete/presignedGetUrl`을 제공한다. 구독 인증은 다음 key를 UTC `Clock`과 서버 UUID로 생성한다.
+공통 Object Storage port는 호출자가 전체 key를 지정하는 `put/get/delete/presignedGetUrl`을 제공하고 저장소 구현은 bucket 설정만 안다. `put`은 기존 key 덮어쓰기를 허용하지 않는 조건부 쓰기이며 `objectKey`, 크기, `eTag`를 반환한다. `presignedGetUrl`은 만료 시간을 필수로 받고 공통 저장소가 최대 허용 시간을 제한한다. 구독 인증은 다음 key를 UTC `Clock`과 서버 UUID로 생성한다.
 
 ```text
 subscription-verifications/{yyyy}/{MM}/{uuid}/image.jpg

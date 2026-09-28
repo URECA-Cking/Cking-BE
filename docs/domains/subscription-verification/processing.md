@@ -19,22 +19,52 @@ AFTER_COMMIT 이벤트는 프로세스 종료 시 유실될 수 있으므로 Rec
 
 ## 원자적 Processing Claim
 
-Worker는 다음 조건부 UPDATE로 처리 권한을 선점한다.
+스케줄러나 AFTER_COMMIT listener는 DB 상태를 먼저 바꾸지 않고 bounded executor에 `verificationId` 작업을 제출한다. Executor에서 실제 실행을 시작한 Worker가 UUID `processingToken`과 lease를 만들어 다음 조건부 UPDATE로 처리 권한을 선점한다.
 
 ```sql
 UPDATE subscription_verification
 SET status = 'PROCESSING',
+    processing_token = :processingToken,
     processing_started_at = :now,
+    processing_lease_until = :leaseUntil,
     attempt_count = attempt_count + 1,
     updated_at = :now
 WHERE verification_id = :id
-  AND status = 'PENDING';
+  AND (
+      status = 'PENDING'
+      OR (status = 'PROCESSING' AND processing_lease_until <= :now)
+  );
 ```
 
 - affected row 1: 처리 권한 획득
 - affected row 0: 다른 Worker가 선점했거나 더 이상 처리 대상이 아님
 
-선점 Transaction을 commit한 뒤 Object Storage `get`과 VLM 호출을 수행한다. 외부 호출 중 DB Transaction을 유지하지 않는다. 판정 저장 시에는 현재 상태와 version을 다시 확인한다.
+무중단 배포 중 두 인스턴스가 같은 후보를 조회해 각각 작업을 제출해도 한 Worker만 affected row 1을 얻는다. Executor가 작업을 거절하거나 프로세스가 실행 전에 종료되면 아직 claim하지 않은 행은 `PENDING`으로 남아 다음 Recovery 대상이 된다.
+
+선점 Transaction을 commit한 뒤 Object Storage `get`과 VLM 호출을 수행한다. 외부 호출 중 DB Transaction을 유지하지 않는다. 판정 저장은 반드시 다음 fencing 조건을 포함한다.
+
+```sql
+WHERE verification_id = :id
+  AND status = 'PROCESSING'
+  AND processing_token = :processingToken
+```
+
+lease가 만료돼 새 Worker가 새 token으로 재선점했다면 이전 Worker의 늦은 응답은 저장되지 않는다. `processingToken`은 상태 판정용 임시 fencing token이며 외부 API에 노출하지 않는다.
+
+## 전용 Async Executor와 호출 제한
+
+구독 인증은 Spring 기본 Async executor를 사용하지 않고 bounded `ThreadPoolTaskExecutor`를 별도 Bean으로 구성해 `@Async`에서 이름을 명시한다.
+
+- core/max pool size, queue capacity, VLM 동시 호출 수를 설정값으로 분리한다.
+- queue는 무제한으로 두지 않는다.
+- 거절 정책은 요청 thread에서 VLM을 실행하는 `CallerRunsPolicy`를 사용하지 않는다.
+- queue 거절은 로그·metric을 남기고 행을 `PENDING`으로 유지해 Recovery가 재제출한다.
+- Recovery batch size는 executor 수용량을 고려해 제한하며 `nextAttemptAt` 이전 행은 제출하지 않는다.
+- 애플리케이션 종료 시 bounded graceful shutdown을 사용하되, 미완료 작업의 최종 복구는 DB 상태와 Recovery가 담당한다.
+
+Executor 크기는 rate limiter가 아니다. Provider의 계정 단위 동시 호출·분당 요청 제한이 있으면 별도 rate limiter를 둔다. 다중 인스턴스의 합산 제한이 필요한 Provider라면 Redis 등 공유 저장소 기반 limiter를 사용하거나 최대 replica 수를 반영해 인스턴스별 한도를 나눈다.
+
+`processingLeaseUntil`은 선택 모델의 connect/read timeout, 한 처리 시도 안의 retry·backoff 최대 시간과 안전 여유보다 길어야 한다. 정확한 executor 크기, queue capacity, provider 호출 한도와 lease 시간은 모델 벤치마크 후 정본에 확정한다. 제한 없는 기본값이나 모델 최대 처리 시간보다 짧은 lease를 사용하지 않는다.
 
 ## VLM 입력과 출력 경계
 
@@ -102,7 +132,7 @@ Verification 승인과 Ticket Stream/DB 반영은 하나의 DB Transaction으로
 최종 구현은 일정 batch 크기로 다음 대상을 조회한다.
 
 1. 기준 시간보다 오래된 `PENDING`: 다시 처리 이벤트를 발행한다.
-2. lease timeout을 넘긴 `PROCESSING`: 재시도 가능 상태로 원자 전환 후 다시 선점한다.
+2. `processingLeaseUntil`이 지난 `PROCESSING`: 새 processing token으로 조건부 재선점한다.
 3. `APPROVED`이며 reward가 `PENDING`/`RETRY_REQUIRED`: 같은 `rewardRequestId`로 Ticket ONCE 적립을 재시도한다.
 4. Ticket ONCE durable request가 `PENDING`: 같은 requestId로 Redis 수락 여부를 재확인하고 `ACCEPTED`로 수렴시킨다.
 
