@@ -33,6 +33,13 @@ public class TicketMaintenanceLock {
     private static final DefaultRedisScript<Long> SET_IF_HELD = new DefaultRedisScript<>(
             "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[2], ARGV[2]) return 1 end return 0",
             Long.class);
+    // 락 토큰 확인과 SET NX를 한 번에 묶는다 - 확인 후 SET 사이에 락이 만료되면(TicketBalanceKeyLoader)
+    // 소유권 없이 쓰는 일이 생기므로 분리하지 않는다.
+    private static final DefaultRedisScript<Long> SET_NX_IF_HELD = new DefaultRedisScript<>(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then "
+                    + "if redis.call('EXISTS', KEYS[2]) == 0 then redis.call('SET', KEYS[2], ARGV[2]) end "
+                    + "return 1 else return 0 end",
+            Long.class);
 
     private final StringRedisTemplate redisTemplate;
 
@@ -65,6 +72,20 @@ public class TicketMaintenanceLock {
                 CommonTicketRedisKeys.balance(memberId), token, balance);
     }
 
+    /**
+     * token이 아직 lock의 소유자일 때만 잔액 키를 SET NX로 적재한다(TicketBalanceKeyLoader).
+     * 락을 잃었으면 false - 호출자는 재시도하지 않고 그대로 실패로 처리해야 한다.
+     */
+    public boolean loadBalanceIfHeld(Long creatorId, Long memberId, String token, long balance) {
+        return setNxIfHeld(TicketRedisKeys.maintenance(creatorId, memberId),
+                TicketRedisKeys.balance(creatorId, memberId), token, balance);
+    }
+
+    public boolean loadCommonBalanceIfHeld(Long memberId, String token, long balance) {
+        return setNxIfHeld(CommonTicketRedisKeys.maintenance(memberId),
+                CommonTicketRedisKeys.balance(memberId), token, balance);
+    }
+
     private String acquire(String lockKey) {
         String token = UUID.randomUUID().toString();
         Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, token, LEASE);
@@ -78,5 +99,10 @@ public class TicketMaintenanceLock {
     private boolean setBalanceIfHeld(String lockKey, String balanceKey, String token, long balance) {
         Long written = redisTemplate.execute(SET_IF_HELD, List.of(lockKey, balanceKey), token, String.valueOf(balance));
         return Long.valueOf(1L).equals(written);
+    }
+
+    private boolean setNxIfHeld(String lockKey, String balanceKey, String token, long balance) {
+        Long held = redisTemplate.execute(SET_NX_IF_HELD, List.of(lockKey, balanceKey), token, String.valueOf(balance));
+        return Long.valueOf(1L).equals(held);
     }
 }

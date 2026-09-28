@@ -77,6 +77,35 @@ class TicketMaintenanceLockTest {
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isEqualTo("3");
     }
 
+    // 시나리오 40(TicketBalanceKeyLoader와 EARN 동시 실행): 락을 쥔 동안 SET NX로 적재하되,
+    // 그 사이 EARN이 이미 키를 만들었으면 덮어쓰지 않아야 한다.
+    @Test
+    void lock을_쥔_동안_키가_없으면_SET_NX로_적재하고_true를_반환한다() {
+        String token = lock.acquire(CREATOR_ID, MEMBER_ID);
+
+        assertThat(lock.loadBalanceIfHeld(CREATOR_ID, MEMBER_ID, token, 5L)).isTrue();
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isEqualTo("5");
+    }
+
+    @Test
+    void lock을_쥔_동안에도_EARN이_먼저_만든_키는_덮어쓰지_않는다() {
+        String token = lock.acquire(CREATOR_ID, MEMBER_ID);
+        redisTemplate.opsForValue().set(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID), "999");
+
+        assertThat(lock.loadBalanceIfHeld(CREATOR_ID, MEMBER_ID, token, 5L)).isTrue();
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isEqualTo("999");
+    }
+
+    @Test
+    void lock이_검사_도중_만료되면_토큰이_달라도_적재하지_않고_false다() {
+        String token = lock.acquire(CREATOR_ID, MEMBER_ID);
+        redisTemplate.expire(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID), Duration.ofMillis(1));
+        sleepQuietly(50);
+
+        assertThat(lock.loadBalanceIfHeld(CREATOR_ID, MEMBER_ID, token, 5L)).isFalse();
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isFalse();
+    }
+
     private static void sleepQuietly(long millis) {
         try {
             Thread.sleep(millis);

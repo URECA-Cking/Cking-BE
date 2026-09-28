@@ -13,7 +13,11 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 ## 정합성 검증과 수동 보정
 
-`TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니며, 이 유저는 SPEND에서 `BALANCE_NOT_LOADED`를 받는다). 복구는 `TicketCompensationService.resyncRedisToDb`로 한다. Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
+`TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니다). Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
+
+### 키 유실 시 자동 적재(FR-P2-056, 이슈 #275)
+
+SPEND가 `BALANCE_NOT_LOADED`를 받으면(Redis 잔액 키 부재 - 한 번도 받은 적 없는 사용자와 키가 유실된 사용자 모두 포함) `TicketBalanceKeyLoader`가 그 요청 안에서 DB 잔액으로 즉시 적재를 시도하고, 성공하면 같은 요청을 1회만 재실행한다. 적재는 보정 락(`TicketMaintenanceLock`)을 잡고 해당 `(memberId, creatorId)`에 미반영 SPEND·EARN 메시지가 없을 때만 이뤄지며, 락 토큰 확인과 `SET NX`를 원자 처리해 검사 도중 락이 만료돼도 소유권 없이 쓰지 않는다. 다음 중 하나라도 해당하면 적재하지 않고 기존처럼 `BALANCE_NOT_LOADED`(503)로 남아 `TicketCompensationService.resyncRedisToDb`(수동 보정)가 필요하다: 락을 못 잡음(다른 보정 진행 중), 미반영 메시지가 있음, 검사 도중 락 만료, Redis·DB 저장소 오류(이 경우도 응모를 500으로 키우지 않고 503으로 남긴다).
 
 ### 수동 보정의 안전장치
 
