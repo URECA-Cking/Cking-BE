@@ -90,13 +90,12 @@ AND confidence >= 확정 threshold
 
 ## 보상 처리
 
-판정 Transaction은 Verification을 `APPROVED`, `rewardStatus=PENDING`으로 저장한다. 그 뒤 고정 `rewardRequestId`로 `TicketEarnService.earn()`을 호출한다.
+판정 Transaction은 Verification을 `APPROVED`, `rewardStatus=PENDING`으로 저장한다. 그 뒤 고정 `rewardRequestId`로 `TicketOnceEarnService.earn()`을 호출한다. 기존 25시간 TTL의 일일 `TicketEarnService`는 사용하지 않는다.
 
 - `EARN_ACCEPTED`, `ALREADY_PROCESSED`: `rewardStatus=ACCEPTED`
 - 재시도 가능한 오류: `rewardStatus=RETRY_REQUIRED`, `nextAttemptAt` 기록
-- 복구 불가능 오류: `rewardStatus=FAILED`, 원인 코드 기록
 
-Verification 승인과 Ticket Stream/DB 반영은 하나의 DB Transaction으로 묶을 수 없다. 승인 상태와 보상 상태를 분리하고 Recovery가 동일 `rewardRequestId`를 재사용해 수렴시킨다. 공개 `VERIFIED`는 `APPROVED + ACCEPTED`일 때만 반환한다.
+Verification 승인과 Ticket Stream/DB 반영은 하나의 DB Transaction으로 묶을 수 없다. Ticket ONCE durable request와 비만료 Redis idempotency/guard가 Redis Balance 중복 증가를 막고, Recovery가 동일 `rewardRequestId`를 재사용해 수렴시킨다. 보상에는 terminal `FAILED`를 두지 않는다. 공개 `VERIFIED`는 `APPROVED + ACCEPTED`일 때만 반환하며 `APPROVED + RETRY_REQUIRED`는 복구 중인 `TEMPORARY_ERROR`다.
 
 ## Recovery Scheduler
 
@@ -104,11 +103,12 @@ Verification 승인과 Ticket Stream/DB 반영은 하나의 DB Transaction으로
 
 1. 기준 시간보다 오래된 `PENDING`: 다시 처리 이벤트를 발행한다.
 2. lease timeout을 넘긴 `PROCESSING`: 재시도 가능 상태로 원자 전환 후 다시 선점한다.
-3. `APPROVED`이며 reward가 `PENDING`/`RETRY_REQUIRED`: 같은 `rewardRequestId`로 보상을 재시도한다.
+3. `APPROVED`이며 reward가 `PENDING`/`RETRY_REQUIRED`: 같은 `rewardRequestId`로 Ticket ONCE 적립을 재시도한다.
+4. Ticket ONCE durable request가 `PENDING`: 같은 requestId로 Redis 수락 여부를 재확인하고 `ACCEPTED`로 수렴시킨다.
 
 정확한 processing timeout, retry limit, backoff, scheduler interval은 선택 모델의 실제 latency와 rate limit 측정 후 확정한다. 값이 정해지기 전 임의 상수를 정본으로 만들지 않는다.
 
-Recovery는 batch 조회, PK 기반 tie-breaker, 다중 인스턴스 중복 선점을 고려한다. 같은 Verification을 여러 실행이 발견해도 조건부 UPDATE와 Ticket requestId 멱등성으로 결과가 하나로 수렴해야 한다.
+Recovery는 batch 조회, PK 기반 tie-breaker, 다중 인스턴스 중복 선점을 고려한다. 같은 Verification을 여러 실행이 발견해도 조건부 UPDATE와 Ticket ONCE의 DB Business Key·비만료 Redis key로 결과가 하나로 수렴해야 한다. 반복 실패는 backoff와 운영 알림을 적용하지만 승인된 보상을 포기하는 terminal 상태로 바꾸지 않는다.
 
 ## 이미지 보관 만료
 

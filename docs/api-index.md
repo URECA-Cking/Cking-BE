@@ -92,5 +92,6 @@
 | 88 | 외부 | 구독 인증 | USER | GET | `/api/creators/{creatorId}/missions/{missionId}/subscription-verifications/me/latest` | 미션의 내 최신 구독 인증 조회 | - |
 | 89 | 내부 | Mission | INTERNAL | CALL | `YoutubeSubscriptionMissionProvisioningService.ensureForCreator(creatorId)` | 채널 최초 설정 시 구독 미션 멱등 생성 | Creator·Mission 유형 기준 |
 | 90 | 내부 | 구독 인증 | INTERNAL | CALL | `SubscriptionVerificationProcessor.process(verificationId)` | 구독 인증 비동기 판정·보상 시작 | Processing Claim |
+| 91 | 내부 | Ticket | INTERNAL | CALL | `TicketOnceEarnService.earn(command)` | 구독 인증 등 평생 1회 보상의 영구 멱등 적립 | requestId·ONCE Business Key |
 
-No. 9, No. 50~61, No. 89~90은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+No. 9, No. 50~61, No. 89~91은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

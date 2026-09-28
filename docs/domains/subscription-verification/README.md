@@ -16,7 +16,7 @@
 다음 책임은 소유하지 않는다.
 
 - Mission 정의 저장: Mission 도메인의 내부 Service를 호출한다.
-- Ticket Balance·Ledger·Completion 변경: `TicketEarnService`만 호출한다.
+- Ticket Balance·Ledger·Completion 변경: Ticket 도메인의 ONCE 적립 Service만 호출한다.
 - 이미지 저장 구현: 공통 Object Storage port를 사용한다.
 - YouTube OAuth, YouTube Data API, 채널 소유권 검증
 - 관리자 수동 심사, pHash 기반 유사 이미지 판정
@@ -33,7 +33,7 @@ kr.co.cking.subscriptionverification
 └── repository      영속·잠금·Recovery 조회
 ```
 
-Mission 생성은 `mission.application`의 내부 Service, Ticket 보상은 기존 `TicketEarnService`, 이미지 저장은 공통 Object Storage port를 통해 호출한다.
+Mission 생성은 `mission.application`의 내부 Service, Ticket 보상은 `TicketOnceEarnService`, 이미지 저장은 공통 Object Storage port를 통해 호출한다.
 
 ## 핵심 흐름
 
@@ -55,7 +55,7 @@ AFTER_COMMIT 비동기 처리
 → APPROVED / REJECTED / RETRY_REQUIRED / FAILED
 
 APPROVED
-→ 고정 rewardRequestId로 TicketEarnService.earn()
+→ 고정 rewardRequestId로 TicketOnceEarnService.earn()
 → Creator 전용 응모권 1장
 ```
 
@@ -111,7 +111,7 @@ activeTo = null
 | 채널 동결 | `target_channel_name`, `target_channel_handle` |
 | 이미지 | `image_object_key`, 정규화 이미지 기준 `image_sha256`, `normalization_version` |
 | 처리 | `status`, `reason_code`, `attempt_count`, `processing_started_at`, `next_attempt_at`, `processed_at` |
-| 보상 | 서버 생성 `reward_request_id` UUID, `reward_status` |
+| 보상 | 서버 생성 `reward_request_id` UUID, `reward_status`(`NOT_REQUESTED`, `PENDING`, `ACCEPTED`, `RETRY_REQUIRED`) |
 | 동시성 | `active_guard`, `approved_guard`, 낙관적 잠금 `version` |
 | 감사 시각 | `created_at`, `updated_at` |
 
@@ -134,13 +134,13 @@ PROCESSING → APPROVED | REJECTED | RETRY_REQUIRED | FAILED
 사용자 공개 상태는 내부 처리 상세를 숨긴다.
 
 ```text
-PENDING, PROCESSING                              → VERIFYING
-APPROVED + reward PENDING/RETRY_REQUIRED         → VERIFYING
-APPROVED + reward ACCEPTED                       → VERIFIED
-APPROVED + reward FAILED                         → TEMPORARY_ERROR
-REJECTED                                        → REJECTED
-RETRY_REQUIRED                                  → RETRY_REQUIRED
-FAILED                                          → TEMPORARY_ERROR
+PENDING, PROCESSING                      → VERIFYING
+APPROVED + reward PENDING                → VERIFYING
+APPROVED + reward ACCEPTED               → VERIFIED
+APPROVED + reward RETRY_REQUIRED         → TEMPORARY_ERROR
+REJECTED                                → REJECTED
+RETRY_REQUIRED                          → RETRY_REQUIRED
+FAILED                                  → TEMPORARY_ERROR
 ```
 
 ## 불변조건과 DB 방어
@@ -157,7 +157,7 @@ UNIQUE(member_id, creator_id, mission_id, approved_guard)
 - MySQL UNIQUE가 여러 `NULL`을 허용하는 성질로 과거 종료 이력은 보존한다.
 - `INDEX(status, next_attempt_at)`, `INDEX(image_sha256)`, `INDEX(member_id, creator_id, mission_id, created_at)`을 둔다.
 
-ONCE 완료의 정본은 `APPROVED` Verification이다. Ticket의 UTC 일일 Guard를 ONCE 업무키로 사용하지 않는다. Mission/Ticket Lua·Stream·Ledger에 `ONCE`나 `completionKey`를 추가하지 않는다.
+ONCE 인증 완료의 정본은 `APPROVED` Verification이다. 보상의 영구 멱등성은 아래 Ticket ONCE 적립 계약이 별도로 보장한다. Ticket의 UTC 일일 Guard와 25시간 `idem:mission:{requestId}`를 ONCE 업무키로 재사용하지 않는다.
 
 ## 제출 멱등성과 재제출
 
@@ -193,15 +193,40 @@ Object는 S3 Lifecycle로 30일 후 삭제한다. DB 상태·Hash·판정·보�
 
 ## 보상 경계
 
-Verification 생성 시 `rewardRequestId`를 서버가 한 번 생성한다. `APPROVED`가 되면 `rewardStatus=PENDING`으로 두고 기존 `TicketEarnService.earn()`에 Mission의 `rewardAmount=1`과 보상 실행 UTC 날짜의 `periodKey`를 전달한다.
+Verification 생성 시 `rewardRequestId`를 서버가 한 번 생성한다. `APPROVED`가 되면 `rewardStatus=PENDING`으로 두고 `TicketOnceEarnService.earn()`에 Mission의 `rewardAmount=1`과 보상 실행 UTC 날짜의 `periodKey`를 전달한다. `periodKey`는 기존 Stream·DB 포맷 호환용이며 ONCE 업무키가 아니다.
+
+### Ticket ONCE 적립의 영구 멱등성
+
+기존 `TicketEarnService`의 idempotency와 일일 Guard는 모두 25시간 TTL이므로 구독 보상에 사용하지 않는다. Ticket 도메인은 별도 `ticket_once_earn_request` durable request와 ONCE Lua 경로를 제공한다.
 
 ```text
-EARN_ACCEPTED | ALREADY_PROCESSED → ACCEPTED
-일시 실패                         → RETRY_REQUIRED
-복구 불가능 실패                  → FAILED
+UNIQUE(request_id)
+UNIQUE(member_id, creator_id, mission_id)
+status = PENDING | ACCEPTED
+payload_fingerprint
 ```
 
-보상 재시도·서버 재기동·중복 Worker 실행에서도 같은 `rewardRequestId`를 사용한다. Verification 코드가 `mission_completion`, `ticket_ledger`, `user_ticket_balance`를 직접 변경해서는 안 된다.
+1. 같은 `rewardRequestId`의 durable request를 조회·생성하고 payload 일치를 검증한다.
+2. `(memberId, creatorId, missionId)` UNIQUE로 다른 requestId의 평생 중복 보상을 차단한다.
+3. 신규/PENDING이면 ONCE Lua를 실행한다. Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:once:{memberId}:{creatorId}:{missionId}`를 TTL 없이 선점하고 Balance 증가·기존 EARN Stream 발행을 원자 처리한다.
+4. Redis 수락 결과를 별도 짧은 Transaction에서 DB durable request의 `ACCEPTED`로 기록한다.
+5. ONCE Redis key는 TTL을 설정하거나 성공 후 삭제하지 않는다. DB 조회를 이미 통과한 동시 실행이 뒤늦게 도착해도 영구 key가 재증가를 막는다.
+6. Redis 수락 후 DB 상태 갱신 전에 프로세스가 종료돼도 같은 requestId의 비만료 Redis key가 재증가를 막고, 재호출이 DB를 `ACCEPTED`로 수렴시킨다.
+
+기존 EARN Stream Consumer와 `mission_completion`·Ledger·Balance DB 반영은 재사용한다. DB `request_id` UNIQUE는 Consumer 멱등성이고, Redis Balance 중복 증가를 막는 위 ONCE 계약을 대체하지 않는다. 기존 일일 `TicketEarnService`와 `ticket-earn.lua`의 TTL 계약은 변경하지 않는다.
+
+### Verification 보상 상태
+
+```text
+NOT_REQUESTED → PENDING
+PENDING → ACCEPTED | RETRY_REQUIRED
+RETRY_REQUIRED → ACCEPTED | RETRY_REQUIRED
+```
+
+- `EARN_ACCEPTED`, `ALREADY_PROCESSED`: `ACCEPTED`
+- timeout, Redis 장애, 결과 불명 등: `RETRY_REQUIRED`
+
+보상에는 terminal `FAILED`를 두지 않는다. 승인된 사용자가 보상 없이 영구 종료되지 않도록 Recovery가 같은 `rewardRequestId`로 `ACCEPTED`까지 재시도한다. 반복 실패는 지수 backoff와 운영 알림을 적용하되 상태는 복구 가능하게 유지한다. Verification 코드가 `mission_completion`, `ticket_ledger`, `user_ticket_balance`를 직접 변경해서는 안 된다.
 
 ## 기능 플래그
 
@@ -214,13 +239,14 @@ cking:
       submission-enabled: false
 ```
 
-설정 누락 시 기본값은 `false`다. POST는 이미지 처리·S3 저장 전에 `503 VERIFICATION_UNAVAILABLE`로 종료한다. GET 상태 조회는 항상 허용한다. VLM Client, 판정 정책, Processor, Recovery, Reward retry, E2E 및 운영 환경변수 검증이 끝난 뒤에만 운영에서 `true`로 설정한다.
+설정 누락 시 기본값은 `false`다. POST는 이미지 처리·S3 저장 전에 `503 VERIFICATION_UNAVAILABLE`로 종료한다. GET 상태 조회는 항상 허용한다. VLM Client, 판정 정책, Processor, Ticket ONCE 적립, Recovery, Reward retry, E2E 및 운영 환경변수 검증이 끝난 뒤에만 운영에서 `true`로 설정한다.
 
 ## 구현 금지 사항
 
 - 일반 Mission `/complete`로 `YOUTUBE_SUBSCRIPTION`을 완료하지 않는다.
 - Verification 승인 전에 Ticket을 지급하지 않는다.
 - Ticket Balance·Ledger·MissionCompletion을 직접 변경하지 않는다.
+- 기존 25시간 TTL 일일 EARN 경로를 구독 보상 Retry에 사용하지 않는다.
 - 외부 호출 중 DB Transaction을 유지하지 않는다.
 - 재시도마다 새 `rewardRequestId`를 만들지 않는다.
 - 이미지를 public으로 저장하거나 bytes/Base64를 로그에 남기지 않는다.
@@ -234,8 +260,9 @@ cking:
 2. Mission 멱등 provisioning 내부 Service
 3. 채널 조회·설정과 Creator 단위 잠금
 4. 공통 Object Storage port 연동
-5. 제출 orchestration, 멱등성·guard·제출 제한과 upload 보상 삭제
-6. 본인 상태·최신 상태 조회 API와 Security matcher
-7. AFTER_COMMIT 이벤트 경계와 Recovery용 조회 계약
+5. Ticket ONCE durable request·비만료 Redis guard와 `TicketOnceEarnService`
+6. 제출 orchestration, 멱등성·guard·제출 제한과 upload 보상 삭제
+7. 본인 상태·최신 상태 조회 API와 Security matcher
+8. AFTER_COMMIT 이벤트 경계와 Recovery용 조회 계약
 
 모델 선정 뒤에는 [processing.md](processing.md)에 Provider 계약을 먼저 확정하고 VLM Client, Processing Claim, 서버 판정, Reward retry, Recovery Scheduler와 E2E를 구현한다. 단위·Repository·Controller 테스트 외에 동일 requestId 및 동시 제출, 채널 수정과 제출 경쟁, DB 저장 실패 후 Object 삭제, 중복 보상 방지를 통합 테스트한다.
