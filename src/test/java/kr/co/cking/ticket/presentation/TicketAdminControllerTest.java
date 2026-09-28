@@ -20,6 +20,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.ticket.application.TicketAdminService;
+import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
 import kr.co.cking.ticket.domain.TicketErrorCode;
 
@@ -111,5 +112,26 @@ class TicketAdminControllerTest {
         mockMvc.perform(post("/api/admin/tickets/resync")
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 공용_재동기화_성공시_현재_잔액을_반환한다() throws Exception {
+        when(ticketAdminService.resyncCommon(1L, 2L, "정합성 배치 지속 불일치"))
+                .thenReturn(new CommonTicketBalanceResponse(2L, 10L, Instant.parse("2026-09-25T00:00:00Z")));
+
+        mockMvc.perform(post("/api/admin/tickets/common/resync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"memberId\":2,\"reason\":\"정합성 배치 지속 불일치\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.balance").value(10));
+    }
+
+    @Test
+    void 공용_재동기화는_reason이_비면_400이다() throws Exception {
+        mockMvc.perform(post("/api/admin/tickets/common/resync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"memberId\":2,\"reason\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(ticketAdminService);
     }
 }

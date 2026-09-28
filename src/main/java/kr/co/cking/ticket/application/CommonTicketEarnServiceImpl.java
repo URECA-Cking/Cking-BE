@@ -71,7 +71,8 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
                     List.of(
                             CommonTicketRedisKeys.idemMission(requestId),
                             CommonTicketRedisKeys.earnGuard(command.userId(), command.missionType(), periodKeyGuardFormat),
-                            CommonTicketRedisKeys.balance(command.userId())
+                            CommonTicketRedisKeys.balance(command.userId()),
+                            CommonTicketRedisKeys.maintenance(command.userId())
                     ),
                     String.valueOf(command.amount()),
                     fingerprint,

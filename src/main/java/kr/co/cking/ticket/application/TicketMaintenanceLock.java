@@ -8,6 +8,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.event.application.config.EntryRedisKeys;
 import lombok.RequiredArgsConstructor;
@@ -37,22 +38,45 @@ public class TicketMaintenanceLock {
 
     /** lock을 얻으면 token을, 이미 다른 보정이 잡고 있으면 null을 반환한다. */
     public String acquire(Long creatorId, Long memberId) {
-        String token = UUID.randomUUID().toString();
-        Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(TicketRedisKeys.maintenance(creatorId, memberId), token, LEASE);
-        return Boolean.TRUE.equals(acquired) ? token : null;
+        return acquire(TicketRedisKeys.maintenance(creatorId, memberId));
     }
 
     public void release(Long creatorId, Long memberId, String token) {
-        redisTemplate.execute(RELEASE, List.of(TicketRedisKeys.maintenance(creatorId, memberId)), token);
+        release(TicketRedisKeys.maintenance(creatorId, memberId), token);
     }
 
     /** token이 아직 lock의 소유자일 때만 Redis 잔액을 덮어쓴다. 소유하지 않으면 false. */
     public boolean setBalanceIfHeld(Long creatorId, Long memberId, String token, long balance) {
-        Long written = redisTemplate.execute(
-                SET_IF_HELD,
-                List.of(TicketRedisKeys.maintenance(creatorId, memberId), EntryRedisKeys.balance(creatorId, memberId)),
-                token, String.valueOf(balance));
+        return setBalanceIfHeld(TicketRedisKeys.maintenance(creatorId, memberId),
+                EntryRedisKeys.balance(creatorId, memberId), token, balance);
+    }
+
+    /** 공용 응모권(이슈 #256): 크리에이터 축 없이 memberId 하나로 잠근다. */
+    public String acquireCommon(Long memberId) {
+        return acquire(CommonTicketRedisKeys.maintenance(memberId));
+    }
+
+    public void releaseCommon(Long memberId, String token) {
+        release(CommonTicketRedisKeys.maintenance(memberId), token);
+    }
+
+    public boolean setCommonBalanceIfHeld(Long memberId, String token, long balance) {
+        return setBalanceIfHeld(CommonTicketRedisKeys.maintenance(memberId),
+                CommonTicketRedisKeys.balance(memberId), token, balance);
+    }
+
+    private String acquire(String lockKey) {
+        String token = UUID.randomUUID().toString();
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, token, LEASE);
+        return Boolean.TRUE.equals(acquired) ? token : null;
+    }
+
+    private void release(String lockKey, String token) {
+        redisTemplate.execute(RELEASE, List.of(lockKey), token);
+    }
+
+    private boolean setBalanceIfHeld(String lockKey, String balanceKey, String token, long balance) {
+        Long written = redisTemplate.execute(SET_IF_HELD, List.of(lockKey, balanceKey), token, String.valueOf(balance));
         return Long.valueOf(1L).equals(written);
     }
 }
