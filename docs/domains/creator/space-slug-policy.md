@@ -65,7 +65,7 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 - slug를 바꾸면 예전 slug로 된 링크는 더 이상 열리지 않는다(404). 예전 slug를 새 주소로 넘겨주는 redirect는 MVP 범위가 아니다.
 - **버린 이전 slug는 14일 동안 예약된다.** 예약 기간에는 다른 Creator가 그 slug로 바꿀 수 없다(`SLUG_ALREADY_TAKEN`). 기존 공유 링크가 곧바로 다른 Creator의 Space를 여는 것을 막기 위해서다.
 - 예약 기간이 끝나면 누구나 쓸 수 있다. 이때 예전 링크는 새 주인의 Space를 연다.
-- 예약은 `creator_space_slug_reservation`(V23)에 slug·예약한 Creator·만료 시각으로 저장한다. 만료는 조회 시점에 만료 시각과 비교해 판단하며, 만료된 행은 같은 slug를 다시 예약하거나 쓸 때 덮어쓰거나 지운다(정리 배치 없음).
+- 예약은 `creator_space_slug_reservation`(V24)에 slug·예약한 Creator·만료 시각으로 저장한다. 만료는 조회 시점에 만료 시각과 비교해 판단하며, 만료된 행은 같은 slug를 다시 예약하거나 쓸 때 덮어쓰거나 지운다(정리 배치 없음).
 - 승인 시 자동 slug도 예약 중인 slug를 사용 중으로 보고 대체 slug를 쓴다(아래 "자동 slug 충돌").
 
 변경 간격(14일)과 예약 기간(14일)은 별도 정책이다. 변경 간격은 "한 Creator가 얼마나 자주 바꿀 수 있는지", 예약 기간은 "버린 slug를 다른 Creator가 언제부터 가져갈 수 있는지"를 정한다. 기간 값은 각각 `CreatorSpaceCustomSlug.CHANGE_INTERVAL`, `RESERVATION_PERIOD`다.
