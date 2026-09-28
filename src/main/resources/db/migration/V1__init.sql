@@ -59,7 +59,7 @@ CREATE TABLE creator_application (
 CREATE TABLE mission (
     mission_id    BIGINT      NOT NULL AUTO_INCREMENT,
     creator_id    BIGINT      NOT NULL,
-    type          VARCHAR(30) NOT NULL COMMENT 'ATTENDANCE, LIKE, SHARE, YOUTUBE_SUBSCRIPTION',
+    type          VARCHAR(30) NOT NULL COMMENT 'ATTENDANCE, LIKE',
     reward_amount INT         NOT NULL,
     active_from   DATETIME(6) NULL,
     active_to     DATETIME(6) NULL,
