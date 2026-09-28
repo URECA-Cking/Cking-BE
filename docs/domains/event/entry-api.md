@@ -37,7 +37,7 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 | `INSUFFICIENT_BALANCE` | 409 | 응모권 잔액 부족 | 잔액 확인 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 동일 `requestId`에 다른 요청 내용 | 새 `requestId` |
 | `GATE_NOT_LOADED` | 503 | Gate 키 미적재(OPEN 전이 전이거나 Redis 유실). OPEN으로 간주하지 않는다 | 잠시 후 재시도 |
-| `BALANCE_NOT_LOADED` | 503 | 잔액 키 미적재. 0으로 간주하지 않는다 | 잠시 후 재시도 |
+| `BALANCE_NOT_LOADED` | 503 | 잔액 키 미적재. 0으로 간주하지 않는다. 서버가 안전 조건(미반영 메시지·보정 락 없음)에서 DB 기준으로 적재해 1회 재실행하므로, 이 코드는 그 조건을 채우지 못할 때만 나온다 | 잠시 후 재시도 |
 | `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(issue #172) | 잠시 후 동일 `requestId`로 재시도 |
 | `SYSTEM_ERROR` | 500 | 내부 오류. Redis 타임아웃도 포함 | 동일 `requestId`로 재시도 |
 
@@ -56,12 +56,15 @@ USER가 자신의 Event 응모 내역을 조회한다. Bearer Access JWT가 필�
   "items": [{
     "entryId": 10,
     "usedTicketCount": 3,
+    "couponType": "COMMON",
     "appliedAt": "2026-09-18T02:00:00Z"
   }],
   "nextCursor": null,
   "hasNext": false
 }
 ```
+
+`couponType`은 응모에 쓴 응모권 종류(`CREATOR` | `COMMON`)다. `event_entry`에는 종류 컬럼이 없으므로 그 응모의 SPEND Ledger가 `common_ticket_ledger`에 있으면 `COMMON`, 아니면 `CREATOR`로 판별한다(Consumer가 Entry와 SPEND Ledger를 같은 Tx로 저장한다).
 
 조회 조건은 `event_entry.member_id = 인증된 memberId`와 `event_entry.event_id = eventId`를 모두 사용한다. 없는 Member 또는
 존재하지 않거나 삭제된 Event는 `RESOURCE_NOT_FOUND`, 식별자·size 범위·cursor 형식 오류는

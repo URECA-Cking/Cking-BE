@@ -15,8 +15,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import io.lettuce.core.RedisCommandExecutionException;
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
+import kr.co.cking.ticket.domain.UserCommonTicketBalance;
 import kr.co.cking.ticket.domain.UserTicketBalance;
+import kr.co.cking.ticket.repository.UserCommonTicketBalanceRepository;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +31,7 @@ import lombok.extern.slf4j.Slf4j;
  * 확인 후 별도로 호출한다.
  *
  * <p>정상적인 Redis→Stream→DB 비동기 반영 지연을 즉시 오류로 판단하지 않기 위해, 같은
- * (memberId, creatorId) 조합이 연속된 주기에서도 계속 불일치할 때만 경고 로그를 남긴다
+ * (memberId, creatorId) 조합(공용은 creatorId=null)이 연속된 주기에서도 계속 불일치할 때만 경고 로그를 남긴다
  * (검증 시나리오 30번).
  */
 @Slf4j
@@ -43,12 +46,20 @@ public class TicketBalanceReconciliationScheduler {
     private static final int PAGE_SIZE = 500;
 
     private final UserTicketBalanceRepository userTicketBalanceRepository;
+    private final UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
     private final StringRedisTemplate redisTemplate;
 
     private final Map<BalanceKey, Integer> mismatchStreaks = new ConcurrentHashMap<>();
 
     @Scheduled(fixedDelayString = "${cking.ticket.reconciliation-interval-ms:300000}")
     public void reconcile() {
+        // Redis 통신 장애로 중단되면(false) 공용 잔액 검사도 이어가지 않는다.
+        if (reconcileCreatorBalances()) {
+            reconcileCommonBalances();
+        }
+    }
+
+    private boolean reconcileCreatorBalances() {
         Pageable limit = PageRequest.of(0, PAGE_SIZE);
         Long lastMemberId = Long.MIN_VALUE;
         Long lastCreatorId = Long.MIN_VALUE;
@@ -56,23 +67,8 @@ public class TicketBalanceReconciliationScheduler {
         do {
             batch = userTicketBalanceRepository.findNextBatch(lastMemberId, lastCreatorId, limit);
             for (UserTicketBalance balance : batch) {
-                BalanceKey key = new BalanceKey(balance.getMemberId(), balance.getCreatorId());
-                try {
-                    check(key, balance.getBalance());
-                } catch (RedisConnectionFailureException | QueryTimeoutException e) {
-                    abortCycle(e);
-                    return;
-                } catch (RedisSystemException e) {
-                    // WRONGTYPE 등 명령 실행 오류(원인이 RedisCommandExecutionException)만 key 단위
-                    // 문제다. 그 외(연결 종료 등 일반 RedisException)는 Redis 통신 장애로 본다.
-                    if (e.getCause() instanceof RedisCommandExecutionException) {
-                        failKey(key, e);
-                    } else {
-                        abortCycle(e);
-                        return;
-                    }
-                } catch (Exception e) {
-                    failKey(key, e);
+                if (!checkSafely(new BalanceKey(balance.getMemberId(), balance.getCreatorId()), balance.getBalance())) {
+                    return false;
                 }
             }
             if (!batch.isEmpty()) {
@@ -81,6 +77,48 @@ public class TicketBalanceReconciliationScheduler {
                 lastCreatorId = last.getCreatorId();
             }
         } while (batch.size() == PAGE_SIZE);
+        return true;
+    }
+
+    // 공용 응모권(이슈 #256): 크리에이터 축이 없어 BalanceKey.creatorId가 null이다.
+    private boolean reconcileCommonBalances() {
+        Pageable limit = PageRequest.of(0, PAGE_SIZE);
+        Long lastMemberId = Long.MIN_VALUE;
+        List<UserCommonTicketBalance> batch;
+        do {
+            batch = userCommonTicketBalanceRepository.findNextBatch(lastMemberId, limit);
+            for (UserCommonTicketBalance balance : batch) {
+                if (!checkSafely(new BalanceKey(balance.getMemberId(), null), balance.getBalance())) {
+                    return false;
+                }
+            }
+            if (!batch.isEmpty()) {
+                lastMemberId = batch.get(batch.size() - 1).getMemberId();
+            }
+        } while (batch.size() == PAGE_SIZE);
+        return true;
+    }
+
+    /** 이번 주기를 계속할 수 있으면 true, Redis 통신 장애로 중단해야 하면 false. */
+    private boolean checkSafely(BalanceKey key, long dbBalance) {
+        try {
+            check(key, dbBalance);
+        } catch (RedisConnectionFailureException | QueryTimeoutException e) {
+            abortCycle(e);
+            return false;
+        } catch (RedisSystemException e) {
+            // WRONGTYPE 등 명령 실행 오류(원인이 RedisCommandExecutionException)만 key 단위
+            // 문제다. 그 외(연결 종료 등 일반 RedisException)는 Redis 통신 장애로 본다.
+            if (e.getCause() instanceof RedisCommandExecutionException) {
+                failKey(key, e);
+            } else {
+                abortCycle(e);
+                return false;
+            }
+        } catch (Exception e) {
+            failKey(key, e);
+        }
+        return true;
     }
 
     private void abortCycle(Exception e) {
@@ -99,7 +137,10 @@ public class TicketBalanceReconciliationScheduler {
     }
 
     private void check(BalanceKey key, long dbBalance) {
-        String redisValue = redisTemplate.opsForValue().get(TicketRedisKeys.balance(key.creatorId(), key.memberId()));
+        String redisKey = key.creatorId() == null
+                ? CommonTicketRedisKeys.balance(key.memberId())
+                : TicketRedisKeys.balance(key.creatorId(), key.memberId());
+        String redisValue = redisTemplate.opsForValue().get(redisKey);
         if (redisValue == null) {
             // Redis Key 미존재는 별개 이상 상태(BALANCE_NOT_LOADED)다 - 정합성 불일치로 다루지 않는다.
             mismatchStreaks.remove(key);
@@ -107,7 +148,7 @@ public class TicketBalanceReconciliationScheduler {
             // 이 유저는 SPEND에서 계속 BALANCE_NOT_LOADED(503)를 받는다.
             if (dbBalance > 0) {
                 log.warn("Redis Balance 키가 없습니다(BALANCE_NOT_LOADED로 응모 불가). memberId={}, creatorId={}, "
-                                + "dbBalance={} - TicketCompensationService.resyncRedisToDb로 복구가 필요합니다.",
+                                + "dbBalance={} - TicketCompensationService(공용은 CommonTicketCompensationService).resyncRedisToDb로 복구가 필요합니다.",
                         key.memberId(), key.creatorId(), dbBalance);
             }
             return;

@@ -76,7 +76,8 @@ class EntrySpendServiceIntegrationTest {
             "req-common",
             "req-common-only-creator-balance",
             "req-common-insufficient",
-            "req-creator-only-common-balance"
+            "req-creator-only-common-balance",
+            "req-common-real-lock"
     );
 
     @BeforeEach
@@ -157,13 +158,57 @@ class EntrySpendServiceIntegrationTest {
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.INVALID_TICKET_COUNT);
     }
 
+    // FR-P2-056: 키가 없어도 미반영 메시지가 없으면 DB 기준(행 없음=0)으로 적재하고 1회 재실행한다.
     @Test
-    void balance_키가_없으면_BALANCE_NOT_LOADED를_반환한다() {
+    void balance_키가_없고_미반영_메시지가_없으면_0으로_적재해_INSUFFICIENT_BALANCE를_반환한다() {
         openGate();
 
         EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.CREATOR);
 
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.INSUFFICIENT_BALANCE);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isEqualTo("0");
+    }
+
+    @Test
+    void 공용_balance_키가_없고_미반영_메시지가_없으면_0으로_적재해_INSUFFICIENT_BALANCE를_반환한다() {
+        openGate();
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.COMMON);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.INSUFFICIENT_BALANCE);
+        assertThat(redisTemplate.opsForValue().get(CommonTicketRedisKeys.balance(USER_ID))).isEqualTo("0");
+    }
+
+    // 시나리오 41: 미반영 메시지가 있으면 DB 값으로 적재하면 차감분이 되살아나므로 적재하지 않는다.
+    @Test
+    void balance_키가_없고_미반영_메시지가_있으면_적재하지_않고_BALANCE_NOT_LOADED를_반환한다() {
+        openGate();
+        addUnappliedSpend(CouponType.CREATOR);
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.CREATOR);
+
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.BALANCE_NOT_LOADED);
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.balance(CREATOR_ID, USER_ID))).isFalse();
+    }
+
+    @Test
+    void 공용_balance_키가_없고_미반영_COMMON_메시지가_있으면_적재하지_않고_BALANCE_NOT_LOADED를_반환한다() {
+        openGate();
+        addUnappliedSpend(CouponType.COMMON);
+
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-misc", 2, CouponType.COMMON);
+
+        assertThat(result.code()).isEqualTo(EntrySpendResultCode.BALANCE_NOT_LOADED);
+        assertThat(redisTemplate.hasKey(CommonTicketRedisKeys.balance(USER_ID))).isFalse();
+    }
+
+    // Consumer가 아직 읽지 않은 SPEND 메시지를 흉내 낸다(그룹이 없으면 처음부터 미반영으로 본다).
+    private void addUnappliedSpend(CouponType couponType) {
+        redisTemplate.opsForStream().add(STREAM_KEY, Map.of(
+                "userId", String.valueOf(USER_ID),
+                "creatorId", String.valueOf(CREATOR_ID),
+                "couponType", couponType.name()
+        ));
     }
 
     @Test
@@ -235,6 +280,7 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "5");
         // CommonTicketRedisKeys.balance(USER_ID)는 의도적으로 세팅하지 않는다.
+        addUnappliedSpend(CouponType.COMMON); // 적재기가 0으로 채우지 못하도록 미반영 메시지를 둔다.
 
         EntrySpendResult result = entrySpendService.spend(
                 EVENT_ID, USER_ID, CREATOR_ID, "req-common-only-creator-balance", 2, CouponType.COMMON);
@@ -266,6 +312,7 @@ class EntrySpendServiceIntegrationTest {
         openGate();
         redisTemplate.opsForValue().set(CommonTicketRedisKeys.balance(USER_ID), "10");
         // EntryRedisKeys.balance(CREATOR_ID, USER_ID)는 의도적으로 세팅하지 않는다.
+        addUnappliedSpend(CouponType.CREATOR); // 적재기가 0으로 채우지 못하도록 미반영 메시지를 둔다.
 
         EntrySpendResult result = entrySpendService.spend(
                 EVENT_ID, USER_ID, CREATOR_ID, "req-creator-only-common-balance", 2, CouponType.CREATOR);
@@ -604,6 +651,28 @@ class EntrySpendServiceIntegrationTest {
         EntrySpendResult blocked = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2, CouponType.CREATOR);
         maintenanceLock.release(CREATOR_ID, USER_ID, token);
         EntrySpendResult passed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2, CouponType.CREATOR);
+
+        assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
+        assertThat(passed.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(passed.balance()).isEqualTo(8L);
+    }
+
+    // PR #273 리뷰(이슈 #256): CommonTicketCompensationService가 실제로 쥐는 lock
+    // (TicketMaintenanceLock.acquireCommon)이 COMMON SPEND도 막는지 확인한다. CREATOR 검증(위
+    // TicketMaintenanceLock이_잡은_lock은_SPEND를_막고_해제하면_통과시킨다)과 같은 lock 헬퍼를 쓰므로
+    // 같은 패턴이지만, entry-spend.lua의 KEYS[6]가 couponType=COMMON일 때 실제로
+    // CommonTicketRedisKeys.maintenance(userId)로 라우팅되는지는 별도로 고정해야 한다.
+    @Test
+    void COMMON_보정_락이_걸려있으면_COMMON_SPEND도_막고_해제하면_통과시킨다() {
+        openGate();
+        redisTemplate.opsForValue().set(CommonTicketRedisKeys.balance(USER_ID), "10");
+
+        String token = maintenanceLock.acquireCommon(USER_ID);
+        EntrySpendResult blocked = entrySpendService.spend(
+                EVENT_ID, USER_ID, CREATOR_ID, "req-common-real-lock", 2, CouponType.COMMON);
+        maintenanceLock.releaseCommon(USER_ID, token);
+        EntrySpendResult passed = entrySpendService.spend(
+                EVENT_ID, USER_ID, CREATOR_ID, "req-common-real-lock", 2, CouponType.COMMON);
 
         assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
         assertThat(passed.code()).isEqualTo(EntrySpendResultCode.SUCCESS);

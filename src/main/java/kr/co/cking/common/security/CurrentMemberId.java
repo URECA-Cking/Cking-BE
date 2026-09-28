@@ -11,4 +11,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Parameter(hidden = true)
 public @interface CurrentMemberId {
+
+    /** false면 공개 API에서 토큰이 없을 때 예외 대신 null을 주입한다. */
+    boolean required() default true;
 }

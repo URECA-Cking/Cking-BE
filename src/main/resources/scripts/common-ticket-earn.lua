@@ -5,6 +5,7 @@
 -- KEYS[1] = idem:common-mission:{requestId}                          String(JSON, TTL 25h)
 -- KEYS[2] = mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd} String(SETNX)
 -- KEYS[3] = ticket:balance:common:{userId}                           String(integer)
+-- KEYS[4] = ticket:maint:common:{userId}                             존재 여부만 확인(issue #256)
 --
 -- ARGV[1] = amount
 -- ARGV[2] = fingerprint (CommonTicketEarnServiceImpl이 userId+missionType+missionId+amount로
@@ -20,13 +21,12 @@
 --
 -- 반환: { resultCode, ...옵션 필드 }
 --   ALREADY_PROCESSED / REQUEST_ID_CONFLICT / DUPLICATE_MISSION / EARN_STATUS_UNKNOWN /
---   EARN_ACCEPTED { 'EARN_ACCEPTED', streamId, 적립후잔액 }
--- (BALANCE_MAINTENANCE·EARN_PROCESSING_FAILED는 아직 구현하지 않는다 — 공용 잔액의
--- 수동 보정 기능은 이 이슈 범위 밖이며 후속 이슈로 남긴다)
+--   BALANCE_MAINTENANCE / EARN_ACCEPTED { 'EARN_ACCEPTED', streamId, 적립후잔액 }
 
 local idemKey    = KEYS[1]
 local guardKey   = KEYS[2]
 local balanceKey = KEYS[3]
+local maintenanceLockKey = KEYS[4]
 
 local amount      = tonumber(ARGV[1])
 local fingerprint = ARGV[2]
@@ -63,6 +63,13 @@ if stored then
         return result
     end
     return { 'EARN_STATUS_UNKNOWN' }
+end
+
+-- 수동 보정 락 확인 (idem 재현 분기를 모두 통과한 신규 요청에만 적용 - issue #256)
+-- CommonTicketCompensationService가 이 userId의 공용 잔액을 보정하는 동안에는
+-- PROCESSING 예약조차 만들지 않고 BALANCE_MAINTENANCE로 종료한다.
+if redis.call('EXISTS', maintenanceLockKey) == 1 then
+    return { 'BALANCE_MAINTENANCE' }
 end
 
 -- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.

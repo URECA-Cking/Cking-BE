@@ -8,7 +8,9 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.ticket.application.CommonTicketBalanceQueryService;
 import kr.co.cking.ticket.application.TicketBalanceQueryService;
+import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -31,14 +33,17 @@ class EventQueryServiceGetEventTest {
     private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     private final EventRepository eventRepository = mock(EventRepository.class);
     private final TicketBalanceQueryService ticketBalanceQueryService = mock(TicketBalanceQueryService.class);
+    private final CommonTicketBalanceQueryService commonTicketBalanceQueryService = mock(CommonTicketBalanceQueryService.class);
     private final EventCache eventCache = mock(EventCache.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final EventQueryService service =
-            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, eventCache, mock(EventListCache.class), memberRepository);
+            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), memberRepository);
 
     @BeforeEach
     void setUp() {
         when(memberRepository.existsById(any())).thenReturn(true);
+        when(commonTicketBalanceQueryService.getBalanceDetail(any()))
+                .thenReturn(new CommonTicketBalanceResponse(100L, 0L, null));
     }
 
     private final Event event = Event.builder()
@@ -55,10 +60,13 @@ class EventQueryServiceGetEventTest {
         when(eventCache.find(1L)).thenReturn(Optional.empty());
         when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
         when(ticketBalanceQueryService.getBalance(7L, 100L)).thenReturn(42L);
+        when(commonTicketBalanceQueryService.getBalanceDetail(100L))
+                .thenReturn(new CommonTicketBalanceResponse(100L, 9L, null));
 
         EventDetail detail = service.getEvent(1L, 100L);
 
         assertThat(detail.myTicketBalance()).isEqualTo(42L);
+        assertThat(detail.myCommonTicketBalance()).isEqualTo(9L);
         assertThat(detail.displayStatus()).isEqualTo(DisplayStatus.IN_PROGRESS);
     }
 

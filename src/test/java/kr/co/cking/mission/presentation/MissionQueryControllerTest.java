@@ -39,7 +39,7 @@ class MissionQueryControllerTest {
     @Test
     void creator의_미션과_completedToday를_공통응답으로_반환한다() throws Exception {
         MissionQueryItem item = new MissionQueryItem(
-                101L, MissionType.ATTENDANCE, 2,
+                101L, MissionType.LIKE, 2,
                 Instant.parse("2026-09-16T00:00:00Z"), Instant.parse("2026-09-17T00:00:00Z"), true);
         when(missionQueryService.findMissions(11L, 7L)).thenReturn(List.of(item));
 
@@ -48,7 +48,7 @@ class MissionQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data[0].missionId").value(101))
-                .andExpect(jsonPath("$.data[0].type").value("ATTENDANCE"))
+                .andExpect(jsonPath("$.data[0].type").value("LIKE"))
                 .andExpect(jsonPath("$.data[0].rewardAmount").value(2))
                 .andExpect(jsonPath("$.data[0].activeFrom").value("2026-09-16T00:00:00Z"))
                 .andExpect(jsonPath("$.data[0].activeTo").value("2026-09-17T00:00:00Z"))

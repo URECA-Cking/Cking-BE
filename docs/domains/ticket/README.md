@@ -4,7 +4,7 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 ## 문서
 
-- [외부 조회 API](api.md): 잔액과 Ledger 이력 조회 계약
+- [외부 API](api.md): 잔액·Ledger 이력 조회 및 관리자 보정 API 계약
 - [EARN Lua 원자 처리](lua-api.md): 미션 적립의 멱등성·일일 중복 방지·Stream 발행 계약
 
 ## EARN과 Stream 반영
@@ -13,7 +13,11 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 ## 정합성 검증과 수동 보정
 
-`TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니며, 이 유저는 SPEND에서 `BALANCE_NOT_LOADED`를 받는다). 복구는 `TicketCompensationService.resyncRedisToDb`로 한다. Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
+`TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니다). Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
+
+### 키 유실 시 자동 적재(FR-P2-056, 이슈 #275)
+
+SPEND가 `BALANCE_NOT_LOADED`를 받으면(Redis 잔액 키 부재 - 한 번도 받은 적 없는 사용자와 키가 유실된 사용자 모두 포함) `TicketBalanceKeyLoader`가 그 요청 안에서 DB 잔액으로 즉시 적재를 시도하고, 성공하면 같은 요청을 1회만 재실행한다. 적재는 보정 락(`TicketMaintenanceLock`)을 잡고 해당 `(memberId, creatorId)`에 미반영 SPEND·EARN 메시지가 없을 때만 이뤄지며, 락 토큰 확인과 `SET NX`를 원자 처리해 검사 도중 락이 만료돼도 소유권 없이 쓰지 않는다. 다음 중 하나라도 해당하면 적재하지 않고 기존처럼 `BALANCE_NOT_LOADED`(503)로 남아 `TicketCompensationService.resyncRedisToDb`(수동 보정)가 필요하다: 락을 못 잡음(다른 보정 진행 중), 미반영 메시지가 있음, 검사 도중 락 만료, Redis·DB 저장소 오류(이 경우도 응모를 500으로 키우지 않고 503으로 남긴다).
 
 ### 수동 보정의 안전장치
 
@@ -42,5 +46,6 @@ SPEND·EARN Lua도 같은 lock을 확인해 lock이 걸린 동안 새 차감·�
 - **PEL 회수·Dead Stream 이관**(이슈 #244): 반영에 실패해 PEL에 남은 메시지는 `CommonEarnStreamPelRecoveryScheduler`가 XCLAIM으로 회수해 `CommonEarnStreamListener.process()`로 재처리한다(consumer `common-earn-pel-recovery`, 기본 30초 주기·idle 60초 이상). 최대 재시도(기본 5회, `common-earn-pel-max-retry`)를 넘기면 `EarnStreamPelRecoveryScheduler`(크리에이터 EARN)와 동일하게 `dead_stream_message`(`stream_type = COMMON_EARN`)로 옮기고 ACK한다 - 영구히 PEL에 남기지 않는다. 절대 성공할 수 없는 메시지가 XPENDING을 계속 채우던 이전 구조(더 긴 간격 재시도·페이지네이션)는 이관이 생기면서 필요 없어져 제거했다.
 - **관리자 조회·replay**: `GET /api/admin/dead-streams`, `POST /api/admin/dead-streams/{id}/replay`(`DeadStreamAdminController`)를 EARN/SPEND와 동일하게 그대로 쓴다 - `streamType`이 `COMMON_EARN`으로 나온다. `DeadStreamReplayService`가 `CommonMissionEarnLedgerService.apply()`로 재적용한다(requestId 멱등이라 반복 replay해도 안전).
 - **조회**: `GET /api/tickets/common`, `GET /api/tickets/common/history`(`CommonTicketQueryController`) — `GET /api/creators/{creatorId}/tickets`류와 동일한 커서 페이지네이션.
-- **알려진 제약(미해결)**: 공용 잔액 수동 보정(`TicketCompensationService`/`ticket:maint:` maintenance lock 대응)이 아직 없다. `BALANCE_MAINTENANCE`도 아직 반환되지 않는다 — 후속 이슈로 남긴다.
+- **정합성 검증·수동 보정(이슈 #256)**: `TicketBalanceReconciliationScheduler`가 같은 5분 주기에 `user_common_ticket_balance` vs `ticket:balance:common:{userId}`도 비교한다(연속 2주기 불일치·키 유실 판정 기준은 크리에이터 잔액과 동일). 복구는 `CommonTicketCompensationService.resyncRedisToDb(memberId, reason)`이 하며, 크리에이터 축이 없다는 점만 빼면 `TicketCompensationService`와 계약이 같다: `TicketMaintenanceLock.acquireCommon(memberId)`으로 `ticket:maint:common:{userId}` lock을 잡고(이미 잡혀 있으면 `CONCURRENT_COMMAND`), `UnappliedBalanceMessageChecker.existsCommon(memberId)`로 공용 SPEND·EARN Stream과 공용 Dead Stream의 미반영 메시지를 확인한 뒤(있으면 `INVALID_STATE`) `COMPENSATE` Ledger를 append하고 lock을 쥔 동안만 Redis를 덮어쓴다. `common-ticket-earn.lua`와 `entry-spend.lua`(`couponType=COMMON`) 양쪽 모두 이 lock 키를 `EXISTS`로 확인해 걸려 있는 동안 새 공용 EARN·SPEND를 `BALANCE_MAINTENANCE`(HTTP 503)로 거부한다 — [응모 Lua API](../event/lua-api.md#coupontype-이슈-243) 참고.
+- **호출 진입점**: `POST /api/admin/tickets/common/resync`(`TicketAdminController.resyncCommon`)가 위 보정을 트리거한다. 요청·응답 필드와 오류 코드는 [외부 API](api.md#post-apiadminticketscommonresync) 참고.
 - **호출 측**: 공용 미션 완료는 `kr.co.cking.mission.application.CommonMissionCompletionService`가 담당한다([Mission 도메인](../mission/README.md#공용-미션크리에이터-무관-이슈-219) 참고). 응모(SPEND)에서 공용 응모권으로 크리에이터 이벤트에 응모하는 경로는 이슈 #243으로 구현됐다 — 요청의 `couponType=COMMON`이면 `EntrySpendServiceImpl`이 크리에이터 잔액 대신 이 문서의 공용 잔액을 검증·차감하고, `TicketSpendLedgerService`가 `common_ticket_ledger`/`user_common_ticket_balance`에 반영한다. 자세한 계약은 [응모 API](../event/entry-api.md), [응모 Lua API](../event/lua-api.md#coupontype-이슈-243) 참고.

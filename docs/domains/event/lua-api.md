@@ -15,7 +15,7 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 크리에이터 전용 응모권 잔액. `couponType=COMMON`이면 대신 `ticket:balance:common:{userId}`를 쓴다(이슈 #243) |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
 | `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
-| `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172). `couponType=COMMON`이면 `ticket:maint:common:{userId}`를 대신 확인한다 — 공용 보정 기능 자체는 아직 없어 항상 미존재(EXISTS=false) |
+| `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172). `couponType=COMMON`이면 `ticket:maint:common:{userId}`를 대신 확인한다 — `CommonTicketCompensationService.resyncRedisToDb()`(이슈 #256)가 공용 보정 중에만 이 키를 잡으므로, 평소에는 미존재(EXISTS=false)다 |
 | `event:entry-total:{eventId}` | STRING(integer) | 실시간 응모 현황(FR-P2-045~050) 누적 사용 응모권 수. `event-gate-load.lua`가 Gate 최초 적재 시 DB 집계로 초기화하고, 이 스크립트가 신규 SUCCESS 경로에서만 증가시킨다 |
 | `event:entrants:{eventId}` | HASH(userId → 사용 응모권 수) | 실시간 응모 현황 참여자별 집계. `HLEN`이 참여자 수다. 초기화·증가 시점은 위와 같다 |
 
@@ -99,7 +99,7 @@ guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 �
 | `GATE_NOT_LOADED` | Gate 키 자체가 없음 (없음 = OPEN으로 간주 금지) |
 | `EVENT_NOT_OPEN` | `event:status` != `OPEN` |
 | `EVENT_CLOSED` | `now >= endAt` |
-| `BALANCE_NOT_LOADED` | Balance 키 자체가 없음 (없음 = 0 취급 금지) |
+| `BALANCE_NOT_LOADED` | Balance 키 자체가 없음 (없음 = 0 취급 금지). Lua는 적재하지 않고 Java가 처리한다 — 아래 "잔액 키 적재" 참고 |
 | `INSUFFICIENT_BALANCE` | 보유 응모권 < 요청 수량 |
 | `INVALID_TICKET_COUNT` | ticketCount가 1 미만이거나 100 초과 |
 | `SYSTEM_ERROR` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
@@ -163,3 +163,12 @@ Gate 최초 적재 시 DB 집계로 두 키를 초기화하는지는 `EventGateL
 | 경합 | 300 | SUCCESS 150 / INSUFFICIENT_BALANCE 150 | 10345 | 14ms | 22ms | 22ms |
 
 참고용 1회 측정치이며 SLA로 확정한 값은 아니다.
+
+## 잔액 키 적재 (FR-P2-056, issue #275)
+
+`EntrySpendServiceImpl`은 Lua가 `BALANCE_NOT_LOADED`를 반환하면 `TicketBalanceKeyLoader`로 DB 잔액을 Redis에 `SET NX` 적재하고 **같은 요청을 1회만** 다시 실행한다. CREATOR·COMMON 공통이다.
+
+- 적재 조건: 보정 락(`ticket:maint:...`)을 잡을 수 있고, 해당 스코프에 미반영 메시지(PEL·미읽음·미해결 Dead Stream)가 없어야 한다. 미반영 차감분이 있는 채 DB 값으로 적재하면 잔액이 되살아나기 때문이다.
+- DB 잔액 행이 없으면 0으로 적재하므로 응답은 `INSUFFICIENT_BALANCE`가 된다.
+- 조건을 채우지 못하거나 재실행 후에도 키가 없으면 `BALANCE_NOT_LOADED`(503)를 그대로 반환한다.
+- 락은 재실행 전에 풀어 재실행이 `BALANCE_MAINTENANCE`가 되지 않게 한다. `SET NX`라 그 사이 EARN이 키를 먼저 만들었다면 덮어쓰지 않는다.

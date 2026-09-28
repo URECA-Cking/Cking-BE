@@ -5,6 +5,8 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.CommonMission;
 import kr.co.cking.mission.CommonMissionRepository;
+import kr.co.cking.mission.MissionCompletionRepository;
+import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.MissionErrorCode;
@@ -24,9 +26,11 @@ import java.util.Locale;
 
 /**
  * 공용 미션(크리에이터 무관) 완료 처리 + 공용 EARN 연동(이슈 #219).
- * {@link MissionCompletionService}와 완전히 동일한 판정 순서(기존 requestId 조회
- * → 활성 검증 → EARN 호출)를 크리에이터 축 없이 수행한다. {@code MissionCompleteCommand}/
- * {@code MissionCompleteOutcome}은 원래도 creatorId를 담지 않는 범용 DTO라 그대로 재사용한다.
+ * {@link MissionCompletionService}와 동일하게 기존 requestId replay를 먼저 처리한 뒤
+ * 활성 검증과 EARN을 수행한다. 공용 ATTENDANCE 신규 EARN 전에는 같은 UTC 날짜의
+ * 기존 Creator ATTENDANCE 완료 기록도 확인해 서비스 전체 하루 1회 정책을 적용한다.
+ * {@code MissionCompleteCommand}/{@code MissionCompleteOutcome}은 creatorId가 없는 공용
+ * 계약이라 그대로 재사용한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -36,6 +40,7 @@ public class CommonMissionCompletionService {
 
     private final MemberRepository memberRepository;
     private final CommonMissionRepository commonMissionRepository;
+    private final MissionCompletionRepository creatorCompletionRepository;
     private final CommonTicketEarnService commonTicketEarnService;
     private final Clock clock;
 
@@ -67,6 +72,11 @@ public class CommonMissionCompletionService {
 
         if (!mission.isActiveAt(now)) {
             throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
+        }
+
+        if (creatorCompletionRepository.existsByMemberIdAndPeriodKeyAndMissionType(
+                command.userId(), periodKey, MissionType.ATTENDANCE.name()) == 1L) {
+            throw new BusinessException(MissionErrorCode.DUPLICATE_MISSION);
         }
 
         EarnResult result = commonTicketEarnService.earn(earnCommand);

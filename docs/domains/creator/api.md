@@ -75,13 +75,13 @@ Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberI
 
 ## POST /api/admin/creator-applications/{id}/approve
 
-Request Body는 없다. 인증된 관리자만 PENDING 신청을 승인할 수 있다. 승인, Creator 생성, 기본 미션(ATTENDANCE·LIKE) 초기화는 하나의 DB transaction으로 처리한다. 미션 초기화가 실패하면 승인과 Creator 생성도 함께 롤백되며, Member당 Creator는 하나만 존재해야 한다.
+Request Body는 없다. 인증된 관리자만 PENDING 신청을 승인할 수 있다. 승인, Creator 생성, 기본 미션(ATTENDANCE·LIKE) 초기화, Creator Space 생성은 하나의 DB transaction으로 처리한다. 미션 초기화 또는 Creator Space 생성이 실패하면 승인과 Creator 생성도 함께 롤백되며, Member당 Creator는 하나만 존재해야 한다. Creator Space 생성 계약(활성 템플릿 값 복사, slug 생성, 활성 템플릿 없음 정책)은 [creator/README.md](README.md#creator-space-자동-생성이슈-270)를 따른다.
 
 ```json
 { "applicationId": 1, "status": "APPROVED" }
 ```
 
-성공은 200이다. 대상 또는 요청 관리자가 없으면 `RESOURCE_NOT_FOUND`, 관리자가 아니면 `FORBIDDEN`, PENDING이 아니면 `INVALID_STATE`, 승인·거절 경합은 `CONCURRENT_COMMAND`다.
+성공은 200이다. 대상 또는 요청 관리자가 없으면 `RESOURCE_NOT_FOUND`, 관리자가 아니면 `FORBIDDEN`, PENDING이 아니면 `INVALID_STATE`, 승인·거절 경합은 `CONCURRENT_COMMAND`, 활성화된 기본 Creator Space 템플릿이 없으면 `NO_ACTIVE_SPACE_TEMPLATE`, 활성 템플릿은 있지만 `slugRule`이 무효하면(자리표시자 없음·중복, 치환 결과 길이 초과) `INVALID_ACTIVE_SPACE_TEMPLATE`다.
 
 ## POST /api/admin/creator-applications/{id}/reject
 

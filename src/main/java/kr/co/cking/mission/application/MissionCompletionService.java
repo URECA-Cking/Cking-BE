@@ -24,7 +24,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * 미션 완료 처리 + EARN 연동(FR-P1-005~008, 014~016).
+ * Creator별 LIKE 미션 완료 처리 + 크리에이터별 EARN 연동(FR-P1-005~008, 014~016).
+ * 공용 ATTENDANCE는 {@link CommonMissionCompletionService}가 담당한다.
  *
  * <p>{@code mission_completion} 저장·EARN Ledger·DB Balance 반영은 이 계층의 책임이
  * 아니다 — {@link TicketEarnService#earn}이 Redis Lua로 멱등성·중복 적립 가드·Balance
@@ -34,11 +35,12 @@ import java.util.Locale;
  * 써버리면 Consumer가 재전달로 오판해 Ledger·Balance 반영을 건너뛰므로, 이 클래스는
  * Redis/Stream 계층(EARN 결과코드) 밖의 어떤 영속 상태도 직접 만들지 않는다.
  *
- * <p><b>기존 requestId 조회를 미션 활성 검증보다 먼저 한다(Issue #125)</b>: 미션이
- * 종료된 뒤 이미 성공했던 requestId가 재전송되면, {@link TicketEarnService#findExisting}로
- * 먼저 확인해 {@code MISSION_INACTIVE}가 아니라 기존 성공 결과를 반환해야 한다
- * (FR-P1-018). 활성 검증은 {@code findExisting()}이 {@code NOT_FOUND}(진짜 신규 요청)를
- * 반환했을 때만 수행한다.
+ * <p><b>일반 완료 유형은 기존 requestId 조회를 미션 활성 검증보다 먼저 한다(Issue
+ * #125)</b>: LIKE 미션이 종료된 뒤 이미 성공했던 requestId가 재전송되면,
+ * {@link TicketEarnService#findExisting}로 먼저 확인해 {@code MISSION_INACTIVE}가 아니라
+ * 기존 성공 결과를 반환해야 한다(FR-P1-018). 레거시 Creator ATTENDANCE도 기존 성공
+ * requestId replay만 보존한다. 이미지 인증이 필요한 YOUTUBE_SUBSCRIPTION은 Ticket EARN
+ * 조회보다 먼저 별도 인증 경계로 차단한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -85,6 +87,13 @@ public class MissionCompletionService {
             // EarnLookupStatus에 값이 추가됐을 때 여기가 아니라 from()이 컴파일 실패로
             // 즉시 알려준다(런타임 방어 분기보다 안전하다).
             throw new BusinessException(MissionErrorCode.from(lookupStatus));
+        }
+
+        // 출석은 크리에이터와 무관한 CommonMission 경로에서만 신규 완료한다.
+        // 다만 이전 creator ATTENDANCE 경로에서 이미 성공한 requestId의 replay는
+        // 위 findExisting() 결과를 그대로 반환해 기존 멱등성 계약을 보존한다.
+        if (mission.getType() != MissionType.LIKE) {
+            throw new BusinessException(MissionErrorCode.MISSION_NOT_FOUND);
         }
 
         if (!mission.isActiveAt(now)) {
