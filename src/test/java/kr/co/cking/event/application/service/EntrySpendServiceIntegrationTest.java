@@ -76,7 +76,8 @@ class EntrySpendServiceIntegrationTest {
             "req-common",
             "req-common-only-creator-balance",
             "req-common-insufficient",
-            "req-creator-only-common-balance"
+            "req-creator-only-common-balance",
+            "req-common-real-lock"
     );
 
     @BeforeEach
@@ -604,6 +605,28 @@ class EntrySpendServiceIntegrationTest {
         EntrySpendResult blocked = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2, CouponType.CREATOR);
         maintenanceLock.release(CREATOR_ID, USER_ID, token);
         EntrySpendResult passed = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-real-lock", 2, CouponType.CREATOR);
+
+        assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
+        assertThat(passed.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
+        assertThat(passed.balance()).isEqualTo(8L);
+    }
+
+    // PR #273 리뷰(이슈 #256): CommonTicketCompensationService가 실제로 쥐는 lock
+    // (TicketMaintenanceLock.acquireCommon)이 COMMON SPEND도 막는지 확인한다. CREATOR 검증(위
+    // TicketMaintenanceLock이_잡은_lock은_SPEND를_막고_해제하면_통과시킨다)과 같은 lock 헬퍼를 쓰므로
+    // 같은 패턴이지만, entry-spend.lua의 KEYS[6]가 couponType=COMMON일 때 실제로
+    // CommonTicketRedisKeys.maintenance(userId)로 라우팅되는지는 별도로 고정해야 한다.
+    @Test
+    void COMMON_보정_락이_걸려있으면_COMMON_SPEND도_막고_해제하면_통과시킨다() {
+        openGate();
+        redisTemplate.opsForValue().set(CommonTicketRedisKeys.balance(USER_ID), "10");
+
+        String token = maintenanceLock.acquireCommon(USER_ID);
+        EntrySpendResult blocked = entrySpendService.spend(
+                EVENT_ID, USER_ID, CREATOR_ID, "req-common-real-lock", 2, CouponType.COMMON);
+        maintenanceLock.releaseCommon(USER_ID, token);
+        EntrySpendResult passed = entrySpendService.spend(
+                EVENT_ID, USER_ID, CREATOR_ID, "req-common-real-lock", 2, CouponType.COMMON);
 
         assertThat(blocked.code()).isEqualTo(EntrySpendResultCode.BALANCE_MAINTENANCE);
         assertThat(passed.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
