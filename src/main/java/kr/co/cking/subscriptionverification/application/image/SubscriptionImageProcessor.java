@@ -1,11 +1,13 @@
 package kr.co.cking.subscriptionverification.application.image;
 
+import com.drew.imaging.ImageProcessingException;
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -20,7 +22,9 @@ import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,6 +33,7 @@ import org.springframework.stereotype.Component;
  * <p>외부 파일명과 Content-Type은 신뢰하지 않으며 실제 이미지 헤더를 기준으로 JPEG/PNG만 허용한다.
  */
 @Component
+@Slf4j
 public class SubscriptionImageProcessor {
 
     public static final String NORMALIZATION_VERSION = "JPEG_V1";
@@ -45,11 +50,19 @@ public class SubscriptionImageProcessor {
         byte[] stableSourceBytes = sourceBytes.clone();
         String sourceHash = ImageSha256.calculate(stableSourceBytes);
 
+        DecodedImage decoded;
+        int orientation;
         try {
-            DecodedImage decoded = decodeAfterHeaderValidation(stableSourceBytes);
-            BufferedImage oriented =
-                    applyOrientation(decoded.image(), readExifOrientation(stableSourceBytes));
-            BufferedImage normalized = normalize(oriented);
+            decoded = decodeAfterHeaderValidation(stableSourceBytes);
+            orientation = readExifOrientation(stableSourceBytes);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (IOException | ImageProcessingException e) {
+            throw invalidImage();
+        }
+
+        try {
+            BufferedImage normalized = normalize(decoded.image(), orientation);
             byte[] normalizedBytes = encodeJpeg(normalized);
 
             return new ProcessedSubscriptionImage(
@@ -59,10 +72,9 @@ public class SubscriptionImageProcessor {
                     NORMALIZATION_VERSION,
                     normalized.getWidth(),
                     normalized.getHeight());
-        } catch (BusinessException e) {
-            throw e;
         } catch (Exception e) {
-            throw invalidImage();
+            log.error("구독 인증 이미지 정규화 중 서버 오류가 발생했습니다.", e);
+            throw new BusinessException(CommonErrorCode.SYSTEM_ERROR);
         }
     }
 
@@ -116,7 +128,8 @@ public class SubscriptionImageProcessor {
         }
     }
 
-    private int readExifOrientation(byte[] sourceBytes) throws Exception {
+    private int readExifOrientation(byte[] sourceBytes)
+            throws ImageProcessingException, IOException {
         Metadata metadata =
                 ImageMetadataReader.readMetadata(new ByteArrayInputStream(sourceBytes));
         ExifIFD0Directory directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
@@ -125,73 +138,21 @@ public class SubscriptionImageProcessor {
         }
         Integer orientation = directory.getInteger(ExifIFD0Directory.TAG_ORIENTATION);
         if (orientation == null || orientation < 1 || orientation > 8) {
-            throw invalidImage();
+            return 1;
         }
         return orientation;
     }
 
-    private BufferedImage applyOrientation(BufferedImage source, int orientation) {
-        if (orientation == 1) {
-            return source;
-        }
-
+    private BufferedImage normalize(BufferedImage source, int orientation) {
         int sourceWidth = source.getWidth();
         int sourceHeight = source.getHeight();
-        boolean swapsAxes = orientation >= 5;
-        BufferedImage result =
-                new BufferedImage(
-                        swapsAxes ? sourceHeight : sourceWidth,
-                        swapsAxes ? sourceWidth : sourceHeight,
-                        BufferedImage.TYPE_INT_ARGB);
-
-        for (int y = 0; y < sourceHeight; y++) {
-            for (int x = 0; x < sourceWidth; x++) {
-                int targetX;
-                int targetY;
-                switch (orientation) {
-                    case 2 -> {
-                        targetX = sourceWidth - 1 - x;
-                        targetY = y;
-                    }
-                    case 3 -> {
-                        targetX = sourceWidth - 1 - x;
-                        targetY = sourceHeight - 1 - y;
-                    }
-                    case 4 -> {
-                        targetX = x;
-                        targetY = sourceHeight - 1 - y;
-                    }
-                    case 5 -> {
-                        targetX = y;
-                        targetY = x;
-                    }
-                    case 6 -> {
-                        targetX = sourceHeight - 1 - y;
-                        targetY = x;
-                    }
-                    case 7 -> {
-                        targetX = sourceHeight - 1 - y;
-                        targetY = sourceWidth - 1 - x;
-                    }
-                    case 8 -> {
-                        targetX = y;
-                        targetY = sourceWidth - 1 - x;
-                    }
-                    default -> throw invalidImage();
-                }
-                result.setRGB(targetX, targetY, source.getRGB(x, y));
-            }
-        }
-        return result;
-    }
-
-    private BufferedImage normalize(BufferedImage source) {
-        int sourceWidth = source.getWidth();
-        int sourceHeight = source.getHeight();
-        int longestEdge = Math.max(sourceWidth, sourceHeight);
+        boolean swapsAxes = orientation >= 5 && orientation <= 8;
+        int orientedWidth = swapsAxes ? sourceHeight : sourceWidth;
+        int orientedHeight = swapsAxes ? sourceWidth : sourceHeight;
+        int longestEdge = Math.max(orientedWidth, orientedHeight);
         double scale = longestEdge > MAX_LONG_EDGE ? (double) MAX_LONG_EDGE / longestEdge : 1.0D;
-        int targetWidth = Math.max(1, (int) Math.round(sourceWidth * scale));
-        int targetHeight = Math.max(1, (int) Math.round(sourceHeight * scale));
+        int targetWidth = Math.max(1, (int) Math.round(orientedWidth * scale));
+        int targetHeight = Math.max(1, (int) Math.round(orientedHeight * scale));
 
         BufferedImage result = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = result.createGraphics();
@@ -206,11 +167,30 @@ public class SubscriptionImageProcessor {
             graphics.setRenderingHint(
                     RenderingHints.KEY_COLOR_RENDERING,
                     RenderingHints.VALUE_COLOR_RENDER_QUALITY);
-            graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
+            AffineTransform transform =
+                    AffineTransform.getScaleInstance(
+                            (double) targetWidth / orientedWidth,
+                            (double) targetHeight / orientedHeight);
+            transform.concatenate(orientationTransform(orientation, sourceWidth, sourceHeight));
+            graphics.drawImage(source, transform, null);
         } finally {
             graphics.dispose();
         }
         return result;
+    }
+
+    private AffineTransform orientationTransform(
+            int orientation, int sourceWidth, int sourceHeight) {
+        return switch (orientation) {
+            case 2 -> new AffineTransform(-1, 0, 0, 1, sourceWidth, 0);
+            case 3 -> new AffineTransform(-1, 0, 0, -1, sourceWidth, sourceHeight);
+            case 4 -> new AffineTransform(1, 0, 0, -1, 0, sourceHeight);
+            case 5 -> new AffineTransform(0, 1, 1, 0, 0, 0);
+            case 6 -> new AffineTransform(0, 1, -1, 0, sourceHeight, 0);
+            case 7 -> new AffineTransform(0, -1, -1, 0, sourceHeight, sourceWidth);
+            case 8 -> new AffineTransform(0, -1, 1, 0, 0, sourceWidth);
+            default -> new AffineTransform();
+        };
     }
 
     private byte[] encodeJpeg(BufferedImage image) throws IOException {

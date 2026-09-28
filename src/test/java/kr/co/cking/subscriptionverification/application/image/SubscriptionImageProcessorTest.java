@@ -95,6 +95,22 @@ class SubscriptionImageProcessorTest {
     }
 
     @ParameterizedTest
+    @CsvSource({"0", "9"})
+    void 범위를_벗어난_exif_orientation은_기본_방향으로_처리한다(int orientation)
+            throws IOException {
+        byte[] plain = quadrantJpeg(700, 500);
+        byte[] invalidOrientation = addExifOrientation(plain, orientation);
+
+        ProcessedSubscriptionImage expected = processor.process(plain);
+        ProcessedSubscriptionImage actual = processor.process(invalidOrientation);
+
+        assertThat(actual.width()).isEqualTo(700);
+        assertThat(actual.height()).isEqualTo(500);
+        assertThat(actual.normalizedImageSha256())
+                .isEqualTo(expected.normalizedImageSha256());
+    }
+
+    @ParameterizedTest
     @CsvSource({
         "2,0,255,0,false",
         "3,255,255,0,false",
