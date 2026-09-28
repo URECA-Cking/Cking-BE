@@ -5,7 +5,8 @@ Creator Space 홈·프로필 조회와 Creator 본인의 수정 API 상세 계�
 ## 범위와 권한
 
 - Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 이 API는 만들어진 Space의 조회·수정만 다룬다.
-- 공개 조회는 인증 없이 호출할 수 있다.
+- 공개 조회는 인증 없이 호출할 수 있다. 공유 URL은 프론트엔드의 `/space/{slug}` 형식이며, 해당 slug는 아래 공유 조회 API에 전달한다.
+- slug는 외부 공유 URL 탐색용 식별자다. 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용하며, slug를 업무 기록에 저장하지 않는다.
 - 본인 API(`/api/creator/space`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
 
@@ -39,6 +40,10 @@ Creator Space 홈·프로필 조회와 Creator 본인의 수정 API 상세 계�
 
 Creator Space를 조회한다. 인증이 필요 없다. 응답은 위 응답 필드와 같다.
 
+## GET /api/creator-spaces/{slug}
+
+공유 URL의 slug로 Creator Space를 조회한다. 인증이 필요 없고 응답은 위 응답 필드와 같다. 클라이언트는 `/space/{slug}`에서 추출한 slug를 이 API에 전달하고, 받은 `creatorId`를 이후 앱 내부 식별과 Creator별 미션·기록 요청에 사용한다. slug는 이 조회 경로에서만 사용하며 업무 기록으로 저장하지 않는다.
+
 ## GET /api/creator/space
 
 호출자 본인의 Creator Space를 조회한다. 응답은 위 응답 필드와 같다.
@@ -66,7 +71,7 @@ Creator Space를 조회한다. 인증이 필요 없다. 응답은 위 응답 필
 
 ## 오류
 
-- 공개 조회에서 Creator 또는 Space가 없으면 `RESOURCE_NOT_FOUND`(404)다.
+- 공개 조회에서 Creator 또는 Space가 없으면 `RESOURCE_NOT_FOUND`(404)다. 공유 조회에서는 해당 slug의 Space가 없을 때도 같다.
 - 본인 API에서 JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`(401)다.
 - 본인 API 호출자가 Creator가 아니면 `FORBIDDEN`(403)이다.
 - 본인 API 호출자가 Creator지만 Space가 없으면 `RESOURCE_NOT_FOUND`(404)다. V19 백필이 건너뛰어진 기존 Creator가 해당한다([README.md](README.md#기존-승인-creator-백필v19)).

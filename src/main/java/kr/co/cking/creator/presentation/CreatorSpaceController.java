@@ -24,6 +24,7 @@ public class CreatorSpaceController {
 
     private final CreatorSpaceProfileService profileService;
 
+    /** Creator ID로 공개 Creator Space를 조회한다. */
     @Operation(
             summary = "Creator Space 조회",
             description = "인증 없이 조회할 수 있습니다. 응답의 slug로 공유 URL을 만들 수 있습니다."
@@ -33,12 +34,24 @@ public class CreatorSpaceController {
         return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.findByCreatorId(creatorId)));
     }
 
+    /** 공유 URL slug로 공개 Creator Space를 조회한다. */
+    @Operation(
+            summary = "공유 URL로 Creator Space 조회",
+            description = "인증 없이 조회할 수 있습니다. slug는 공유 URL 탐색에만 사용하며 응답의 creatorId를 내부 식별자로 사용합니다."
+    )
+    @GetMapping("/api/creator-spaces/{slug}")
+    public ApiResponse<CreatorSpaceResponse.Detail> findBySlug(@PathVariable String slug) {
+        return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.findBySlug(slug)));
+    }
+
+    /** 인증된 Creator 본인의 Creator Space를 조회한다. */
     @Operation(summary = "내 Creator Space 조회", description = "Creator 본인만 조회할 수 있습니다.")
     @GetMapping("/api/creator/space")
     public ApiResponse<CreatorSpaceResponse.Detail> findMine(@CurrentMemberId Long memberId) {
         return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.findMine(memberId)));
     }
 
+    /** 인증된 Creator 본인의 Creator Space 프로필을 갱신한다. */
     @Operation(
             summary = "내 Creator Space 홈·프로필 수정",
             description = "Creator 본인만 수정할 수 있습니다. 모든 필드를 한 번에 교체하며 slug는 수정할 수 없습니다. "

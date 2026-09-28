@@ -71,6 +71,24 @@ class CreatorSpaceProfileServiceTest {
     }
 
     @Test
+    void findBySlugReturnsSpaceWithCreatorName() {
+        given(spaceRepository.findBySlug("creator-42")).willReturn(Optional.of(space));
+        given(creatorRepository.findById(42L)).willReturn(Optional.of(creator));
+
+        CreatorSpaceView view = service.findBySlug("creator-42");
+
+        assertThat(view.space()).isSameAs(space);
+        assertThat(view.creatorName()).isEqualTo("크리에이터");
+    }
+
+    @Test
+    void findBySlugThrowsNotFoundWhenSpaceMissing() {
+        given(spaceRepository.findBySlug("missing")).willReturn(Optional.empty());
+
+        assertErrorCode(() -> service.findBySlug("missing"), CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
     void findMineResolvesCreatorByMemberId() {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.of(space));
