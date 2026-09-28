@@ -81,5 +81,8 @@
 | 77 | 외부 | Auth | PUBLIC | POST | `/api/auth/logout` | Refresh Token 폐기 및 Cookie 만료 | - |
 | 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보 조회 | - |
 | 79 | 외부 | Ticket | ADMIN | POST | `/api/admin/tickets/common/resync` | 공용 응모권 잔액 수동 재동기화(Redis를 DB 기준으로) | 상태 기반 |
+| 80 | 외부 | Creator Space | PUBLIC | GET | `/api/creators/{creatorId}/space` | Creator Space 홈·프로필 조회 | - |
+| 81 | 외부 | Creator Space | CREATOR | GET | `/api/creator/space` | 내 Creator Space 조회 | - |
+| 82 | 외부 | Creator Space | CREATOR | PATCH | `/api/creator/space` | 내 Creator Space 홈·프로필 수정 | 상태 기반 |
 
 No. 9, No. 50~61은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
