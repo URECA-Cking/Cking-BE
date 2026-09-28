@@ -79,7 +79,7 @@ slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓴다. 인증�
 
 ## PATCH /api/creator/space/slug
 
-호출자 본인의 Creator Space slug를 커스텀 slug로 바꾼다. 응답은 바뀐 Space이며 위 본인 API 응답이다. 지금 slug와 같은 값이면 아무것도 바꾸지 않고 성공한다. 마지막 변경 후 14일이 지나야 다시 바꿀 수 있으며, 첫 변경(자동 slug → 커스텀)은 바로 된다.
+호출자 본인의 Creator Space slug를 커스텀 slug로 바꾼다. 응답은 바뀐 Space이며 위 본인 API 응답이다. 지금 slug와 같은 값이면 아무것도 바꾸지 않고 성공한다. 마지막 변경 후 14일이 지나야 다시 바꿀 수 있으며, 첫 변경(자동 slug → 커스텀)은 바로 된다. 버린 이전 slug는 14일 동안 예약돼 다른 Creator가 쓸 수 없고, 본인은 그 기간 안에 14일 제한 없이 되돌릴 수 있다([space-slug-policy.md](space-slug-policy.md#되돌리기)).
 
 ```json
 {
@@ -89,7 +89,7 @@ slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓴다. 인증�
 
 | 필드 | 제약 |
 | --- | --- |
-| `slug` | 필수, 3~30자 소문자·숫자·하이픈·밑줄, 처음과 끝은 소문자나 숫자. 예약어·중복 불가([space-slug-policy.md](space-slug-policy.md)) |
+| `slug` | 필수, 최대 100자. 새 slug는 3~30자 소문자·숫자·하이픈·밑줄, 처음과 끝은 소문자나 숫자이며 예약어·중복 불가. 본인이 버린 이전 slug로 되돌릴 때는 형식 검사를 하지 않는다([space-slug-policy.md](space-slug-policy.md)) |
 
 ## 오류
 
@@ -99,5 +99,5 @@ slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓴다. 인증�
 - 본인 API 호출자가 Creator지만 Space가 없으면 `RESOURCE_NOT_FOUND`(404)다. V19 백필이 건너뛰어진 기존 Creator가 해당한다([README.md](README.md#기존-승인-creator-백필v19)).
 - 요청 필드가 누락되거나 공백·길이 초과·slug 형식 위반이면 `VALIDATION_FAILED`(400)다.
 - slug가 예약어면 `RESERVED_SLUG`(400)다.
-- slug를 다른 Space가 쓰고 있으면 `SLUG_ALREADY_TAKEN`(409)다.
+- slug를 다른 Space가 쓰고 있거나 다른 Creator가 예약 중이면 `SLUG_ALREADY_TAKEN`(409)다.
 - 마지막 slug 변경 후 14일이 지나지 않았으면 `SLUG_CHANGE_TOO_SOON`(409)이다. 다시 바꿀 수 있는 시각은 조회 응답의 `slugChangeableAt`으로 확인한다.

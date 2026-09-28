@@ -50,5 +50,5 @@ V18 이전에 승인된 Creator에게는 Space가 없으므로, `V19__backfill_c
 
 Creator는 승인 때 받은 자동 slug를 인스타 아이디처럼 원하는 값으로 바꿀 수 있다(`PATCH /api/creator/space/slug`). 공유 링크는 slug로 연다(`GET /api/creator-spaces/{slug}`). 형식·예약어·중복 규칙과 변경 시 예전 링크 처리는 [space-slug-policy.md](space-slug-policy.md)가 정본이다.
 
-- 위 "slug 생성과 slugRule 검증"의 보장(끝 숫자열 = creatorId라 겹치지 않음)은 자동 slug끼리만 성립한다. 커스텀 slug가 아직 승인되지 않은 Creator의 자동 slug를 먼저 가져갔을 수 있으므로, `CreatorSpaceService`는 승인 시 자동 slug가 이미 쓰이고 있으면 `-2`, `-3`을 붙인 대체 slug를 쓴다. 승인은 slug 충돌로 실패하지 않는다.
+- 위 "slug 생성과 slugRule 검증"의 보장(끝 숫자열 = creatorId라 겹치지 않음)은 자동 slug끼리만 성립한다. 커스텀 slug가 아직 승인되지 않은 Creator의 자동 slug를 먼저 가져갔을 수 있으므로, `CreatorSpaceService`는 승인 시 자동 slug가 이미 쓰이고 있거나 다른 Creator가 예약 중이면(이슈 #301) `-2`, `-3`을 붙인 대체 slug를 쓴다. 승인은 slug 충돌로 실패하지 않는다.
 - slug는 바뀔 수 있으므로 다른 도메인(공유 미션 등)은 slug가 아니라 `creatorId`로 기록한다.

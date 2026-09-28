@@ -78,6 +78,14 @@ public class CreatorSpace {
         this.slugChangedAt = changedAt;
     }
 
+    /**
+     * 예약 기간 안에 본인이 버린 slug로 되돌린다(이슈 #301). 변경 시각은 갱신하지 않아, 되돌리기를
+     * 이용해 새 slug로 바꾸는 14일 제한을 우회할 수 없게 한다.
+     */
+    public void revertSlug(String slug) {
+        this.slug = slug;
+    }
+
     /** 다음에 slug를 바꿀 수 있는 시각(UTC). 한 번도 바꾸지 않았으면 null이며 바로 바꿀 수 있다. */
     public LocalDateTime slugChangeableAt() {
         return slugChangedAt == null ? null : slugChangedAt.plus(CreatorSpaceCustomSlug.CHANGE_INTERVAL);

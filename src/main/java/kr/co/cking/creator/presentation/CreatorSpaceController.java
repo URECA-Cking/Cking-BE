@@ -66,7 +66,8 @@ public class CreatorSpaceController {
             summary = "내 Creator Space slug 변경",
             description = "Creator 본인만 변경할 수 있습니다. 3~30자 소문자·숫자·하이픈·밑줄이며 예약어와 다른 Space가 쓰는 "
                     + "slug는 사용할 수 없습니다. 마지막 변경 후 14일이 지나야 다시 바꿀 수 있으며(첫 변경은 바로 가능), "
-                    + "바꾸면 이전 slug 링크는 더 이상 열리지 않습니다."
+                    + "바꾸면 이전 slug 링크는 더 이상 열리지 않습니다. 이전 slug는 14일간 예약돼 다른 Creator가 쓸 수 없고, "
+                    + "본인은 그 기간 안에 변경 제한 없이 되돌릴 수 있습니다."
     )
     @PatchMapping("/api/creator/space/slug")
     public ApiResponse<CreatorSpaceResponse.Mine> changeSlug(
