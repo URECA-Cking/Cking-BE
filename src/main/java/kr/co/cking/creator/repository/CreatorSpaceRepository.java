@@ -13,11 +13,12 @@ public interface CreatorSpaceRepository extends JpaRepository<CreatorSpace, Long
 
     Optional<CreatorSpace> findByCreatorId(Long creatorId);
 
+    /** 공유 URL의 slug로 Creator Space를 조회한다. */
+    Optional<CreatorSpace> findBySlug(String slug);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from CreatorSpace s where s.creatorId = :creatorId")
     Optional<CreatorSpace> findByCreatorIdForUpdate(@Param("creatorId") Long creatorId);
-
-    Optional<CreatorSpace> findBySlug(String slug);
 
     boolean existsBySlug(String slug);
 }

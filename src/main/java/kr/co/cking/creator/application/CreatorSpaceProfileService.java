@@ -32,30 +32,32 @@ public class CreatorSpaceProfileService {
     private final CreatorSpaceSlugRegistry slugRegistry;
     private final Clock clock;
 
+    /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
-        Creator creator = creatorRepository.findById(creatorId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        Creator creator = requireCreatorById(creatorId);
         return new CreatorSpaceView(requireSpace(creatorId), creator.getName());
     }
 
+    /** 공유 URL slug를 Creator ID로 해석해 기존 공개 Creator Space 응답을 만든다. */
+    public CreatorSpaceView findBySlug(String slug) {
+        CreatorSpace space = spaceRepository.findBySlug(slug)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        Creator creator = requireCreatorById(space.getCreatorId());
+        return new CreatorSpaceView(space, creator.getName());
+    }
+
+    /** 인증된 Creator 본인의 Creator Space를 조회한다. */
     public CreatorSpaceView findMine(Long memberId) {
         Creator creator = requireCreator(memberId);
         return new CreatorSpaceView(requireSpace(creator.getCreatorId()), creator.getName());
     }
 
+    /** 인증된 Creator 본인의 Creator Space 프로필 값을 모두 갱신한다. */
     @Transactional
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
         CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
-        return new CreatorSpaceView(space, creator.getName());
-    }
-
-    public CreatorSpaceView findBySlug(String slug) {
-        CreatorSpace space = spaceRepository.findBySlug(slug)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        Creator creator = creatorRepository.findById(space.getCreatorId())
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return new CreatorSpaceView(space, creator.getName());
     }
 
@@ -111,9 +113,16 @@ public class CreatorSpaceProfileService {
         }
     }
 
+    /** 회원 ID에 연결된 Creator를 조회하고 없으면 업무 권한 오류를 반환한다. */
     private Creator requireCreator(Long memberId) {
         return creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+    }
+
+    /** Creator ID에 해당하는 Creator를 조회하고 없으면 리소스 없음 오류를 반환한다. */
+    private Creator requireCreatorById(Long creatorId) {
+        return creatorRepository.findById(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 
     /** V19 백필이 건너뛰어진 기존 Creator처럼 Space가 없을 수 있다. */
@@ -122,6 +131,7 @@ public class CreatorSpaceProfileService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 
+    /** 수정·slug 변경에 사용할 Creator Space를 비관적 잠금으로 조회한다. */
     private CreatorSpace requireSpaceForUpdate(Long creatorId) {
         return spaceRepository.findByCreatorIdForUpdate(creatorId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));

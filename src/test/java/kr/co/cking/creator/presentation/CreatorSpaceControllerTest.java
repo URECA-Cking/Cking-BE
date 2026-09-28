@@ -67,11 +67,32 @@ class CreatorSpaceControllerTest {
     }
 
     @Test
+    void sharedUrlResolvesSpaceBySlugWithoutJwt() throws Exception {
+        given(profileService.findBySlug("creator-42")).willReturn(view());
+
+        mockMvc.perform(get("/api/creator-spaces/{slug}", "creator-42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.creatorId").value(42))
+                .andExpect(jsonPath("$.data.slug").value("creator-42"));
+    }
+
+    @Test
     void publicSpaceReturnsNotFoundEnvelopeWhenMissing() throws Exception {
         given(profileService.findByCreatorId(42L))
                 .willThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
         mockMvc.perform(get("/api/creators/{creatorId}/space", 42L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void sharedUrlReturnsNotFoundEnvelopeWhenSlugIsMissing() throws Exception {
+        given(profileService.findBySlug("missing"))
+                .willThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(get("/api/creator-spaces/{slug}", "missing"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }

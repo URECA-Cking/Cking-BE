@@ -7,6 +7,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 - Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 이 API는 만들어진 Space의 조회·수정만 다룬다.
 - 공개 조회(`GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)는 인증 없이 호출할 수 있다.
 - 본인 API(`/api/creator/space`, `/api/creator/space/slug`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
+- 공유 URL은 프론트엔드의 `/space/{slug}` 형식이다. slug는 이 공개 조회의 탐색에만 사용하고, 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용한다. slug를 업무 기록에 저장하지 않는다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
 - 탭(홈·미션·게시물·이벤트) 노출 설정은 없다(이슈 #290). 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다.
 - slug 형식·예약어·중복 규칙은 [space-slug-policy.md](space-slug-policy.md)를 따른다.
@@ -55,7 +56,7 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 
 ## GET /api/creator-spaces/{slug}
 
-slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓴다. 인증이 필요 없다. 응답은 위 공개 조회 응답이다. slug를 바꾸면 예전 slug로는 조회되지 않는다. 대소문자는 구분하지 않는다([space-slug-policy.md](space-slug-policy.md#형식)).
+공유 URL의 slug로 Creator Space를 조회한다. 공유 링크를 열 때 쓰며 인증이 필요 없다. 응답은 위 공개 조회 응답이다. 클라이언트는 `/space/{slug}`에서 추출한 slug를 이 API에 전달하고, 받은 `creatorId`를 이후 앱 내부 식별과 Creator별 미션·기록 요청에 사용한다. slug를 바꾸면 예전 slug로는 조회되지 않으며, 대소문자는 구분하지 않는다([space-slug-policy.md](space-slug-policy.md#형식)).
 
 ## GET /api/creator/space
 
