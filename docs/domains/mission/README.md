@@ -17,7 +17,7 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 
 ## 종료 후 재시도(Issue #125)
 
-미션이 종료된 뒤에도, 종료 전에 성공했던 `requestId`가 재전송되면 활성 검증보다 먼저 `TicketEarnService#findExisting()`으로 기존 요청을 조회한다. 기존 성공 기록이 있으면 `MISSION_INACTIVE`가 아니라 원래의 EARN 결과를 반환해야 한다(FR-P1-018 멱등 재요청 계약). 조회 결과가 `NOT_FOUND`(진짜 신규 요청)일 때만 활성 검증 후 `earn()`을 호출한다. 자세한 순서는 [api.md](api.md#종료-후-동일-requestid-재시도)를 참고한다.
+일반 완료 API가 신규 완료를 지원하는 `LIKE`는, 미션 종료 전에 성공했던 `requestId`가 재전송되면 활성 검증보다 먼저 `TicketEarnService#findExisting()`으로 기존 요청을 조회한다. 기존 성공 기록이 있으면 `MISSION_INACTIVE`가 아니라 원래의 EARN 결과를 반환해야 한다(FR-P1-018 멱등 재요청 계약). 레거시 Creator `ATTENDANCE`도 기존 성공 `requestId` replay만 허용하며 신규 완료는 공용 출석 경로로 전환한다. `YOUTUBE_SUBSCRIPTION`은 EARN replay 조회보다 먼저 별도 인증 경계로 차단한다. 자세한 순서는 [api.md](api.md#종료-후-동일-requestid-재시도)를 참고한다.
 
 ## 중복 방지 키의 레이어(임의 통합 금지)
 
@@ -30,13 +30,17 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 
 **중복 판정은 경로별로 나뉜다.** `MissionCompletionService`는 Creator별 LIKE 신규 요청을 Ticket EARN의 Redis Guard와 DB 제약에 위임하고, Creator ATTENDANCE 신규 요청은 공용 경로로 전환되어 EARN 전에 차단한다. `CommonMissionCompletionService`는 공용 EARN Guard에 더해 같은 사용자·UTC periodKey의 기존 Creator ATTENDANCE 완료 기록을 조회해 서비스 전체 하루 1회 정책을 적용한다. 두 서비스 모두 Guard 키나 fingerprint를 직접 계산하지 않고 EARN 계약에 필요한 값만 전달한다.
 
-## 크리에이터별 미션 완료 골격
+## 크리에이터별 미션 완료 경계
 
-`MissionController`/`MissionCompletionService`는 현재 크리에이터별 LIKE만 완료 대상으로 한다. ATTENDANCE는 `CommonMissionController`/`CommonMissionCompletionService`와 공용 EARN 경로에서 처리한다. 과거에 생성된 creator ATTENDANCE 행이 남아 있어도 `MissionCompletionService`가 완료 요청을 거부하므로 크리에이터별 응모권으로 잘못 지급되지 않는다. 좋아요 취소는 별도 API가 없다 — Mock 검증(버튼 클릭 = 완료, FR-P1-011) 방식이라 취소 시 서버에 알리지 않으며, 이미 지급된 응모권은 회수하지 않는다(FR-P1-012). 같은 날 재좋아요는 위 4번 Guard 키가 자연히 차단한다(FR-P1-013).
+`MissionType`은 `ATTENDANCE`, `LIKE`, `YOUTUBE_SUBSCRIPTION`을 지원한다.
+
+- `LIKE`는 일반 완료 API와 Creator별 EARN 경로를 사용한다. 좋아요 취소는 별도 API가 없다. Mock 검증(버튼 클릭 = 완료, FR-P1-011) 방식이라 취소 시 서버에 알리지 않고 이미 지급된 응모권도 회수하지 않는다(FR-P1-012). 같은 날 재좋아요는 Redis EARN Guard가 차단한다(FR-P1-013).
+- `ATTENDANCE` 신규 완료는 `CommonMissionController`/`CommonMissionCompletionService`와 공용 EARN 경로에서 처리한다. 과거 Creator ATTENDANCE의 기존 성공 `requestId` replay는 허용하지만, 신규 요청은 `MissionCompletionService`가 거부한다.
+- `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 선행되어야 한다. 일반 `POST .../complete` 경로에서는 `TicketEarnService.findExisting()`이나 `earn()`을 호출하기 전에 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 따라서 클라이언트가 일반 완료 API로 인증과 보상 경계를 우회할 수 없다. 이미지 제출·판정·보상 계약은 후속 구독 인증 기능에서 별도로 정의한다.
 
 ### 검증 범위(caveat)
 
-- **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 크리에이터별 LIKE를 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 출석은 `V16__add_common_ticket.sql`이 공용 ATTENDANCE를 시딩하므로 Creator 승인 시 생성하지 않는다. 이미 존재하는 LIKE는 건너뛰므로 재호출해도 안전하다. 기존 Creator의 누락분은 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
+- **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 크리에이터별 LIKE를 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 출석은 `V16__add_common_ticket.sql`이 공용 ATTENDANCE를 시딩하므로 Creator 승인 시 생성하지 않고, `YOUTUBE_SUBSCRIPTION`도 기본 미션으로 자동 생성하지 않는다. 이미 존재하는 LIKE는 건너뛰므로 재호출해도 안전하다. 기존 Creator의 누락분은 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
 - **LIKE의 중복 적립 차단은 유닛 테스트와 통합 테스트로 확인한다.** `MissionCompletionServiceTest`의 좋아요 관련 테스트는 `TicketEarnService`를 mock으로 대체해 결과 코드 매핑을 검증하고, `MissionCompletionConcurrencyIntegrationTest`는 실제 Redis/MySQL에서 LIKE 미션의 동시 요청을 검증한다. 공용 ATTENDANCE의 단일 적립은 `CommonMissionCompletionServiceIntegrationTest`에서 별도로 검증한다.
 
 ## 공용 미션(크리에이터 무관, 이슈 #219)

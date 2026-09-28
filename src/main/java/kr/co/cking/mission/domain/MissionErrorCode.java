@@ -26,6 +26,7 @@ public enum MissionErrorCode implements ErrorCode {
 
     MISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "미션을 찾을 수 없습니다."),
     MISSION_INACTIVE(HttpStatus.CONFLICT, "현재 활성 상태가 아닌 미션입니다."),
+    MISSION_REQUIRES_VERIFICATION(HttpStatus.CONFLICT, "별도 인증이 필요한 미션입니다."),
     DUPLICATE_MISSION(HttpStatus.CONFLICT, "해당 기간에 이미 완료한 미션입니다."),
     REQUEST_ID_CONFLICT(HttpStatus.CONFLICT, "동일 requestId로 다른 요청 내용이 전달되었습니다."),
     EARN_PROCESSING_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "응모권 적립 처리에 실패했습니다. 잠시 후 다시 시도해주세요."),

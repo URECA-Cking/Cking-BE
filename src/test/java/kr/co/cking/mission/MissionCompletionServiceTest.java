@@ -56,6 +56,10 @@ class MissionCompletionServiceTest {
         return new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null);
     }
 
+    private Mission youtubeSubscriptionMission() {
+        return new Mission(CREATOR_ID, MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null);
+    }
+
     private void stubMemberAndMission(Mission mission) {
         when(memberRepository.findById(USER_ID)).thenReturn(Optional.of(mock(Member.class)));
         when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID))
@@ -79,6 +83,23 @@ class MissionCompletionServiceTest {
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(outcome.rewardAmount()).isEqualTo(1);
+    }
+
+    @Test
+    void 유튜브_구독_미션은_일반_완료_API에서_EARN_조회_전에_차단한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(youtubeSubscriptionMission());
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                        CREATOR_ID,
+                        MISSION_ID,
+                        new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_REQUIRES_VERIFICATION);
+
+        verify(ticketEarnService, never()).findExisting(any());
+        verify(ticketEarnService, never()).earn(any());
     }
 
     @Test
@@ -156,9 +177,9 @@ class MissionCompletionServiceTest {
 
     @Test
     void 좋아요_미션을_최초_완료하면_EARN_ACCEPTED를_반환하고_missionType이_LIKE로_전달된다() {
-        // 이슈 2: MissionCompletionService는 MissionType을 분기하지 않는다 — 출석과
-        // 동일한 코드 경로로 판정·지급되는지, EarnCommand에 실리는 missionType만
-        // 다른지 확인한다.
+        // Creator별 일반 완료 유형은 현재 LIKE이며, 별도 이미지 인증이 필요한
+        // YOUTUBE_SUBSCRIPTION과 공용 경로로 전환한 ATTENDANCE는 이 EARN 경로에
+        // 신규 요청으로 진입하지 않는다.
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
         stubMemberAndMission(likeMission());
         stubNoExistingReplay();
