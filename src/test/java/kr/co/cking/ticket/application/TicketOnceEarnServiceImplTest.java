@@ -22,9 +22,9 @@ class TicketOnceEarnServiceImplTest {
 
     private final TicketOnceEarnRequestClaimService claimService = mock(TicketOnceEarnRequestClaimService.class);
     private final TicketEarnRequestClaimService requestClaimService = mock(TicketEarnRequestClaimService.class);
-    private final TicketEarnService ticketEarnService = mock(TicketEarnService.class);
+    private final TicketEarnClaimedExecutor claimedExecutor = mock(TicketEarnClaimedExecutor.class);
     private final TicketOnceEarnService service = new TicketOnceEarnServiceImpl(
-            claimService, requestClaimService, ticketEarnService);
+            claimService, requestClaimService, claimedExecutor);
 
     @BeforeEach
     void setUp() {
@@ -39,7 +39,7 @@ class TicketOnceEarnServiceImplTest {
         EarnResult result = service.earn(command);
 
         assertThat(result.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
-        verify(ticketEarnService, never()).earn(any());
+        verify(claimedExecutor, never()).earnClaimed(any());
     }
 
     @Test
@@ -49,7 +49,7 @@ class TicketOnceEarnServiceImplTest {
         EarnResult result = service.earn(onceCommand());
 
         assertThat(result.code()).isEqualTo(EarnResultCode.DUPLICATE_MISSION);
-        verify(ticketEarnService, never()).earn(any());
+        verify(claimedExecutor, never()).earnClaimed(any());
     }
 
     @Test
@@ -60,18 +60,20 @@ class TicketOnceEarnServiceImplTest {
 
         assertThat(result.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
         verify(claimService, never()).claim(any(), any());
-        verify(ticketEarnService, never()).earn(any());
+        verify(claimedExecutor, never()).earnClaimed(any());
     }
 
     @Test
     void Redis가_수락하면_durable_요청을_ACCEPTED로_확정한다() {
         EarnCommand command = onceCommand();
         when(claimService.claim(any(), any())).thenReturn(TicketOnceEarnRequestClaim.PENDING);
-        when(ticketEarnService.earn(command)).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        when(claimedExecutor.earnClaimed(command)).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
         EarnResult result = service.earn(command);
 
         assertThat(result.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        verify(requestClaimService).claim(command);
+        verify(claimedExecutor).earnClaimed(command);
         verify(claimService).accept(command.requestId().toString());
     }
 
@@ -83,7 +85,7 @@ class TicketOnceEarnServiceImplTest {
         EarnLookupResult result = service.findExisting(command);
 
         assertThat(result.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
-        verify(ticketEarnService, never()).findExisting(any());
+        verify(claimedExecutor, never()).findExistingClaimed(any());
     }
 
     @Test
@@ -96,7 +98,7 @@ class TicketOnceEarnServiceImplTest {
         EarnLookupResult result = service.findExisting(nextDay);
 
         assertThat(result.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
-        verify(ticketEarnService, never()).findExisting(any());
+        verify(claimedExecutor, never()).findExistingClaimed(any());
     }
 
     private EarnCommand onceCommand() {

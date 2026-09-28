@@ -32,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Slf4j
 @Service
-public class TicketEarnServiceImpl implements TicketEarnService {
+public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaimedExecutor {
 
     // idem과 일일 Guard의 replay 보존 기간을 동일하게 유지한다.
     private static final long IDEM_TTL_SECONDS = 90_000L;
@@ -76,6 +76,11 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return preClaimResult;
         }
 
+        return earnClaimed(command);
+    }
+
+    @Override
+    public EarnResult earnClaimed(EarnCommand command) {
         String requestId = command.requestId().toString();
         String idemKey = idemKeyOf(command);
         String periodKeyGuardFormat = guardKeySegmentOf(command);
@@ -132,6 +137,11 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return preClaimResult;
         }
 
+        return findExistingClaimed(command);
+    }
+
+    @Override
+    public EarnLookupResult findExistingClaimed(EarnCommand command) {
         String requestId = command.requestId().toString();
         String fingerprint = command.computeFingerprint();
         String stored;
@@ -192,6 +202,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         }
 
         if ((requestId + ":" + fingerprint).equals(guardValue)) {
+            acceptRequest(command);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 

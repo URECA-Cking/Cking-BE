@@ -16,7 +16,7 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
 
     private final TicketOnceEarnRequestClaimService claimService;
     private final TicketEarnRequestClaimService requestClaimService;
-    private final TicketEarnService ticketEarnService;
+    private final TicketEarnClaimedExecutor claimedExecutor;
 
     @Override
     public EarnResult earn(EarnCommand command) {
@@ -37,7 +37,7 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
             return new EarnResult(EarnResultCode.ALREADY_PROCESSED);
         }
 
-        EarnResult result = ticketEarnService.earn(command);
+        EarnResult result = claimedExecutor.earnClaimed(command);
         if (result.code() == EarnResultCode.EARN_ACCEPTED || result.code() == EarnResultCode.ALREADY_PROCESSED) {
             claimService.accept(command.requestId().toString());
         }
@@ -62,7 +62,7 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
         if (claim == TicketOnceEarnRequestClaim.ACCEPTED) {
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
-        EarnLookupResult redisResult = ticketEarnService.findExisting(command);
+        EarnLookupResult redisResult = claimedExecutor.findExistingClaimed(command);
         if (redisResult.status() == EarnLookupStatus.ALREADY_PROCESSED) {
             claimService.accept(command.requestId().toString());
         }

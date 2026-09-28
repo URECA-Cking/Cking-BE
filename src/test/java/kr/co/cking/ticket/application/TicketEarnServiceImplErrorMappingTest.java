@@ -7,9 +7,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
+import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
 import tools.jackson.databind.ObjectMapper;
@@ -72,5 +75,27 @@ class TicketEarnServiceImplErrorMappingTest {
 
         assertThat(result.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
         verify(redisTemplate, never()).execute(any(DefaultRedisScript.class), anyList(), any(Object[].class));
+    }
+
+    @Test
+    void PROCESSING_Guard로_복구하면_전역_request를_ACCEPTED로_확정한다() {
+        EarnCommand command = command();
+        String fingerprint = command.computeFingerprint();
+        String guardKey = TicketRedisKeys.earnGuard(1L, "ATTENDANCE", 900001L, "20260916");
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        ValueOperations<String, String> values = mock(ValueOperations.class);
+        TicketEarnRequestClaimService claimService = mock(TicketEarnRequestClaimService.class);
+        when(redisTemplate.opsForValue()).thenReturn(values);
+        when(claimService.find(command)).thenReturn(TicketEarnRequestClaim.PENDING);
+        when(values.get(TicketRedisKeys.idemMission(command.requestId().toString())))
+                .thenReturn("{\"fingerprint\":\"" + fingerprint + "\",\"status\":\"PROCESSING\"}");
+        when(values.get(guardKey)).thenReturn(command.requestId() + ":" + fingerprint);
+        TicketEarnServiceImpl service = new TicketEarnServiceImpl(
+                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService);
+
+        var result = service.findExisting(command);
+
+        assertThat(result.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+        verify(claimService).accept(command.requestId().toString());
     }
 }
