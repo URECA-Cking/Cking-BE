@@ -58,8 +58,8 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 
 전환 순서는 다음과 같다.
 
-1. 라우팅·feature flag 등 운영 계층에서 모든 구버전 인스턴스의 Creator ATTENDANCE 신규 요청을 먼저 차단한다. 기존 성공 `requestId` replay는 기존 계약대로 허용하되, 새 EARN을 만들지 않도록 한다.
-2. 차단 시점의 `stream:ticket-earned` 마지막 ID를 cutover 경계로 기록하고, 그 이전에 승인된 Creator ATTENDANCE 메시지를 drain한다. `cg:ticket-earn`의 last-delivered ID가 경계까지 도달하도록 Consumer가 아직 읽지 않은 메시지도 처리하게 하고, PEL은 Consumer와 PEL 회수 스케줄러가 처리하도록 기다린다. 재처리 실패로 `dead_stream_message`(`stream_type = EARN`)로 이동한 메시지는 관리자 Dead Stream replay로 먼저 반영한다.
+1. 라우팅·feature flag 등 운영 계층에서 모든 구버전 인스턴스의 Creator ATTENDANCE 신규 요청을 먼저 차단한다. 차단 전에 이미 시작된 요청이 모두 응답·실패 처리될 때까지 구버전 인스턴스를 quiesce하고, 더 이상 구버전 경로가 새 EARN을 게시할 수 없음을 확인한다. 기존 성공 `requestId` replay는 기존 계약대로 허용하되, 새 EARN을 만들지 않도록 한다.
+2. 구버전 경로가 quiesce된 뒤 `stream:ticket-earned` 마지막 ID를 cutover 경계로 기록하고, 그 이전에 승인된 Creator ATTENDANCE 메시지를 drain한다. `cg:ticket-earn`의 last-delivered ID가 경계까지 도달하도록 Consumer가 아직 읽지 않은 메시지도 처리하게 하고, PEL은 Consumer와 PEL 회수 스케줄러가 처리하도록 기다린다. 재처리 실패로 `dead_stream_message`(`stream_type = EARN`)로 이동한 메시지는 관리자 Dead Stream replay로 먼저 반영한다.
 3. 경계 이전의 해당 메시지들이 `mission_completion`/Ledger/Balance에 반영됐고, Creator ATTENDANCE에 해당하는 미해결 PEL 및 `UNRESOLVED` EARN Dead Stream이 남아 있지 않은지 확인한다. 메시지를 삭제하거나 기존 보상·완료 이력을 회수하지 않는다.
 4. 위 확인이 끝난 뒤에만 공용 ATTENDANCE 경로를 활성화한다. 이 순서를 생략하면 Creator EARN이 Redis 잔액·Stream에는 먼저 승인됐지만 DB 완료 이력은 아직 없는 순간에 공용 조회가 통과해 같은 UTC 날짜에 두 보상이 승인될 수 있다.
 

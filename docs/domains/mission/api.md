@@ -108,7 +108,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 새 코드가 배포된 뒤에는 Creator ATTENDANCE 신규 요청이 `MissionCompletionService`에서 EARN 전에 차단되므로 안정 상태에서 별도 공유 Redis Guard는 사용하지 않는다. 단, 구버전 인스턴스가 남아 있는 혼합 배포 중에는 기존 EARN의 Redis 성공과 DB Consumer 반영 사이에 교차 중복이 가능하므로, **모든 구버전 인스턴스의 Creator 출석 신규 지급 경로를 차단한 뒤 공용 출석을 활성화해야 한다.**
 
-차단 시점의 `stream:ticket-earned` 마지막 ID를 cutover 경계로 기록하고, 경계 이전에 이미 승인된 Creator ATTENDANCE EARN을 전환 전에 정리해야 한다. `cg:ticket-earn`의 last-delivered ID가 경계까지 도달하도록 아직 읽지 않은 메시지와 PEL을 Consumer·PEL 회수 경로로 drain하고, `dead_stream_message`의 경계 이전 미해결 `EARN` 메시지는 관리자 replay로 DB 반영을 완료한 뒤, Creator ATTENDANCE에 해당하는 미해결 PEL·Dead Stream이 없는지 확인한다. 이 확인 없이 공용 출석을 켜면 Redis에서 먼저 승인된 기존 EARN이 아직 `mission_completion`에 반영되지 않아 DB 교차 조회를 통과할 수 있다. 기존 성공 보상·완료 이력은 삭제하거나 회수하지 않는다.
+차단 전에 이미 시작된 구버전 Creator ATTENDANCE 요청이 모두 응답·실패 처리될 때까지 구버전 인스턴스를 quiesce하고, 더 이상 구버전 경로가 새 EARN을 게시할 수 없음을 확인해야 한다. 그 뒤 `stream:ticket-earned` 마지막 ID를 cutover 경계로 기록하고, 경계 이전에 이미 승인된 Creator ATTENDANCE EARN을 전환 전에 정리한다. `cg:ticket-earn`의 last-delivered ID가 경계까지 도달하도록 아직 읽지 않은 메시지와 PEL을 Consumer·PEL 회수 경로로 drain하고, `dead_stream_message`의 경계 이전 미해결 `EARN` 메시지는 관리자 replay로 DB 반영을 완료한 뒤, Creator ATTENDANCE에 해당하는 미해결 PEL·Dead Stream이 없는지 확인한다. 이 확인 없이 공용 출석을 켜면 Redis에서 먼저 승인된 기존 EARN이 아직 `mission_completion`에 반영되지 않아 DB 교차 조회를 통과할 수 있다. 기존 성공 보상·완료 이력은 삭제하거나 회수하지 않는다.
 
 ### POST /api/missions/{missionId}/complete
 
