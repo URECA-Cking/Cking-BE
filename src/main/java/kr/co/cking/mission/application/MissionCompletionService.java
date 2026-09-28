@@ -47,12 +47,12 @@ import java.util.Locale;
 public class MissionCompletionService {
 
     private static final DateTimeFormatter PERIOD_KEY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT);
-
     private final MemberRepository memberRepository;
     private final MissionRepository missionRepository;
     private final TicketEarnService ticketEarnService;
     private final Clock clock;
 
+    /** Creator별 일반 미션을 일 단위 Business Key와 EARN 처리로 완료한다. */
     public MissionCompleteOutcome complete(Long creatorId, Long missionId, MissionCompleteCommand command) {
         memberRepository.findById(command.userId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
@@ -62,6 +62,11 @@ public class MissionCompletionService {
 
         if (mission.getType() == MissionType.YOUTUBE_SUBSCRIPTION) {
             throw new BusinessException(MissionErrorCode.MISSION_REQUIRES_VERIFICATION);
+        }
+        // SHARE 보상은 Creator Space 공유 완료 처리(Issue #311)만 담당한다. 일반 완료
+        // API가 이 경로를 통과하면 공유 행위 없이 보상을 받는 우회가 가능해진다.
+        if (mission.getType() == MissionType.SHARE) {
+            throw new BusinessException(MissionErrorCode.MISSION_NOT_FOUND);
         }
 
         Instant now = clock.instant();

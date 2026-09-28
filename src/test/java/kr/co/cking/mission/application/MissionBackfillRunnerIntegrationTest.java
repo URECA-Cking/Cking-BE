@@ -45,14 +45,14 @@ class MissionBackfillRunnerIntegrationTest {
         runner.backfillCreators(List.of(before.getCreatorId(), nonExistentCreatorId, after.getCreatorId()));
 
         assertThat(missionsOf(before)).extracting(Mission::getType)
-                .containsExactly(MissionType.LIKE);
+                .containsExactly(MissionType.LIKE, MissionType.SHARE);
         assertThat(missionsOf(after)).extracting(Mission::getType)
-                .containsExactly(MissionType.LIKE);
+                .containsExactly(MissionType.LIKE, MissionType.SHARE);
     }
 
     private List<Mission> missionsOf(Creator creator) {
         return missionRepository.findByCreatorIdAndTypeIn(
-                creator.getCreatorId(), List.of(MissionType.LIKE));
+                creator.getCreatorId(), List.of(MissionType.LIKE, MissionType.SHARE));
     }
 
     private Long newMemberId() {

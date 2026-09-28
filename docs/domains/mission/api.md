@@ -7,7 +7,7 @@
 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 query `userId`를 받지 않는다.
 존재하지 않는 사용자나 Creator는 공통 `RESOURCE_NOT_FOUND`로 응답한다.
 
-해당 Creator의 활성 LIKE 미션만 반환한다. 출석은 Creator와 무관한 공용 미션이므로 `GET /api/missions`에서 조회한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
+해당 Creator의 활성 LIKE·SHARE 미션을 반환한다. 출석은 Creator와 무관한 공용 미션이므로 `GET /api/missions`에서 조회한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
 
 각 항목은 `missionId`, `type`, `rewardAmount`, `activeFrom`, `activeTo`, `completedToday`를 포함한다. `activeFrom`과 `activeTo`는 UTC Instant이며 nullable이다.
 
@@ -37,6 +37,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 - Path Variable `creatorId`: 필수, 양수 Long.
 - Path Variable `missionId`: 필수, 양수 Long.
 - 신규 완료 지원 유형: `LIKE`.
+- `SHARE`는 Creator Space 공유 완료 처리(Issue #311)에서만 보상한다. 이 API로 요청하면 `MISSION_NOT_FOUND`로 차단한다.
 - 레거시 Creator `ATTENDANCE`는 기존 성공 `requestId` replay만 허용하며, 신규 출석 완료는 공용 API를 사용한다.
 - `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 필요한 유형이므로 이 API에서 완료할 수 없다. 제출·상태 조회 계약은 [YouTube 구독 인증 API](../subscription-verification/api.md)를 따른다.
 
@@ -72,14 +73,15 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 1. `userId`로 Member 존재를 확인한다. 없으면 `RESOURCE_NOT_FOUND`.
 2. `creatorId`+`missionId`로 Mission을 조회한다. 없으면 `MISSION_NOT_FOUND`.
 3. `YOUTUBE_SUBSCRIPTION`이면 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 이 경우 Ticket EARN 조회나 적립을 호출하지 않는다.
-4. `TicketEarnService#findExisting()`으로 동일 `requestId`의 기존 처리 결과를 조회한다(활성 검증보다 먼저 — 아래 "종료 후 동일 requestId 재시도" 참고).
-5. 기존 결과가 없고 Mission 유형이 `LIKE`가 아니면 `MISSION_NOT_FOUND`로 신규 완료를 차단한다. Creator별 ATTENDANCE 신규 완료는 공용 API를 사용한다.
-6. `Mission.isActiveAt(now)`로 LIKE 미션의 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
-7. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
+4. SHARE면 `TicketEarnService` 조회·적립 전에 `MISSION_NOT_FOUND`로 차단한다. Creator별 ATTENDANCE 신규 완료는 공용 API를 사용한다.
+5. `TicketEarnService#findExisting()`으로 동일 `requestId`의 기존 처리 결과를 조회한다(활성 검증보다 먼저 — 아래 "종료 후 동일 requestId 재시도" 참고).
+6. 기존 결과가 없고 Mission 유형이 `LIKE`가 아니면 `MISSION_NOT_FOUND`로 신규 완료를 차단한다.
+7. `Mission.isActiveAt(now)`로 LIKE 미션의 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
+8. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
 
 ## 일일 중복 적립 기준
 
-업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜이며, Creator별 LIKE는 크리에이터·미션 유형·사용자·`periodKey` 조합으로 하루 한 번만 적립을 허용한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
+업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜이며, 이 일반 API의 LIKE는 `userId + creatorId + missionId + periodKey` Business Key로 하루 한 번만 적립을 허용한다. 이는 `mission_completion`의 `uk_completion_business` UNIQUE 제약으로 최종 보장되고, Redis EARN Guard가 먼저 중복을 차단한다. SHARE의 중복 적립 계약은 Creator Space 공유 완료 처리(Issue #311)가 담당한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE·SHARE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
 
 ## 종료 후 동일 requestId 재시도
 

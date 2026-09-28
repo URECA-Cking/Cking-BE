@@ -56,6 +56,11 @@ class MissionCompletionServiceTest {
         return new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null);
     }
 
+    /** 일반 완료 API에서 거부할 Creator별 공유 미션을 만든다. */
+    private Mission shareMission() {
+        return new Mission(CREATOR_ID, MissionType.SHARE, 1, null, null);
+    }
+
     private Mission youtubeSubscriptionMission() {
         return new Mission(CREATOR_ID, MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null);
     }
@@ -83,6 +88,21 @@ class MissionCompletionServiceTest {
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(outcome.rewardAmount()).isEqualTo(1);
+    }
+
+    @Test
+    void 공유_미션은_일반_완료_API에서_EARN_조회_전에_차단한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(shareMission());
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
+
+        verify(ticketEarnService, never()).findExisting(any());
+        verify(ticketEarnService, never()).earn(any());
     }
 
     @Test

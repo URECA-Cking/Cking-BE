@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class MissionQueryService {
 
-    private static final List<MissionType> SUPPORTED_TYPES = List.of(MissionType.LIKE);
+    private static final List<MissionType> SUPPORTED_TYPES = List.of(MissionType.LIKE, MissionType.SHARE);
 
     private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;
@@ -32,6 +32,7 @@ public class MissionQueryService {
     private final MissionCompletionRepository completionRepository;
     private final Clock clock;
 
+    /** 인증된 사용자를 기준으로 Creator의 활성 LIKE·SHARE 미션과 오늘 완료 여부를 조회한다. */
     public List<MissionQueryItem> findMissions(Long creatorId, Long userId) {
         if (!memberRepository.existsById(userId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);

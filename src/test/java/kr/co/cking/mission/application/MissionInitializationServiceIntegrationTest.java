@@ -35,16 +35,16 @@ class MissionInitializationServiceIntegrationTest {
     private MissionRepository missionRepository;
 
     @Test
-    void 초기화는_실제_DB에_크리에이터별_좋아요_미션만_생성한다() {
+    void 초기화는_실제_DB에_크리에이터별_좋아요와_공유_미션을_생성한다() {
         Creator creator = creatorRepository.saveAndFlush(
                 new Creator(newMember().getMemberId(), "초기화테스트크리에이터"));
 
         service.initializeDefaultMissions(creator.getCreatorId());
 
         List<Mission> missions = missionRepository.findByCreatorIdAndTypeIn(
-                creator.getCreatorId(), List.of(MissionType.LIKE));
+                creator.getCreatorId(), List.of(MissionType.LIKE, MissionType.SHARE));
         assertThat(missions).extracting(Mission::getType)
-                .containsExactly(MissionType.LIKE);
+                .containsExactly(MissionType.LIKE, MissionType.SHARE);
         assertThat(missions).allSatisfy(mission -> assertThat(mission.getRewardAmount()).isEqualTo(1));
     }
 
@@ -58,8 +58,8 @@ class MissionInitializationServiceIntegrationTest {
                 .doesNotThrowAnyException();
 
         List<Mission> missions = missionRepository.findByCreatorIdAndTypeIn(
-                creator.getCreatorId(), List.of(MissionType.LIKE));
-        assertThat(missions).hasSize(1);
+                creator.getCreatorId(), List.of(MissionType.LIKE, MissionType.SHARE));
+        assertThat(missions).hasSize(2);
     }
 
     private Member newMember() {

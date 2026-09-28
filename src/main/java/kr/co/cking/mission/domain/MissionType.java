@@ -4,5 +4,6 @@ package kr.co.cking.mission.domain;
 public enum MissionType {
     ATTENDANCE,
     LIKE,
+    SHARE,
     YOUTUBE_SUBSCRIPTION
 }

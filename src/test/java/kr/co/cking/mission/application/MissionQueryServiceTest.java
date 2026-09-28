@@ -55,11 +55,11 @@ class MissionQueryServiceTest {
     @Test
     void 해당_creator의_활성_미션만_반환하고_utc_완료기록을_한번에_조회한다() {
         Mission startsNow = mission(101L, MissionType.LIKE, NOW, NOW.plusSeconds(60));
-        Mission noBounds = mission(102L, MissionType.LIKE, null, null);
+        Mission noBounds = mission(102L, MissionType.SHARE, null, null);
         Mission endsNow = mission(103L, MissionType.LIKE, NOW.minusSeconds(60), NOW);
         Mission startsLater = mission(104L, MissionType.LIKE, NOW.plusSeconds(1), null);
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), argThat(types ->
-                Set.copyOf(types).equals(Set.of(MissionType.LIKE)))))
+                Set.copyOf(types).equals(Set.of(MissionType.LIKE, MissionType.SHARE)))))
                 .thenReturn(List.of(startsNow, noBounds, endsNow, startsLater));
         when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
                 eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L, 102L))),
