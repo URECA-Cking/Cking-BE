@@ -111,7 +111,7 @@ activeTo = null
 | 채널 동결 | `target_channel_name`, `target_channel_handle` |
 | 이미지 | `image_object_key`, 정규화 이미지 기준 `image_sha256`, `normalization_version` |
 | 처리 | `status`, `reason_code`, `attempt_count`, `processing_token`, `processing_started_at`, `processing_lease_until`, `next_attempt_at`, `processed_at` |
-| 보상 | 서버 생성 `reward_request_id` UUID, `reward_status`(`NOT_REQUESTED`, `PENDING`, `ACCEPTED`, `RETRY_REQUIRED`) |
+| 보상 | 서버 생성 `reward_request_id` UUID, 생성 시 UTC 날짜로 동결한 `reward_period_key`, `reward_status`(`NOT_REQUESTED`, `PENDING`, `ACCEPTED`, `RETRY_REQUIRED`) |
 | 동시성 | `active_guard`, `approved_guard`, 낙관적 잠금 `version` |
 | 감사 시각 | `created_at`, `updated_at` |
 
@@ -193,7 +193,9 @@ Object는 S3 Lifecycle로 30일 후 삭제한다. DB 상태·Hash·판정·보�
 
 ## 보상 경계
 
-Verification 생성 시 `rewardRequestId`를 서버가 한 번 생성한다. `APPROVED`가 되면 `rewardStatus=PENDING`으로 두고 `TicketOnceEarnService.earn()`에 Mission의 `rewardAmount=1`과 보상 실행 UTC 날짜의 `periodKey`를 전달한다. `periodKey`는 기존 Stream·DB 포맷 호환용이며 ONCE 업무키가 아니다.
+Verification 생성 시 `rewardRequestId`와 `rewardPeriodKey`를 서버가 한 번 확정해 함께 저장한다. `rewardPeriodKey`는 Verification 생성 시각을 UTC로 변환한 `yyyy-MM-dd`이며, 기존 Stream·`mission_completion` 포맷 호환용일 뿐 ONCE 업무키는 아니다. `APPROVED`가 되면 `rewardStatus=PENDING`으로 두고 `TicketOnceEarnService.earn()`에 Mission의 `rewardAmount=1`, 저장된 `rewardRequestId`, 저장된 `rewardPeriodKey`를 전달한다.
+
+보상 실행 시각이나 Recovery 시각으로 `periodKey`를 다시 계산하지 않는다. 자정을 넘어 재시도하더라도 최초에 저장한 값을 그대로 사용한다. 따라서 같은 `rewardRequestId`의 durable request payload fingerprint와 EARN Stream payload는 모든 시도에서 동일해야 한다.
 
 ### Ticket ONCE 적립의 영구 멱등성
 
@@ -206,7 +208,7 @@ status = PENDING | ACCEPTED
 payload_fingerprint
 ```
 
-1. 같은 `rewardRequestId`의 durable request를 조회·생성하고 payload 일치를 검증한다.
+1. 같은 `rewardRequestId`의 durable request를 조회·생성하고 `memberId`, `creatorId`, `missionId`, `missionType`, `amount`, 저장된 `rewardPeriodKey`를 포함한 payload 일치를 검증한다.
 2. `(memberId, creatorId, missionId)` UNIQUE로 다른 requestId의 평생 중복 보상을 차단한다.
 3. 신규/PENDING이면 ONCE Lua를 실행한다. Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:once:{memberId}:{creatorId}:{missionId}`를 TTL 없이 선점하고 Balance 증가·기존 EARN Stream 발행을 원자 처리한다.
 4. Redis 수락 결과를 별도 짧은 Transaction에서 DB durable request의 `ACCEPTED`로 기록한다.
@@ -226,7 +228,7 @@ RETRY_REQUIRED → ACCEPTED | RETRY_REQUIRED
 - `EARN_ACCEPTED`, `ALREADY_PROCESSED`: `ACCEPTED`
 - timeout, Redis 장애, 결과 불명 등: `RETRY_REQUIRED`
 
-보상에는 terminal `FAILED`를 두지 않는다. 승인된 사용자가 보상 없이 영구 종료되지 않도록 Recovery가 같은 `rewardRequestId`로 `ACCEPTED`까지 재시도한다. 반복 실패는 지수 backoff와 운영 알림을 적용하되 상태는 복구 가능하게 유지한다. Verification 코드가 `mission_completion`, `ticket_ledger`, `user_ticket_balance`를 직접 변경해서는 안 된다.
+보상에는 terminal `FAILED`를 두지 않는다. 승인된 사용자가 보상 없이 영구 종료되지 않도록 Recovery가 같은 `rewardRequestId`와 `rewardPeriodKey`로 `ACCEPTED`까지 재시도한다. 반복 실패는 지수 backoff와 운영 알림을 적용하되 상태는 복구 가능하게 유지한다. Verification 코드가 `mission_completion`, `ticket_ledger`, `user_ticket_balance`를 직접 변경해서는 안 된다.
 
 ## 기능 플래그
 
@@ -249,6 +251,7 @@ cking:
 - 기존 25시간 TTL 일일 EARN 경로를 구독 보상 Retry에 사용하지 않는다.
 - 외부 호출 중 DB Transaction을 유지하지 않는다.
 - 재시도마다 새 `rewardRequestId`를 만들지 않는다.
+- 재시도마다 `rewardPeriodKey`를 현재 날짜로 다시 계산하지 않는다.
 - 이미지를 public으로 저장하거나 bytes/Base64를 로그에 남기지 않는다.
 - 모델 확정 전에 Provider SDK·Prompt·응답 DTO·threshold를 임의 구현하지 않는다.
 

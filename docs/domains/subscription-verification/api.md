@@ -73,7 +73,7 @@ image: JPEG 또는 PNG 한 장
 5. 기존 `APPROVED`, 활성 요청, cooldown·일일 제출 수를 사전 검증한다.
 6. 서버 UUID Object Key로 Private Object Storage에 정규화 JPEG를 저장한다.
 7. 짧은 DB Transaction에서 Creator 단위 잠금을 획득한 뒤 채널·Mission 활성 상태·requestId·승인·활성 요청·제출 제한을 모두 다시 검증한다.
-8. 잠금 안에서 읽은 채널명·handle과 서버 생성 `rewardRequestId`를 동결해 `PENDING` Verification을 저장하고 비동기 처리 이벤트를 발행한다.
+8. 잠금 안에서 읽은 채널명·handle, 서버 생성 `rewardRequestId`, 생성 시각의 UTC 날짜(`yyyy-MM-dd`)인 `rewardPeriodKey`를 동결해 `PENDING` Verification을 저장하고 비동기 처리 이벤트를 발행한다.
 9. Transaction이 실패하거나 잠금 후 기존 멱등 요청을 발견하면 이번 요청이 업로드한 Object를 best-effort delete한다. 기존 멱등 요청이면 그 결과를 반환한다.
 10. DB commit 후 listener가 비동기 처리를 시작하며 HTTP 202를 반환한다.
 
