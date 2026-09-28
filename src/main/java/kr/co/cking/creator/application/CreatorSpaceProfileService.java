@@ -29,6 +29,7 @@ public class CreatorSpaceProfileService {
 
     private final CreatorRepository creatorRepository;
     private final CreatorSpaceRepository spaceRepository;
+    private final CreatorSpaceSlugRegistry slugRegistry;
     private final Clock clock;
 
     public CreatorSpaceView findByCreatorId(Long creatorId) {
@@ -60,16 +61,42 @@ public class CreatorSpaceProfileService {
 
     /**
      * 커스텀 slug로 바꾼다. 규칙은 docs/domains/creator/space-slug-policy.md를 따른다.
-     * 먼저 조회로 중복을 걸러내고, 동시에 같은 slug를 요청한 경우는 DB UNIQUE 제약으로 막는다.
+     * 먼저 조회로 중복·예약을 걸러내고, 동시에 같은 slug를 요청한 경우는 DB UNIQUE 제약으로 막는다.
+     * 버린 이전 slug는 같은 트랜잭션에서 예약해 다른 Creator가 곧바로 가져가지 못하게 한다(이슈 #301).
+     *
+     * <p>본인이 예약해 둔 이전 slug로 돌아가는 되돌리기는 14일 변경 제한을 받지 않는다. 이미 쓰던 값이므로
+     * 형식·예약어 검사도 다시 하지 않는다. 대신 변경 시각을 갱신하지 않아 새 slug로의 변경 제한은 그대로다.
      */
     @Transactional
     public CreatorSpaceView changeSlug(Long memberId, String slug) {
         Creator creator = requireCreator(memberId);
-        CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
+        Long creatorId = creator.getCreatorId();
+        CreatorSpace space = requireSpaceForUpdate(creatorId);
         if (space.getSlug().equals(slug)) {
             return new CreatorSpaceView(space, creator.getName());
         }
         LocalDateTime now = LocalDateTime.now(clock);
+        boolean revert = slugRegistry.isReservedBy(slug, creatorId, now);
+        if (!revert) {
+            validateNewSlug(space, slug, creatorId, now);
+        }
+        String releasedSlug = space.getSlug();
+        slugRegistry.clearReservation(slug);
+        if (revert) {
+            space.revertSlug(slug);
+        } else {
+            space.changeSlug(slug, now);
+        }
+        slugRegistry.reserveReleased(releasedSlug, creatorId, now);
+        try {
+            spaceRepository.saveAndFlush(space);
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN);
+        }
+        return new CreatorSpaceView(space, creator.getName());
+    }
+
+    private void validateNewSlug(CreatorSpace space, String slug, Long creatorId, LocalDateTime now) {
         if (!space.canChangeSlugAt(now)) {
             throw new BusinessException(CreatorErrorCode.SLUG_CHANGE_TOO_SOON);
         }
@@ -79,16 +106,9 @@ public class CreatorSpaceProfileService {
         if (CreatorSpaceCustomSlug.isReserved(slug)) {
             throw new BusinessException(CreatorErrorCode.RESERVED_SLUG);
         }
-        if (spaceRepository.existsBySlug(slug)) {
+        if (slugRegistry.isTaken(slug, creatorId, now)) {
             throw new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN);
         }
-        space.changeSlug(slug, now);
-        try {
-            spaceRepository.saveAndFlush(space);
-        } catch (DataIntegrityViolationException exception) {
-            throw new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN);
-        }
-        return new CreatorSpaceView(space, creator.getName());
     }
 
     private Creator requireCreator(Long memberId) {

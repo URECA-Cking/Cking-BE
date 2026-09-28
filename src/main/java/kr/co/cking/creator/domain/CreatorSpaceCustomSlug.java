@@ -19,6 +19,12 @@ public final class CreatorSpaceCustomSlug {
     /** 마지막 변경 후 다시 바꿀 수 있을 때까지의 간격. 첫 변경(자동 slug → 커스텀)은 제한하지 않는다. */
     public static final Duration CHANGE_INTERVAL = Duration.ofDays(14);
 
+    /**
+     * slug를 바꾼 뒤 이전 slug를 다른 Creator가 쓰지 못하게 잡아 두는 기간(이슈 #301).
+     * {@link #CHANGE_INTERVAL}(한 Creator가 얼마나 자주 바꾸는지)과는 별도 정책이다.
+     */
+    public static final Duration RESERVATION_PERIOD = Duration.ofDays(14);
+
     public static final String MESSAGE =
             "slug는 3~30자의 소문자·숫자·하이픈(-)·밑줄(_)이며, 처음과 끝은 소문자나 숫자여야 합니다.";
 

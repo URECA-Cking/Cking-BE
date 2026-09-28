@@ -176,16 +176,42 @@ class CreatorSpaceControllerTest {
         then(profileService).should().changeSlug(7L, "iu-official");
     }
 
+    /** 요청 단계에서는 빈 값과 컬럼 길이(100자) 초과만 막는다. */
     @ParameterizedTest
-    @ValueSource(strings = {"IU", "ab", "iu.official", "-iu"})
+    @ValueSource(strings = {" ", ""})
     @WithMockJwt(memberId = "7")
-    void changeSlugRejectsInvalidFormat(String slug) throws Exception {
+    void changeSlugRejectsBlankSlug(String slug) throws Exception {
         mockMvc.perform(patch("/api/creator/space/slug")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"slug\": \"%s\"}".formatted(slug)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         then(profileService).should(never()).changeSlug(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugRejectsSlugLongerThanColumn() throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"%s\"}".formatted("a".repeat(101))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileService).should(never()).changeSlug(any(), any());
+    }
+
+    /** 커스텀 slug 형식(3~30자 등)은 되돌리기 때문에 Application이 새 slug일 때만 검증한다. */
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugPassesFormatCheckToApplication() throws Exception {
+        given(profileService.changeSlug(7L, "IU"))
+                .willThrow(new BusinessException(CommonErrorCode.VALIDATION_FAILED));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"IU\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test

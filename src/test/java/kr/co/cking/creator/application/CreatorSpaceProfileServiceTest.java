@@ -8,11 +8,14 @@ import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.domain.CreatorSpaceSlugReservation;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -39,8 +42,10 @@ class CreatorSpaceProfileServiceTest {
 
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+    private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
-            creatorRepository, spaceRepository, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+            creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
+            Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
 
     private Creator creator;
     private CreatorSpace space;
@@ -216,6 +221,79 @@ class CreatorSpaceProfileServiceTest {
         given(creatorRepository.findByMemberId(8L)).willReturn(Optional.empty());
 
         assertErrorCode(() -> service.changeSlug(8L, "iu-official"), CommonErrorCode.FORBIDDEN);
+    }
+
+    /** 버린 이전 slug는 14일 동안 이 Creator 이름으로 예약된다(이슈 #301). */
+    @Test
+    void changeSlugReservesReleasedSlugForFourteenDays() {
+        givenOwnSpace();
+
+        service.changeSlug(7L, "iu-official");
+
+        ArgumentCaptor<CreatorSpaceSlugReservation> captor = ArgumentCaptor.forClass(CreatorSpaceSlugReservation.class);
+        then(reservationRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getSlug()).isEqualTo("creator-42");
+        assertThat(captor.getValue().getCreatorId()).isEqualTo(42L);
+        assertThat(captor.getValue().getExpiresAt()).isEqualTo(NOW.plusDays(14));
+    }
+
+    @Test
+    void changeSlugRejectsSlugReservedByAnotherCreator() {
+        givenOwnSpace();
+        given(reservationRepository.findBySlug("iu-official"))
+                .willReturn(Optional.of(CreatorSpaceSlugReservation.reserve("iu-official", 99L, NOW.minusDays(13))));
+
+        assertErrorCode(() -> service.changeSlug(7L, "iu-official"), CreatorErrorCode.SLUG_ALREADY_TAKEN);
+        assertThat(space.getSlug()).isEqualTo("creator-42");
+    }
+
+    /** 예약 기간이 끝난 slug는 누구나 쓸 수 있고, 남은 예약 행은 지운다. */
+    @Test
+    void changeSlugAllowsSlugWhoseReservationExpired() {
+        givenOwnSpace();
+        CreatorSpaceSlugReservation expired = CreatorSpaceSlugReservation.reserve("iu-official", 99L, NOW.minusDays(14));
+        given(reservationRepository.findBySlug("iu-official")).willReturn(Optional.of(expired));
+
+        assertThat(service.changeSlug(7L, "iu-official").space().getSlug()).isEqualTo("iu-official");
+        then(reservationRepository).should().delete(expired);
+    }
+
+    /**
+     * 본인이 버린 slug로는 14일 변경 제한 안에서도 되돌릴 수 있다. 변경 시각은 그대로라서,
+     * 되돌린 뒤 새 slug로 바꾸는 제한은 원래 변경 시각 기준으로 계속된다.
+     */
+    @Test
+    void changeSlugRevertsToOwnReservedSlugWithinChangeInterval() {
+        space.changeSlug("iu-official", NOW.minusDays(3));
+        givenOwnSpace();
+        given(reservationRepository.findBySlug("creator-42"))
+                .willReturn(Optional.of(CreatorSpaceSlugReservation.reserve("creator-42", 42L, NOW.minusDays(3))));
+
+        CreatorSpaceView view = service.changeSlug(7L, "creator-42");
+
+        assertThat(view.space().getSlug()).isEqualTo("creator-42");
+        assertThat(view.space().getSlugChangedAt()).isEqualTo(NOW.minusDays(3));
+        ArgumentCaptor<CreatorSpaceSlugReservation> captor = ArgumentCaptor.forClass(CreatorSpaceSlugReservation.class);
+        then(reservationRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getSlug()).isEqualTo("iu-official");
+        assertErrorCode(() -> service.changeSlug(7L, "iu-2026"), CreatorErrorCode.SLUG_CHANGE_TOO_SOON);
+    }
+
+    /** 긴 템플릿 규칙으로 만든 30자 초과 자동 slug도 본인이 버린 것이면 되돌릴 수 있다. */
+    @Test
+    void changeSlugRevertsToOwnLongAutoSlug() {
+        String longAutoSlug = "creator-official-fan-space-of-" + 42;
+        CreatorSpace longSpace = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
+                1L, "소개", "p", "b", "creator-official-fan-space-of-{creatorId}"
+        ), longAutoSlug);
+        longSpace.changeSlug("iu-official", NOW.minusDays(1));
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(longSpace));
+        given(reservationRepository.findBySlug(longAutoSlug))
+                .willReturn(Optional.of(CreatorSpaceSlugReservation.reserve(longAutoSlug, 42L, NOW.minusDays(1))));
+
+        assertThat(longAutoSlug.length()).isGreaterThan(30);
+        assertThat(service.changeSlug(7L, longAutoSlug).space().getSlug()).isEqualTo(longAutoSlug);
     }
 
     private void givenOwnSpace() {
