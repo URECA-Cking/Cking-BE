@@ -107,7 +107,8 @@ public class SecurityConfig {
                                 "/api/me/winners/**",
                                 "/api/creator/applications",
                                 "/api/creator/applications/me",
-                                "/api/creator/space"
+                                "/api/creator/space",
+                                "/api/creator/space/slug"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()

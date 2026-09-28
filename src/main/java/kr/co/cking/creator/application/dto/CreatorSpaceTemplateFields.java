@@ -5,10 +5,6 @@ public record CreatorSpaceTemplateFields(
         String introText,
         String profileImageUrl,
         String bannerImageUrl,
-        String slugRule,
-        boolean homeTabEnabled,
-        boolean missionsTabEnabled,
-        boolean postsTabEnabled,
-        boolean eventsTabEnabled
+        String slugRule
 ) {
 }

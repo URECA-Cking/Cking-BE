@@ -49,9 +49,8 @@ public class CreatorSpaceTemplateController {
             @CurrentMemberId Long memberId,
             @Valid @RequestBody CreatorSpaceTemplateRequest.Create request
     ) {
-        CreatorSpaceTemplate template = templateService.create(memberId, toFields(
-                request.introText(), request.profileImageUrl(), request.bannerImageUrl(), request.slugRule(),
-                request.homeTabEnabled(), request.missionsTabEnabled(), request.postsTabEnabled(), request.eventsTabEnabled()));
+        CreatorSpaceTemplate template = templateService.create(memberId, new CreatorSpaceTemplateFields(
+                request.introText(), request.profileImageUrl(), request.bannerImageUrl(), request.slugRule()));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(CreatorSpaceTemplateResponse.Detail.from(template)));
     }
@@ -96,9 +95,8 @@ public class CreatorSpaceTemplateController {
             @CurrentMemberId Long memberId,
             @Valid @RequestBody CreatorSpaceTemplateRequest.Update request
     ) {
-        CreatorSpaceTemplate template = templateService.update(memberId, templateId, toFields(
-                request.introText(), request.profileImageUrl(), request.bannerImageUrl(), request.slugRule(),
-                request.homeTabEnabled(), request.missionsTabEnabled(), request.postsTabEnabled(), request.eventsTabEnabled()));
+        CreatorSpaceTemplate template = templateService.update(memberId, templateId, new CreatorSpaceTemplateFields(
+                request.introText(), request.profileImageUrl(), request.bannerImageUrl(), request.slugRule()));
         return ApiResponse.success(CreatorSpaceTemplateResponse.Detail.from(template));
     }
 
@@ -114,14 +112,5 @@ public class CreatorSpaceTemplateController {
     ) {
         return ApiResponse.success(
                 CreatorSpaceTemplateResponse.Detail.from(templateService.activate(memberId, templateId)));
-    }
-
-    private CreatorSpaceTemplateFields toFields(
-            String introText, String profileImageUrl, String bannerImageUrl, String slugRule,
-            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
-    ) {
-        return new CreatorSpaceTemplateFields(
-                introText, profileImageUrl, bannerImageUrl, slugRule, homeTabEnabled, missionsTabEnabled,
-                postsTabEnabled, eventsTabEnabled);
     }
 }

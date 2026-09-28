@@ -31,8 +31,7 @@ public class CreatorSpaceTemplateService {
     public CreatorSpaceTemplate create(Long adminId, CreatorSpaceTemplateFields fields) {
         requireAdmin(adminId);
         return templateRepository.save(new CreatorSpaceTemplate(
-                adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule(),
-                fields.homeTabEnabled(), fields.missionsTabEnabled(), fields.postsTabEnabled(), fields.eventsTabEnabled()
+                adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule()
         ));
     }
 
@@ -52,8 +51,7 @@ public class CreatorSpaceTemplateService {
         requireAdmin(adminId);
         CreatorSpaceTemplate template = getTemplate(templateId);
         template.update(
-                adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule(),
-                fields.homeTabEnabled(), fields.missionsTabEnabled(), fields.postsTabEnabled(), fields.eventsTabEnabled()
+                adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule()
         );
         return template;
     }

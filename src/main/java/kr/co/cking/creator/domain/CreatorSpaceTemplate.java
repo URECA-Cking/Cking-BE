@@ -48,18 +48,6 @@ public class CreatorSpaceTemplate {
     @Column(name = "slug_rule", nullable = false, length = 100)
     private String slugRule;
 
-    @Column(name = "home_tab_enabled", nullable = false)
-    private boolean homeTabEnabled;
-
-    @Column(name = "missions_tab_enabled", nullable = false)
-    private boolean missionsTabEnabled;
-
-    @Column(name = "posts_tab_enabled", nullable = false)
-    private boolean postsTabEnabled;
-
-    @Column(name = "events_tab_enabled", nullable = false)
-    private boolean eventsTabEnabled;
-
     @Column(name = "active_marker")
     private Integer activeMarker;
 
@@ -76,17 +64,12 @@ public class CreatorSpaceTemplate {
     private LocalDateTime updatedAt;
 
     public CreatorSpaceTemplate(
-            Long adminId, String introText, String profileImageUrl, String bannerImageUrl, String slugRule,
-            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
+            Long adminId, String introText, String profileImageUrl, String bannerImageUrl, String slugRule
     ) {
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
         this.slugRule = slugRule;
-        this.homeTabEnabled = homeTabEnabled;
-        this.missionsTabEnabled = missionsTabEnabled;
-        this.postsTabEnabled = postsTabEnabled;
-        this.eventsTabEnabled = eventsTabEnabled;
         this.createdBy = adminId;
         this.updatedBy = adminId;
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
@@ -99,17 +82,12 @@ public class CreatorSpaceTemplate {
     }
 
     public void update(
-            Long adminId, String introText, String profileImageUrl, String bannerImageUrl, String slugRule,
-            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
+            Long adminId, String introText, String profileImageUrl, String bannerImageUrl, String slugRule
     ) {
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
         this.slugRule = slugRule;
-        this.homeTabEnabled = homeTabEnabled;
-        this.missionsTabEnabled = missionsTabEnabled;
-        this.postsTabEnabled = postsTabEnabled;
-        this.eventsTabEnabled = eventsTabEnabled;
         touch(adminId);
     }
 

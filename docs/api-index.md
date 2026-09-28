@@ -93,5 +93,7 @@
 | 89 | 내부 | Mission | INTERNAL | CALL | `YoutubeSubscriptionMissionProvisioningService.ensureForCreator(creatorId)` | 채널 최초 설정 시 구독 미션 멱등 생성 | Creator·Mission 유형 기준 |
 | 90 | 내부 | 구독 인증 | INTERNAL | CALL | `SubscriptionVerificationProcessor.process(verificationId)` | 구독 인증 비동기 판정·보상 시작 | Processing Claim |
 | 91 | 내부 | Ticket | INTERNAL | CALL | `TicketOnceEarnService.earn(command)` | 구독 인증 등 평생 1회 보상의 영구 멱등 적립 | requestId·ONCE Business Key |
+| 92 | 외부 | Creator Space | PUBLIC | GET | `/api/creator-spaces/{slug}` | slug로 Creator Space 조회(공유 링크) | - |
+| 93 | 외부 | Creator Space | CREATOR | PATCH | `/api/creator/space/slug` | 내 Creator Space 커스텀 slug 변경 | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

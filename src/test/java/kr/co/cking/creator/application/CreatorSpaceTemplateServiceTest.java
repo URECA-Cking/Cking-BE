@@ -25,7 +25,7 @@ import static org.mockito.Mockito.verify;
 class CreatorSpaceTemplateServiceTest {
 
     private static final CreatorSpaceTemplateFields FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}", true, true, true, true
+            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
     );
 
     @Test
@@ -85,10 +85,10 @@ class CreatorSpaceTemplateServiceTest {
         runCommands(lockManager);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
-        CreatorSpaceTemplate current = new CreatorSpaceTemplate(1L, "이전", "p", "b", "s", true, true, true, true);
+        CreatorSpaceTemplate current = new CreatorSpaceTemplate(1L, "이전", "p", "b", "s");
         current.activate(1L);
         ReflectionTestUtils.setField(current, "templateId", 10L);
-        CreatorSpaceTemplate target = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s", true, true, true, true);
+        CreatorSpaceTemplate target = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s");
         ReflectionTestUtils.setField(target, "templateId", 20L);
         given(templateRepository.existsById(20L)).willReturn(true);
         given(templateRepository.findByIdForActivation(20L)).willReturn(Optional.of(target));
@@ -112,7 +112,7 @@ class CreatorSpaceTemplateServiceTest {
         runCommands(lockManager);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
-        CreatorSpaceTemplate target = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s", true, true, true, true);
+        CreatorSpaceTemplate target = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s");
         target.activate(1L);
         ReflectionTestUtils.setField(target, "templateId", 20L);
         given(templateRepository.existsById(20L)).willReturn(true);
@@ -171,7 +171,7 @@ class CreatorSpaceTemplateServiceTest {
         MemberRepository memberRepository = mock(MemberRepository.class);
         CreatorSpaceTemplateRepository templateRepository = mock(CreatorSpaceTemplateRepository.class);
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
-        CreatorSpaceTemplate active = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s", true, true, true, true);
+        CreatorSpaceTemplate active = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s");
         active.activate(1L);
         given(templateRepository.findByActiveMarker(CreatorSpaceTemplate.ACTIVE_MARKER)).willReturn(Optional.of(active));
         CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);

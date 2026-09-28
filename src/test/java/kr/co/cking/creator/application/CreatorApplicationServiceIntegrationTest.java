@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CreatorApplicationServiceIntegrationTest {
 
     private static final CreatorSpaceTemplateFields TEMPLATE_FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}", true, true, true, true
+            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
     );
 
     @Autowired
