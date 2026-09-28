@@ -7,7 +7,7 @@
 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 query `userId`를 받지 않는다.
 존재하지 않는 사용자나 Creator는 공통 `RESOURCE_NOT_FOUND`로 응답한다.
 
-해당 Creator의 활성 ATTENDANCE/LIKE 미션만 반환한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
+해당 Creator의 활성 LIKE 미션만 반환한다. 출석은 Creator와 무관한 공용 미션이므로 `GET /api/missions`에서 조회한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
 
 각 항목은 `missionId`, `type`, `rewardAmount`, `activeFrom`, `activeTo`, `completedToday`를 포함한다. `activeFrom`과 `activeTo`는 UTC Instant이며 nullable이다.
 
@@ -19,7 +19,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
   "data": [
     {
       "missionId": 100,
-      "type": "ATTENDANCE",
+      "type": "LIKE",
       "rewardAmount": 1,
       "activeFrom": null,
       "activeTo": null,
@@ -70,11 +70,11 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 2. `creatorId`+`missionId`로 Mission을 조회한다. 없으면 `MISSION_NOT_FOUND`.
 3. `TicketEarnService#findExisting()`으로 동일 `requestId`의 기존 처리 결과를 조회한다(활성 검증보다 먼저 — 아래 "종료 후 동일 requestId 재시도" 참고).
 4. 기존 결과가 없으면(`NOT_FOUND`) `Mission.isActiveAt(now)`로 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
-5. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
+5. Creator별 LIKE 미션인 경우 `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. Creator별 ATTENDANCE 레거시 행은 신규 완료에 사용할 수 없으며, 출석은 공용 API를 사용한다. 단, 레거시 행의 기존 성공 `requestId` replay는 3단계에서 기존 결과를 반환한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
 
 ## 일일 중복 적립 기준
 
-업무일 경계는 서버 UTC 기준이다(RTM FR-P1-006/FR-P1-021/FR-P2-006). `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜이며, 크리에이터·미션 유형·사용자·`periodKey` 조합으로 하루 한 번만 적립을 허용한다.
+업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜이며, Creator별 LIKE는 크리에이터·미션 유형·사용자·`periodKey` 조합으로 하루 한 번만 적립을 허용한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
 
 ## 종료 후 동일 requestId 재시도
 
@@ -101,6 +101,12 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 ### GET /api/missions
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 응답 형식은 위 API와 같다(`type`은 `CommonMissionType`).
+
+### 공용 출석과 기존 Creator 출석의 전환 규칙
+
+공용 ATTENDANCE 신규 요청은 공용 requestId replay를 먼저 확인한 뒤, 활성 검증을 통과하면 같은 사용자·같은 UTC `periodKey`의 기존 Creator ATTENDANCE 완료 기록을 조회한다. 기록이 있으면 `DUPLICATE_MISSION`으로 종료하고 `CommonTicketEarnService#earn()`을 호출하지 않는다. 기존 Creator 응모권과 완료 이력은 보존한다.
+
+새 코드가 배포된 뒤에는 Creator ATTENDANCE 신규 요청이 `MissionCompletionService`에서 EARN 전에 차단되므로 안정 상태에서 별도 공유 Redis Guard는 사용하지 않는다. 단, 구버전 인스턴스가 남아 있는 혼합 배포 중에는 기존 EARN의 Redis 성공과 DB Consumer 반영 사이에 교차 중복이 가능하므로, **모든 구버전 인스턴스의 Creator 출석 신규 지급 경로를 차단한 뒤 공용 출석을 활성화해야 한다.**
 
 ### POST /api/missions/{missionId}/complete
 

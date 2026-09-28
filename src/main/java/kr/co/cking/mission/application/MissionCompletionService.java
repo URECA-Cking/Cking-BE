@@ -8,6 +8,7 @@ import kr.co.cking.mission.MissionRepository;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.MissionErrorCode;
+import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.ticket.application.TicketEarnService;
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
@@ -23,7 +24,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * 미션 완료 처리 + EARN 연동(FR-P1-005~008, 014~016).
+ * Creator별 LIKE 미션 완료 처리 + 크리에이터별 EARN 연동(FR-P1-005~008, 014~016).
+ * 공용 ATTENDANCE는 {@link CommonMissionCompletionService}가 담당한다.
  *
  * <p>{@code mission_completion} 저장·EARN Ledger·DB Balance 반영은 이 계층의 책임이
  * 아니다 — {@link TicketEarnService#earn}이 Redis Lua로 멱등성·중복 적립 가드·Balance
@@ -80,6 +82,13 @@ public class MissionCompletionService {
             // EarnLookupStatus에 값이 추가됐을 때 여기가 아니라 from()이 컴파일 실패로
             // 즉시 알려준다(런타임 방어 분기보다 안전하다).
             throw new BusinessException(MissionErrorCode.from(lookupStatus));
+        }
+
+        // 출석은 크리에이터와 무관한 CommonMission 경로에서만 신규 완료한다.
+        // 다만 이전 creator ATTENDANCE 경로에서 이미 성공한 requestId의 replay는
+        // 위 findExisting() 결과를 그대로 반환해 기존 멱등성 계약을 보존한다.
+        if (mission.getType() != MissionType.LIKE) {
+            throw new BusinessException(MissionErrorCode.MISSION_NOT_FOUND);
         }
 
         if (!mission.isActiveAt(now)) {

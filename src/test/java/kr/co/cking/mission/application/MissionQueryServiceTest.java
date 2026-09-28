@@ -54,12 +54,12 @@ class MissionQueryServiceTest {
 
     @Test
     void 해당_creator의_활성_미션만_반환하고_utc_완료기록을_한번에_조회한다() {
-        Mission startsNow = mission(101L, MissionType.ATTENDANCE, NOW, NOW.plusSeconds(60));
+        Mission startsNow = mission(101L, MissionType.LIKE, NOW, NOW.plusSeconds(60));
         Mission noBounds = mission(102L, MissionType.LIKE, null, null);
-        Mission endsNow = mission(103L, MissionType.ATTENDANCE, NOW.minusSeconds(60), NOW);
+        Mission endsNow = mission(103L, MissionType.LIKE, NOW.minusSeconds(60), NOW);
         Mission startsLater = mission(104L, MissionType.LIKE, NOW.plusSeconds(1), null);
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), argThat(types ->
-                types.containsAll(Set.of(MissionType.ATTENDANCE, MissionType.LIKE)))))
+                Set.copyOf(types).equals(Set.of(MissionType.LIKE)))))
                 .thenReturn(List.of(startsNow, noBounds, endsNow, startsLater));
         when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
                 eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L, 102L))),
@@ -105,7 +105,7 @@ class MissionQueryServiceTest {
     @Test
     void 활성_미션이_없으면_완료_이력을_조회하지_않는다() {
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), org.mockito.ArgumentMatchers.anyCollection()))
-                .thenReturn(List.of(mission(105L, MissionType.ATTENDANCE, null, NOW)));
+                .thenReturn(List.of(mission(105L, MissionType.LIKE, null, NOW)));
 
         assertThat(service.findMissions(CREATOR_ID, USER_ID)).isEmpty();
 

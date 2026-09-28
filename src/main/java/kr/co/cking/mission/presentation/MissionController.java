@@ -22,7 +22,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 미션 완료 API. 출석·좋아요 공통 골격(개별 API는 두지 않음, API 명세 v2.5 §4.1).
+ * Creator별 좋아요 미션 완료 API. 공용 출석은 {@link CommonMissionController}의
+ * 크리에이터 무관 경로를 사용한다.
  */
 @RestController
 @RequiredArgsConstructor
