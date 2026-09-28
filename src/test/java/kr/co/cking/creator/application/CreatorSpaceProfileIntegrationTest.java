@@ -20,9 +20,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,6 +71,9 @@ class CreatorSpaceProfileIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private final List<Long> memberIds = new ArrayList<>();
     private final List<Long> applicationIds = new ArrayList<>();
@@ -141,6 +154,82 @@ class CreatorSpaceProfileIntegrationTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CreatorErrorCode.SLUG_CHANGE_TOO_SOON);
+    }
+
+    @Test
+    void 같은_Creator의_동시_slug_변경은_첫_변경_후_14일_제한을_적용한다() throws Exception {
+        Member admin = createMember("동시변경관리자", MemberRole.ADMIN);
+        Member owner = createMember("동시변경크리에이터", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, owner);
+
+        CountDownLatch firstChanged = new CountDownLatch(1);
+        CountDownLatch commitFirst = new CountDownLatch(1);
+        CountDownLatch secondStarted = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                profileService.changeSlug(owner.getMemberId(), "first-slug");
+                firstChanged.countDown();
+                await(commitFirst);
+            }));
+            assertThat(firstChanged.await(10, TimeUnit.SECONDS)).isTrue();
+
+            Future<Object> second = executor.submit(() -> {
+                secondStarted.countDown();
+                try {
+                    profileService.changeSlug(owner.getMemberId(), "second-slug");
+                    return null;
+                } catch (BusinessException exception) {
+                    return exception.getErrorCode();
+                }
+            });
+            assertThat(secondStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(300);
+            commitFirst.countDown();
+
+            first.get(10, TimeUnit.SECONDS);
+            assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo(CreatorErrorCode.SLUG_CHANGE_TOO_SOON);
+            assertThat(profileService.findMine(owner.getMemberId()).space().getSlug()).isEqualTo("first-slug");
+        } finally {
+            commitFirst.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void 수동_백필은_선점된_자동_slug_대신_빈_후보를_사용한다() throws Exception {
+        Member admin = createMember("백필관리자", MemberRole.ADMIN);
+        Member owner = createMember("백필선점자", MemberRole.USER);
+        Member missing = createMember("백필대상", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, owner);
+        Creator missingCreator = creatorRepository.saveAndFlush(new Creator(missing.getMemberId(), "백필 대상"));
+        String baseSlug = "creator-" + missingCreator.getCreatorId();
+        profileService.changeSlug(owner.getMemberId(), baseSlug);
+
+        String backfillSql = Files.readString(Path.of("docs/domains/creator/manual-space-backfill.sql"), StandardCharsets.UTF_8);
+        jdbcTemplate.execute(backfillSql);
+        jdbcTemplate.execute(backfillSql);
+
+        assertThat(profileService.findByCreatorId(missingCreator.getCreatorId()).space().getSlug())
+                .isEqualTo(baseSlug + "-2");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM creator_space WHERE creator_id = ?", Long.class, missingCreator.getCreatorId()))
+                .isEqualTo(1L);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시 변경 테스트 대기 시간 초과");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
     }
 
     private void approve(Member admin, Member applicant) {

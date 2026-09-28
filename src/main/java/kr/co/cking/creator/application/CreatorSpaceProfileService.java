@@ -45,7 +45,7 @@ public class CreatorSpaceProfileService {
     @Transactional
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
-        CreatorSpace space = requireSpace(creator.getCreatorId());
+        CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
         return new CreatorSpaceView(space, creator.getName());
     }
@@ -65,7 +65,7 @@ public class CreatorSpaceProfileService {
     @Transactional
     public CreatorSpaceView changeSlug(Long memberId, String slug) {
         Creator creator = requireCreator(memberId);
-        CreatorSpace space = requireSpace(creator.getCreatorId());
+        CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
         if (space.getSlug().equals(slug)) {
             return new CreatorSpaceView(space, creator.getName());
         }
@@ -99,6 +99,11 @@ public class CreatorSpaceProfileService {
     /** V19 백필이 건너뛰어진 기존 Creator처럼 Space가 없을 수 있다. */
     private CreatorSpace requireSpace(Long creatorId) {
         return spaceRepository.findByCreatorId(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    private CreatorSpace requireSpaceForUpdate(Long creatorId) {
+        return spaceRepository.findByCreatorIdForUpdate(creatorId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 }

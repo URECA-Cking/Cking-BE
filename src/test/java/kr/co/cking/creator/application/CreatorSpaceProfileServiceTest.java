@@ -99,7 +99,7 @@ class CreatorSpaceProfileServiceTest {
     @Test
     void updateMineChangesOwnSpaceProfile() {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
-        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.of(space));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
 
         CreatorSpaceView view = service.updateMine(7L, NEW_PROFILE);
 
@@ -220,7 +220,7 @@ class CreatorSpaceProfileServiceTest {
 
     private void givenOwnSpace() {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
-        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.of(space));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
     }
 
     private void assertErrorCode(Runnable call, ErrorCode expected) {
