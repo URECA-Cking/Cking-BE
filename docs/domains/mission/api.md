@@ -11,7 +11,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 
 각 항목은 `missionId`, `type`, `rewardAmount`, `activeFrom`, `activeTo`, `completedToday`를 포함한다. `activeFrom`과 `activeTo`는 UTC Instant이며 nullable이다.
 
-`completedToday`는 요청 사용자·Creator·미션과 서버 UTC 오늘의 `periodKey`(`yyyy-MM-dd`)가 일치하는 MissionCompletion이 있는지 나타낸다. 이 API는 완료 기록을 생성하거나 변경하지 않는다.
+`completedToday`는 LIKE 미션이면 요청 사용자·Creator·미션과 서버 UTC 오늘의 `periodKey`(`yyyy-MM-dd`)가 일치하는 MissionCompletion이 있는지, SHARE 미션이면 날짜와 무관하게 평생 완료 이력이 있는지를 나타낸다. 이 API는 완료 기록을 생성하거나 변경하지 않는다.
 
 ```json
 {

@@ -130,6 +130,28 @@ class MissionQueryServiceTest {
         List<MissionQueryItem> result = service.findMissions(CREATOR_ID, USER_ID);
 
         assertThat(result).extracting(MissionQueryItem::completedToday).containsExactly(true);
+        verify(completionRepository, never()).findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyCollection(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void LIKE만_있으면_평생_완료_이력은_조회하지_않는다() {
+        Mission like = mission(101L, MissionType.LIKE, null, null);
+        when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(like));
+        when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
+                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L))),
+                eq(UTC_PERIOD_KEY)))
+                .thenReturn(List.of());
+
+        assertThat(service.findMissions(CREATOR_ID, USER_ID))
+                .extracting(MissionQueryItem::completedToday)
+                .containsExactly(false);
+
+        verify(completionRepository, never()).findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyCollection(), org.mockito.ArgumentMatchers.any());
     }
 
     private Mission mission(Long missionId, MissionType type, Instant activeFrom, Instant activeTo) {

@@ -10,12 +10,14 @@ import kr.co.cking.mission.MissionCompletionRepository;
 import kr.co.cking.mission.MissionRepository;
 import kr.co.cking.mission.application.dto.MissionQueryItem;
 import kr.co.cking.mission.domain.MissionType;
+import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -61,16 +63,23 @@ public class MissionQueryService {
                 .map(Mission::getMissionId)
                 .collect(Collectors.toSet());
         String utcPeriodKey = now.atZone(ZoneOffset.UTC).toLocalDate().toString();
-        Set<Long> completedMissionIds = completionRepository
-                .findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(userId, creatorId, dailyMissionIds, utcPeriodKey)
-                .stream()
-                .map(completion -> completion.getMissionId())
-                .collect(Collectors.toSet());
-        completedMissionIds.addAll(completionRepository
-                .findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(userId, creatorId, onceMissionIds, "ONCE")
-                .stream()
-                .map(MissionCompletion::getMissionId)
-                .collect(Collectors.toSet()));
+        Set<Long> completedMissionIds = new HashSet<>();
+        if (!dailyMissionIds.isEmpty()) {
+            completedMissionIds.addAll(completionRepository
+                    .findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
+                            userId, creatorId, dailyMissionIds, utcPeriodKey)
+                    .stream()
+                    .map(MissionCompletion::getMissionId)
+                    .collect(Collectors.toSet()));
+        }
+        if (!onceMissionIds.isEmpty()) {
+            completedMissionIds.addAll(completionRepository
+                    .findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(
+                            userId, creatorId, onceMissionIds, EarnRewardPolicy.ONCE.completionKey(null))
+                    .stream()
+                    .map(MissionCompletion::getMissionId)
+                    .collect(Collectors.toSet()));
+        }
 
         return activeMissions.stream()
                 .map(mission -> new MissionQueryItem(

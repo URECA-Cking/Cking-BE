@@ -48,7 +48,7 @@ public class MissionCompletion {
         this.creatorId = creatorId;
         this.missionId = missionId;
         this.periodKey = periodKey;
-        this.completionKey = completionKey;
+        this.completionKey = completionKey != null ? completionKey : periodKey;
         this.requestId = requestId;
         this.payloadFingerprint = payloadFingerprint;
         this.completedAt = completedAt;
