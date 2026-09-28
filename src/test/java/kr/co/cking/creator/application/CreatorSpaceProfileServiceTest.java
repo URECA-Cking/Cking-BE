@@ -23,7 +23,7 @@ import static org.mockito.Mockito.mock;
 class CreatorSpaceProfileServiceTest {
 
     private static final CreatorSpaceProfileFields NEW_PROFILE = new CreatorSpaceProfileFields(
-            "새 소개", "https://img/p2.png", "https://img/b2.png", true, false, true, false
+            "새 소개", "https://img/p2.png", "https://img/b2.png"
     );
 
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
@@ -38,8 +38,7 @@ class CreatorSpaceProfileServiceTest {
         creator = new Creator(7L, "크리에이터");
         ReflectionTestUtils.setField(creator, "creatorId", 42L);
         space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, true, true, true
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         ), "creator-42");
     }
 
@@ -93,7 +92,6 @@ class CreatorSpaceProfileServiceTest {
         CreatorSpaceView view = service.updateMine(7L, NEW_PROFILE);
 
         assertThat(view.space().getIntroText()).isEqualTo("새 소개");
-        assertThat(view.space().isMissionsTabEnabled()).isFalse();
         assertThat(view.space().getSlug()).isEqualTo("creator-42");
     }
 

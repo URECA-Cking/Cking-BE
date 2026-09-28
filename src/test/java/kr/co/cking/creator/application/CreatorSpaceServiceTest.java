@@ -25,8 +25,7 @@ class CreatorSpaceServiceTest {
         CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, false, true, false
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         );
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
@@ -41,8 +40,6 @@ class CreatorSpaceServiceTest {
         assertThat(space.getCreatorId()).isEqualTo(42L);
         assertThat(space.getSlug()).isEqualTo("creator-42");
         assertThat(space.getIntroText()).isEqualTo("소개");
-        assertThat(space.isHomeTabEnabled()).isTrue();
-        assertThat(space.isMissionsTabEnabled()).isFalse();
     }
 
     /** 이미 Space가 있으면 활성 템플릿을 조회하지도, 새로 저장하지도 않는다 — 승인 재시도·중복 호출에도 Space가 두 개 생기지 않게 한다. */
@@ -51,7 +48,7 @@ class CreatorSpaceServiceTest {
         CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "p", "b", "creator-{creatorId}", true, true, true, true
+                1L, "소개", "p", "b", "creator-{creatorId}"
         );
         CreatorSpace existing = CreatorSpace.fromTemplate(42L, template, "creator-42");
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.of(existing));
@@ -91,7 +88,7 @@ class CreatorSpaceServiceTest {
         CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "p", "b", "creator-space", true, true, true, true
+                1L, "소개", "p", "b", "creator-space"
         );
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
@@ -110,7 +107,7 @@ class CreatorSpaceServiceTest {
         CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "p", "b", "{creatorId}-creator-{creatorId}", true, true, true, true
+                1L, "소개", "p", "b", "{creatorId}-creator-{creatorId}"
         );
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
@@ -128,7 +125,7 @@ class CreatorSpaceServiceTest {
         CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "p", "b", "creator-{creatorId}0", true, true, true, true
+                1L, "소개", "p", "b", "creator-{creatorId}0"
         );
         given(spaceRepository.findByCreatorId(1L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));
@@ -153,7 +150,7 @@ class CreatorSpaceServiceTest {
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
         String slugRule = "x".repeat(89) + "{creatorId}";
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "p", "b", slugRule, true, true, true, true
+                1L, "소개", "p", "b", slugRule
         );
         given(spaceRepository.findByCreatorId(Long.MAX_VALUE)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(template));

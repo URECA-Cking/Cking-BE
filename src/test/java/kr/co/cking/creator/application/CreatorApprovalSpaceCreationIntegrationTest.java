@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CreatorApprovalSpaceCreationIntegrationTest {
 
     private static final CreatorSpaceTemplateFields TEMPLATE_FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}", true, false, true, false
+            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
     );
 
     @Autowired
@@ -93,8 +93,6 @@ class CreatorApprovalSpaceCreationIntegrationTest {
         CreatorSpace space = creatorSpaceRepository.findByCreatorId(creator.getCreatorId()).orElseThrow();
         assertThat(space.getIntroText()).isEqualTo(TEMPLATE_FIELDS.introText());
         assertThat(space.getSlug()).isEqualTo("creator-" + creator.getCreatorId());
-        assertThat(space.isHomeTabEnabled()).isEqualTo(TEMPLATE_FIELDS.homeTabEnabled());
-        assertThat(space.isMissionsTabEnabled()).isEqualTo(TEMPLATE_FIELDS.missionsTabEnabled());
     }
 
     @Test
@@ -165,7 +163,7 @@ class CreatorApprovalSpaceCreationIntegrationTest {
         Member admin = createMember("레거시템플릿관리자", MemberRole.ADMIN);
         Member applicant = createMember("레거시템플릿신청자", MemberRole.USER);
         CreatorSpaceTemplateFields invalidFields = new CreatorSpaceTemplateFields(
-                "소개", "https://img/profile.png", "https://img/banner.png", "creator-space", true, true, true, true
+                "소개", "https://img/profile.png", "https://img/banner.png", "creator-space"
         );
         Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), invalidFields).getTemplateId();
         creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
@@ -217,8 +215,7 @@ class CreatorApprovalSpaceCreationIntegrationTest {
     private CreatorSpaceTemplateFields withSlugRule(String slugRule) {
         return new CreatorSpaceTemplateFields(
                 TEMPLATE_FIELDS.introText(), TEMPLATE_FIELDS.profileImageUrl(), TEMPLATE_FIELDS.bannerImageUrl(),
-                slugRule, TEMPLATE_FIELDS.homeTabEnabled(), TEMPLATE_FIELDS.missionsTabEnabled(),
-                TEMPLATE_FIELDS.postsTabEnabled(), TEMPLATE_FIELDS.eventsTabEnabled()
+                slugRule
         );
     }
 

@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CreatorSpaceProfileIntegrationTest {
 
     private static final CreatorSpaceTemplateFields TEMPLATE_FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}", true, true, true, true
+            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
     );
 
     @Autowired
@@ -90,22 +90,19 @@ class CreatorSpaceProfileIntegrationTest {
         Creator otherCreator = creatorRepository.findByMemberId(other.getMemberId()).orElseThrow();
 
         profileService.updateMine(owner.getMemberId(), new CreatorSpaceProfileFields(
-                "새 소개", "https://img/p2.png", "https://img/b2.png", true, false, true, false
+                "새 소개", "https://img/p2.png", "https://img/b2.png"
         ));
 
         CreatorSpaceView updated = profileService.findByCreatorId(ownerCreator.getCreatorId());
         assertThat(updated.space().getIntroText()).isEqualTo("새 소개");
-        assertThat(updated.space().isMissionsTabEnabled()).isFalse();
         assertThat(updated.space().getSlug()).isEqualTo("creator-" + ownerCreator.getCreatorId());
         assertThat(updated.creatorName()).isEqualTo(ownerCreator.getName());
 
         CreatorSpaceView untouched = profileService.findByCreatorId(otherCreator.getCreatorId());
         assertThat(untouched.space().getIntroText()).isEqualTo(TEMPLATE_FIELDS.introText());
-        assertThat(untouched.space().isMissionsTabEnabled()).isTrue();
 
         CreatorSpaceTemplate template = templateRepository.findById(templateId).orElseThrow();
         assertThat(template.getIntroText()).isEqualTo(TEMPLATE_FIELDS.introText());
-        assertThat(template.isMissionsTabEnabled()).isTrue();
     }
 
     private void approve(Member admin, Member applicant) {

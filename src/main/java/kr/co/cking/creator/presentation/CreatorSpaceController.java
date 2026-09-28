@@ -41,8 +41,7 @@ public class CreatorSpaceController {
 
     @Operation(
             summary = "내 Creator Space 홈·프로필 수정",
-            description = "Creator 본인만 수정할 수 있습니다. 모든 필드를 한 번에 교체하며 slug는 수정할 수 없습니다. "
-                    + "탭 노출 여부는 화면 노출만 제어합니다."
+            description = "Creator 본인만 수정할 수 있습니다. 모든 필드를 한 번에 교체하며 slug는 수정할 수 없습니다."
     )
     @PatchMapping("/api/creator/space")
     public ApiResponse<CreatorSpaceResponse.Detail> updateMine(
@@ -50,9 +49,7 @@ public class CreatorSpaceController {
             @Valid @RequestBody CreatorSpaceRequest.UpdateProfile request
     ) {
         CreatorSpaceProfileFields fields = new CreatorSpaceProfileFields(
-                request.introText(), request.profileImageUrl(), request.bannerImageUrl(),
-                request.homeTabEnabled(), request.missionsTabEnabled(), request.postsTabEnabled(), request.eventsTabEnabled()
-        );
+                request.introText(), request.profileImageUrl(), request.bannerImageUrl());
         return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.updateMine(memberId, fields)));
     }
 }

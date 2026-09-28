@@ -37,5 +37,21 @@ Creator Space 생성은 승인 트랜잭션에 참여한다(기본 전파, `REQU
 
 V18 이전에 승인된 Creator에게는 Space가 없으므로, `V19__backfill_creator_space.sql`이 배포 시 한 번 활성 템플릿 값으로 Space를 채운다. Space가 없는 Creator만 대상으로 해 다시 실행해도 결과가 같고, slug는 승인 경로와 같은 규칙으로 만든다.
 
-- 활성 템플릿이 없거나, 활성 템플릿의 `slugRule`이 위 형식이 아니거나, 치환 결과가 100자를 넘으면 배포를 막지 않고 아무것도 넣지 않는다. 이때 기존 Creator는 Space 없이 남는다. 템플릿을 활성화하거나 고친 뒤 V19의 `INSERT ... SELECT`를 운영자가 한 번 직접 실행해 채운다. 이미 Space가 있는 Creator는 건너뛴다.
+- 활성 템플릿이 없거나, 활성 템플릿의 `slugRule`이 위 형식이 아니거나, 치환 결과가 100자를 넘으면 배포를 막지 않고 아무것도 넣지 않는다. 이때 기존 Creator는 Space 없이 남는다. 템플릿을 활성화하거나 고친 뒤 아래 SQL을 운영자가 한 번 직접 실행해 채운다. 이미 Space가 있는 Creator는 건너뛴다.
 - 신규 승인과 달리 백필은 Creator마다 따로 성공·실패하지 않는다. 조건을 만족하는 Creator 전체에 한 번에 들어가거나, 하나도 들어가지 않는다.
+- V20에서 탭 컬럼을 삭제했으므로 V19 파일의 SQL은 현재 스키마에서 그대로 실행할 수 없다. 수동 백필에는 탭 컬럼을 뺀 아래 SQL을 쓴다.
+
+```sql
+INSERT INTO creator_space (creator_id, intro_text, profile_image_url, banner_image_url, slug, created_at)
+SELECT c.creator_id, t.intro_text, t.profile_image_url, t.banner_image_url,
+       REPLACE(t.slug_rule, '{creatorId}', CAST(c.creator_id AS CHAR)), UTC_TIMESTAMP(6)
+FROM creator c
+JOIN creator_space_template t ON t.active_marker = 1
+WHERE REGEXP_LIKE(t.slug_rule, '^([a-z0-9-]*[a-z-])?[{]creatorId[}]$', 'c')
+  AND CHAR_LENGTH(REPLACE(t.slug_rule, '{creatorId}', CAST(c.creator_id AS CHAR))) <= 100
+  AND NOT EXISTS (SELECT 1 FROM creator_space s WHERE s.creator_id = c.creator_id);
+```
+
+## 탭 노출 설정 제거(이슈 #290)
+
+템플릿과 Space에 있던 탭(홈·미션·게시물·이벤트) on/off 값은 V20에서 삭제했다. 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다. 탭 값을 읽어 기능을 막는 코드는 원래 없었으므로 기능 동작은 바뀌지 않는다.

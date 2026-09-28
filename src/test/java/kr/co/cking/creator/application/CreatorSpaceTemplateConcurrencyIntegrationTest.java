@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CreatorSpaceTemplateConcurrencyIntegrationTest {
 
     private static final CreatorSpaceTemplateFields FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}", true, true, true, true
+            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
     );
 
     @Autowired private CreatorSpaceTemplateService service;

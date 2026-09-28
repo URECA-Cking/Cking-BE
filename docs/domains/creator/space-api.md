@@ -8,6 +8,7 @@ Creator Space 홈·프로필 조회와 Creator 본인의 수정 API 상세 계�
 - 공개 조회는 인증 없이 호출할 수 있다.
 - 본인 API(`/api/creator/space`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
+- 탭(홈·미션·게시물·이벤트) 노출 설정은 없다(이슈 #290). 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다.
 
 ## 응답 필드
 
@@ -18,7 +19,6 @@ Creator Space 홈·프로필 조회와 Creator 본인의 수정 API 상세 계�
 | `slug` | Space 식별 문자열. 승인 시 템플릿의 `slugRule`로 만들어지며 이 API로는 수정할 수 없다. 공유 URL을 만들 때 사용한다 |
 | `introText` | 소개 문구 |
 | `profileImageUrl`, `bannerImageUrl` | 프로필·배너 이미지 URL |
-| `homeTabEnabled`, `missionsTabEnabled`, `postsTabEnabled`, `eventsTabEnabled` | 홈·미션·게시물·이벤트 탭 노출 여부. 화면 노출만 제어하며, 탭을 꺼도 해당 기능 API는 막지 않는다 |
 
 ```json
 {
@@ -27,11 +27,7 @@ Creator Space 홈·프로필 조회와 Creator 본인의 수정 API 상세 계�
   "slug": "creator-42",
   "introText": "크리에이터와 함께하는 공간이에요",
   "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
-  "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
-  "homeTabEnabled": true,
-  "missionsTabEnabled": true,
-  "postsTabEnabled": true,
-  "eventsTabEnabled": true
+  "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png"
 }
 ```
 
@@ -51,18 +47,13 @@ Creator Space를 조회한다. 인증이 필요 없다. 응답은 위 응답 필
 {
   "introText": "새 소개 문구",
   "profileImageUrl": "https://cdn.cking.co.kr/creator/42/profile.png",
-  "bannerImageUrl": "https://cdn.cking.co.kr/creator/42/banner.png",
-  "homeTabEnabled": true,
-  "missionsTabEnabled": false,
-  "postsTabEnabled": true,
-  "eventsTabEnabled": true
+  "bannerImageUrl": "https://cdn.cking.co.kr/creator/42/banner.png"
 }
 ```
 
 | 필드 | 제약 |
 | --- | --- |
 | `introText`, `profileImageUrl`, `bannerImageUrl` | 필수, 공백 불가, 최대 500자 |
-| `homeTabEnabled`, `missionsTabEnabled`, `postsTabEnabled`, `eventsTabEnabled` | 필수 |
 
 ## 오류
 

@@ -33,11 +33,7 @@ class CreatorSpaceControllerTest {
             {
               "introText": "새 소개",
               "profileImageUrl": "https://img/p2.png",
-              "bannerImageUrl": "https://img/b2.png",
-              "homeTabEnabled": true,
-              "missionsTabEnabled": false,
-              "postsTabEnabled": true,
-              "eventsTabEnabled": false
+              "bannerImageUrl": "https://img/b2.png"
             }
             """;
 
@@ -60,8 +56,7 @@ class CreatorSpaceControllerTest {
                 .andExpect(jsonPath("$.data.creatorId").value(42))
                 .andExpect(jsonPath("$.data.creatorName").value("크리에이터"))
                 .andExpect(jsonPath("$.data.slug").value("creator-42"))
-                .andExpect(jsonPath("$.data.introText").value("소개"))
-                .andExpect(jsonPath("$.data.missionsTabEnabled").value(false));
+                .andExpect(jsonPath("$.data.introText").value("소개"));
     }
 
     @Test
@@ -105,7 +100,7 @@ class CreatorSpaceControllerTest {
     @WithMockJwt(memberId = "7")
     void updateMySpacePassesAllProfileFields() throws Exception {
         CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
-                "새 소개", "https://img/p2.png", "https://img/b2.png", true, false, true, false
+                "새 소개", "https://img/p2.png", "https://img/b2.png"
         );
         given(profileService.updateMine(7L, expected)).willReturn(view());
 
@@ -122,7 +117,7 @@ class CreatorSpaceControllerTest {
         then(profileService).should(never()).updateMine(any(), any());
     }
 
-    /** 모든 필드를 한 번에 교체하므로 누락된 탭 값도 검증 실패다. */
+    /** 모든 필드를 한 번에 교체하므로 공백이거나 누락된 필드는 검증 실패다. */
     @Test
     @WithMockJwt(memberId = "7")
     void updateMySpaceRejectsBlankOrMissingFields() throws Exception {
@@ -131,9 +126,7 @@ class CreatorSpaceControllerTest {
                         .content("""
                                 {
                                   "introText": " ",
-                                  "profileImageUrl": "https://img/p2.png",
-                                  "bannerImageUrl": "https://img/b2.png",
-                                  "homeTabEnabled": true
+                                  "profileImageUrl": "https://img/p2.png"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -153,8 +146,7 @@ class CreatorSpaceControllerTest {
 
     private CreatorSpaceView view() {
         CreatorSpace space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, false, true, false
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         ), "creator-42");
         return new CreatorSpaceView(space, "크리에이터");
     }

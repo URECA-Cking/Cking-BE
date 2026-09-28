@@ -14,18 +14,13 @@ public final class CreatorSpaceResponse {
             String slug,
             String introText,
             String profileImageUrl,
-            String bannerImageUrl,
-            boolean homeTabEnabled,
-            boolean missionsTabEnabled,
-            boolean postsTabEnabled,
-            boolean eventsTabEnabled
+            String bannerImageUrl
     ) {
         public static Detail from(CreatorSpaceView view) {
             CreatorSpace space = view.space();
             return new Detail(
                     space.getCreatorId(), view.creatorName(), space.getSlug(), space.getIntroText(),
-                    space.getProfileImageUrl(), space.getBannerImageUrl(), space.isHomeTabEnabled(),
-                    space.isMissionsTabEnabled(), space.isPostsTabEnabled(), space.isEventsTabEnabled()
+                    space.getProfileImageUrl(), space.getBannerImageUrl()
             );
         }
     }

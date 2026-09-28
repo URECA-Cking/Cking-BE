@@ -4,10 +4,6 @@ package kr.co.cking.creator.application.dto;
 public record CreatorSpaceProfileFields(
         String introText,
         String profileImageUrl,
-        String bannerImageUrl,
-        boolean homeTabEnabled,
-        boolean missionsTabEnabled,
-        boolean postsTabEnabled,
-        boolean eventsTabEnabled
+        String bannerImageUrl
 ) {
 }

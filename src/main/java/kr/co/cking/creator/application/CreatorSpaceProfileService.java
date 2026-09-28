@@ -39,10 +39,7 @@ public class CreatorSpaceProfileService {
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
         CreatorSpace space = requireSpace(creator.getCreatorId());
-        space.updateProfile(
-                fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(),
-                fields.homeTabEnabled(), fields.missionsTabEnabled(), fields.postsTabEnabled(), fields.eventsTabEnabled()
-        );
+        space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
         return new CreatorSpaceView(space, creator.getName());
     }
 

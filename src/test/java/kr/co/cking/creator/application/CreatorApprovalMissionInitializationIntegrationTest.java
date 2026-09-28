@@ -32,7 +32,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 class CreatorApprovalMissionInitializationIntegrationTest {
 
     private static final CreatorSpaceTemplateFields TEMPLATE_FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}", true, true, true, true
+            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
     );
 
     @Autowired

@@ -1,7 +1,6 @@
 package kr.co.cking.creator.presentation.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public final class CreatorSpaceRequest {
@@ -13,11 +12,7 @@ public final class CreatorSpaceRequest {
     public record UpdateProfile(
             @NotBlank @Size(max = 500) String introText,
             @NotBlank @Size(max = 500) String profileImageUrl,
-            @NotBlank @Size(max = 500) String bannerImageUrl,
-            @NotNull Boolean homeTabEnabled,
-            @NotNull Boolean missionsTabEnabled,
-            @NotNull Boolean postsTabEnabled,
-            @NotNull Boolean eventsTabEnabled
+            @NotBlank @Size(max = 500) String bannerImageUrl
     ) {
     }
 }

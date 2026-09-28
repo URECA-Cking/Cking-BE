@@ -47,49 +47,25 @@ public class CreatorSpace {
     @Column(name = "slug", nullable = false, length = 100)
     private String slug;
 
-    @Column(name = "home_tab_enabled", nullable = false)
-    private boolean homeTabEnabled;
-
-    @Column(name = "missions_tab_enabled", nullable = false)
-    private boolean missionsTabEnabled;
-
-    @Column(name = "posts_tab_enabled", nullable = false)
-    private boolean postsTabEnabled;
-
-    @Column(name = "events_tab_enabled", nullable = false)
-    private boolean eventsTabEnabled;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     private CreatorSpace(
-            Long creatorId, String introText, String profileImageUrl, String bannerImageUrl, String slug,
-            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
+            Long creatorId, String introText, String profileImageUrl, String bannerImageUrl, String slug
     ) {
         this.creatorId = creatorId;
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
         this.slug = slug;
-        this.homeTabEnabled = homeTabEnabled;
-        this.missionsTabEnabled = missionsTabEnabled;
-        this.postsTabEnabled = postsTabEnabled;
-        this.eventsTabEnabled = eventsTabEnabled;
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
-    /** Creator 본인이 홈·프로필을 수정한다. slug는 공유 URL의 식별자라 바꾸지 않는다. */
-    public void updateProfile(
-            String introText, String profileImageUrl, String bannerImageUrl,
-            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
-    ) {
+    /** Creator 본인이 홈·프로필을 수정한다. slug는 이 메서드로 바꾸지 않는다. */
+    public void updateProfile(String introText, String profileImageUrl, String bannerImageUrl) {
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
-        this.homeTabEnabled = homeTabEnabled;
-        this.missionsTabEnabled = missionsTabEnabled;
-        this.postsTabEnabled = postsTabEnabled;
-        this.eventsTabEnabled = eventsTabEnabled;
     }
 
     public static CreatorSpace fromTemplate(Long creatorId, CreatorSpaceTemplate template, String slug) {
@@ -98,11 +74,7 @@ public class CreatorSpace {
                 template.getIntroText(),
                 template.getProfileImageUrl(),
                 template.getBannerImageUrl(),
-                slug,
-                template.isHomeTabEnabled(),
-                template.isMissionsTabEnabled(),
-                template.isPostsTabEnabled(),
-                template.isEventsTabEnabled()
+                slug
         );
     }
 }
