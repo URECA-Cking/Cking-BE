@@ -160,6 +160,39 @@ class CreatorSpaceShareMissionCompletionServiceTest {
                 .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
     }
 
+    /** 비활성 SHARE 미션은 신규 공유 보상을 적립하지 않고 활성 상태 오류를 반환한다. */
+    @Test
+    void 비활성_SHARE_미션은_MISSION_INACTIVE다() {
+        Mission expiredShareMission = new Mission(CREATOR_ID, MissionType.SHARE, 1,
+                Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-16T00:00:00Z"));
+        stubShareMission(expiredShareMission);
+        stubNoExistingReplay();
+
+        assertThatThrownBy(() -> serviceWith(Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC))
+                .complete(CREATOR_ID, new MissionCompleteCommand(MEMBER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    /** 같은 requestId에 다른 공유 요청이 감지되면 EARN 조회 결과를 충돌 오류로 변환한다. */
+    @Test
+    void 다른_요청의_같은_requestId는_REQUEST_ID_CONFLICT다() {
+        stubShareMission(shareMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT));
+
+        assertThatThrownBy(() -> serviceWith(Clock.systemUTC())
+                .complete(CREATOR_ID, new MissionCompleteCommand(MEMBER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.REQUEST_ID_CONFLICT);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
     /** 조회 결과가 요청 Creator 소속이 아니면 보상 경계를 넘지 못하게 한다. */
     @Test
     void SHARE_미션의_creatorId가_다르면_MISSION_NOT_FOUND다() {
