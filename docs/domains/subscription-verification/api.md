@@ -122,7 +122,7 @@ image: JPEG 또는 PNG 한 장
 | 기존 내부 상태 | 새 requestId 제출 | 공개 상태 |
 | --- | --- | --- |
 | `PENDING`, `PROCESSING` | 불가 | `VERIFYING` |
-| `APPROVED`, reward `PENDING` | 불가 | `VERIFYING` |
+| `APPROVED`, reward `NOT_REQUESTED` 또는 `PENDING` | 불가 | `VERIFYING` |
 | `APPROVED`, reward `ACCEPTED` | 불가 | `VERIFIED` |
 | `APPROVED`, reward `RETRY_REQUIRED` | 불가 | `TEMPORARY_ERROR` |
 | `REJECTED` | 가능 | `REJECTED` |
