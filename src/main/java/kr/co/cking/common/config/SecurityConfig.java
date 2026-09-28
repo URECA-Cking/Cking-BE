@@ -91,6 +91,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/creators/*/missions",
                                 "/api/creators/*/missions/*/complete",
+                                "/api/creators/*/missions/*/subscription-verifications/me/latest",
+                                "/api/subscription-verifications/*",
                                 "/api/missions",
                                 "/api/missions/*/complete",
                                 "/api/creators/*/tickets",

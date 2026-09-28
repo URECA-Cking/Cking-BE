@@ -116,6 +116,27 @@ class SubscriptionVerificationRepositoryJpaTest {
     }
 
     @Test
+    void 최신_조회는_다른_사용자의_더_최근_인증을_제외한다() {
+        SubscriptionVerification mine = verificationRepository.saveAndFlush(newVerification(BASE_TIME));
+        reject(mine, BASE_TIME.plusSeconds(1));
+        verificationRepository.flush();
+
+        SubscriptionVerification others = verificationRepository.saveAndFlush(verification(
+                otherMemberId,
+                UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
+                BASE_TIME.plusSeconds(10)
+        ));
+        reject(others, BASE_TIME.plusSeconds(11));
+        verificationRepository.flush();
+
+        assertThat(verificationRepository
+                .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
+                        memberId, creatorId, missionId))
+                .contains(mine);
+    }
+
+    @Test
     void requestId는_전체_인증에서_유일하다() {
         SubscriptionVerification first = newVerification(BASE_TIME);
         verificationRepository.saveAndFlush(first);
