@@ -108,7 +108,8 @@ public class SecurityConfig {
                                 "/api/creator/applications",
                                 "/api/creator/applications/me",
                                 "/api/creator/space",
-                                "/api/creator/calendar/**"
+                                "/api/creator/calendar/**",
+                                "/api/creator/space/slug"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers(

@@ -47,49 +47,45 @@ public class CreatorSpace {
     @Column(name = "slug", nullable = false, length = 100)
     private String slug;
 
-    @Column(name = "home_tab_enabled", nullable = false)
-    private boolean homeTabEnabled;
-
-    @Column(name = "missions_tab_enabled", nullable = false)
-    private boolean missionsTabEnabled;
-
-    @Column(name = "posts_tab_enabled", nullable = false)
-    private boolean postsTabEnabled;
-
-    @Column(name = "events_tab_enabled", nullable = false)
-    private boolean eventsTabEnabled;
+    /** 마지막 커스텀 slug 변경 시각(UTC). null이면 자동 slug를 아직 바꾸지 않았다. */
+    @Column(name = "slug_changed_at")
+    private LocalDateTime slugChangedAt;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     private CreatorSpace(
-            Long creatorId, String introText, String profileImageUrl, String bannerImageUrl, String slug,
-            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
+            Long creatorId, String introText, String profileImageUrl, String bannerImageUrl, String slug
     ) {
         this.creatorId = creatorId;
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
         this.slug = slug;
-        this.homeTabEnabled = homeTabEnabled;
-        this.missionsTabEnabled = missionsTabEnabled;
-        this.postsTabEnabled = postsTabEnabled;
-        this.eventsTabEnabled = eventsTabEnabled;
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
-    /** Creator 본인이 홈·프로필을 수정한다. slug는 공유 URL의 식별자라 바꾸지 않는다. */
-    public void updateProfile(
-            String introText, String profileImageUrl, String bannerImageUrl,
-            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
-    ) {
+    /** Creator 본인이 홈·프로필을 수정한다. slug는 이 메서드로 바꾸지 않는다. */
+    public void updateProfile(String introText, String profileImageUrl, String bannerImageUrl) {
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
-        this.homeTabEnabled = homeTabEnabled;
-        this.missionsTabEnabled = missionsTabEnabled;
-        this.postsTabEnabled = postsTabEnabled;
-        this.eventsTabEnabled = eventsTabEnabled;
+    }
+
+    /** 커스텀 slug로 바꾼다. 형식·예약어·중복·변경 간격 검증은 호출하는 Application이 먼저 한다. */
+    public void changeSlug(String slug, LocalDateTime changedAt) {
+        this.slug = slug;
+        this.slugChangedAt = changedAt;
+    }
+
+    /** 다음에 slug를 바꿀 수 있는 시각(UTC). 한 번도 바꾸지 않았으면 null이며 바로 바꿀 수 있다. */
+    public LocalDateTime slugChangeableAt() {
+        return slugChangedAt == null ? null : slugChangedAt.plus(CreatorSpaceCustomSlug.CHANGE_INTERVAL);
+    }
+
+    public boolean canChangeSlugAt(LocalDateTime now) {
+        LocalDateTime changeableAt = slugChangeableAt();
+        return changeableAt == null || !now.isBefore(changeableAt);
     }
 
     public static CreatorSpace fromTemplate(Long creatorId, CreatorSpaceTemplate template, String slug) {
@@ -98,11 +94,7 @@ public class CreatorSpace {
                 template.getIntroText(),
                 template.getProfileImageUrl(),
                 template.getBannerImageUrl(),
-                slug,
-                template.isHomeTabEnabled(),
-                template.isMissionsTabEnabled(),
-                template.isPostsTabEnabled(),
-                template.isEventsTabEnabled()
+                slug
         );
     }
 }

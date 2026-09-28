@@ -38,7 +38,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 - Path Variable `missionId`: 필수, 양수 Long.
 - 신규 완료 지원 유형: `LIKE`.
 - 레거시 Creator `ATTENDANCE`는 기존 성공 `requestId` replay만 허용하며, 신규 출석 완료는 공용 API를 사용한다.
-- `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 필요한 유형이므로 이 API에서 완료할 수 없다.
+- `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 필요한 유형이므로 이 API에서 완료할 수 없다. 제출·상태 조회 계약은 [YouTube 구독 인증 API](../subscription-verification/api.md)를 따른다.
 
 ```json
 {

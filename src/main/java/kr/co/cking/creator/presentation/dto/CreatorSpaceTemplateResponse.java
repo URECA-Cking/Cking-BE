@@ -16,10 +16,6 @@ public final class CreatorSpaceTemplateResponse {
             String profileImageUrl,
             String bannerImageUrl,
             String slugRule,
-            boolean homeTabEnabled,
-            boolean missionsTabEnabled,
-            boolean postsTabEnabled,
-            boolean eventsTabEnabled,
             boolean active,
             Long createdBy,
             Long updatedBy,
@@ -29,9 +25,7 @@ public final class CreatorSpaceTemplateResponse {
         public static Detail from(CreatorSpaceTemplate template) {
             return new Detail(
                     template.getTemplateId(), template.getIntroText(), template.getProfileImageUrl(),
-                    template.getBannerImageUrl(), template.getSlugRule(), template.isHomeTabEnabled(),
-                    template.isMissionsTabEnabled(), template.isPostsTabEnabled(), template.isEventsTabEnabled(),
-                    template.isActive(), template.getCreatedBy(), template.getUpdatedBy(),
+                    template.getBannerImageUrl(), template.getSlugRule(), template.isActive(), template.getCreatedBy(), template.getUpdatedBy(),
                     template.getCreatedAt().toInstant(ZoneOffset.UTC), template.getUpdatedAt().toInstant(ZoneOffset.UTC)
             );
         }

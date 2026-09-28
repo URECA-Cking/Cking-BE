@@ -9,25 +9,19 @@ class CreatorSpaceTemplateTest {
     @Test
     void newTemplateIsInactiveAndTracksCreator() {
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, false, true, false
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         );
 
         assertThat(template.isActive()).isFalse();
         assertThat(template.getActiveMarker()).isNull();
         assertThat(template.getCreatedBy()).isEqualTo(1L);
         assertThat(template.getUpdatedBy()).isEqualTo(1L);
-        assertThat(template.isHomeTabEnabled()).isTrue();
-        assertThat(template.isMissionsTabEnabled()).isFalse();
-        assertThat(template.isPostsTabEnabled()).isTrue();
-        assertThat(template.isEventsTabEnabled()).isFalse();
     }
 
     @Test
     void activateSetsMarkerAndDeactivateClearsIt() {
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, true, true, true
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         );
 
         template.activate(2L);
@@ -44,21 +38,15 @@ class CreatorSpaceTemplateTest {
     @Test
     void updateReplacesAllFieldsAndTracksModifier() {
         CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
-                true, true, true, true
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         );
 
-        template.update(9L, "새 소개", "https://img/new-profile.png", "https://img/new-banner.png", "new-{creatorId}",
-                false, false, false, true);
+        template.update(9L, "새 소개", "https://img/new-profile.png", "https://img/new-banner.png", "new-{creatorId}");
 
         assertThat(template.getIntroText()).isEqualTo("새 소개");
         assertThat(template.getProfileImageUrl()).isEqualTo("https://img/new-profile.png");
         assertThat(template.getBannerImageUrl()).isEqualTo("https://img/new-banner.png");
         assertThat(template.getSlugRule()).isEqualTo("new-{creatorId}");
-        assertThat(template.isHomeTabEnabled()).isFalse();
-        assertThat(template.isMissionsTabEnabled()).isFalse();
-        assertThat(template.isPostsTabEnabled()).isFalse();
-        assertThat(template.isEventsTabEnabled()).isTrue();
         assertThat(template.getUpdatedBy()).isEqualTo(9L);
     }
 }
