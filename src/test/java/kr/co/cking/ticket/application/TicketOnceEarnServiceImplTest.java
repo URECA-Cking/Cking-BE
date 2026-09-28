@@ -6,6 +6,7 @@ import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
 import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -20,8 +21,15 @@ import static org.mockito.Mockito.when;
 class TicketOnceEarnServiceImplTest {
 
     private final TicketOnceEarnRequestClaimService claimService = mock(TicketOnceEarnRequestClaimService.class);
+    private final TicketEarnRequestClaimService requestClaimService = mock(TicketEarnRequestClaimService.class);
     private final TicketEarnService ticketEarnService = mock(TicketEarnService.class);
-    private final TicketOnceEarnService service = new TicketOnceEarnServiceImpl(claimService, ticketEarnService);
+    private final TicketOnceEarnService service = new TicketOnceEarnServiceImpl(
+            claimService, requestClaimService, ticketEarnService);
+
+    @BeforeEach
+    void setUp() {
+        when(requestClaimService.claim(any())).thenReturn(TicketEarnRequestClaim.PENDING);
+    }
 
     @Test
     void 이미_ACCEPTED인_durable_요청은_Redis를_다시_실행하지_않는다() {
@@ -41,6 +49,17 @@ class TicketOnceEarnServiceImplTest {
         EarnResult result = service.earn(onceCommand());
 
         assertThat(result.code()).isEqualTo(EarnResultCode.DUPLICATE_MISSION);
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void DAILY에서_이미_사용한_requestId는_ONCE_durable_선점_전에_차단한다() {
+        when(requestClaimService.claim(any())).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
+
+        EarnResult result = service.earn(onceCommand());
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
+        verify(claimService, never()).claim(any(), any());
         verify(ticketEarnService, never()).earn(any());
     }
 

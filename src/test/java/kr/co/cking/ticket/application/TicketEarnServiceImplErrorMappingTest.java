@@ -18,6 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -56,5 +58,19 @@ class TicketEarnServiceImplErrorMappingTest {
         EarnResult result = service.earn(command());
 
         assertThat(result.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
+    }
+
+    @Test
+    void 다른_정책에서_이미_사용한_requestId는_Redis_실행_전에_차단한다() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        TicketEarnRequestClaimService claimService = mock(TicketEarnRequestClaimService.class);
+        when(claimService.claim(any())).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
+        TicketEarnServiceImpl service = new TicketEarnServiceImpl(
+                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService);
+
+        EarnResult result = service.earn(command());
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
+        verify(redisTemplate, never()).execute(any(DefaultRedisScript.class), anyList(), any(Object[].class));
     }
 }

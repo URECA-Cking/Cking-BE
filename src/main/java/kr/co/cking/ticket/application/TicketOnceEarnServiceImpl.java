@@ -15,11 +15,17 @@ import org.springframework.stereotype.Service;
 public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
 
     private final TicketOnceEarnRequestClaimService claimService;
+    private final TicketEarnRequestClaimService requestClaimService;
     private final TicketEarnService ticketEarnService;
 
     @Override
     public EarnResult earn(EarnCommand command) {
         validateOnce(command);
+        EarnResult globalClaimResult = globalClaimResult(command);
+        if (globalClaimResult != null) {
+            return globalClaimResult;
+        }
+
         TicketOnceEarnRequestClaim claim = claimService.claim(command, command.computeFingerprint());
         if (claim == TicketOnceEarnRequestClaim.REQUEST_ID_CONFLICT) {
             return new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
@@ -41,6 +47,11 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
     @Override
     public EarnLookupResult findExisting(EarnCommand command) {
         validateOnce(command);
+        EarnLookupResult globalClaimResult = findGlobalClaimResult(command);
+        if (globalClaimResult != null) {
+            return globalClaimResult;
+        }
+
         TicketOnceEarnRequestClaim claim = claimService.find(command.requestId().toString(), command.computeFingerprint());
         if (claim == null) {
             return new EarnLookupResult(EarnLookupStatus.NOT_FOUND);
@@ -62,6 +73,24 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
         if (command.rewardPolicy() != EarnRewardPolicy.ONCE) {
             throw new IllegalArgumentException("TicketOnceEarnService에는 ONCE 정책만 전달할 수 있습니다.");
         }
+    }
+
+    private EarnResult globalClaimResult(EarnCommand command) {
+        return switch (requestClaimService.claim(command)) {
+            case PENDING -> null;
+            case ACCEPTED -> new EarnResult(EarnResultCode.ALREADY_PROCESSED);
+            case REQUEST_ID_CONFLICT -> new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
+        };
+    }
+
+    private EarnLookupResult findGlobalClaimResult(EarnCommand command) {
+        TicketEarnRequestClaim claim = requestClaimService.find(command);
+        if (claim == null || claim == TicketEarnRequestClaim.PENDING) {
+            return null;
+        }
+        return claim == TicketEarnRequestClaim.ACCEPTED
+                ? new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED)
+                : new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
     }
 
 }

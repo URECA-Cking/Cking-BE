@@ -6,6 +6,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
@@ -42,6 +43,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
     private final DefaultRedisScript<List> ticketEarnLuaScript;
     private final String streamKey;
     private final ObjectMapper objectMapper;
+    private final TicketEarnRequestClaimService requestClaimService;
 
     public TicketEarnServiceImpl(
             StringRedisTemplate redisTemplate,
@@ -49,14 +51,31 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String streamKey,
             ObjectMapper objectMapper
     ) {
+        this(redisTemplate, ticketEarnLuaScript, streamKey, objectMapper, null);
+    }
+
+    @Autowired
+    public TicketEarnServiceImpl(
+            StringRedisTemplate redisTemplate,
+            @Qualifier("ticketEarnLuaScript") DefaultRedisScript<List> ticketEarnLuaScript,
+            @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String streamKey,
+            ObjectMapper objectMapper,
+            TicketEarnRequestClaimService requestClaimService
+    ) {
         this.redisTemplate = redisTemplate;
         this.ticketEarnLuaScript = ticketEarnLuaScript;
         this.streamKey = streamKey;
         this.objectMapper = objectMapper;
+        this.requestClaimService = requestClaimService;
     }
 
     @Override
     public EarnResult earn(EarnCommand command) {
+        EarnResult preClaimResult = preClaimResult(command);
+        if (preClaimResult != null) {
+            return preClaimResult;
+        }
+
         String requestId = command.requestId().toString();
         String idemKey = idemKeyOf(command);
         String periodKeyGuardFormat = guardKeySegmentOf(command);
@@ -98,11 +117,21 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
         }
 
-        return parse(result, command);
+        EarnResult earnResult = parse(result, command);
+        if (requestClaimService != null && (earnResult.code() == EarnResultCode.EARN_ACCEPTED
+                || earnResult.code() == EarnResultCode.ALREADY_PROCESSED)) {
+            requestClaimService.accept(requestId);
+        }
+        return earnResult;
     }
 
     @Override
     public EarnLookupResult findExisting(EarnCommand command) {
+        EarnLookupResult preClaimResult = findPreClaimResult(command);
+        if (preClaimResult != null) {
+            return preClaimResult;
+        }
+
         String requestId = command.requestId().toString();
         String fingerprint = command.computeFingerprint();
         String stored;
@@ -134,6 +163,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         // 기존 record의 TTL 동안 완료된 성공으로만 취급한다.
         Object status = idemRecord.get("status");
         if (status == null && idemRecord.get("result") != null) {
+            acceptRequest(command);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
@@ -141,6 +171,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
             return new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
         }
         if ("COMPLETED".equals(status)) {
+            acceptRequest(command);
             return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
         }
 
@@ -200,6 +231,36 @@ public class TicketEarnServiceImpl implements TicketEarnService {
 
     private long idemTtlSecondsOf(EarnCommand command) {
         return command.rewardPolicy().isOnce() ? 0L : IDEM_TTL_SECONDS;
+    }
+
+    private EarnResult preClaimResult(EarnCommand command) {
+        if (requestClaimService == null) {
+            return null;
+        }
+        return switch (requestClaimService.claim(command)) {
+            case PENDING -> null;
+            case ACCEPTED -> new EarnResult(EarnResultCode.ALREADY_PROCESSED);
+            case REQUEST_ID_CONFLICT -> new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
+        };
+    }
+
+    private EarnLookupResult findPreClaimResult(EarnCommand command) {
+        if (requestClaimService == null) {
+            return null;
+        }
+        TicketEarnRequestClaim claim = requestClaimService.find(command);
+        if (claim == null || claim == TicketEarnRequestClaim.PENDING) {
+            return null;
+        }
+        return claim == TicketEarnRequestClaim.ACCEPTED
+                ? new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED)
+                : new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
+    }
+
+    private void acceptRequest(EarnCommand command) {
+        if (requestClaimService != null) {
+            requestClaimService.accept(command.requestId().toString());
+        }
     }
 
     private EarnResult parse(List<?> luaResult, EarnCommand command) {
