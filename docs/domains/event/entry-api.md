@@ -56,12 +56,15 @@ USER가 자신의 Event 응모 내역을 조회한다. Bearer Access JWT가 필�
   "items": [{
     "entryId": 10,
     "usedTicketCount": 3,
+    "couponType": "COMMON",
     "appliedAt": "2026-09-18T02:00:00Z"
   }],
   "nextCursor": null,
   "hasNext": false
 }
 ```
+
+`couponType`은 응모에 쓴 응모권 종류(`CREATOR` | `COMMON`)다. `event_entry`에는 종류 컬럼이 없으므로 그 응모의 SPEND Ledger가 `common_ticket_ledger`에 있으면 `COMMON`, 아니면 `CREATOR`로 판별한다(Consumer가 Entry와 SPEND Ledger를 같은 Tx로 저장한다).
 
 조회 조건은 `event_entry.member_id = 인증된 memberId`와 `event_entry.event_id = eventId`를 모두 사용한다. 없는 Member 또는
 존재하지 않거나 삭제된 Event는 `RESOURCE_NOT_FOUND`, 식별자·size 범위·cursor 형식 오류는
