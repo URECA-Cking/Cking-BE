@@ -26,6 +26,26 @@ class CreatorSpaceTest {
         assertThat(space.isEventsTabEnabled()).isFalse();
     }
 
+    /** 홈·프로필 수정은 소개·이미지·탭만 바꾸고 slug와 creatorId는 그대로 둔다. */
+    @Test
+    void updateProfileChangesProfileFieldsButKeepsSlug() {
+        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}",
+                true, true, true, true
+        );
+        CreatorSpace space = CreatorSpace.fromTemplate(42L, template, "creator-42");
+
+        space.updateProfile("새 소개", "https://img/p2.png", "https://img/b2.png", true, false, true, false);
+
+        assertThat(space.getIntroText()).isEqualTo("새 소개");
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/p2.png");
+        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/b2.png");
+        assertThat(space.isMissionsTabEnabled()).isFalse();
+        assertThat(space.isEventsTabEnabled()).isFalse();
+        assertThat(space.getSlug()).isEqualTo("creator-42");
+        assertThat(space.getCreatorId()).isEqualTo(42L);
+    }
+
     /** Space는 템플릿 값을 생성 시점에 복사만 할 뿐 템플릿을 참조로 들고 있지 않으므로, 이후 템플릿 수정은 이미 만든 Space에 영향을 주지 않는다. */
     @Test
     void spaceIsIndependentFromLaterTemplateChanges() {

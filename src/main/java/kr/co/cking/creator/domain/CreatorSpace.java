@@ -78,6 +78,20 @@ public class CreatorSpace {
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
+    /** Creator 본인이 홈·프로필을 수정한다. slug는 공유 URL의 식별자라 바꾸지 않는다. */
+    public void updateProfile(
+            String introText, String profileImageUrl, String bannerImageUrl,
+            boolean homeTabEnabled, boolean missionsTabEnabled, boolean postsTabEnabled, boolean eventsTabEnabled
+    ) {
+        this.introText = introText;
+        this.profileImageUrl = profileImageUrl;
+        this.bannerImageUrl = bannerImageUrl;
+        this.homeTabEnabled = homeTabEnabled;
+        this.missionsTabEnabled = missionsTabEnabled;
+        this.postsTabEnabled = postsTabEnabled;
+        this.eventsTabEnabled = eventsTabEnabled;
+    }
+
     public static CreatorSpace fromTemplate(Long creatorId, CreatorSpaceTemplate template, String slug) {
         return new CreatorSpace(
                 creatorId,

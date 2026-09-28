@@ -6,6 +6,7 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 - [Creator 신청 API](api.md): 신청·심사 외부 API 계약
 - [Creator Space Template 관리자 API](space-template-api.md): 기본 템플릿 CRUD·활성화 외부 API 계약
+- [Creator Space API](space-api.md): Space 홈·프로필 공개 조회와 Creator 본인 조회·수정 외부 API 계약
 
 ## Creator Space 자동 생성(이슈 #270)
 
