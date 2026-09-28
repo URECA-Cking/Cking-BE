@@ -37,7 +37,7 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 | `INSUFFICIENT_BALANCE` | 409 | 응모권 잔액 부족 | 잔액 확인 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 동일 `requestId`에 다른 요청 내용 | 새 `requestId` |
 | `GATE_NOT_LOADED` | 503 | Gate 키 미적재(OPEN 전이 전이거나 Redis 유실). OPEN으로 간주하지 않는다 | 잠시 후 재시도 |
-| `BALANCE_NOT_LOADED` | 503 | 잔액 키 미적재. 0으로 간주하지 않는다 | 잠시 후 재시도 |
+| `BALANCE_NOT_LOADED` | 503 | 잔액 키 미적재. 0으로 간주하지 않는다. 서버가 안전 조건(미반영 메시지·보정 락 없음)에서 DB 기준으로 적재해 1회 재실행하므로, 이 코드는 그 조건을 채우지 못할 때만 나온다 | 잠시 후 재시도 |
 | `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(issue #172) | 잠시 후 동일 `requestId`로 재시도 |
 | `SYSTEM_ERROR` | 500 | 내부 오류. Redis 타임아웃도 포함 | 동일 `requestId`로 재시도 |
 
