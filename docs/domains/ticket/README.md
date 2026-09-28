@@ -4,7 +4,7 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 
 ## 문서
 
-- [외부 조회 API](api.md): 잔액과 Ledger 이력 조회 계약
+- [외부 API](api.md): 잔액·Ledger 이력 조회 및 관리자 보정 API 계약
 - [EARN Lua 원자 처리](lua-api.md): 미션 적립의 멱등성·일일 중복 방지·Stream 발행 계약
 
 ## EARN과 Stream 반영
@@ -43,5 +43,5 @@ SPEND·EARN Lua도 같은 lock을 확인해 lock이 걸린 동안 새 차감·�
 - **관리자 조회·replay**: `GET /api/admin/dead-streams`, `POST /api/admin/dead-streams/{id}/replay`(`DeadStreamAdminController`)를 EARN/SPEND와 동일하게 그대로 쓴다 - `streamType`이 `COMMON_EARN`으로 나온다. `DeadStreamReplayService`가 `CommonMissionEarnLedgerService.apply()`로 재적용한다(requestId 멱등이라 반복 replay해도 안전).
 - **조회**: `GET /api/tickets/common`, `GET /api/tickets/common/history`(`CommonTicketQueryController`) — `GET /api/creators/{creatorId}/tickets`류와 동일한 커서 페이지네이션.
 - **정합성 검증·수동 보정(이슈 #256)**: `TicketBalanceReconciliationScheduler`가 같은 5분 주기에 `user_common_ticket_balance` vs `ticket:balance:common:{userId}`도 비교한다(연속 2주기 불일치·키 유실 판정 기준은 크리에이터 잔액과 동일). 복구는 `CommonTicketCompensationService.resyncRedisToDb(memberId, reason)`이 하며, 크리에이터 축이 없다는 점만 빼면 `TicketCompensationService`와 계약이 같다: `TicketMaintenanceLock.acquireCommon(memberId)`으로 `ticket:maint:common:{userId}` lock을 잡고(이미 잡혀 있으면 `CONCURRENT_COMMAND`), `UnappliedBalanceMessageChecker.existsCommon(memberId)`로 공용 SPEND·EARN Stream과 공용 Dead Stream의 미반영 메시지를 확인한 뒤(있으면 `INVALID_STATE`) `COMPENSATE` Ledger를 append하고 lock을 쥔 동안만 Redis를 덮어쓴다. `common-ticket-earn.lua`와 `entry-spend.lua`(`couponType=COMMON`) 양쪽 모두 이 lock 키를 `EXISTS`로 확인해 걸려 있는 동안 새 공용 EARN·SPEND를 `BALANCE_MAINTENANCE`(HTTP 503)로 거부한다 — [응모 Lua API](../event/lua-api.md#coupontype-이슈-243) 참고.
-- **호출 진입점**: `POST /api/admin/tickets/common/resync`(`TicketAdminController.resyncCommon`)가 위 보정을 트리거한다. Body는 대상 `memberId`, `reason`이며, 크리에이터 잔액용 `POST /api/admin/tickets/resync`와 마찬가지로 Bearer Access JWT의 `@CurrentMemberId`를 관리자 식별자로 쓰고 Service에서 ADMIN을 재검증한다. 대상 공용 Balance가 없으면 `RESOURCE_NOT_FOUND`(404), lock 충돌은 `CONCURRENT_COMMAND`(409), 미반영 메시지가 있으면 `INVALID_STATE`(409)를 반환하며, 성공하면 재동기화 후 현재 공용 잔액을 반환한다. 기존 `/resync` 응답 계약을 건드리지 않으려고 별도 엔드포인트로 분리했다.
+- **호출 진입점**: `POST /api/admin/tickets/common/resync`(`TicketAdminController.resyncCommon`)가 위 보정을 트리거한다. 요청·응답 필드와 오류 코드는 [외부 API](api.md#post-apiadminticketscommonresync) 참고.
 - **호출 측**: 공용 미션 완료는 `kr.co.cking.mission.application.CommonMissionCompletionService`가 담당한다([Mission 도메인](../mission/README.md#공용-미션크리에이터-무관-이슈-219) 참고). 응모(SPEND)에서 공용 응모권으로 크리에이터 이벤트에 응모하는 경로는 이슈 #243으로 구현됐다 — 요청의 `couponType=COMMON`이면 `EntrySpendServiceImpl`이 크리에이터 잔액 대신 이 문서의 공용 잔액을 검증·차감하고, `TicketSpendLedgerService`가 `common_ticket_ledger`/`user_common_ticket_balance`에 반영한다. 자세한 계약은 [응모 API](../event/entry-api.md), [응모 Lua API](../event/lua-api.md#coupontype-이슈-243) 참고.
