@@ -1,12 +1,8 @@
 package kr.co.cking.ticket.application;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -64,7 +60,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
         String requestId = command.requestId().toString();
         String idemKey = idemKeyOf(command);
         String periodKeyGuardFormat = guardKeySegmentOf(command);
-        String fingerprint = computeFingerprint(command);
+        String fingerprint = command.computeFingerprint();
         List<?> result;
 
         try {
@@ -108,7 +104,7 @@ public class TicketEarnServiceImpl implements TicketEarnService {
     @Override
     public EarnLookupResult findExisting(EarnCommand command) {
         String requestId = command.requestId().toString();
-        String fingerprint = computeFingerprint(command);
+        String fingerprint = command.computeFingerprint();
         String stored;
 
         try {
@@ -204,23 +200,6 @@ public class TicketEarnServiceImpl implements TicketEarnService {
 
     private long idemTtlSecondsOf(EarnCommand command) {
         return command.rewardPolicy().isOnce() ? 0L : IDEM_TTL_SECONDS;
-    }
-
-    // requestId를 제외한 요청 내용을 해시로 요약해 REQUEST_ID_CONFLICT 판정에 사용한다.
-    // periodKey는 서버 파생값이므로 fingerprint에서 제외한다. 자정 이후 재시도는
-    // 동일 요청으로 판정하며, periodKey는 일일 Guard와 MissionCompletion에만 사용한다.
-    private String computeFingerprint(EarnCommand command) {
-        String payload = command.userId() + ":" + command.creatorId() + ":" + command.missionType()
-                + ":" + command.missionId() + ":" + command.missionKey() + ":" + command.amount();
-
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
-
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
-        }
     }
 
     private EarnResult parse(List<?> luaResult, EarnCommand command) {

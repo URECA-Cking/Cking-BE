@@ -1,5 +1,9 @@
 package kr.co.cking.ticket.application.dto;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
 
@@ -35,6 +39,21 @@ public record EarnCommand(
     /** 이 EARN 요청의 DB 완료 이력 중복 방어 키를 만든다. */
     public String completionKey() {
         return rewardPolicy.completionKey(periodKey);
+    }
+
+    /**
+     * requestId를 제외한 EARN 요청 내용을 해시해 Redis replay와 ONCE durable request의
+     * REQUEST_ID_CONFLICT 판정에 사용한다. periodKey는 서버 파생값이므로 제외한다.
+     */
+    public String computeFingerprint() {
+        String payload = userId + ":" + creatorId + ":" + missionType + ":" + missionId + ":" + missionKey
+                + ":" + amount;
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(payload.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
+        }
     }
 
     /**

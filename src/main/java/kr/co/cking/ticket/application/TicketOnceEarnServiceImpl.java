@@ -9,11 +9,6 @@ import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
-
 /** Redis 유실 뒤에도 DB Business Key가 재적립을 막도록 ONCE request를 먼저 claim한다. */
 @Service
 @RequiredArgsConstructor
@@ -25,7 +20,7 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
     @Override
     public EarnResult earn(EarnCommand command) {
         validateOnce(command);
-        TicketOnceEarnRequestClaim claim = claimService.claim(command, fingerprintOf(command));
+        TicketOnceEarnRequestClaim claim = claimService.claim(command, command.computeFingerprint());
         if (claim == TicketOnceEarnRequestClaim.REQUEST_ID_CONFLICT) {
             return new EarnResult(EarnResultCode.REQUEST_ID_CONFLICT);
         }
@@ -46,7 +41,7 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
     @Override
     public EarnLookupResult findExisting(EarnCommand command) {
         validateOnce(command);
-        TicketOnceEarnRequestClaim claim = claimService.find(command.requestId().toString(), fingerprintOf(command));
+        TicketOnceEarnRequestClaim claim = claimService.find(command.requestId().toString(), command.computeFingerprint());
         if (claim == null) {
             return new EarnLookupResult(EarnLookupStatus.NOT_FOUND);
         }
@@ -69,14 +64,4 @@ public class TicketOnceEarnServiceImpl implements TicketOnceEarnService {
         }
     }
 
-    private String fingerprintOf(EarnCommand command) {
-        String payload = command.userId() + ":" + command.creatorId() + ":" + command.missionType()
-                + ":" + command.missionId() + ":" + command.missionKey() + ":" + command.amount();
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(payload.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
-        }
-    }
 }

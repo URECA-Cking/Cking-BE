@@ -210,7 +210,7 @@ payload_fingerprint
 
 1. 같은 `rewardRequestId`의 durable request를 조회·생성하고 `memberId`, `creatorId`, `missionId`, `missionType`, `amount`, 저장된 `rewardPeriodKey`를 포함한 payload 일치를 검증한다.
 2. `(memberId, creatorId, missionId)` UNIQUE로 다른 requestId의 평생 중복 보상을 차단한다.
-3. 신규/PENDING이면 ONCE Lua를 실행한다. Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:once:{memberId}:{creatorId}:{missionId}`를 TTL 없이 선점하고 Balance 증가·기존 EARN Stream 발행을 원자 처리한다.
+3. 신규/PENDING이면 ONCE Lua를 실행한다. Lua는 `idem:mission-once:{requestId}`와 `mission:earn-guard:{userId}:{missionType}:{creatorId}:once`를 TTL 없이 선점하고 Balance 증가·기존 EARN Stream 발행을 원자 처리한다.
 4. Redis 수락 결과를 별도 짧은 Transaction에서 DB durable request의 `ACCEPTED`로 기록한다.
 5. ONCE Redis key는 TTL을 설정하거나 성공 후 삭제하지 않는다. DB 조회를 이미 통과한 동시 실행이 뒤늦게 도착해도 영구 key가 재증가를 막는다.
 6. Redis 수락 후 DB 상태 갱신 전에 프로세스가 종료돼도 같은 requestId의 비만료 Redis key가 재증가를 막고, 재호출이 DB를 `ACCEPTED`로 수렴시킨다.
