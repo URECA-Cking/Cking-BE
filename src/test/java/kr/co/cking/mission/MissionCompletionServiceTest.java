@@ -56,6 +56,11 @@ class MissionCompletionServiceTest {
         return new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null);
     }
 
+    /** SHARE 일반 완료 경로를 검증할 Creator별 공유 미션을 만든다. */
+    private Mission shareMission() {
+        return new Mission(CREATOR_ID, MissionType.SHARE, 1, null, null);
+    }
+
     private Mission youtubeSubscriptionMission() {
         return new Mission(CREATOR_ID, MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null);
     }
@@ -83,6 +88,23 @@ class MissionCompletionServiceTest {
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(outcome.rewardAmount()).isEqualTo(1);
+    }
+
+    @Test
+    void 공유_미션을_최초_완료하면_SHARE_유형으로_EARN_ACCEPTED를_반환한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(shareMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService).earn(captor.capture());
+        assertThat(captor.getValue().missionType()).isEqualTo(MissionType.SHARE.name());
+        assertThat(captor.getValue().periodKey()).isEqualTo("2026-09-16");
     }
 
     @Test

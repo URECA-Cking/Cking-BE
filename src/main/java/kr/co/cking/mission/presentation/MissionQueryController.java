@@ -26,7 +26,7 @@ public class MissionQueryController {
     /** 인증된 사용자의 Creator별 활성 미션과 완료 여부를 조회한다. */
     @Operation(
             summary = "Creator별 미션 목록 조회",
-            description = "Creator의 활성 좋아요 미션과 인증된 사용자 기준 UTC periodKey의 오늘 완료 여부를 조회합니다. 출석은 공용 미션 API에서 조회합니다."
+            description = "Creator의 활성 좋아요·공유 미션과 인증된 사용자 기준 UTC periodKey의 오늘 완료 여부를 조회합니다. 출석은 공용 미션 API에서 조회합니다."
     )
     @GetMapping("/api/creators/{creatorId}/missions")
     public ApiResponse<List<MissionQueryItem>> findMissions(

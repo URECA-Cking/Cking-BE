@@ -27,17 +27,17 @@ class MissionInitializationServiceTest {
     private final MissionInitializationService service = new MissionInitializationService(missionRepository);
 
     @Test
-    void 미션이_하나도_없으면_크리에이터별_좋아요만_보상_1장_상시_활성으로_생성한다() {
+    void 미션이_하나도_없으면_크리에이터별_좋아요와_공유를_보상_1장_상시_활성으로_생성한다() {
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), any())).thenReturn(List.of());
 
         service.initializeDefaultMissions(CREATOR_ID);
 
         ArgumentCaptor<Mission> captor = ArgumentCaptor.forClass(Mission.class);
-        verify(missionRepository, times(1)).save(captor.capture());
+        verify(missionRepository, times(2)).save(captor.capture());
         List<Mission> saved = captor.getAllValues();
 
         assertThat(saved).extracting(Mission::getType)
-                .containsExactly(MissionType.LIKE);
+                .containsExactly(MissionType.LIKE, MissionType.SHARE);
         assertThat(saved).allSatisfy(mission -> {
             assertThat(mission.getCreatorId()).isEqualTo(CREATOR_ID);
             assertThat(mission.getRewardAmount()).isEqualTo(1);
@@ -47,7 +47,7 @@ class MissionInitializationServiceTest {
     }
 
     @Test
-    void 기존_출석_레거시_행이_있어도_좋아요만_생성한다() {
+    void 기존_출석_레거시_행이_있어도_좋아요와_공유를_생성한다() {
         Mission existingAttendance = new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1, null, null);
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), any()))
                 .thenReturn(List.of(existingAttendance));
@@ -55,14 +55,16 @@ class MissionInitializationServiceTest {
         service.initializeDefaultMissions(CREATOR_ID);
 
         verify(missionRepository, times(1)).save(argThat(mission -> mission.getType() == MissionType.LIKE));
+        verify(missionRepository, times(1)).save(argThat(mission -> mission.getType() == MissionType.SHARE));
         verify(missionRepository, never()).save(argThat(mission -> mission.getType() == MissionType.ATTENDANCE));
     }
 
     @Test
-    void 좋아요가_이미_있으면_아무것도_생성하지_않는다() {
+    void 좋아요와_공유가_이미_있으면_아무것도_생성하지_않는다() {
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), any()))
                 .thenReturn(List.of(
-                        new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null)));
+                        new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null),
+                        new Mission(CREATOR_ID, MissionType.SHARE, 1, null, null)));
 
         service.initializeDefaultMissions(CREATOR_ID);
 
@@ -70,14 +72,25 @@ class MissionInitializationServiceTest {
     }
 
     @Test
-    void 조회는_크리에이터별_좋아요_유형만_대상으로_한다() {
+    void 좋아요만_있으면_누락된_공유_미션만_생성한다() {
+        when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), any()))
+                .thenReturn(List.of(new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null)));
+
+        service.initializeDefaultMissions(CREATOR_ID);
+
+        verify(missionRepository, times(1)).save(argThat(mission -> mission.getType() == MissionType.SHARE));
+        verify(missionRepository, never()).save(argThat(mission -> mission.getType() == MissionType.LIKE));
+    }
+
+    @Test
+    void 조회는_크리에이터별_좋아요와_공유_유형을_대상으로_한다() {
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), any())).thenReturn(List.of());
 
         service.initializeDefaultMissions(CREATOR_ID);
 
         ArgumentCaptor<java.util.Collection<MissionType>> captor = ArgumentCaptor.forClass(java.util.Collection.class);
         verify(missionRepository).findByCreatorIdAndTypeIn(eq(CREATOR_ID), captor.capture());
-        assertThat(Set.copyOf(captor.getValue())).isEqualTo(Set.of(MissionType.LIKE));
+        assertThat(Set.copyOf(captor.getValue())).isEqualTo(Set.of(MissionType.LIKE, MissionType.SHARE));
     }
 
     @Test
@@ -89,6 +102,6 @@ class MissionInitializationServiceTest {
 
         service.initializeCreatorInNewTransaction(CREATOR_ID);
 
-        verify(missionRepository, times(1)).save(any());
+        verify(missionRepository, times(2)).save(any());
     }
 }

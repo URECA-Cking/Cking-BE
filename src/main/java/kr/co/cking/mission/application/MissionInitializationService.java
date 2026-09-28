@@ -13,10 +13,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Creator에게 크리에이터별 기본 미션(좋아요)을 준비한다(이슈 #185). 출석은
+ * Creator에게 크리에이터별 기본 미션(좋아요·공유)을 준비한다(이슈 #185, #309). 출석은
  * 크리에이터와 무관한 {@code CommonMission}으로 별도 관리하므로 이 서비스에서는
  * 생성하지 않는다. Creator가 직접 만드는 API를 두지 않고, 이 서비스가 누락된
- * 좋아요 미션만 채워 넣는 방식으로 대신한다.
+ * 좋아요·공유 미션만 채워 넣는 방식으로 대신한다.
  *
  * <p>이미 있는 유형은 건너뛴다({@code uk_mission_creator_type} 위반 방지) — 아래
  * 두 진입점 모두에서 재실행해도 안전하도록 하기 위해서다.
@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 @Transactional
 public class MissionInitializationService {
 
-    private static final List<MissionType> DEFAULT_TYPES = List.of(MissionType.LIKE);
+    private static final List<MissionType> DEFAULT_TYPES = List.of(MissionType.LIKE, MissionType.SHARE);
     private static final int DEFAULT_REWARD_AMOUNT = 1;
 
     private final MissionRepository missionRepository;
