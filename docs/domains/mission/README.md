@@ -36,7 +36,7 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 
 - `LIKE`는 일반 완료 API와 Creator별 EARN 경로를 사용한다. 좋아요 취소는 별도 API가 없다. Mock 검증(버튼 클릭 = 완료, FR-P1-011) 방식이라 취소 시 서버에 알리지 않고 이미 지급된 응모권도 회수하지 않는다(FR-P1-012). 같은 날 재좋아요는 Redis EARN Guard가 차단한다(FR-P1-013).
 - `ATTENDANCE` 신규 완료는 `CommonMissionController`/`CommonMissionCompletionService`와 공용 EARN 경로에서 처리한다. 과거 Creator ATTENDANCE의 기존 성공 `requestId` replay는 허용하지만, 신규 요청은 `MissionCompletionService`가 거부한다.
-- `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 선행되어야 한다. 일반 `POST .../complete` 경로에서는 `TicketEarnService.findExisting()`이나 `earn()`을 호출하기 전에 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 따라서 클라이언트가 일반 완료 API로 인증과 보상 경계를 우회할 수 없다. 이미지 제출·판정·보상 계약은 후속 구독 인증 기능에서 별도로 정의한다.
+- `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 선행되어야 한다. 일반 `POST .../complete` 경로에서는 `TicketEarnService.findExisting()`이나 `earn()`을 호출하기 전에 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 따라서 클라이언트가 일반 완료 API로 인증과 보상 경계를 우회할 수 없다. 이미지 제출·판정·보상은 [YouTube 구독 인증 정본](../subscription-verification/README.md)을 따른다.
 
 ### 검증 범위(caveat)
 
