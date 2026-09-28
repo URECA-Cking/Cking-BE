@@ -1,5 +1,6 @@
 package kr.co.cking.quiz.generation;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -83,11 +84,20 @@ public class QuizResponseParser {
 
     private int requiredInteger(Map<?, ?> object, String field, int index) {
         Object value = object.get(field);
-        if (!(value instanceof Number number)
-                || number.doubleValue() != Math.rint(number.doubleValue())) {
+        if (!(value instanceof Byte
+                || value instanceof Short
+                || value instanceof Integer
+                || value instanceof Long
+                || value instanceof BigInteger)) {
             throw typeError("questions[" + index + "]." + field);
         }
-        return number.intValue();
+
+        BigInteger integer = new BigInteger(value.toString());
+        if (integer.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0
+                || integer.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0) {
+            throw typeError("questions[" + index + "]." + field);
+        }
+        return integer.intValue();
     }
 
     private String optionalString(Map<?, ?> object, String field, String defaultValue) {

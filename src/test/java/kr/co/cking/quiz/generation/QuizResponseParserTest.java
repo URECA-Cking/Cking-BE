@@ -51,4 +51,28 @@ class QuizResponseParserTest {
                 .isInstanceOf(QuizResponseParseException.class)
                 .hasMessageContaining("correctOptionIndex");
     }
+
+    @Test
+    void correctOptionIndex가_int_범위를_벗어나면_파싱오류다() {
+        String json = """
+                {"questions":[{"question":"질문","options":["A","B"],
+                "correctOptionIndex":4294967296,"explanation":"설명","sourceEvidence":"원문"}]}
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(QuizResponseParseException.class)
+                .hasMessageContaining("correctOptionIndex");
+    }
+
+    @Test
+    void correctOptionIndex가_소수형이면_파싱오류다() {
+        String json = """
+                {"questions":[{"question":"질문","options":["A","B"],
+                "correctOptionIndex":1.0,"explanation":"설명","sourceEvidence":"원문"}]}
+                """;
+
+        assertThatThrownBy(() -> parser.parse(json))
+                .isInstanceOf(QuizResponseParseException.class)
+                .hasMessageContaining("correctOptionIndex");
+    }
 }
