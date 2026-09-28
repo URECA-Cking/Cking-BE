@@ -71,7 +71,7 @@ APPROVED
 | `channel_url` | 정규화된 handle로 서버가 만든 URL, 최대 500자 |
 | `created_at`, `updated_at` | UTC Instant |
 
-채널명은 동일성의 최종 기준이 아니다. handle은 trim 후 `@` prefix를 하나만 두고 `Locale.ROOT` 기준으로 영문 대소문자를 정규화한다. 같은 정규화 handle을 여러 Creator가 등록할 수 없다. MVP는 Creator가 등록한 값을 인증 대상으로 사용할 뿐 실제 채널 소유권은 검증하지 않는다.
+채널명은 동일성의 최종 기준이 아니다. handle은 trim 후 앞의 `@`를 하나만 두고 `Locale.ROOT` 기준으로 소문자화한다. handle 본문은 Unicode 문자·숫자와 `.`, `_`, `-`만 허용하며 공백·URL 구분자는 거부한다. 같은 정규화 handle을 여러 Creator가 등록할 수 없다. MVP는 Creator가 등록한 값을 인증 대상으로 사용할 뿐 실제 채널 소유권은 검증하지 않는다.
 
 Creator 본인만 채널을 생성·수정한다. Creator는 JWT role이 아니므로 인증된 `memberId`로 `creator.member_id`를 조회해 소유권을 확인한다. 삭제 API는 제공하지 않는다.
 
