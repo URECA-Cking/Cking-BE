@@ -1,5 +1,6 @@
-package kr.co.cking.post.application;
+package kr.co.cking.post.scheduler;
 
+import kr.co.cking.post.application.PostImageStorageCleaner;
 import kr.co.cking.post.domain.CreatorPostImage;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
 import lombok.RequiredArgsConstructor;

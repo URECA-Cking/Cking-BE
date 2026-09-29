@@ -302,10 +302,16 @@ PR의 Base Branch는 `develop`으로 지정합니다.
 
 ```text
 kr.co.cking
-├── common/         공통 응답·예외·설정
+├── common/         공통 응답·예외·설정, 이미지 정규화·저장소
+├── auth/           OAuth2 로그인, Access JWT, Login Code
 ├── member/         가상 사용자
-├── creator/        Creator, 권한 신청·승인
+├── creator/        Creator, 권한 신청·승인, Creator Space
+├── follow/         크리에이터 팔로우
+├── post/           Creator Space 게시글·댓글
+├── calendar/       크리에이터 일정, 개인 캘린더
 ├── mission/        출석·좋아요 미션
+├── subscriptionverification/  YouTube 구독 인증
+├── quiz/           AI 퀴즈 생성
 ├── ticket/         응모권 Balance·Ledger, 적립·차감
 ├── event/          Event 생명주기, 응모, 마감
 ├── snapshot/       공식 Snapshot 생성·검증

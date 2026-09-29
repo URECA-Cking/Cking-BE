@@ -1,5 +1,6 @@
-package kr.co.cking.post.application;
+package kr.co.cking.post.scheduler;
 
+import kr.co.cking.post.application.PostImageStorageCleaner;
 import kr.co.cking.post.domain.CreatorPostImage;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
 import org.junit.jupiter.api.Test;
@@ -19,8 +20,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-/** 정리 스케줄러와 AFTER_COMMIT 삭제 리스너. */
-class PostImageCleanupTest {
+/** 게시글 이미지 정리 스케줄러. */
+class PostImageCleanupSchedulerTest {
 
     private final CreatorPostImageRepository imageRepository = mock(CreatorPostImageRepository.class);
     private final PostImageStorageCleaner storageCleaner = mock(PostImageStorageCleaner.class);
@@ -78,16 +79,6 @@ class PostImageCleanupTest {
         willThrow(new IllegalStateException("db down")).given(imageRepository).postponeDeletePending("a", NOW);
 
         scheduler.cleanUp();
-
-        verify(storageCleaner).delete("b");
-    }
-
-    @Test
-    void 리스너는_한_이미지_삭제가_실패해도_예외를_전파하지_않고_나머지를_지운다() {
-        PostImageDeletionListener listener = new PostImageDeletionListener(storageCleaner);
-        willThrow(new IllegalStateException("storage down")).given(storageCleaner).delete("a");
-
-        listener.onReleased(new PostImagesReleasedEvent(List.of("a", "b")));
 
         verify(storageCleaner).delete("b");
     }
