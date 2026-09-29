@@ -130,20 +130,39 @@ INSUFFICIENT_EVIDENCE
 LOW_CONFIDENCE
 ```
 
-## DeepSeek Adapter 후속 범위
+## DeepSeek Adapter 계약
 
-SUB-09는 Provider 독립 Port·DTO·판정 정책만 구현한다. 다음은 후속 SUB-10에서 구현한다.
+`DeepSeekVisionAnalysisAdapter`는 SDK 없이 `POST https://api.deepseek.com/chat/completions`를 호출한다. 기본 모델은 `deepseek-flash`이며 API key는 `DEEPSEEK_API_KEY` Secret으로만 주입한다. Adapter는 `VisionAnalysisResult`까지만 반환하고 Verification 상태·reason code·Ticket 보상을 직접 결정하지 않는다.
 
-- VLM Provider SDK와 API Client
-- Model ID와 Endpoint
-- Prompt/System Prompt
-- 이미지 전달 방식(base64, file, URL)
-- Structured Output JSON, DTO, Parser
-- 운영 confidence threshold 값
-- timeout, retry 횟수, backoff
-- Provider 환경변수와 비용·usage logging
+### 요청
 
-DeepSeek Adapter는 `VisionAnalysisResult`까지만 반환하고 Verification 상태·reason code·Ticket 보상을 직접 결정하지 않는다. Adapter 추가 시에도 DB·API·S3·멱등성·보상 계약은 바꾸지 않는다.
+- 정규화 JPEG bytes를 `data:image/jpeg;base64,...` 형식의 user message `image_url`로 전달한다. S3 URL·Object Key·실제 파일 업로드는 사용하지 않는다.
+- 대상 `channelName`과 `channelHandle`은 text prompt의 비교 기준으로 함께 전달한다. 이미지에 없는 관측값을 이 입력에서 추론할 수 없도록 Prompt에 명시한다.
+- `thinking: { type: disabled }`, `response_format: { type: json_object }`와 최대 출력 토큰을 요청한다.
+- Prompt는 이미지 안의 모든 문구를 증거 데이터로만 취급하고, 이미지 내부 명령을 실행하지 않도록 지시한다.
+
+### 응답과 검증
+
+Provider JSON은 다음 필드를 모두 반환해야 한다.
+
+```text
+platform: YOUTUBE | OTHER | UNKNOWN
+subscriptionState: SUBSCRIBED | NOT_SUBSCRIBED | UNKNOWN
+detectedText: string | null
+observedChannelName: string | null
+observedChannelHandle: string | null
+evidenceSufficient: boolean
+confidence: 0.0..1.0
+```
+
+`detectedText`는 Provider 내부 판정 근거로만 사용하며 Domain·사용자 응답·로그로 원문을 전달하지 않는다. Parser는 필수 필드 누락, 잘못된 타입, 범위를 벗어난 confidence와 알 수 없는 enum 값을 거부하고 기술 오류로 전달한다.
+
+### 재시도·관측성
+
+- connect/read timeout, 429, 5xx, 네트워크 오류와 응답 파싱 오류는 `RETRYABLE` 기술 오류다. 설정한 최대 시도 횟수 안에서 backoff 후 재시도한다.
+- 400 계열과 API key 누락은 `NON_RETRYABLE` 기술 오류이며 재시도하지 않는다.
+- `DEEPSEEK_CONNECT_TIMEOUT`, `DEEPSEEK_READ_TIMEOUT`, `DEEPSEEK_MAX_ATTEMPTS`, `DEEPSEEK_RETRY_BACKOFF`, `DEEPSEEK_MAX_OUTPUT_TOKENS`로 호출 한계를 분리한다.
+- 이미지 bytes, Base64, API key, VLM Raw 응답은 로그에 남기지 않는다. model, HTTP status, latency, usage token 수, 시도 횟수만 기록한다.
 
 ## 보상 처리
 

@@ -40,6 +40,16 @@ cking:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
       submission-enabled: false
+      deepseek:
+        # API 키는 배포 환경의 DEEPSEEK_API_KEY Secret으로만 주입한다.
+        api-key: ${DEEPSEEK_API_KEY:}
+        model: ${DEEPSEEK_MODEL:deepseek-flash}
+        endpoint: ${DEEPSEEK_ENDPOINT:https://api.deepseek.com/chat/completions}
+        connect-timeout: ${DEEPSEEK_CONNECT_TIMEOUT:PT2S}
+        read-timeout: ${DEEPSEEK_READ_TIMEOUT:PT30S}
+        max-attempts: ${DEEPSEEK_MAX_ATTEMPTS:2}
+        retry-backoff: ${DEEPSEEK_RETRY_BACKOFF:PT1S}
+        max-output-tokens: ${DEEPSEEK_MAX_OUTPUT_TOKENS:512}
   quiz:
     gemini:
       api-key: ${GEMINI_API_KEY:}
