@@ -39,7 +39,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
         "cking.verification.youtube-subscription.processing-executor.core-pool-size=1",
         "cking.verification.youtube-subscription.processing-executor.max-pool-size=1",
         "cking.verification.youtube-subscription.processing-executor.queue-capacity=1",
-        "cking.verification.youtube-subscription.processing-executor.provider-max-concurrent-calls=1"
+        "cking.verification.youtube-subscription.processing-executor.provider-max-concurrent-calls=1",
+        "cking.verification.youtube-subscription.recovery.batch-size=2"
 })
 class SubscriptionVerificationProcessingAsyncIntegrationTest {
 
