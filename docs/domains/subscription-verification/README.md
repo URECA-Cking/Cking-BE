@@ -2,6 +2,8 @@
 
 이 문서는 `YOUTUBE_SUBSCRIPTION` 미션의 목표 업무 계약이다. 현재 구현된 이미지 전처리 범위와 앞으로 구현할 채널 설정, 제출, 비동기 판정, 보상 경계를 함께 정의한다. 외부 API의 상세 형식은 [api.md](api.md), VLM 의존 처리와 복구 계약은 [processing.md](processing.md)를 따른다.
 
+이미지 exact-hash 재사용 탐지 정책과 운영 조회 계약은 [image-reuse.md](image-reuse.md)를 따른다.
+
 ## 책임과 경계
 
 구독 인증 도메인은 다음을 소유한다.

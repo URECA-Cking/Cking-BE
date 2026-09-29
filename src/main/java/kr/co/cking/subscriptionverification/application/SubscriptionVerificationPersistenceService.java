@@ -17,9 +17,11 @@ class SubscriptionVerificationPersistenceService {
 
     private final SubscriptionVerificationSubmissionValidator validator;
     private final SubscriptionVerificationRepository verificationRepository;
+    private final SubscriptionVerificationImageReuseDetectionService imageReuseDetectionService;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
+    /** Creator 잠금 뒤 PENDING Verification과 이미지 재사용 감사 기록을 한 Transaction으로 저장한다. */
     @Transactional
     public SubscriptionVerificationSubmissionResult create(
             SubscriptionVerificationPersistenceCommand command
@@ -52,6 +54,7 @@ class SubscriptionVerificationPersistenceService {
                 command.rewardRequestId(),
                 persistedAt);
         verificationRepository.saveAndFlush(verification);
+        imageReuseDetectionService.detectAndRecord(verification, persistedAt);
         eventPublisher.publishEvent(
                 new SubscriptionVerificationSubmittedEvent(verification.getVerificationId()));
         return new SubscriptionVerificationSubmissionResult(verification, true);

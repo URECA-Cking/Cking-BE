@@ -10,6 +10,7 @@ import kr.co.cking.subscriptionverification.application.image.ProcessedSubscript
 import kr.co.cking.subscriptionverification.application.image.SubscriptionImageProcessor;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -41,6 +42,7 @@ public class SubscriptionVerificationSubmissionService {
         this.clock = clock;
     }
 
+    /** 정규화·업로드 뒤 PENDING 저장과 이미지 재사용 탐지 기록을 요청한다. */
     public SubscriptionVerificationSubmissionResult submit(
             SubscriptionVerificationSubmissionCommand command
     ) {
@@ -73,7 +75,7 @@ public class SubscriptionVerificationSubmissionService {
         objectStorage.put(objectKey, image.normalizedImageBytes(), "image/jpeg");
         SubscriptionVerificationSubmissionResult result;
         try {
-            result = persistenceService.create(new SubscriptionVerificationPersistenceCommand(
+            result = createWithImageReuseRetry(new SubscriptionVerificationPersistenceCommand(
                     command.memberId(),
                     command.creatorId(),
                     command.missionId(),
@@ -107,12 +109,30 @@ public class SubscriptionVerificationSubmissionService {
         return result;
     }
 
+    /** 같은 이미지 hash 잠금의 일시 교착만 제한적으로 재시도해 업로드한 Object를 재사용한다. */
+    private SubscriptionVerificationSubmissionResult createWithImageReuseRetry(
+            SubscriptionVerificationPersistenceCommand command
+    ) {
+        CannotAcquireLockException lastFailure = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                return persistenceService.create(command);
+            } catch (CannotAcquireLockException exception) {
+                lastFailure = exception;
+                Thread.yield();
+            }
+        }
+        throw lastFailure;
+    }
+
+    /** 제출 시각의 UTC 연·월과 UUID로 Private Object key를 생성한다. */
     private String objectKey(Instant submittedAt) {
         var utc = submittedAt.atZone(ZoneOffset.UTC);
         return "subscription-verifications/%04d/%02d/%s/image.jpg"
                 .formatted(utc.getYear(), utc.getMonthValue(), UUID.randomUUID());
     }
 
+    /** DB 저장 실패 뒤 이번 요청이 업로드한 Object를 보상 삭제하고 실패는 로그에만 남긴다. */
     private void deleteQuietly(String objectKey) {
         try {
             objectStorage.delete(objectKey);

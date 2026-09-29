@@ -8,6 +8,7 @@ import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationStatus;
 import kr.co.cking.subscriptionverification.domain.VerificationRewardStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -100,6 +101,23 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
             Long memberId,
             Long creatorId,
             Long missionId
+    );
+
+    /** 현재 Verification보다 앞선 같은 이미지 hash 제출을 생성 시각·식별자 순으로 조회한다. */
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            select verification
+            from SubscriptionVerification verification
+            where verification.imageSha256 = :imageSha256
+              and (verification.createdAt < :createdAt
+                   or (verification.createdAt = :createdAt
+                       and verification.verificationId < :verificationId))
+            order by verification.createdAt asc, verification.verificationId asc
+            """)
+    Optional<SubscriptionVerification> findFirstPreviousByImageSha256(
+            @Param("imageSha256") String imageSha256,
+            @Param("createdAt") Instant createdAt,
+            @Param("verificationId") Long verificationId
     );
 
     long countByMemberIdAndCreatorIdAndMissionIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(

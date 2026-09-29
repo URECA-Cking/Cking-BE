@@ -116,5 +116,6 @@
 | 112 | 외부 | Post | CREATOR | DELETE | `/api/creator/posts/{postId}` | 게시글 삭제(하드 삭제) | 상태 기반 |
 | 113 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts` | 크리에이터 게시글 목록(팔로워 공개는 잠금 표시) | - |
 | 114 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}` | 크리에이터 게시글 상세 | - |
+| 115 | 외부 | 구독 인증 | ADMIN | GET | `/api/admin/subscription-verifications/{verificationId}/image-reuse` | 이미지 재사용 탐지 감사 결과 조회 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

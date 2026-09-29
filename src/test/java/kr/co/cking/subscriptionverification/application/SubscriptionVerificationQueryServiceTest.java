@@ -15,6 +15,7 @@ import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
+import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationImageReuseRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -28,8 +29,11 @@ class SubscriptionVerificationQueryServiceTest {
     private final MemberQueryService memberQueryService = mock(MemberQueryService.class);
     private final SubscriptionVerificationRepository verificationRepository =
             mock(SubscriptionVerificationRepository.class);
+    private final SubscriptionVerificationImageReuseRepository imageReuseRepository =
+            mock(SubscriptionVerificationImageReuseRepository.class);
     private final SubscriptionVerificationQueryService service =
-            new SubscriptionVerificationQueryService(memberQueryService, verificationRepository);
+            new SubscriptionVerificationQueryService(
+                    memberQueryService, verificationRepository, imageReuseRepository);
 
     @Test
     void 본인_인증을_공개_상태로_조회한다() {

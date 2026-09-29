@@ -117,6 +117,27 @@ image: JPEG 또는 PNG 한 장
 - 정렬은 `createdAt DESC, verificationId DESC`다.
 - 응답은 단건 상태 조회와 같다.
 
+## 이미지 재사용 탐지 운영 조회
+
+### GET /api/admin/subscription-verifications/{verificationId}/image-reuse
+
+- 권한: ADMIN
+- 역할: 해당 Verification의 정규화 이미지 SHA-256 exact match 탐지 감사 결과를 조회한다.
+- `verificationId`는 양수 Long이며, Verification이 없으면 `VERIFICATION_NOT_FOUND`다.
+- 이미지 bytes, Object key, hash는 응답에 포함하지 않는다.
+- 이 조회와 탐지 기록은 VLM 판정·상태 전이·Ticket 지급을 변경하지 않는다.
+
+```json
+{
+  "verificationId": 123,
+  "matchedVerificationId": 100,
+  "reuseType": "DIFFERENT_MEMBER",
+  "detectedAt": "2026-09-29T03:00:00Z"
+}
+```
+
+`reuseType`은 `FIRST_USE`, `SAME_MEMBER_SAME_CREATOR`, `SAME_MEMBER_DIFFERENT_CREATOR`, `DIFFERENT_MEMBER` 중 하나다. `FIRST_USE`의 `matchedVerificationId`는 `null`이다.
+
 ## 재제출과 응답 상태
 
 | 기존 내부 상태 | 새 requestId 제출 | 공개 상태 |
@@ -142,7 +163,7 @@ image: JPEG 또는 PNG 한 장
 /api/subscription-verifications/*
 ```
 
-공개 채널 조회는 GET `/api/creators/{creatorId}/youtube-channel`만 `permitAll`이다. Controller의 `@CurrentMemberId`만을 유일한 보안 경계로 사용하지 않는다.
+관리자 재사용 탐지 조회는 `/api/admin/**`의 `hasRole("ADMIN")` 정책을 적용한다. 공개 채널 조회는 GET `/api/creators/{creatorId}/youtube-channel`만 `permitAll`이다. Controller의 `@CurrentMemberId`만을 유일한 보안 경계로 사용하지 않는다.
 
 ## 오류
 
