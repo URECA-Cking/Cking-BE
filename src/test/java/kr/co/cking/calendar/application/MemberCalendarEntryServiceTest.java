@@ -8,7 +8,6 @@ import kr.co.cking.member.application.MemberQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,11 +16,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -42,12 +38,16 @@ class MemberCalendarEntryServiceTest {
     @Mock
     private MemberCalendarEntryRepository entryRepository;
 
+    @Mock
+    private MemberCalendarEntryPersistenceService entryPersistenceService;
+
     private MemberCalendarEntryService service;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        service = new MemberCalendarEntryService(memberQueryService, scheduleRepository, entryRepository, clock);
+        service = new MemberCalendarEntryService(
+                memberQueryService, scheduleRepository, entryRepository, entryPersistenceService, clock);
     }
 
     @Test
@@ -57,7 +57,7 @@ class MemberCalendarEntryServiceTest {
 
         assertThatThrownBy(() -> service.add(MEMBER_ID, SCHEDULE_ID)).isSameAs(exception);
 
-        verifyNoInteractions(scheduleRepository, entryRepository);
+        verifyNoInteractions(scheduleRepository, entryRepository, entryPersistenceService);
     }
 
     @Test
@@ -69,31 +69,27 @@ class MemberCalendarEntryServiceTest {
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
 
-        verify(entryRepository, never()).save(any());
+        verifyNoInteractions(entryPersistenceService);
     }
 
     @Test
-    void 정상_담기는_새_MemberCalendarEntry를_저장한다() {
+    void 정상_담기는_별도_트랜잭션의_영속화_서비스를_호출한다() {
         when(scheduleRepository.existsById(SCHEDULE_ID)).thenReturn(true);
         when(entryRepository.existsByMemberIdAndScheduleId(MEMBER_ID, SCHEDULE_ID)).thenReturn(false);
 
         service.add(MEMBER_ID, SCHEDULE_ID);
 
-        var captor = ArgumentCaptor.forClass(kr.co.cking.calendar.domain.MemberCalendarEntry.class);
-        verify(entryRepository).save(captor.capture());
-        assertThat(captor.getValue().getMemberId()).isEqualTo(MEMBER_ID);
-        assertThat(captor.getValue().getScheduleId()).isEqualTo(SCHEDULE_ID);
-        assertThat(captor.getValue().getCreatedAt()).isEqualTo(NOW);
+        verify(entryPersistenceService).create(MEMBER_ID, SCHEDULE_ID, NOW);
     }
 
     @Test
-    void 이미_담긴_일정을_다시_담아도_저장하지_않고_성공한다() {
+    void 이미_담긴_일정을_다시_담아도_영속화_서비스를_호출하지_않고_성공한다() {
         when(scheduleRepository.existsById(SCHEDULE_ID)).thenReturn(true);
         when(entryRepository.existsByMemberIdAndScheduleId(MEMBER_ID, SCHEDULE_ID)).thenReturn(true);
 
         service.add(MEMBER_ID, SCHEDULE_ID);
 
-        verify(entryRepository, never()).save(any());
+        verifyNoInteractions(entryPersistenceService);
     }
 
     @Test
@@ -101,8 +97,11 @@ class MemberCalendarEntryServiceTest {
         when(scheduleRepository.existsById(SCHEDULE_ID)).thenReturn(true);
         // 저장 전 확인(false) 이후 저장이 유니크 제약으로 실패하고, catch 안에서 재확인했을 때는
         // 경쟁하던 다른 요청이 이미 커밋되어 true — 진짜 중복이므로 멱등 성공으로 처리한다.
+        // 실패한 INSERT는 별도 REQUIRES_NEW 트랜잭션에서 이미 완전히 롤백된 뒤이므로, 이 재확인은
+        // 이 메서드 자신의(오염되지 않은) 트랜잭션에서 안전하게 수행된다.
         when(entryRepository.existsByMemberIdAndScheduleId(MEMBER_ID, SCHEDULE_ID)).thenReturn(false, true);
-        when(entryRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
+        doThrow(new DataIntegrityViolationException("duplicate"))
+                .when(entryPersistenceService).create(MEMBER_ID, SCHEDULE_ID, NOW);
 
         service.add(MEMBER_ID, SCHEDULE_ID);
     }
@@ -115,7 +114,7 @@ class MemberCalendarEntryServiceTest {
         // 멱등 성공으로 감춰서는 안 되고 예외를 그대로 전달해야 한다.
         when(entryRepository.existsByMemberIdAndScheduleId(MEMBER_ID, SCHEDULE_ID)).thenReturn(false, false);
         DataIntegrityViolationException exception = new DataIntegrityViolationException("fk violation");
-        when(entryRepository.save(any())).thenThrow(exception);
+        doThrow(exception).when(entryPersistenceService).create(MEMBER_ID, SCHEDULE_ID, NOW);
 
         assertThatThrownBy(() -> service.add(MEMBER_ID, SCHEDULE_ID)).isSameAs(exception);
     }
