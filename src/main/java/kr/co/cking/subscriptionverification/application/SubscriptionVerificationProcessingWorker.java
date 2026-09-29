@@ -64,16 +64,20 @@ public class SubscriptionVerificationProcessingWorker {
             byte[] image = objectStorage.get(claim.imageObjectKey());
             decision = analyzeWithProviderLimit(claim, image);
         } catch (ProcessingInterruptedException exception) {
-            recoverInterruptedClaim(claim);
+            leaveClaimForRecoveryAfterInterrupt(claim);
             return;
         } catch (VisionAnalysisException exception) {
-            if (Thread.currentThread().isInterrupted() || hasInterruptedCause(exception)) {
-                recoverInterruptedClaim(claim);
+            if (isInterrupted(exception)) {
+                leaveClaimForRecoveryAfterInterrupt(claim);
                 return;
             }
             completeFailed(claim, "PROVIDER_FAILURE", exception);
             return;
         } catch (RuntimeException exception) {
+            if (isInterrupted(exception)) {
+                leaveClaimForRecoveryAfterInterrupt(claim);
+                return;
+            }
             completeFailed(claim, "PROCESSING_FAILURE", exception);
             return;
         }
@@ -144,12 +148,16 @@ public class SubscriptionVerificationProcessingWorker {
     }
 
     /** Provider 재시도 대기를 포함한 인터럽트 작업은 상태를 바꾸지 않고 Recovery에 맡긴다. */
-    private void recoverInterruptedClaim(SubscriptionVerificationProcessingClaim claim) {
+    private void leaveClaimForRecoveryAfterInterrupt(SubscriptionVerificationProcessingClaim claim) {
+        Thread.currentThread().interrupt();
         log.info("구독 인증 비동기 처리가 인터럽트되어 lease 만료 뒤 복구합니다. verificationId={}",
                 claim.verificationId());
     }
 
-    private static boolean hasInterruptedCause(Throwable exception) {
+    private static boolean isInterrupted(Throwable exception) {
+        if (Thread.currentThread().isInterrupted()) {
+            return true;
+        }
         Throwable cause = exception;
         while (cause != null) {
             if (cause instanceof InterruptedException) {
