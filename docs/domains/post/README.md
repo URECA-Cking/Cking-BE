@@ -1,18 +1,32 @@
 # Post
 
-Creator Space 게시물 탭의 게시글을 다룬다. 외부 API 계약은 [Post API](api.md)를 따른다. 댓글과 AI 댓글 필터링은 별도 이슈에서 다룬다.
+Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계약은 [Post API](api.md)와 [Post Comment API](comment-api.md)를 따른다. AI 댓글 필터링은 모델 비교 후 별도 이슈에서 다룬다.
 
 ## 책임
 
 - Creator 본인의 게시글 작성·수정·삭제와 게시글 이미지 업로드
 - 공개 범위(PUBLIC·FOLLOWERS)에 따른 게시글 공개 조회
 - 게시글 이미지 업로드 기록으로 소유자·연결 검증과 저장소 정리
+- 게시글 댓글 조회·작성·수정·삭제
 
-Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `CreatorFollowQueryService.isFollowing`으로 확인한다.
+Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `CreatorFollowQueryService.isFollowing`으로 확인한다. 게시글과 댓글의 조회·참여 권한 판단은 `PostAccessPolicy` 한 곳에 둔다.
 
 ## 소유 데이터
 
-V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록)를 소유한다. 게시글은 하드 삭제한다.
+V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V36의 `creator_post_comment`(댓글)를 소유한다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다.
+
+## 댓글 권한
+
+| 동작 | 허용 |
+| --- | --- |
+| 조회 | 게시글을 볼 수 있는 사람. PUBLIC은 누구나, FOLLOWERS는 팔로워와 작성 Creator 본인 (그 외 `POST_FOLLOWERS_ONLY`) |
+| 작성 | 로그인 + 팔로워 또는 작성 Creator 본인. PUBLIC 게시글도 팔로우해야 한다 (그 외 `COMMENT_FOLLOWERS_ONLY`) |
+| 수정 | 댓글 작성자 본인이면서 작성과 같은 조건 |
+| 삭제 | 댓글 작성자 본인, 게시글 작성 Creator 본인. 공개 범위·팔로우를 보지 않으므로 팔로우를 끊은 작성자도 자기 댓글을 지울 수 있다 |
+
+AI 필터링이 들어오기 전까지는 게시글 작성 Creator의 댓글 삭제가 댓글 관리 수단이다.
+
+댓글 작성·수정·삭제는 게시글 행을 공유 잠금(`FOR SHARE`)으로 읽는다. 게시글 수정·삭제는 쓰기 잠금(`FOR UPDATE`)을 잡으므로, 동시에 진행 중인 게시글 삭제가 끝날 때까지 기다렸다가 사라진 게시글을 보고 404로 응답한다(잠금이 없으면 댓글 저장이 FK 오류로 500이 된다). 공유 잠금끼리는 충돌하지 않아 같은 게시글의 댓글 쓰기는 서로 기다리지 않는다. 댓글 수정·삭제는 이어서 댓글 행을 쓰기 잠금으로 읽어, 같은 댓글의 동시 수정·삭제도 직렬화한다(먼저 삭제되면 404). 잠금 순서는 항상 게시글 → 댓글이며 게시글 삭제도 같은 순서라 교착이 생기지 않는다. 댓글 목록 조회는 잠그지 않는다.
 
 ## 공개 범위
 
