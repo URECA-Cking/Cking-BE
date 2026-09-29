@@ -166,6 +166,30 @@ class SubscriptionVerificationRepositoryJpaTest {
         )).isFalse();
     }
 
+    @Test
+    void UTC_기간_내_제출_횟수를_계산한다() {
+        SubscriptionVerification first = verificationRepository.saveAndFlush(newVerification(BASE_TIME));
+        reject(first, BASE_TIME.plusSeconds(1));
+        verificationRepository.flush();
+
+        SubscriptionVerification second = verificationRepository.saveAndFlush(
+                newVerification(BASE_TIME.plusSeconds(60)));
+        reject(second, BASE_TIME.plusSeconds(61));
+        verificationRepository.flush();
+
+        long count = verificationRepository
+                .countByMemberIdAndCreatorIdAndMissionIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                        memberId,
+                        creatorId,
+                        missionId,
+                        BASE_TIME,
+                        BASE_TIME.plusSeconds(60));
+
+        assertThat(count).isEqualTo(1L);
+        assertThat(verificationRepository.findAllByMemberIdAndCreatorIdAndMissionId(
+                memberId, creatorId, missionId)).hasSize(2);
+    }
+
     private SubscriptionVerification newVerification(Instant createdAt) {
         return verification(UUID.randomUUID().toString(), UUID.randomUUID().toString(), createdAt);
     }
