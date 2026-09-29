@@ -22,9 +22,10 @@ public class TicketOnceEarnRequestClaimService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public TicketOnceEarnRequestClaim claim(EarnCommand command, String fingerprint) {
-        return repository.findByRequestId(command.requestId().toString())
-                .map(request -> claimOf(request, fingerprint))
-                .orElseGet(() -> createClaim(command, fingerprint));
+        // REPEATABLE READ에서 먼저 일반 조회하면 이후 INSERT IGNORE 충돌 뒤에도 그
+        // 오래된 snapshot을 보게 된다. INSERT IGNORE를 먼저 실행하면 충돌 대기 후의
+        // 일반 조회가 최신 커밋 행을 읽고, S-Lock을 X-Lock으로 올릴 필요도 없다.
+        return createClaim(command, fingerprint);
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +52,8 @@ public class TicketOnceEarnRequestClaimService {
         if (inserted == 1) {
             return TicketOnceEarnRequestClaim.PENDING;
         }
+        // 이 Transaction에서 최초의 일반 조회다. INSERT IGNORE가 충돌한 경우 이미
+        // 선행 Transaction의 종료를 기다렸으므로 최신 커밋 행을 읽는다.
         return repository.findByRequestId(command.requestId().toString())
                 .map(request -> claimOf(request, fingerprint))
                 .orElseGet(() -> repository.findByMemberIdAndCreatorIdAndMissionId(
