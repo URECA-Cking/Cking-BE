@@ -1,15 +1,9 @@
 package kr.co.cking.post.application;
 
-import kr.co.cking.common.exception.BusinessException;
-import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
-import kr.co.cking.creator.repository.CreatorRepository;
-import kr.co.cking.follow.application.CreatorFollowQueryService;
 import kr.co.cking.post.application.dto.CreatorPostView;
 import kr.co.cking.post.domain.CreatorPost;
 import kr.co.cking.post.domain.CreatorPostImage;
-import kr.co.cking.post.domain.PostErrorCode;
-import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,16 +28,15 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class CreatorPostQueryService {
 
-    private final CreatorRepository creatorRepository;
+    private final PostAccessPolicy accessPolicy;
     private final CreatorPostRepository postRepository;
     private final CreatorPostImageRepository imageRepository;
-    private final CreatorFollowQueryService followQueryService;
     private final CreatorPostViewAssembler viewAssembler;
 
     /** @param viewerMemberId 비로그인이면 null */
     public Page<CreatorPostView> findByCreator(Long creatorId, Long viewerMemberId, Pageable pageable) {
-        Creator creator = requireCreator(creatorId);
-        boolean canViewFollowersOnly = canViewFollowersOnly(creator, viewerMemberId);
+        Creator creator = accessPolicy.requireCreator(creatorId);
+        boolean followerOrOwner = accessPolicy.isFollowerOrOwner(creator, viewerMemberId);
 
         Page<CreatorPost> posts = postRepository.findByCreatorIdLatestFirst(creatorId, pageable);
         Map<Long, List<String>> imageKeysByPost = posts.isEmpty()
@@ -58,39 +51,16 @@ public class CreatorPostQueryService {
         return posts.map(post -> viewAssembler.assemble(
                 post,
                 imageKeysByPost.getOrDefault(post.getPostId(), List.of()),
-                isLocked(post, canViewFollowersOnly)));
+                accessPolicy.isLocked(post, followerOrOwner)));
     }
 
     /** @param viewerMemberId 비로그인이면 null */
     public CreatorPostView findDetail(Long creatorId, Long postId, Long viewerMemberId) {
-        Creator creator = requireCreator(creatorId);
-        CreatorPost post = postRepository.findById(postId)
-                .filter(found -> found.isWrittenBy(creatorId))
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        if (isLocked(post, canViewFollowersOnly(creator, viewerMemberId))) {
-            throw new BusinessException(PostErrorCode.POST_FOLLOWERS_ONLY);
-        }
+        Creator creator = accessPolicy.requireCreator(creatorId);
+        CreatorPost post = accessPolicy.requireViewablePost(creator, postId, viewerMemberId);
         List<String> imageKeys = imageRepository.findByPostIdOrderByDisplayOrderAsc(postId).stream()
                 .map(CreatorPostImage::getObjectKey)
                 .toList();
         return viewAssembler.assemble(post, imageKeys, false);
-    }
-
-    private Creator requireCreator(Long creatorId) {
-        return creatorRepository.findById(creatorId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-    }
-
-    /** 작성한 Creator 본인이거나 팔로워면 팔로워 공개 게시글을 볼 수 있다. */
-    private boolean canViewFollowersOnly(Creator creator, Long viewerMemberId) {
-        if (viewerMemberId == null) {
-            return false;
-        }
-        return creator.getMemberId().equals(viewerMemberId)
-                || followQueryService.isFollowing(viewerMemberId, creator.getCreatorId());
-    }
-
-    private boolean isLocked(CreatorPost post, boolean canViewFollowersOnly) {
-        return post.getVisibility() == PostVisibility.FOLLOWERS && !canViewFollowersOnly;
     }
 }

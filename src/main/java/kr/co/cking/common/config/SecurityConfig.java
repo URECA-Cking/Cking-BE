@@ -121,12 +121,16 @@ public class SecurityConfig {
                                 "/api/creator/space/slug"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/comments").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/creators/*/posts/*/comments/*").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/creators/*/posts/*/comments/*").authenticated()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/creators/*/calendar/schedules",
                                 "/api/creators/*/calendar/schedules/*",
                                 "/api/creators/*/posts",
                                 "/api/creators/*/posts/*",
+                                "/api/creators/*/posts/*/comments",
                                 "/api/creators/*/youtube-channel"
                         ).permitAll()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
