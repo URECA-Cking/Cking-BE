@@ -17,6 +17,7 @@ import java.util.HexFormat;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.image.ImageSha256;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
