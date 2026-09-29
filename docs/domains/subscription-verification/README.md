@@ -129,7 +129,7 @@ PROCESSING → APPROVED | REJECTED | RETRY_REQUIRED | FAILED
 | `APPROVED` | 서버 판정 정책 충족 |
 | `REJECTED` | 분석 가능하지만 대상·구독 조건 불충족 |
 | `RETRY_REQUIRED` | 이미지가 흐리거나 정보가 잘려 증거 불충분 |
-| `FAILED` | timeout, 429, 5xx, 파싱 실패 등 기술 오류 |
+| `FAILED` | 재시도 가능한 기술 오류가 처리 시도 상한을 소진했거나 비재시도 기술 오류가 발생함 |
 
 사용자 공개 상태는 내부 처리 상세를 숨긴다.
 
@@ -253,7 +253,7 @@ cking:
 - 재시도마다 새 `rewardRequestId`를 만들지 않는다.
 - 재시도마다 `rewardPeriodKey`를 현재 날짜로 다시 계산하지 않는다.
 - 이미지를 public으로 저장하거나 bytes/Base64를 로그에 남기지 않는다.
-- 모델 확정 전에 Provider SDK·Prompt·응답 DTO·threshold를 임의 구현하지 않는다.
+- Application의 Vision Port·판정 정책에 DeepSeek SDK·전용 DTO를 노출하지 않는다.
 
 ## 구현 순서
 
@@ -268,4 +268,4 @@ cking:
 7. 본인 상태·최신 상태 조회 API와 Security matcher
 8. AFTER_COMMIT 이벤트 경계와 Recovery용 조회 계약
 
-모델 선정 뒤에는 [processing.md](processing.md)에 Provider 계약을 먼저 확정하고 VLM Client, Processing Claim, 서버 판정, Reward retry, Recovery Scheduler와 E2E를 구현한다. 단위·Repository·Controller 테스트 외에 동일 requestId 및 동시 제출, 채널 수정과 제출 경쟁, DB 저장 실패 후 Object 삭제, 중복 보상 방지를 통합 테스트한다.
+선정 모델은 DeepSeek V4.1 Flash(`deepseek-flash`)다. [processing.md](processing.md)의 Provider 독립 Vision Port와 서버 판정 계약을 기준으로 DeepSeek Adapter, Processing Claim, Reward retry, Recovery Scheduler와 E2E를 구현한다. 단위·Repository·Controller 테스트 외에 동일 requestId 및 동시 제출, 채널 수정과 제출 경쟁, DB 저장 실패 후 Object 삭제, 중복 보상 방지를 통합 테스트한다.
