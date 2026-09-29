@@ -12,7 +12,7 @@ Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `Cr
 
 ## 소유 데이터
 
-V34의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록)를 소유한다. 게시글은 하드 삭제한다.
+V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록)를 소유한다. 게시글은 하드 삭제한다.
 
 ## 공개 범위
 
