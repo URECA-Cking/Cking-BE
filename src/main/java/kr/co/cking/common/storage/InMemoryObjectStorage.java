@@ -12,8 +12,6 @@ import java.util.concurrent.ConcurrentMap;
 
 public class InMemoryObjectStorage implements ObjectStorage {
 
-    private static final Duration MIN_PRESIGNED_TTL = Duration.ofSeconds(1);
-
     private final ConcurrentMap<String, byte[]> objects = new ConcurrentHashMap<>();
     private final Duration maxPresignedTtl;
 
@@ -23,7 +21,7 @@ public class InMemoryObjectStorage implements ObjectStorage {
 
     @Override
     public PutResult put(String objectKey, byte[] content, String contentType) {
-        requireKey(objectKey);
+        ObjectStorageArguments.requireKey(objectKey);
         Objects.requireNonNull(content, "content");
         Objects.requireNonNull(contentType, "contentType");
 
@@ -36,7 +34,7 @@ public class InMemoryObjectStorage implements ObjectStorage {
 
     @Override
     public byte[] get(String objectKey) {
-        requireKey(objectKey);
+        ObjectStorageArguments.requireKey(objectKey);
         byte[] content = objects.get(objectKey);
         if (content == null) {
             throw new ObjectNotFoundException(objectKey);
@@ -46,30 +44,18 @@ public class InMemoryObjectStorage implements ObjectStorage {
 
     @Override
     public void delete(String objectKey) {
-        requireKey(objectKey);
+        ObjectStorageArguments.requireKey(objectKey);
         objects.remove(objectKey);
     }
 
     @Override
     public URI presignedGetUrl(String objectKey, Duration ttl) {
-        requireKey(objectKey);
-        Objects.requireNonNull(ttl, "ttl");
-        if (ttl.compareTo(MIN_PRESIGNED_TTL) < 0
-                || ttl.toNanosPart() != 0
-                || ttl.compareTo(maxPresignedTtl) > 0) {
-            throw new IllegalArgumentException(
-                    "ttl must be whole seconds in [" + MIN_PRESIGNED_TTL + ", " + maxPresignedTtl + "]: " + ttl);
-        }
+        ObjectStorageArguments.requireKey(objectKey);
+        ObjectStorageArguments.requirePresignedTtl(ttl, maxPresignedTtl);
         try {
             return new URI("memory", null, "/" + objectKey, "ttl=" + ttl.toSeconds(), null);
         } catch (URISyntaxException e) {
             throw new ObjectStorageException("invalid object key: " + objectKey, e);
-        }
-    }
-
-    private static void requireKey(String objectKey) {
-        if (objectKey == null || objectKey.isBlank()) {
-            throw new IllegalArgumentException("objectKey must not be blank");
         }
     }
 
