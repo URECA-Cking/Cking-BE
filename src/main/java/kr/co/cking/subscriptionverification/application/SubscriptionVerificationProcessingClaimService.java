@@ -55,9 +55,14 @@ public class SubscriptionVerificationProcessingClaimService {
         return Optional.of(new SubscriptionVerificationProcessingClaim(
                 claimed.getVerificationId(),
                 claimed.getProcessingToken(),
+                claimed.getMemberId(),
+                claimed.getCreatorId(),
+                claimed.getMissionId(),
                 claimed.getImageObjectKey(),
                 claimed.getTargetChannelName(),
                 claimed.getTargetChannelHandle(),
+                claimed.getRewardRequestId(),
+                claimed.getRewardPeriodKey(),
                 claimed.getAttemptCount(),
                 claimed.getProcessingLeaseUntil()
         ));

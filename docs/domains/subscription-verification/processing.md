@@ -54,7 +54,9 @@ WHERE verification_id = :id
 
 lease가 만료된 순간부터 기존 Worker는 아직 새 Worker가 재선점하지 않았더라도 결과를 저장할 수 없다. 새 Worker가 새 token으로 재선점한 뒤의 이전 Worker 응답도 저장되지 않는다. `processingToken`은 상태 판정용 임시 fencing token이며 외부 API에 노출하지 않는다.
 
-`SubscriptionVerificationProcessingCompletionService.complete()`도 짧은 `REQUIRES_NEW` Transaction에서 위 fencing 조건을 포함한 조건부 UPDATE를 실행한다. affected row가 0이면 소유권을 잃었거나 이미 종료된 작업이므로 결과를 저장하지 않는다. `APPROVED`는 `approvedGuard=1`, `rewardStatus=PENDING`으로 함께 전환하고, 나머지 결과는 안정적인 reason code를 필수로 저장한다. 실제 Vision 결과를 어떤 종료 상태로 변환하고 Ticket 보상을 호출하는 오케스트레이션은 후속 SUB-13이 담당한다.
+`SubscriptionVerificationProcessingCompletionService.complete()`도 짧은 `REQUIRES_NEW` Transaction에서 위 fencing 조건을 포함한 조건부 UPDATE를 실행한다. affected row가 0이면 소유권을 잃었거나 이미 종료된 작업이므로 결과를 저장하지 않는다. 이 경우 오래된 Worker는 Ticket 보상도 호출하지 않는다. `APPROVED`는 `approvedGuard=1`, `rewardStatus=PENDING`으로 함께 전환하고, 나머지 결과는 안정적인 reason code를 필수로 저장한다.
+
+Worker는 Object Storage에서 정규화 이미지를 읽고 Vision Port를 호출한 뒤 서버 판정 정책으로 결과를 결정한다. 재시도 가능한 Provider·Object Storage·일시적 처리 오류는 `PROCESSING`과 현재 lease를 유지해 Recovery가 새 token으로 재선점하게 한다. `NON_RETRYABLE` Provider 오류만 현재 fencing token으로 즉시 `FAILED`를 저장한다. 판정 저장 자체가 실패하거나 lease가 만료되어 affected row가 0이면 보상을 시작하지 않는다.
 
 ## 전용 Async Executor와 호출 제한
 
@@ -172,8 +174,12 @@ confidence: 0.0..1.0
 
 판정 Transaction은 Verification을 `APPROVED`, `rewardStatus=PENDING`으로 저장한다. 그 뒤 Verification 생성 시 동결한 `rewardRequestId`와 `rewardPeriodKey`로 `TicketOnceEarnService.earn()`을 호출한다. 기존 25시간 TTL의 일일 `TicketEarnService`는 사용하지 않는다.
 
+Worker가 선점할 때 반환하는 Claim에는 `memberId`, `creatorId`, `missionId`, `rewardRequestId`, `rewardPeriodKey`를 함께 동결해 전달한다. 보상 Command는 `rewardPolicy=ONCE`, `missionType=YOUTUBE_SUBSCRIPTION`, `missionKey=youtube_subscription:{creatorId}`, `amount=1`로 고정한다. 현재 채널 설정이나 현재 UTC 날짜를 다시 조회·계산하지 않는다.
+
 - `EARN_ACCEPTED`, `ALREADY_PROCESSED`: `rewardStatus=ACCEPTED`
-- 재시도 가능한 오류: `rewardStatus=RETRY_REQUIRED`, `nextAttemptAt` 기록
+- 그 밖의 결과·예외: `APPROVED + PENDING`을 유지해 Recovery 대상으로 남긴다. SUB-14가 backoff를 예약할 때 `RETRY_REQUIRED`와 `nextAttemptAt`을 사용한다.
+
+Ticket 호출과 `rewardStatus=ACCEPTED` 저장은 별도의 짧은 Transaction 경계다. Ticket이 수락된 뒤 상태 저장이 실패해도 예외를 Worker 밖으로 전파하지 않고, Recovery가 동일 Command를 다시 호출해 `ALREADY_PROCESSED`로 수렴시킨다.
 
 Verification 승인과 Ticket Stream/DB 반영은 하나의 DB Transaction으로 묶을 수 없다. Ticket ONCE durable request와 비만료 Redis idempotency/guard가 Redis Balance 중복 증가를 막고, Recovery가 동일 `rewardRequestId`와 `rewardPeriodKey`를 재사용해 수렴시킨다. Recovery 시각이 UTC 자정을 넘더라도 `periodKey`를 다시 계산하지 않는다. 보상에는 terminal `FAILED`를 두지 않는다. 공개 `VERIFIED`는 `APPROVED + ACCEPTED`일 때만 반환하며 `APPROVED + RETRY_REQUIRED`는 복구 중인 `TEMPORARY_ERROR`다.
 

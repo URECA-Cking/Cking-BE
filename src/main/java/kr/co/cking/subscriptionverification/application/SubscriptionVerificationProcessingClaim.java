@@ -6,9 +6,14 @@ import java.time.Instant;
 public record SubscriptionVerificationProcessingClaim(
         Long verificationId,
         String processingToken,
+        Long memberId,
+        Long creatorId,
+        Long missionId,
         String imageObjectKey,
         String targetChannelName,
         String targetChannelHandle,
+        String rewardRequestId,
+        String rewardPeriodKey,
         int attemptCount,
         Instant processingLeaseUntil
 ) {}

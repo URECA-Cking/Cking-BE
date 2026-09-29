@@ -24,6 +24,7 @@ public class SubscriptionVerificationProcessingWorker {
 
     private final SubscriptionVerificationProcessingClaimService claimService;
     private final SubscriptionVerificationProcessingCompletionService completionService;
+    private final SubscriptionVerificationRewardService rewardService;
     private final ObjectStorage objectStorage;
     private final VisionAnalysisPort visionAnalysisPort;
     private final SubscriptionVerificationDecisionPolicy decisionPolicy;
@@ -35,12 +36,14 @@ public class SubscriptionVerificationProcessingWorker {
     public SubscriptionVerificationProcessingWorker(
             SubscriptionVerificationProcessingClaimService claimService,
             SubscriptionVerificationProcessingCompletionService completionService,
+            SubscriptionVerificationRewardService rewardService,
             ObjectStorage objectStorage,
             VisionAnalysisPort visionAnalysisPort,
             SubscriptionVerificationProcessingExecutorProperties properties,
             Clock clock) {
         this.claimService = claimService;
         this.completionService = completionService;
+        this.rewardService = rewardService;
         this.objectStorage = objectStorage;
         this.visionAnalysisPort = visionAnalysisPort;
         this.decisionPolicy = new SubscriptionVerificationDecisionPolicy(CONFIDENCE_THRESHOLD);
@@ -71,24 +74,31 @@ public class SubscriptionVerificationProcessingWorker {
                 leaveClaimForRecoveryAfterInterrupt(claim);
                 return;
             }
-            completeFailed(claim, "PROVIDER_FAILURE", exception);
+            if (exception.isRetryable()) {
+                leaveClaimForRecovery(claim, "PROVIDER_RETRYABLE", exception);
+                return;
+            }
+            completeFailed(claim, "PROVIDER_NON_RETRYABLE", exception);
             return;
         } catch (RuntimeException exception) {
             if (isInterrupted(exception)) {
                 leaveClaimForRecoveryAfterInterrupt(claim);
                 return;
             }
-            completeFailed(claim, "PROCESSING_FAILURE", exception);
+            leaveClaimForRecovery(claim, "PROCESSING_RETRYABLE", exception);
             return;
         }
 
         try {
-            completionService.complete(
+            boolean completed = completionService.complete(
                     claim.verificationId(),
                     claim.processingToken(),
                     outcomeOf(decision),
                     decision.reasonCode(),
                     clock.instant());
+            if (completed && decision.status() == SubscriptionVerificationDecisionStatus.APPROVED) {
+                rewardService.reward(claim);
+            }
         } catch (RuntimeException exception) {
             log.warn("구독 인증 판정 결과 저장에 실패해 lease 만료 뒤 복구합니다. verificationId={}",
                     claim.verificationId(), exception);
@@ -145,6 +155,15 @@ public class SubscriptionVerificationProcessingWorker {
             log.warn("구독 인증 실패 상태 저장에 실패해 lease 만료 뒤 복구합니다. verificationId={}",
                     claim.verificationId(), completionException);
         }
+    }
+
+    /** 재시도 가능한 기술 실패는 PROCESSING lease를 유지해 SUB-14 Recovery가 재선점하게 한다. */
+    private void leaveClaimForRecovery(
+            SubscriptionVerificationProcessingClaim claim,
+            String reasonCode,
+            RuntimeException exception) {
+        log.warn("구독 인증 비동기 처리의 재시도 가능한 실패를 Recovery에 맡깁니다. verificationId={}, reasonCode={}",
+                claim.verificationId(), reasonCode, exception);
     }
 
     /** Provider 재시도 대기를 포함한 인터럽트 작업은 상태를 바꾸지 않고 Recovery에 맡긴다. */
