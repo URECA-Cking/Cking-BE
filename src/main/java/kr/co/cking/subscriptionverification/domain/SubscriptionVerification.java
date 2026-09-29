@@ -133,6 +133,9 @@ public class SubscriptionVerification {
     @Column(name = "reward_status", nullable = false, length = 30)
     private VerificationRewardStatus rewardStatus;
 
+    @Column(name = "reward_attempt_count", nullable = false)
+    private int rewardAttemptCount;
+
     @Column(name = "active_guard")
     private Byte activeGuard;
 
@@ -192,6 +195,7 @@ public class SubscriptionVerification {
         verification.rewardRequestId = rewardRequestId;
         verification.rewardPeriodKey = PERIOD_KEY_FORMAT.format(createdAt.atZone(ZoneOffset.UTC));
         verification.rewardStatus = VerificationRewardStatus.NOT_REQUESTED;
+        verification.rewardAttemptCount = 0;
         verification.activeGuard = (byte) 1;
         verification.createdAt = createdAt;
         verification.updatedAt = createdAt;
