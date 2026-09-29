@@ -18,6 +18,7 @@ import kr.co.cking.subscriptionverification.domain.VerificationRewardStatus;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -29,11 +30,14 @@ class SubscriptionVerificationPersistenceServiceTest {
             mock(SubscriptionVerificationSubmissionValidator.class);
     private final SubscriptionVerificationRepository repository =
             mock(SubscriptionVerificationRepository.class);
+    private final SubscriptionVerificationImageReuseDetectionService imageReuseDetectionService =
+            mock(SubscriptionVerificationImageReuseDetectionService.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final SubscriptionVerificationPersistenceService service =
             new SubscriptionVerificationPersistenceService(
                     validator,
                     repository,
+                    imageReuseDetectionService,
                     eventPublisher,
                     java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC));
 
@@ -61,6 +65,10 @@ class SubscriptionVerificationPersistenceServiceTest {
         assertThat(result.verification().getRewardPeriodKey()).isEqualTo("2026-09-29");
         assertThat(result.verification().getTargetChannelName()).isEqualTo("예상치 못한 필름");
         assertThat(result.verification().getTargetChannelHandle()).isEqualTo("@unexpectedfilm");
+        InOrder inOrder = org.mockito.Mockito.inOrder(imageReuseDetectionService, repository);
+        inOrder.verify(imageReuseDetectionService).lockImageHash("b".repeat(64), NOW);
+        inOrder.verify(repository).saveAndFlush(result.verification());
+        inOrder.verify(imageReuseDetectionService).detectAndRecord(result.verification(), NOW);
 
         ArgumentCaptor<SubscriptionVerificationSubmittedEvent> eventCaptor =
                 ArgumentCaptor.forClass(SubscriptionVerificationSubmittedEvent.class);
@@ -88,6 +96,7 @@ class SubscriptionVerificationPersistenceServiceTest {
         assertThat(result.created()).isFalse();
         assertThat(result.verification()).isSameAs(existing);
         then(repository).shouldHaveNoInteractions();
+        then(imageReuseDetectionService).shouldHaveNoInteractions();
         then(eventPublisher).shouldHaveNoInteractions();
     }
 

@@ -8,9 +8,11 @@ import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationStatus;
 import kr.co.cking.subscriptionverification.domain.VerificationRewardStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
 public interface SubscriptionVerificationRepository extends JpaRepository<SubscriptionVerification, Long> {
 
@@ -100,6 +102,21 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
             Long memberId,
             Long creatorId,
             Long missionId
+    );
+
+    /** 현재 행을 제외한 같은 이미지 hash 이력을 생성 시각·식별자 순으로 조회한다. */
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            select verification
+            from SubscriptionVerification verification
+            where verification.imageSha256 = :imageSha256
+              and verification.verificationId <> :verificationId
+            order by verification.createdAt asc, verification.verificationId asc
+            """)
+    List<SubscriptionVerification> findPreviousByImageSha256(
+            @Param("imageSha256") String imageSha256,
+            @Param("verificationId") Long verificationId,
+            Pageable pageable
     );
 
     long countByMemberIdAndCreatorIdAndMissionIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(

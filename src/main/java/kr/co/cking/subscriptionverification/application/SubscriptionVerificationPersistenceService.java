@@ -17,27 +17,31 @@ class SubscriptionVerificationPersistenceService {
 
     private final SubscriptionVerificationSubmissionValidator validator;
     private final SubscriptionVerificationRepository verificationRepository;
+    private final SubscriptionVerificationImageReuseDetectionService imageReuseDetectionService;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
+    /** Creator 잠금 뒤 PENDING Verification과 이미지 재사용 감사 기록을 한 Transaction으로 저장한다. */
     @Transactional
     public SubscriptionVerificationSubmissionResult create(
             SubscriptionVerificationPersistenceCommand command
     ) {
-        Instant persistedAt = clock.instant();
+        Instant validationAt = clock.instant();
         SubscriptionVerificationSubmissionSource source = validator.validateSourceForUpdate(
-                command.memberId(), command.creatorId(), command.missionId(), persistedAt);
+                command.memberId(), command.creatorId(), command.missionId(), validationAt);
         Optional<SubscriptionVerification> existing = validator.validateRequest(
                 command.memberId(),
                 command.creatorId(),
                 command.missionId(),
                 command.requestId(),
                 command.requestFingerprint(),
-                persistedAt);
+                validationAt);
         if (existing.isPresent()) {
             return new SubscriptionVerificationSubmissionResult(existing.get(), false);
         }
 
+        imageReuseDetectionService.lockImageHash(command.imageSha256(), clock.instant());
+        Instant persistedAt = clock.instant();
         SubscriptionVerification verification = SubscriptionVerification.pending(
                 command.memberId(),
                 command.creatorId(),
@@ -52,6 +56,7 @@ class SubscriptionVerificationPersistenceService {
                 command.rewardRequestId(),
                 persistedAt);
         verificationRepository.saveAndFlush(verification);
+        imageReuseDetectionService.detectAndRecord(verification, persistedAt);
         eventPublisher.publishEvent(
                 new SubscriptionVerificationSubmittedEvent(verification.getVerificationId()));
         return new SubscriptionVerificationSubmissionResult(verification, true);
