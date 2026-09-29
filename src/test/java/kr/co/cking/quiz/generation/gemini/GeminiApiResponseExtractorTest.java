@@ -43,6 +43,12 @@ class GeminiApiResponseExtractorTest {
     }
 
     @Test
+    void null_envelope은_Provider_오류다() {
+        assertThatThrownBy(() -> extractor.extractText("null"))
+                .isInstanceOf(GeminiResponseException.class);
+    }
+
+    @Test
     void finishReason이_없으면_text가_있어도_거부한다() {
         assertThatThrownBy(() -> extractor.extractText(responseWithoutFinishReason()))
                 .isInstanceOf(GeminiResponseException.class);

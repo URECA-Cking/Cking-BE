@@ -25,6 +25,9 @@ public class GeminiApiResponseExtractor {
             Map<String, Object> root = objectMapper.readValue(
                     responseJson, new TypeReference<Map<String, Object>>() {
                     });
+            if (root == null) {
+                throw new GeminiResponseException("Gemini 응답 envelope가 JSON 객체가 아닙니다.");
+            }
             return normalizeText(findText(root));
         } catch (GeminiResponseException exception) {
             throw exception;
