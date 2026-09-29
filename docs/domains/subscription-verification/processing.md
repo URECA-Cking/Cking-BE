@@ -41,6 +41,8 @@ WHERE verification_id = :id
 
 무중단 배포 중 두 인스턴스가 같은 후보를 조회해 각각 작업을 제출해도 한 Worker만 affected row 1을 얻는다. Executor가 작업을 거절하거나 프로세스가 실행 전에 종료되면 아직 claim하지 않은 행은 `PENDING`으로 남아 다음 Recovery 대상이 된다.
 
+`SubscriptionVerificationProcessingClaimService.claim()`은 `REQUIRES_NEW` Transaction에서 이 조건부 UPDATE와 선점 결과 조회만 수행한다. 호출자 Transaction이 있더라도 선점 Transaction을 독립적으로 commit한 뒤 동결된 이미지 Object Key·대상 채널 정보와 fencing token을 반환한다. Worker는 반환 이후에만 Object Storage와 VLM을 호출한다. 선점 실패는 예외가 아니라 빈 결과이며 해당 작업을 조용히 종료한다.
+
 선점 Transaction을 commit한 뒤 Object Storage `get`과 VLM 호출을 수행한다. 외부 호출 중 DB Transaction을 유지하지 않는다. 판정 저장은 반드시 다음 fencing 조건을 포함한다.
 
 ```sql
@@ -50,6 +52,8 @@ WHERE verification_id = :id
 ```
 
 lease가 만료돼 새 Worker가 새 token으로 재선점했다면 이전 Worker의 늦은 응답은 저장되지 않는다. `processingToken`은 상태 판정용 임시 fencing token이며 외부 API에 노출하지 않는다.
+
+`SubscriptionVerificationProcessingCompletionService.complete()`도 짧은 `REQUIRES_NEW` Transaction에서 위 fencing 조건을 포함한 조건부 UPDATE를 실행한다. affected row가 0이면 소유권을 잃었거나 이미 종료된 작업이므로 결과를 저장하지 않는다. `APPROVED`는 `approvedGuard=1`, `rewardStatus=PENDING`으로 함께 전환하고, 나머지 결과는 안정적인 reason code를 필수로 저장한다. 실제 Vision 결과를 어떤 종료 상태로 변환하고 Ticket 보상을 호출하는 오케스트레이션은 후속 SUB-13이 담당한다.
 
 ## 전용 Async Executor와 호출 제한
 
