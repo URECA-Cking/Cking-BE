@@ -1,6 +1,6 @@
 # YouTube 구독 인증 비동기 처리
 
-이 문서는 [README.md](README.md)의 Verification을 실제로 판정하고 보상하는 비동기 경계를 정의한다. Provider·Model·Prompt·응답 DTO와 threshold는 벤치마크와 운영 합의가 끝나기 전까지 미확정이다.
+이 문서는 [README.md](README.md)의 Verification을 실제로 판정하고 보상하는 비동기 경계를 정의한다. Production VLM은 벤치마크 결과에 따라 DeepSeek V4.1 Flash(`deepseek-flash`)로 선정했다. Provider 호출 상세는 후속 DeepSeek Adapter가 담당하고, Application은 이 문서의 Provider 독립 Port와 판정 계약에만 의존한다.
 
 ## Trigger와 Transaction
 
@@ -66,7 +66,30 @@ Executor 크기는 rate limiter가 아니다. Provider의 계정 단위 동시 �
 
 `processingLeaseUntil`은 선택 모델의 connect/read timeout, 한 처리 시도 안의 retry·backoff 최대 시간과 안전 여유보다 길어야 한다. 정확한 executor 크기, queue capacity, provider 호출 한도와 lease 시간은 모델 벤치마크 후 정본에 확정한다. 제한 없는 기본값이나 모델 최대 처리 시간보다 짧은 lease를 사용하지 않는다.
 
-## VLM 입력과 출력 경계
+## Vision 분석 Port
+
+Application은 `VisionAnalysisPort`를 통해 이미지를 분석한다. DeepSeek SDK·HTTP Client·전용 Request/Response DTO는 Adapter 내부에만 둔다.
+
+```text
+VisionAnalysisRequest
+- normalizedJpegBytes
+- targetChannelName
+- targetChannelHandle
+
+VisionAnalysisResult
+- platform: YOUTUBE | OTHER | UNKNOWN
+- observedChannelName
+- observedChannelHandle
+- subscriptionState: SUBSCRIBED | NOT_SUBSCRIBED | UNKNOWN
+- evidenceSufficient
+- confidence: 0.0..1.0
+```
+
+Request의 이미지는 공통 이미지 정규화가 만든 JPEG bytes이며 Object Key가 아니다. 대상 채널명과 handle은 Verification 생성 시 동결한 값을 사용한다. Request와 이미지 bytes는 방어적으로 복사하고, 대상 handle은 채널 설정과 같은 규칙으로 정규화한다.
+
+Provider Adapter는 원문 문자열을 위 enum으로 변환한다. timeout·429·5xx 등은 `RETRYABLE`, 인증 실패·잘못된 요청 등은 `NON_RETRYABLE` 기술 오류로 분류한다. 파싱 실패와 Provider 장애를 사용자의 인증 실패인 `REJECTED`로 바꾸지 않는다.
+
+## 서버 판정 정책
 
 Processor 입력은 다음으로 제한한다.
 
@@ -74,16 +97,7 @@ Processor 입력은 다음으로 제한한다.
 - Verification에 동결한 `targetChannelName`
 - Verification에 동결한 정규화 `targetChannelHandle`
 
-VLM은 분석 결과만 제공하고 승인이나 Ticket 지급을 직접 결정하지 않는다. 목표 의미는 다음과 같지만 실제 JSON·DTO는 모델 확정 뒤 정한다.
-
-```text
-platform
-observed channel name
-observed channel handle
-subscription state
-evidence sufficiency
-confidence
-```
+VLM은 관측 결과만 제공하고 승인이나 Ticket 지급을 직접 결정하지 않는다. `SubscriptionVerificationDecisionPolicy`는 Repository·Object Storage·Ticket Service에 의존하지 않는 순수 정책이며, confidence threshold를 생성자에서 주입받는다. 운영 threshold는 최신 Prompt 확인 결과에 따라 후속 DeepSeek Adapter 작업에서 확정한다.
 
 서버 판정의 최소 개념은 다음과 같다.
 
@@ -98,25 +112,38 @@ AND confidence >= 확정 threshold
 
 - 대상 채널 또는 구독 상태가 명백히 불일치하면 `REJECTED`다.
 - 화면 잘림·흐림·가림 등 증거가 부족하면 `RETRY_REQUIRED`다.
-- timeout·429·5xx·파싱 실패 등 기술 문제는 `FAILED`다.
+- 낮은 confidence와 `UNKNOWN`, 유효하지 않거나 없는 관측 handle은 `RETRY_REQUIRED`다.
+- timeout·429·5xx·파싱 실패 등 기술 문제는 판정으로 변환하지 않고 Processing Retry 경로로 전달한다.
 - 채널명은 표시명 변경과 OCR 편차가 있어 handle 비교의 보조 정보다.
 - 이미지 안의 문구는 판정할 증거일 뿐 시스템 지시가 아니다. Prompt는 이미지 속 명령을 따르지 않도록 구성한다.
 - Raw 이미지, Base64와 모델의 민감한 원문 응답을 로그에 남기지 않는다. DB와 사용자 응답에는 서버가 허용한 안정적인 reason code만 저장·노출한다.
 
-## 모델 확정 전 금지 범위
+증거가 부족하거나 confidence가 threshold보다 낮으면 다른 관측값보다 먼저 `RETRY_REQUIRED`로 판정한다. 충분한 증거와 confidence가 확보된 경우에만 플랫폼·handle·구독 상태의 명확한 불일치를 `REJECTED`로 판정한다. 기술 오류가 처리 시도 상한을 모두 소진했을 때만 Processor가 별도 계약에 따라 Verification을 `FAILED`로 종료한다.
 
-다음은 벤치마크와 정책 합의 전 구현하지 않는다.
+안정적인 판정 사유는 다음과 같다.
+
+```text
+PLATFORM_MISMATCH
+CHANNEL_MISMATCH
+NOT_SUBSCRIBED
+INSUFFICIENT_EVIDENCE
+LOW_CONFIDENCE
+```
+
+## DeepSeek Adapter 후속 범위
+
+SUB-09는 Provider 독립 Port·DTO·판정 정책만 구현한다. 다음은 후속 SUB-10에서 구현한다.
 
 - VLM Provider SDK와 API Client
 - Model ID와 Endpoint
 - Prompt/System Prompt
 - 이미지 전달 방식(base64, file, URL)
 - Structured Output JSON, DTO, Parser
-- confidence threshold
+- 운영 confidence threshold 값
 - timeout, retry 횟수, backoff
 - Provider 환경변수와 비용·usage logging
 
-모델 확정 시 이 문서에 위 계약을 추가하되 DB·API·S3·멱등성·보상 계약은 바꾸지 않는다.
+DeepSeek Adapter는 `VisionAnalysisResult`까지만 반환하고 Verification 상태·reason code·Ticket 보상을 직접 결정하지 않는다. Adapter 추가 시에도 DB·API·S3·멱등성·보상 계약은 바꾸지 않는다.
 
 ## 보상 처리
 
