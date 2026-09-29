@@ -7,12 +7,12 @@ import java.util.Optional;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationStatus;
 import kr.co.cking.subscriptionverification.domain.VerificationRewardStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.data.domain.Pageable;
 
 public interface SubscriptionVerificationRepository extends JpaRepository<SubscriptionVerification, Long> {
 
@@ -75,6 +75,25 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
             @Param("rewardStatus") VerificationRewardStatus rewardStatus,
             @Param("approvedGuard") Byte approvedGuard,
             @Param("processedAt") Instant processedAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update SubscriptionVerification v
+               set v.rewardStatus = :acceptedStatus,
+                   v.nextAttemptAt = null,
+                   v.updatedAt = :acceptedAt,
+                   v.version = v.version + 1
+             where v.verificationId = :verificationId
+               and v.status = :approvedStatus
+               and v.rewardStatus in :acceptableStatuses
+            """)
+    int acceptReward(
+            @Param("verificationId") Long verificationId,
+            @Param("approvedStatus") SubscriptionVerificationStatus approvedStatus,
+            @Param("acceptableStatuses") Collection<VerificationRewardStatus> acceptableStatuses,
+            @Param("acceptedStatus") VerificationRewardStatus acceptedStatus,
+            @Param("acceptedAt") Instant acceptedAt
     );
 
     Optional<SubscriptionVerification> findByRequestId(String requestId);

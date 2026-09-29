@@ -1,7 +1,7 @@
 package kr.co.cking.subscriptionverification.application;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -34,6 +34,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 mock(SubscriptionVerificationProcessingClaimService.class);
         SubscriptionVerificationProcessingCompletionService completionService =
                 mock(SubscriptionVerificationProcessingCompletionService.class);
+        SubscriptionVerificationRewardService rewardService =
+                mock(SubscriptionVerificationRewardService.class);
         ObjectStorage objectStorage = mock(ObjectStorage.class);
         VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
         SubscriptionVerificationProcessingExecutorProperties properties =
@@ -44,6 +46,7 @@ class SubscriptionVerificationProcessingWorkerTest {
         SubscriptionVerificationProcessingWorker worker = new SubscriptionVerificationProcessingWorker(
                 claimService,
                 completionService,
+                rewardService,
                 objectStorage,
                 visionAnalysisPort,
                 properties,
@@ -54,6 +57,7 @@ class SubscriptionVerificationProcessingWorkerTest {
         then(objectStorage).should(never()).get(any());
         then(visionAnalysisPort).shouldHaveNoInteractions();
         then(completionService).shouldHaveNoInteractions();
+        then(rewardService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -70,6 +74,12 @@ class SubscriptionVerificationProcessingWorkerTest {
                 VisionSubscriptionState.SUBSCRIBED,
                 true,
                 0.9));
+        given(fixture.completionService.complete(
+                eq(claim.verificationId()),
+                eq(claim.processingToken()),
+                eq(SubscriptionVerificationProcessingOutcome.APPROVED),
+                eq(null),
+                eq(fixture.clock.instant()))).willReturn(true);
 
         fixture.worker.process(123L);
 
@@ -79,10 +89,11 @@ class SubscriptionVerificationProcessingWorkerTest {
                 eq(SubscriptionVerificationProcessingOutcome.APPROVED),
                 eq(null),
                 eq(fixture.clock.instant()));
+        then(fixture.rewardService).should().reward(claim);
     }
 
     @Test
-    void Provider_분석_실패는_PROVIDER_FAILURE로_저장한다() {
+    void 재시도_가능한_Provider_실패는_완료하지_않고_Recovery에_맡긴다() {
         TestFixture fixture = new TestFixture();
         SubscriptionVerificationProcessingClaim claim = claim();
         given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
@@ -94,16 +105,34 @@ class SubscriptionVerificationProcessingWorkerTest {
 
         fixture.worker.process(123L);
 
+        then(fixture.completionService).shouldHaveNoInteractions();
+        then(fixture.rewardService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 재시도_불가능한_Provider_실패는_FAILED로_저장한다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
+        willThrow(new VisionAnalysisException(
+                VisionAnalysisFailureType.NON_RETRYABLE, "invalid provider request"))
+                .given(fixture.visionAnalysisPort).analyze(any());
+
+        fixture.worker.process(123L);
+
         then(fixture.completionService).should().complete(
                 eq(claim.verificationId()),
                 eq(claim.processingToken()),
                 eq(SubscriptionVerificationProcessingOutcome.FAILED),
-                eq("PROVIDER_FAILURE"),
+                eq("PROVIDER_NON_RETRYABLE"),
                 eq(fixture.clock.instant()));
+        then(fixture.rewardService).shouldHaveNoInteractions();
     }
 
     @Test
-    void Object_처리_실패는_PROCESSING_FAILURE로_저장한다() {
+    void Object_처리_실패는_완료하지_않고_Recovery에_맡긴다() {
         TestFixture fixture = new TestFixture();
         SubscriptionVerificationProcessingClaim claim = claim();
         given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
@@ -113,12 +142,8 @@ class SubscriptionVerificationProcessingWorkerTest {
 
         fixture.worker.process(123L);
 
-        then(fixture.completionService).should().complete(
-                eq(claim.verificationId()),
-                eq(claim.processingToken()),
-                eq(SubscriptionVerificationProcessingOutcome.FAILED),
-                eq("PROCESSING_FAILURE"),
-                eq(fixture.clock.instant()));
+        then(fixture.completionService).shouldHaveNoInteractions();
+        then(fixture.rewardService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -190,14 +215,16 @@ class SubscriptionVerificationProcessingWorkerTest {
         SubscriptionVerificationProcessingClaim claim = claim();
         given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
                 .willReturn(Optional.of(claim));
-        willThrow(new IllegalStateException("object missing"))
-                .given(fixture.objectStorage).get(claim.imageObjectKey());
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
+        willThrow(new VisionAnalysisException(
+                VisionAnalysisFailureType.NON_RETRYABLE, "invalid provider request"))
+                .given(fixture.visionAnalysisPort).analyze(any());
         willThrow(new IllegalStateException("database unavailable"))
                 .given(fixture.completionService).complete(
                         eq(claim.verificationId()),
                         eq(claim.processingToken()),
                         eq(SubscriptionVerificationProcessingOutcome.FAILED),
-                        eq("PROCESSING_FAILURE"),
+                        eq("PROVIDER_NON_RETRYABLE"),
                         eq(fixture.clock.instant()));
 
         assertThatCode(() -> fixture.worker.process(123L)).doesNotThrowAnyException();
@@ -206,7 +233,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 eq(claim.verificationId()),
                 eq(claim.processingToken()),
                 eq(SubscriptionVerificationProcessingOutcome.FAILED),
-                eq("PROCESSING_FAILURE"),
+                eq("PROVIDER_NON_RETRYABLE"),
                 eq(fixture.clock.instant()));
     }
 
@@ -241,15 +268,94 @@ class SubscriptionVerificationProcessingWorkerTest {
                 eq(null),
                 eq(fixture.clock.instant()));
         then(fixture.completionService).shouldHaveNoMoreInteractions();
+        then(fixture.rewardService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 승인_판정_저장_소유권을_잃으면_보상을_호출하지_않는다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
+        given(fixture.visionAnalysisPort.analyze(any())).willReturn(new VisionAnalysisResult(
+                VisionPlatform.YOUTUBE,
+                "채널",
+                "@channel",
+                VisionSubscriptionState.SUBSCRIBED,
+                true,
+                0.9));
+        given(fixture.completionService.complete(any(), any(), any(), any(), any())).willReturn(false);
+
+        fixture.worker.process(123L);
+
+        then(fixture.rewardService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 거절_판정은_저장하지만_보상을_호출하지_않는다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
+        given(fixture.visionAnalysisPort.analyze(any())).willReturn(new VisionAnalysisResult(
+                VisionPlatform.OTHER,
+                "다른 채널",
+                "@other",
+                VisionSubscriptionState.NOT_SUBSCRIBED,
+                true,
+                0.9));
+
+        fixture.worker.process(123L);
+
+        then(fixture.completionService).should().complete(
+                claim.verificationId(),
+                claim.processingToken(),
+                SubscriptionVerificationProcessingOutcome.REJECTED,
+                "PLATFORM_MISMATCH",
+                fixture.clock.instant());
+        then(fixture.rewardService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 증거_부족_판정은_재제출_필요로_저장하고_보상을_호출하지_않는다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
+        given(fixture.visionAnalysisPort.analyze(any())).willReturn(new VisionAnalysisResult(
+                VisionPlatform.YOUTUBE,
+                "채널",
+                "@channel",
+                VisionSubscriptionState.SUBSCRIBED,
+                false,
+                0.9));
+
+        fixture.worker.process(123L);
+
+        then(fixture.completionService).should().complete(
+                claim.verificationId(),
+                claim.processingToken(),
+                SubscriptionVerificationProcessingOutcome.RETRY_REQUIRED,
+                "INSUFFICIENT_EVIDENCE",
+                fixture.clock.instant());
+        then(fixture.rewardService).shouldHaveNoInteractions();
     }
 
     private static SubscriptionVerificationProcessingClaim claim() {
         return new SubscriptionVerificationProcessingClaim(
                 123L,
                 UUID.randomUUID().toString(),
+                7L,
+                42L,
+                103L,
                 "subscription-verifications/123.jpg",
                 "채널",
                 "@channel",
+                "20000000-0000-4000-8000-000000000001",
+                "2026-09-29",
                 1,
                 Instant.parse("2026-09-29T00:01:30Z"));
     }
@@ -260,6 +366,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 mock(SubscriptionVerificationProcessingClaimService.class);
         private final SubscriptionVerificationProcessingCompletionService completionService =
                 mock(SubscriptionVerificationProcessingCompletionService.class);
+        private final SubscriptionVerificationRewardService rewardService =
+                mock(SubscriptionVerificationRewardService.class);
         private final ObjectStorage objectStorage = mock(ObjectStorage.class);
         private final VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
         private final SubscriptionVerificationProcessingExecutorProperties properties =
@@ -268,6 +376,7 @@ class SubscriptionVerificationProcessingWorkerTest {
         private final SubscriptionVerificationProcessingWorker worker = new SubscriptionVerificationProcessingWorker(
                 claimService,
                 completionService,
+                rewardService,
                 objectStorage,
                 visionAnalysisPort,
                 properties,

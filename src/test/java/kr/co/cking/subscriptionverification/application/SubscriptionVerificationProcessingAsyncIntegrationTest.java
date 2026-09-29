@@ -51,6 +51,7 @@ class SubscriptionVerificationProcessingAsyncIntegrationTest {
     @Autowired private MissionRepository missionRepository;
 
     @MockitoBean private VisionAnalysisPort visionAnalysisPort;
+    @MockitoBean private SubscriptionVerificationRewardService rewardService;
 
     private final List<Member> participants = new ArrayList<>();
     private final List<SubscriptionVerification> verifications = new ArrayList<>();

@@ -39,6 +39,7 @@ class SubscriptionVerificationProcessingClaimIntegrationTest {
 
     @Autowired private SubscriptionVerificationProcessingClaimService claimService;
     @Autowired private SubscriptionVerificationProcessingCompletionService completionService;
+    @Autowired private SubscriptionVerificationRewardCompletionService rewardCompletionService;
     @Autowired private SubscriptionVerificationRepository verificationRepository;
     @Autowired private MemberRepository memberRepository;
     @Autowired private CreatorRepository creatorRepository;
@@ -179,6 +180,12 @@ class SubscriptionVerificationProcessingClaimIntegrationTest {
     void 현재_token의_APPROVED_결과만_보상_대기_상태로_저장한다() {
         SubscriptionVerificationProcessingClaim claimed = claim(BASE_TIME);
 
+        assertThat(claimed.memberId()).isEqualTo(participant.getMemberId());
+        assertThat(claimed.creatorId()).isEqualTo(creator.getCreatorId());
+        assertThat(claimed.missionId()).isEqualTo(mission.getMissionId());
+        assertThat(claimed.rewardRequestId()).isEqualTo(verification.getRewardRequestId());
+        assertThat(claimed.rewardPeriodKey()).isEqualTo("2026-09-29");
+
         boolean completed = completionService.complete(
                 verification.getVerificationId(),
                 claimed.processingToken(),
@@ -193,6 +200,24 @@ class SubscriptionVerificationProcessingClaimIntegrationTest {
         assertThat(persisted.getApprovedGuard()).isEqualTo((byte) 1);
         assertThat(persisted.getRewardStatus().name()).isEqualTo("PENDING");
         assertThat(persisted.getProcessingLeaseUntil()).isNull();
+    }
+
+    @Test
+    void 승인된_Verification의_보상만_ACCEPTED로_멱등_확정한다() {
+        SubscriptionVerificationProcessingClaim claimed = claim(BASE_TIME);
+        completionService.complete(
+                verification.getVerificationId(),
+                claimed.processingToken(),
+                SubscriptionVerificationProcessingOutcome.APPROVED,
+                null,
+                BASE_TIME.plusSeconds(1));
+
+        assertThat(rewardCompletionService.accept(
+                verification.getVerificationId(), BASE_TIME.plusSeconds(2))).isTrue();
+        assertThat(rewardCompletionService.accept(
+                verification.getVerificationId(), BASE_TIME.plusSeconds(3))).isFalse();
+        assertThat(verificationRepository.findById(verification.getVerificationId()).orElseThrow()
+                .getRewardStatus().name()).isEqualTo("ACCEPTED");
     }
 
     @Test
