@@ -5,7 +5,6 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.Creator;
-import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorRepository;
@@ -18,19 +17,21 @@ import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -66,12 +67,17 @@ class CreatorSpaceShareE2EIntegrationTest {
     private UserTicketBalanceRepository userTicketBalanceRepository;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     private final List<Long> memberIds = new ArrayList<>();
+    private final Set<String> redisKeys = ConcurrentHashMap.newKeySet();
+    private final Set<String> requestIds = ConcurrentHashMap.newKeySet();
 
     /** 테스트가 만든 EARN·미션·Creator 데이터를 외래 키 역순으로 정리한다. */
     @AfterEach
     void cleanUp() {
+        redisTemplate.delete(redisKeys);
         for (Long memberId : memberIds) {
             jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", memberId);
             jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ?", memberId);
@@ -90,6 +96,8 @@ class CreatorSpaceShareE2EIntegrationTest {
         for (Long memberId : memberIds) {
             jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId);
         }
+        requestIds.forEach(requestId -> jdbcTemplate.update(
+                "DELETE FROM ticket_earn_request WHERE request_id = ?", requestId));
     }
 
     /** 최초 공유·재공유·동일 요청 재전송과 다른 Creator 공유의 보상 경계를 한 흐름으로 검증한다. */
@@ -118,23 +126,24 @@ class CreatorSpaceShareE2EIntegrationTest {
         assertThat(awaitBalance(viewer.getMemberId(), second.creatorId(), 1L)).isEqualTo(1L);
     }
 
-    /** 같은 SHARE 미션의 동시 요청이 durable Business Key와 Redis Guard에서 한 번만 승인되는지 검증한다. */
+    /** 같은 SHARE 미션의 세 동시 요청이 durable Business Key와 Redis Guard에서 한 번만 승인되는지 검증한다. */
     @Test
     void 같은_SHARE_미션을_동시에_요청해도_한번만_적립된다() throws Exception {
         Member viewer = createMember("동시공유참여자");
         CreatorFixture creator = createCreator("동시공유크리에이터", "concurrent-share-space");
         CountDownLatch start = new CountDownLatch(1);
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        ExecutorService executor = Executors.newFixedThreadPool(3);
         try {
             Future<String> first = executor.submit(() -> completeAfterStart(start, creator.creatorId(), viewer.getMemberId()));
             Future<String> second = executor.submit(() -> completeAfterStart(start, creator.creatorId(), viewer.getMemberId()));
+            Future<String> third = executor.submit(() -> completeAfterStart(start, creator.creatorId(), viewer.getMemberId()));
             start.countDown();
 
-            List<String> results = List.of(first.get(), second.get());
+            List<String> results = List.of(first.get(), second.get(), third.get());
             assertThat(results).containsExactlyInAnyOrder(
                     EarnResultCode.EARN_ACCEPTED.name(),
-                    kr.co.cking.mission.domain.MissionErrorCode.DUPLICATE_MISSION.code()
-            );
+                    kr.co.cking.mission.domain.MissionErrorCode.DUPLICATE_MISSION.code(),
+                    kr.co.cking.mission.domain.MissionErrorCode.DUPLICATE_MISSION.code());
             assertThat(awaitBalance(viewer.getMemberId(), creator.creatorId(), 1L)).isEqualTo(1L);
             assertThat(currentBalance(viewer.getMemberId(), creator.creatorId())).isEqualTo(1L);
         } finally {
@@ -163,24 +172,6 @@ class CreatorSpaceShareE2EIntegrationTest {
                 .isEqualTo(creator.creatorId());
     }
 
-    /** 이전 slug는 예약 중에는 다른 Creator가 쓸 수 없고, 만료된 예약은 다시 사용할 수 있는지 검증한다. */
-    @Test
-    void 이전_slug는_14일_예약_중에는_막히고_만료_뒤에는_다른_Creator가_사용할_수_있다() {
-        CreatorFixture owner = createCreator("예약주인", "reserved-share-slug");
-        CreatorFixture other = createCreator("예약도전자", "other-share-slug");
-
-        creatorSpaceProfileService.changeSlug(owner.ownerMemberId(), "new-share-slug");
-        assertThatThrownBy(() -> creatorSpaceProfileService.changeSlug(other.ownerMemberId(), owner.slug()))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(CreatorErrorCode.SLUG_ALREADY_TAKEN);
-
-        jdbcTemplate.update("UPDATE creator_space_slug_reservation SET expires_at = ? WHERE slug = ?",
-                LocalDateTime.now(ZoneOffset.UTC).minusDays(15), owner.slug());
-        assertThat(creatorSpaceProfileService.changeSlug(other.ownerMemberId(), owner.slug()).space().getSlug())
-                .isEqualTo(owner.slug());
-    }
-
     /** 공개 조회와 SHARE 완료에 필요한 Creator·Space·기본 SHARE 미션을 직접 만든다. */
     private CreatorFixture createCreator(String name, String slug) {
         Member owner = createMember(name + "회원");
@@ -196,6 +187,10 @@ class CreatorSpaceShareE2EIntegrationTest {
 
     /** E2E 보상 요청을 만들고 결과를 반환한다. */
     private MissionCompleteOutcome complete(Long creatorId, Long memberId, UUID requestId) {
+        requestIds.add(requestId.toString());
+        redisKeys.add(TicketRedisKeys.idemMissionOnce(requestId.toString()));
+        redisKeys.add(TicketRedisKeys.earnGuard(memberId, MissionType.SHARE.name(), creatorId, "once"));
+        redisKeys.add(TicketRedisKeys.balance(creatorId, memberId));
         return shareMissionCompletionService.complete(creatorId, new MissionCompleteCommand(memberId, requestId));
     }
 

@@ -28,6 +28,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -264,6 +266,28 @@ class CreatorSpaceProfileIntegrationTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    /** 이전 slug는 14일 예약 중에는 다른 Creator가 못 쓰고, 만료되면 다시 사용할 수 있다. */
+    @Test
+    void 이전_slug는_예약_만료_뒤에_다른_Creator가_사용할_수_있다() {
+        Member admin = createMember("만료예약관리자", MemberRole.ADMIN);
+        Member owner = createMember("만료예약주인", MemberRole.USER);
+        Member other = createMember("만료예약도전자", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, owner);
+        approve(admin, other);
+        Creator ownerCreator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
+        String releasedSlug = "creator-" + ownerCreator.getCreatorId();
+
+        profileService.changeSlug(owner.getMemberId(), "replacement-owner-slug");
+        assertSlugTaken(() -> profileService.changeSlug(other.getMemberId(), releasedSlug));
+        jdbcTemplate.update("UPDATE creator_space_slug_reservation SET expires_at = ? WHERE slug = ?",
+                LocalDateTime.now(ZoneOffset.UTC).minusDays(15), releasedSlug);
+
+        assertThat(profileService.changeSlug(other.getMemberId(), releasedSlug).space().getSlug())
+                .isEqualTo(releasedSlug);
     }
 
     private void assertSlugTaken(ThrowingCallable call) {
