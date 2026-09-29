@@ -8,6 +8,7 @@ import kr.co.cking.post.application.dto.CreatorPostView;
 import kr.co.cking.post.domain.CreatorPost;
 import kr.co.cking.post.domain.CreatorPostImage;
 import kr.co.cking.post.domain.PostErrorCode;
+import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class CreatorPostService {
     private final PostAuthorLookup authorLookup;
     private final CreatorPostRepository postRepository;
     private final CreatorPostImageRepository imageRepository;
+    private final CreatorPostCommentRepository commentRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final CreatorPostViewAssembler viewAssembler;
     private final Clock clock;
@@ -79,6 +81,7 @@ public class CreatorPostService {
         Creator creator = authorLookup.requireCreator(memberId);
         CreatorPost post = requireOwnedPostForUpdate(postId, creator.getCreatorId());
         release(postId, List.copyOf(currentImageKeys(postId)), clock.instant());
+        commentRepository.deleteByPostId(postId);
         postRepository.delete(post);
     }
 

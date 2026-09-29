@@ -9,9 +9,11 @@ import kr.co.cking.post.application.dto.CreatorPostView;
 import kr.co.cking.post.domain.CreatorPost;
 import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
+import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.InOrder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -39,6 +41,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -55,8 +58,9 @@ class CreatorPostServiceTest {
     private final CreatorPostImageRepository imageRepository = mock(CreatorPostImageRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final ObjectStorage objectStorage = mock(ObjectStorage.class);
+    private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final CreatorPostService service = new CreatorPostService(
-            authorLookup, postRepository, imageRepository, eventPublisher,
+            authorLookup, postRepository, imageRepository, commentRepository, eventPublisher,
             new CreatorPostViewAssembler(objectStorage), Clock.fixed(NOW, ZoneOffset.UTC));
 
     @BeforeEach
@@ -178,7 +182,7 @@ class CreatorPostServiceTest {
     }
 
     @Test
-    void 삭제는_연결된_이미지를_모두_해제하고_게시글을_지운다() {
+    void 삭제는_연결된_이미지를_모두_해제하고_댓글을_지운_뒤_게시글을_지운다() {
         CreatorPost post = post(POST_ID, CREATOR_ID, PostVisibility.PUBLIC);
         given(postRepository.findByIdForUpdate(POST_ID)).willReturn(Optional.of(post));
         given(imageRepository.findByPostIdOrderByDisplayOrderAsc(POST_ID)).willReturn(List.of(
@@ -188,7 +192,9 @@ class CreatorPostServiceTest {
 
         verify(imageRepository).releaseFromPost(POST_ID, List.of("a", "b"), NOW);
         verify(eventPublisher).publishEvent(new PostImagesReleasedEvent(List.of("a", "b")));
-        verify(postRepository).delete(post);
+        InOrder order = inOrder(commentRepository, postRepository);
+        order.verify(commentRepository).deleteByPostId(POST_ID);
+        order.verify(postRepository).delete(post);
     }
 
     @Test

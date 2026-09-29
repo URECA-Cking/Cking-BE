@@ -48,8 +48,8 @@ class CreatorPostQueryServiceTest {
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final ObjectStorage objectStorage = mock(ObjectStorage.class);
     private final CreatorPostQueryService service = new CreatorPostQueryService(
-            creatorRepository, postRepository, imageRepository, followQueryService,
-            new CreatorPostViewAssembler(objectStorage));
+            new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
+            postRepository, imageRepository, new CreatorPostViewAssembler(objectStorage));
 
     private final CreatorPost publicPost = post(100L, CREATOR_ID, PostVisibility.PUBLIC);
     private final CreatorPost followersPost = post(101L, CREATOR_ID, PostVisibility.FOLLOWERS);

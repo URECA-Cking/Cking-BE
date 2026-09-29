@@ -60,6 +60,9 @@ tasks.named('test') {
 	systemProperty 'spring.config.additional-location', 'optional:classpath:/application-test.yml'
 	// 다양한 WebMvcTest 컨텍스트가 CI JVM 힙을 모두 점유하지 않도록 캐시 개수를 제한한다.
 	systemProperty 'spring.test.context.cache.maxSize', '16'
+	// 캐시를 16개로 줄여도 테스트가 1700개를 넘으면서 Gradle 기본 heap 512MB로는
+	// 컨텍스트 로딩 중 OutOfMemoryError(Java heap space)가 반복돼 늘린다.
+	maxHeapSize = '1g'
 
 	testLogging {
 		events "passed", "skipped", "failed"
