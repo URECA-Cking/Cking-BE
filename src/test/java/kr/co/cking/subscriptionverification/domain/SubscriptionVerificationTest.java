@@ -108,6 +108,17 @@ class SubscriptionVerificationTest {
     }
 
     @Test
+    void lease가_만료되면_재선점_전이어도_현재_token으로_결과를_저장할_수_없다() {
+        SubscriptionVerification verification = processingVerification();
+
+        assertThatThrownBy(() -> verification.approve(TOKEN, CREATED_AT.plusSeconds(61)))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(verification.getStatus()).isEqualTo(SubscriptionVerificationStatus.PROCESSING);
+        assertThat(verification.getActiveGuard()).isEqualTo((byte) 1);
+    }
+
+    @Test
     void lease가_만료된_processing만_새_token으로_재선점할_수_있다() {
         SubscriptionVerification verification = processingVerification();
         Instant beforeExpiry = CREATED_AT.plusSeconds(30);

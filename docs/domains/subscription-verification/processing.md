@@ -41,30 +41,35 @@ WHERE verification_id = :id
 
 무중단 배포 중 두 인스턴스가 같은 후보를 조회해 각각 작업을 제출해도 한 Worker만 affected row 1을 얻는다. Executor가 작업을 거절하거나 프로세스가 실행 전에 종료되면 아직 claim하지 않은 행은 `PENDING`으로 남아 다음 Recovery 대상이 된다.
 
+`SubscriptionVerificationProcessingClaimService.claim()`은 `REQUIRES_NEW` Transaction에서 이 조건부 UPDATE와 선점 결과 조회만 수행한다. 호출자 Transaction이 있더라도 선점 Transaction을 독립적으로 commit한 뒤 동결된 이미지 Object Key·대상 채널 정보와 fencing token을 반환한다. Worker는 반환 이후에만 Object Storage와 VLM을 호출한다. 선점 실패는 예외가 아니라 빈 결과이며 해당 작업을 조용히 종료한다.
+
 선점 Transaction을 commit한 뒤 Object Storage `get`과 VLM 호출을 수행한다. 외부 호출 중 DB Transaction을 유지하지 않는다. 판정 저장은 반드시 다음 fencing 조건을 포함한다.
 
 ```sql
 WHERE verification_id = :id
   AND status = 'PROCESSING'
   AND processing_token = :processingToken
+  AND processing_lease_until > :processedAt
 ```
 
-lease가 만료돼 새 Worker가 새 token으로 재선점했다면 이전 Worker의 늦은 응답은 저장되지 않는다. `processingToken`은 상태 판정용 임시 fencing token이며 외부 API에 노출하지 않는다.
+lease가 만료된 순간부터 기존 Worker는 아직 새 Worker가 재선점하지 않았더라도 결과를 저장할 수 없다. 새 Worker가 새 token으로 재선점한 뒤의 이전 Worker 응답도 저장되지 않는다. `processingToken`은 상태 판정용 임시 fencing token이며 외부 API에 노출하지 않는다.
+
+`SubscriptionVerificationProcessingCompletionService.complete()`도 짧은 `REQUIRES_NEW` Transaction에서 위 fencing 조건을 포함한 조건부 UPDATE를 실행한다. affected row가 0이면 소유권을 잃었거나 이미 종료된 작업이므로 결과를 저장하지 않는다. `APPROVED`는 `approvedGuard=1`, `rewardStatus=PENDING`으로 함께 전환하고, 나머지 결과는 안정적인 reason code를 필수로 저장한다. 실제 Vision 결과를 어떤 종료 상태로 변환하고 Ticket 보상을 호출하는 오케스트레이션은 후속 SUB-13이 담당한다.
 
 ## 전용 Async Executor와 호출 제한
 
-구독 인증은 Spring 기본 Async executor를 사용하지 않고 bounded `ThreadPoolTaskExecutor`를 별도 Bean으로 구성해 `@Async`에서 이름을 명시한다.
+구독 인증은 Spring 기본 Async executor를 사용하지 않고 `subscriptionVerificationExecutor`라는 bounded `ThreadPoolTaskExecutor`를 별도 Bean으로 구성해 `@Async("subscriptionVerificationExecutor")`에서 이름을 명시한다.
 
-- core/max pool size, queue capacity, VLM 동시 호출 수를 설정값으로 분리한다.
+- core/max pool size, queue capacity, VLM 동시 호출 수를 설정값으로 분리한다. 기본값은 core/max=2, queue=20, Provider 동시 호출=2이며 `maxPoolSize`와 Provider 동시 호출 수가 일치하지 않으면 애플리케이션을 시작하지 않는다.
 - queue는 무제한으로 두지 않는다.
-- 거절 정책은 요청 thread에서 VLM을 실행하는 `CallerRunsPolicy`를 사용하지 않는다.
-- queue 거절은 로그·metric을 남기고 행을 `PENDING`으로 유지해 Recovery가 재제출한다.
+- 거절 정책은 요청 thread에서 VLM을 실행하는 `CallerRunsPolicy`가 아닌 `AbortPolicy`를 사용한다.
+- queue 거절은 `subscription_verification.executor.rejected` metric과 경고 로그를 남기고, Claim 전이 전이므로 행과 Object를 `PENDING`으로 유지해 Recovery가 재제출한다. 거절 예외는 AFTER_COMMIT listener와 HTTP 요청까지 전파하지 않는다.
 - Recovery batch size는 executor 수용량을 고려해 제한하며 `nextAttemptAt` 이전 행은 제출하지 않는다.
-- 애플리케이션 종료 시 bounded graceful shutdown을 사용하되, 미완료 작업의 최종 복구는 DB 상태와 Recovery가 담당한다.
+- 애플리케이션 종료 시 30초 bounded graceful shutdown을 사용하되, 미완료 작업의 최종 복구는 DB 상태와 Recovery가 담당한다.
 
-Executor 크기는 rate limiter가 아니다. Provider의 계정 단위 동시 호출·분당 요청 제한이 있으면 별도 rate limiter를 둔다. 다중 인스턴스의 합산 제한이 필요한 Provider라면 Redis 등 공유 저장소 기반 limiter를 사용하거나 최대 replica 수를 반영해 인스턴스별 한도를 나눈다.
+Executor 크기는 rate limiter가 아니다. Worker는 별도 semaphore로 인스턴스별 Provider 동시 호출을 제한한다. 다중 인스턴스의 합산 제한이 필요한 Provider라면 Redis 등 공유 저장소 기반 limiter를 사용하거나 최대 replica 수를 반영해 인스턴스별 한도를 나눈다.
 
-`processingLeaseUntil`은 선택 모델의 connect/read timeout, 한 처리 시도 안의 retry·backoff 최대 시간과 안전 여유보다 길어야 한다. 정확한 executor 크기, queue capacity, provider 호출 한도와 lease 시간은 모델 벤치마크 후 정본에 확정한다. 제한 없는 기본값이나 모델 최대 처리 시간보다 짧은 lease를 사용하지 않는다.
+`processingLeaseUntil`은 선택 모델의 connect/read timeout, 한 처리 시도 안의 retry·backoff 최대 시간과 안전 여유보다 길어야 한다. 기본 90초는 현재 connect 2초 + read 30초 + 최대 2회 시도와 1초 backoff보다 길다. Provider rate limit 변경 시 `SUBSCRIPTION_VERIFICATION_EXECUTOR_MAX_POOL_SIZE`와 `SUBSCRIPTION_VERIFICATION_PROVIDER_MAX_CONCURRENT_CALLS`를 함께 같은 값으로 조정한다. 제한 없는 기본값이나 모델 최대 처리 시간보다 짧은 lease를 사용하지 않는다.
 
 ## Vision 분석 Port
 

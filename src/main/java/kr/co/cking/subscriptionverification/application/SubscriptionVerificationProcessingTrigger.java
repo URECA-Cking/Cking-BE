@@ -4,5 +4,6 @@ package kr.co.cking.subscriptionverification.application;
 @FunctionalInterface
 public interface SubscriptionVerificationProcessingTrigger {
 
+    /** Commit된 Verification 식별자만 전용 비동기 처리 경계에 전달한다. */
     void trigger(Long verificationId);
 }
