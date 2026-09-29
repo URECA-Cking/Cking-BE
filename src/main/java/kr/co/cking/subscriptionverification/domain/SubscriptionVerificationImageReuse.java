@@ -8,18 +8,22 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.domain.Persistable;
 
 /** Verification별 이미지 재사용 탐지 결과와 이전 매칭 대상을 보존한다. */
 @Getter
 @Entity
 @Table(name = "subscription_verification_image_reuse")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class SubscriptionVerificationImageReuse {
+public class SubscriptionVerificationImageReuse implements Persistable<Long> {
 
     @Id
     @Column(name = "verification_id")
@@ -34,6 +38,9 @@ public class SubscriptionVerificationImageReuse {
 
     @Column(name = "detected_at", nullable = false, updatable = false)
     private Instant detectedAt;
+
+    @Transient
+    private boolean newEntity = true;
 
     /** 최초 또는 재사용 탐지 결과를 이전 Verification 식별자와 함께 생성한다. */
     public SubscriptionVerificationImageReuse(
@@ -53,5 +60,21 @@ public class SubscriptionVerificationImageReuse {
         this.verificationId = verificationId;
         this.matchedVerificationId = matchedVerificationId;
         this.detectedAt = Objects.requireNonNull(detectedAt, "detectedAt은 필수입니다.");
+    }
+
+    @Override
+    public Long getId() {
+        return verificationId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return newEntity;
+    }
+
+    @PostLoad
+    @PostPersist
+    private void markNotNew() {
+        newEntity = false;
     }
 }

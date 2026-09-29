@@ -8,6 +8,7 @@ import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationI
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationImageReuseRepository;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 /** 정규화 이미지 hash 기준으로 최초·재사용을 기록하되 인증 판정에는 개입하지 않는다. */
@@ -19,15 +20,20 @@ class SubscriptionVerificationImageReuseDetectionService {
     private final SubscriptionVerificationRepository verificationRepository;
     private final SubscriptionVerificationImageReuseRepository imageReuseRepository;
 
-    /** 같은 hash 제출을 직렬화한 뒤 이전 Verification과 재사용 유형을 감사 기록으로 저장한다. */
-    void detectAndRecord(SubscriptionVerification verification, Instant detectedAt) {
-        hashLockRepository.insertIgnore(verification.getImageSha256(), detectedAt);
-        hashLockRepository.findByImageSha256ForUpdate(verification.getImageSha256())
+    /** 같은 hash 제출의 생성·판정을 직렬화할 잠금 행을 확보한다. */
+    void lockImageHash(String imageSha256, Instant lockedAt) {
+        hashLockRepository.insertIgnore(imageSha256, lockedAt);
+        hashLockRepository.findByImageSha256ForUpdate(imageSha256)
                 .orElseThrow(() -> new IllegalStateException("이미지 hash 잠금 행을 찾을 수 없습니다."));
+    }
 
+    /** hash 잠금 보유 중 이전에 확정된 이력과 재사용 유형을 감사 기록으로 저장한다. */
+    void detectAndRecord(SubscriptionVerification verification, Instant detectedAt) {
         SubscriptionVerification previous = verificationRepository
-                .findFirstPreviousByImageSha256(
-                        verification.getImageSha256(), verification.getCreatedAt(), verification.getVerificationId())
+                .findPreviousByImageSha256(
+                        verification.getImageSha256(), verification.getVerificationId(), PageRequest.of(0, 1))
+                .stream()
+                .findFirst()
                 .orElse(null);
         imageReuseRepository.save(new SubscriptionVerificationImageReuse(
                 verification.getVerificationId(),

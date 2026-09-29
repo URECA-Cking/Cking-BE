@@ -12,7 +12,7 @@ SUB-15는 정규화된 구독 인증 이미지의 SHA-256 exact match만 탐지�
 
 ## 기록과 동시성
 
-Verification 저장 Transaction은 hash 잠금 행을 `INSERT IGNORE`로 만들고 `FOR UPDATE`로 잠근다. 이어서 현재 Verification보다 앞선 같은 hash 이력만 `created_at ASC, verification_id ASC` 순으로 조회해 첫 행을 매칭 대상으로 선택한다.
+Verification 저장 Transaction은 엔티티 시각 생성과 저장 전에 hash 잠금 행을 `INSERT IGNORE`로 만들고 `FOR UPDATE`로 잠근다. 잠금 보유 중 현재 행을 제외한 같은 hash 이력을 `created_at ASC, verification_id ASC` 순으로 한 행만 조회해 매칭 대상으로 선택한다. 따라서 최초·재사용 판정의 순서는 시계나 식별자 발급 순서가 아니라 hash 잠금 획득 순서를 따른다.
 
 | `reuseType` | 의미 | `matchedVerificationId` |
 | --- | --- | --- |

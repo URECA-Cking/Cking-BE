@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
 public interface SubscriptionVerificationRepository extends JpaRepository<SubscriptionVerification, Long> {
 
@@ -103,21 +104,19 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
             Long missionId
     );
 
-    /** 현재 Verification보다 앞선 같은 이미지 hash 제출을 생성 시각·식별자 순으로 조회한다. */
+    /** 현재 행을 제외한 같은 이미지 hash 이력을 생성 시각·식별자 순으로 조회한다. */
     @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_READ)
     @Query("""
             select verification
             from SubscriptionVerification verification
             where verification.imageSha256 = :imageSha256
-              and (verification.createdAt < :createdAt
-                   or (verification.createdAt = :createdAt
-                       and verification.verificationId < :verificationId))
+              and verification.verificationId <> :verificationId
             order by verification.createdAt asc, verification.verificationId asc
             """)
-    Optional<SubscriptionVerification> findFirstPreviousByImageSha256(
+    List<SubscriptionVerification> findPreviousByImageSha256(
             @Param("imageSha256") String imageSha256,
-            @Param("createdAt") Instant createdAt,
-            @Param("verificationId") Long verificationId
+            @Param("verificationId") Long verificationId,
+            Pageable pageable
     );
 
     long countByMemberIdAndCreatorIdAndMissionIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(

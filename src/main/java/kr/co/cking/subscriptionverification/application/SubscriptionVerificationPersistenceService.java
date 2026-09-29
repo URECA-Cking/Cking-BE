@@ -26,20 +26,22 @@ class SubscriptionVerificationPersistenceService {
     public SubscriptionVerificationSubmissionResult create(
             SubscriptionVerificationPersistenceCommand command
     ) {
-        Instant persistedAt = clock.instant();
+        Instant validationAt = clock.instant();
         SubscriptionVerificationSubmissionSource source = validator.validateSourceForUpdate(
-                command.memberId(), command.creatorId(), command.missionId(), persistedAt);
+                command.memberId(), command.creatorId(), command.missionId(), validationAt);
         Optional<SubscriptionVerification> existing = validator.validateRequest(
                 command.memberId(),
                 command.creatorId(),
                 command.missionId(),
                 command.requestId(),
                 command.requestFingerprint(),
-                persistedAt);
+                validationAt);
         if (existing.isPresent()) {
             return new SubscriptionVerificationSubmissionResult(existing.get(), false);
         }
 
+        imageReuseDetectionService.lockImageHash(command.imageSha256(), clock.instant());
+        Instant persistedAt = clock.instant();
         SubscriptionVerification verification = SubscriptionVerification.pending(
                 command.memberId(),
                 command.creatorId(),

@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -134,6 +135,22 @@ class SubscriptionVerificationRepositoryJpaTest {
                 .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
                         memberId, creatorId, missionId))
                 .contains(mine);
+    }
+
+    @Test
+    void 같은_hash_이력이_여러_건이어도_페이지_제한으로_첫_이력만_조회한다() {
+        SubscriptionVerification first = verificationRepository.saveAndFlush(newVerification(BASE_TIME));
+        reject(first, BASE_TIME.plusSeconds(1));
+        verificationRepository.flush();
+        SubscriptionVerification second = verificationRepository.saveAndFlush(verification(
+                otherMemberId, UUID.randomUUID().toString(), UUID.randomUUID().toString(), BASE_TIME.plusSeconds(2)));
+        reject(second, BASE_TIME.plusSeconds(3));
+        verificationRepository.flush();
+        SubscriptionVerification current = verificationRepository.saveAndFlush(newVerification(BASE_TIME.plusSeconds(4)));
+
+        assertThat(verificationRepository.findPreviousByImageSha256(
+                current.getImageSha256(), current.getVerificationId(), PageRequest.of(0, 1)))
+                .containsExactly(first);
     }
 
     @Test

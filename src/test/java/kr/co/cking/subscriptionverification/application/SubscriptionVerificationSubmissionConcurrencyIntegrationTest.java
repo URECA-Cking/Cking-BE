@@ -30,6 +30,7 @@ import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationError
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationImageReuseType;
 import kr.co.cking.subscriptionverification.repository.CreatorYoutubeChannelRepository;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationImageReuseRepository;
+import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationImageHashLockRepository;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,9 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
 
     @Autowired
     private SubscriptionVerificationImageReuseRepository imageReuseRepository;
+
+    @Autowired
+    private SubscriptionVerificationImageHashLockRepository hashLockRepository;
 
     @Autowired
     private CreatorYoutubeChannelRepository channelRepository;
@@ -128,6 +132,9 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
             imageReuseRepository.flush();
             verificationRepository.deleteAll(verifications);
             verificationRepository.flush();
+            hashLockRepository.deleteAllById(verifications.stream()
+                    .map(SubscriptionVerification::getImageSha256).distinct().toList());
+            hashLockRepository.flush();
         }
         if (otherCreator != null) {
             channelRepository.deleteById(otherCreator.getCreatorId());

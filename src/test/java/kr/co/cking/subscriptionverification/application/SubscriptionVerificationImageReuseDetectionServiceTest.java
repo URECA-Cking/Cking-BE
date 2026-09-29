@@ -2,6 +2,7 @@ package kr.co.cking.subscriptionverification.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -19,6 +20,7 @@ import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationR
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class SubscriptionVerificationImageReuseDetectionServiceTest {
@@ -41,10 +43,11 @@ class SubscriptionVerificationImageReuseDetectionServiceTest {
     ) {
         given(hashLockRepository.findByImageSha256ForUpdate(current.getImageSha256()))
                 .willReturn(Optional.of(mock(SubscriptionVerificationImageHashLock.class)));
-        given(verificationRepository.findFirstPreviousByImageSha256(
-                current.getImageSha256(), current.getCreatedAt(), current.getVerificationId()))
-                .willReturn(Optional.ofNullable(previous));
+        given(verificationRepository.findPreviousByImageSha256(
+                eq(current.getImageSha256()), eq(current.getVerificationId()), any(Pageable.class)))
+                .willReturn(previous == null ? java.util.List.of() : java.util.List.of(previous));
 
+        service.lockImageHash(current.getImageSha256(), NOW);
         service.detectAndRecord(current, NOW);
 
         ArgumentCaptor<SubscriptionVerificationImageReuse> captor =
