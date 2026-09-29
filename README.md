@@ -208,6 +208,8 @@ AI 퀴즈 생성에서 Gemini Provider를 호출하려면 배포 환경에 `GEMI
 
 `application.yml`의 Gemini 설정은 환경변수 `GEMINI_MODEL`, `GEMINI_BASE_URL`, `GEMINI_CONNECT_TIMEOUT`, `GEMINI_READ_TIMEOUT`, `GEMINI_MAX_ATTEMPTS`로 변경할 수 있습니다. 타임아웃은 ISO-8601 Duration 형식(예: `PT30S`)이고, `GEMINI_MAX_ATTEMPTS`는 최초 호출을 포함한 최대 시도 횟수입니다. HTTP 429·5xx만 제한적으로 재시도하며 타임아웃은 재시도하지 않습니다. 실제 Gemini API 연동 검증은 별도로 수행해야 합니다.
 
+YouTube 구독 인증 VLM Adapter는 `DEEPSEEK_API_KEY`가 있어야 실제 DeepSeek 호출을 수행합니다. 기본 모델과 endpoint는 각각 `deepseek-flash`, `https://api.deepseek.com/chat/completions`이며, `DEEPSEEK_MODEL`, `DEEPSEEK_ENDPOINT`, `DEEPSEEK_CONNECT_TIMEOUT`, `DEEPSEEK_READ_TIMEOUT`, `DEEPSEEK_MAX_ATTEMPTS`, `DEEPSEEK_RETRY_BACKOFF`, `DEEPSEEK_MAX_OUTPUT_TOKENS`로 변경할 수 있습니다. API 키·정규화 이미지 bytes·Base64·Provider 원문 응답은 로그에 기록하지 않습니다.
+
 실행을 종료하려면:
 
 ```text

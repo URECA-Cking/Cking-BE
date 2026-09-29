@@ -54,9 +54,8 @@ tasks.named('test') {
 	}
 	// 테스트 프로필 설정을 모든 테스트 컨텍스트에 추가해 Hikari 연결 수를 제한한다.
 	systemProperty 'spring.config.additional-location', 'optional:classpath:/application-test.yml'
-	// Spring 테스트 컨텍스트 캐시(최대 32개)가 쌓이면 Gradle 기본 heap 512MB로는 전체 테스트 후반에
-	// OutOfMemoryError(Java heap space)가 난다.
-	maxHeapSize = '1g'
+	// 다양한 WebMvcTest 컨텍스트가 CI JVM 힙을 모두 점유하지 않도록 캐시 개수를 제한한다.
+	systemProperty 'spring.test.context.cache.maxSize', '16'
 
 	testLogging {
 		events "passed", "skipped", "failed"
