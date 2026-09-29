@@ -15,6 +15,22 @@ public interface TicketOnceEarnRequestRepository extends JpaRepository<TicketOnc
 
     Optional<TicketOnceEarnRequest> findByMemberIdAndCreatorIdAndMissionId(Long memberId, Long creatorId, Long missionId);
 
+    /** INSERT IGNORE 충돌 뒤 최신 커밋 행을 잠금 현재 읽기로 조회한다. */
+    @Query(value = "SELECT * FROM ticket_once_earn_request WHERE request_id = :requestId FOR UPDATE", nativeQuery = true)
+    Optional<TicketOnceEarnRequest> findByRequestIdForUpdate(@Param("requestId") String requestId);
+
+    /** 같은 평생 보상 Business Key의 최신 커밋 행을 잠금 현재 읽기로 조회한다. */
+    @Query(value = """
+            SELECT * FROM ticket_once_earn_request
+            WHERE member_id = :memberId AND creator_id = :creatorId AND mission_id = :missionId
+            FOR UPDATE
+            """, nativeQuery = true)
+    Optional<TicketOnceEarnRequest> findByMemberIdAndCreatorIdAndMissionIdForUpdate(
+            @Param("memberId") Long memberId,
+            @Param("creatorId") Long creatorId,
+            @Param("missionId") Long missionId
+    );
+
     @Modifying
     @Query(value = """
             INSERT IGNORE INTO ticket_once_earn_request

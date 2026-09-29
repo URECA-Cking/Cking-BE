@@ -51,9 +51,12 @@ public class TicketOnceEarnRequestClaimService {
         if (inserted == 1) {
             return TicketOnceEarnRequestClaim.PENDING;
         }
-        return repository.findByRequestId(command.requestId().toString())
+        // INSERT IGNORE가 0이면 같은 requestId 또는 Business Key를 다른 Transaction이
+        // 먼저 선점했다는 뜻이다. 일반 SELECT는 REPEATABLE READ의 이전 snapshot을 볼 수
+        // 있으므로, FOR UPDATE 현재 읽기로 상대 Transaction의 커밋 행을 기다려 확인한다.
+        return repository.findByRequestIdForUpdate(command.requestId().toString())
                 .map(request -> claimOf(request, fingerprint))
-                .orElseGet(() -> repository.findByMemberIdAndCreatorIdAndMissionId(
+                .orElseGet(() -> repository.findByMemberIdAndCreatorIdAndMissionIdForUpdate(
                                 command.userId(), command.creatorId(), command.missionId())
                         .map(request -> TicketOnceEarnRequestClaim.DUPLICATE)
                         .orElseThrow(() -> new IllegalStateException("ONCE durable request 충돌 대상을 찾을 수 없습니다.")));
