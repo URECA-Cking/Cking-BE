@@ -98,6 +98,8 @@ public class SecurityConfig {
                                 "/api/missions/*/complete",
                                 "/api/creators/*/tickets",
                                 "/api/creators/*/tickets/history",
+                                "/api/creators/*/follow",
+                                "/api/me/follows",
                                 "/api/tickets/common",
                                 "/api/tickets/common/history",
                                 "/api/events/*",

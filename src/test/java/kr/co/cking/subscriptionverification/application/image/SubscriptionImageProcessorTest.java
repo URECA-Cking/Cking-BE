@@ -12,11 +12,13 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.image.ImageSha256;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -221,6 +223,43 @@ class SubscriptionImageProcessorTest {
         assertThat(second.normalizedImageSha256()).isEqualTo(first.normalizedImageSha256());
     }
 
+    /**
+     * 정규화 hash는 과거 제출과 비교하는 재사용 신호이므로 JPEG_V1 출력은 배포·JDK가 바뀌어도 같아야 한다.
+     * 기대값은 공통 모듈 분리 전 구현(f5f01cb)으로 고정 fixture를 처리해 얻었다. 이 테스트가 깨지면 출력이 바뀐
+     * 것이므로 기대값을 고치지 말고 원인을 확인하거나 정규화 버전을 올린다.
+     */
+    @ParameterizedTest
+    @CsvSource({
+        "transparent-640x520.png,"
+                + "2bd920a69e39b0ee18ddf084aef95238ebb5298aaa0aacec2e618dd5d07496cb,640,520,"
+                + "d59e03d156eafb9a9ddcab92e4f400e165f6e3b86fdb27a03a9cd0a4caedc60a",
+        "wide-2600x520.jpg,"
+                + "76eacb734b9f17d63fa14a41b807b90378dbc4adc6e22bb15b06b79e598b843b,2048,410,"
+                + "4aa4e3f4b66c9afabe625fa876ae9c441b50dc3c53dbae9b422e5c9b20aebfd1",
+        "exif-orientation-6-700x500.jpg,"
+                + "67a1cdedfd9e8f65a46644c08bae1000ae6eb2cb2397532092441851994709f9,500,700,"
+                + "acae5b8d41cbb6255e26056ca57a5fabbf33a9669df70cc732e8d0eed269b856"
+    })
+    void JPEG_V1_정규화_결과는_고정_fixture에_대해_알려진_hash와_같다(
+            String fixture,
+            String expectedSourceSha256,
+            int expectedWidth,
+            int expectedHeight,
+            String expectedNormalizedSha256)
+            throws IOException {
+        byte[] source = fixture(fixture);
+        assertThat(ImageSha256.calculate(source))
+                .as("fixture 파일 자체가 바뀌지 않았어야 한다")
+                .isEqualTo(expectedSourceSha256);
+
+        ProcessedSubscriptionImage result = processor.process(source);
+
+        assertThat(result.normalizationVersion()).isEqualTo("JPEG_V1");
+        assertThat(result.width()).isEqualTo(expectedWidth);
+        assertThat(result.height()).isEqualTo(expectedHeight);
+        assertThat(result.normalizedImageSha256()).isEqualTo(expectedNormalizedSha256);
+    }
+
     @Test
     void 픽셀이_같고_메타데이터만_다르면_정규화_해시는_같다() throws IOException {
         byte[] plain = solidImage("jpeg", 700, 500, Color.GRAY);
@@ -339,6 +378,14 @@ class SubscriptionImageProcessorTest {
             graphics.dispose();
         }
         return write(image, "jpeg");
+    }
+
+    private byte[] fixture(String name) throws IOException {
+        try (InputStream input =
+                getClass().getResourceAsStream("/fixtures/subscription-image/" + name)) {
+            assertThat(input).as("fixture: " + name).isNotNull();
+            return input.readAllBytes();
+        }
     }
 
     private byte[] write(BufferedImage image, String format) throws IOException {

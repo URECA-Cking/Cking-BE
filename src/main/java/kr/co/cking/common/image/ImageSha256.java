@@ -1,4 +1,4 @@
-package kr.co.cking.subscriptionverification.application.image;
+package kr.co.cking.common.image;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
