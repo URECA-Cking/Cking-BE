@@ -32,8 +32,8 @@ public class DeepSeekVisionAnalysisResponseParser {
                 throw new IllegalArgumentException("DeepSeek 응답에 분석 JSON이 없습니다.");
             }
             return normalizeContent(choice.message().content());
-        } catch (JacksonException exception) {
-            throw new IllegalArgumentException("DeepSeek 응답 envelope를 파싱할 수 없습니다.", exception);
+        } catch (JacksonException | IllegalArgumentException exception) {
+            throw new DeepSeekResponseParseException("DeepSeek 응답 envelope를 파싱할 수 없습니다.", exception);
         }
     }
 
@@ -56,8 +56,8 @@ public class DeepSeekVisionAnalysisResponseParser {
                     parseEnum(root.get("subscriptionState"), VisionSubscriptionState.class, "subscriptionState"),
                     requiredBoolean(root.get("evidenceSufficient"), "evidenceSufficient"),
                     requiredConfidence(root.get("confidence")));
-        } catch (JacksonException exception) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON을 파싱할 수 없습니다.", exception);
+        } catch (JacksonException | IllegalArgumentException exception) {
+            throw new DeepSeekResponseParseException("DeepSeek 분석 JSON을 파싱할 수 없습니다.", exception);
         }
     }
 

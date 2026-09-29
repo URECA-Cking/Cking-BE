@@ -70,9 +70,9 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
                             exception);
                 }
                 pauseBeforeRetry();
-            } catch (IllegalArgumentException exception) {
+            } catch (DeepSeekResponseParseException exception) {
                 logProviderResult(
-                        response == null ? 0 : 200,
+                        200,
                         elapsedMillis(startedAt),
                         response == null ? null : extractUsage(response),
                         attempt);
@@ -82,6 +82,11 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
                             "DeepSeek API 응답 형식이 올바르지 않습니다.", exception);
                 }
                 pauseBeforeRetry();
+            } catch (IllegalArgumentException exception) {
+                logProviderResult(0, elapsedMillis(startedAt), null, attempt);
+                throw new VisionAnalysisException(
+                        VisionAnalysisFailureType.NON_RETRYABLE,
+                        "DeepSeek API 요청 설정이 올바르지 않습니다.", exception);
             } catch (RestClientException exception) {
                 logProviderResult(0, elapsedMillis(startedAt), null, attempt);
                 if (attempt == maxAttempts) {

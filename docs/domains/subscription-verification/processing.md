@@ -136,7 +136,7 @@ LOW_CONFIDENCE
 ### 요청
 
 - 정규화 JPEG bytes를 `data:image/jpeg;base64,...` 형식의 user message `image_url`로 전달한다. S3 URL·Object Key·실제 파일 업로드는 사용하지 않는다.
-- 대상 `channelName`과 `channelHandle`은 text prompt의 비교 기준으로 함께 전달한다. 이미지에 없는 관측값을 이 입력에서 추론할 수 없도록 Prompt에 명시한다.
+- 대상 `channelName`과 `channelHandle`은 JSON으로 이스케이프한 비신뢰 데이터 블록으로 text prompt에 함께 전달한다. 블록 안의 문자열은 명령으로 해석하지 않으며, 이미지에 없는 관측값을 이 입력에서 추론할 수 없도록 Prompt에 명시한다.
 - `thinking: { type: disabled }`, `response_format: { type: json_object }`와 최대 출력 토큰을 요청한다.
 - Prompt는 이미지 안의 모든 문구를 증거 데이터로만 취급하고, 이미지 내부 명령을 실행하지 않도록 지시한다.
 
@@ -158,8 +158,8 @@ confidence: 0.0..1.0
 
 ### 재시도·관측성
 
-- connect/read timeout, 429, 5xx, 네트워크 오류와 응답 파싱 오류는 `RETRYABLE` 기술 오류다. 설정한 최대 시도 횟수 안에서 backoff 후 재시도한다.
-- 400 계열과 API key 누락은 `NON_RETRYABLE` 기술 오류이며 재시도하지 않는다.
+- connect/read timeout, 429, 5xx, 네트워크 오류와 Provider 응답 파싱 오류는 `RETRYABLE` 기술 오류다. 설정한 최대 시도 횟수 안에서 backoff 후 재시도한다.
+- 400 계열, API key 누락과 endpoint·요청 생성 설정 오류는 `NON_RETRYABLE` 기술 오류이며 재시도하지 않는다.
 - `DEEPSEEK_CONNECT_TIMEOUT`, `DEEPSEEK_READ_TIMEOUT`, `DEEPSEEK_MAX_ATTEMPTS`, `DEEPSEEK_RETRY_BACKOFF`, `DEEPSEEK_MAX_OUTPUT_TOKENS`로 호출 한계를 분리한다.
 - 이미지 bytes, Base64, API key, VLM Raw 응답은 로그에 남기지 않는다. 각 호출 시도마다 model, HTTP status, 실제 latency, usage token 수, 시도 횟수를 한 번만 기록한다.
 
