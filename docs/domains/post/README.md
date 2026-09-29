@@ -13,7 +13,7 @@ Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `Cr
 
 ## 소유 데이터
 
-V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V36의 `creator_post_comment`(댓글)를 소유한다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다.
+V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다.
 
 ## 댓글 권한
 
