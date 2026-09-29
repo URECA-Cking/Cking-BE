@@ -95,17 +95,20 @@
 | 91 | 내부 | Ticket | INTERNAL | CALL | `TicketOnceEarnService.earn(command)` | 구독 인증 등 평생 1회 보상의 영구 멱등 적립 | requestId·ONCE Business Key |
 | 92 | 외부 | Creator Space | PUBLIC | GET | `/api/creator-spaces/{slug}` | 공유 URL slug로 Creator Space 홈·프로필 조회 | - |
 | 93 | 외부 | Creator Space | CREATOR | PATCH | `/api/creator/space/slug` | 내 Creator Space 커스텀 slug 변경 | 상태 기반 |
-| 94 | 외부 | Calendar | CREATOR | POST | /api/creator/calendar/schedules | 크리에이터 일정 생성 | - |
-| 95 | 외부 | Calendar | CREATOR | PATCH | /api/creator/calendar/schedules/{scheduleId} | 크리에이터 일정 수정(전체 필드 교체) | 상태 기반 |
-| 96 | 외부 | Calendar | CREATOR | DELETE | /api/creator/calendar/schedules/{scheduleId} | 크리에이터 일정 삭제(하드 삭제) | 상태 기반 |
-| 97 | 외부 | Calendar | CREATOR | GET | /api/creator/calendar/schedules | 내 일정 기간 조회 | - |
-| 98 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules | 크리에이터 캘린더 기간 조회 | - |
-| 99 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules/{scheduleId} | 크리에이터 일정 상세 조회 | - |
+| 94 | 외부 | Calendar | CREATOR | POST | `/api/creator/calendar/schedules` | 크리에이터 일정 생성 | - |
+| 95 | 외부 | Calendar | CREATOR | PATCH | `/api/creator/calendar/schedules/{scheduleId}` | 크리에이터 일정 수정(전체 필드 교체) | 상태 기반 |
+| 96 | 외부 | Calendar | CREATOR | DELETE | `/api/creator/calendar/schedules/{scheduleId}` | 크리에이터 일정 삭제(하드 삭제) | 상태 기반 |
+| 97 | 외부 | Calendar | CREATOR | GET | `/api/creator/calendar/schedules` | 내 일정 기간 조회 | - |
+| 98 | 외부 | Calendar | PUBLIC | GET | `/api/creators/{creatorId}/calendar/schedules` | 크리에이터 캘린더 기간 조회 | - |
+| 99 | 외부 | Calendar | PUBLIC | GET | `/api/creators/{creatorId}/calendar/schedules/{scheduleId}` | 크리에이터 일정 상세 조회 | - |
 | 100 | 외부 | Mission | USER | POST | `/api/creators/{creatorId}/missions/share/complete` | Creator Space 공유 SHARE 미션 완료 | `requestId` |
 | 101 | 외부 | Follow | USER | PUT | `/api/creators/{creatorId}/follow` | 크리에이터 팔로우 | 상태 기반 |
 | 102 | 외부 | Follow | USER | DELETE | `/api/creators/{creatorId}/follow` | 크리에이터 언팔로우 | 상태 기반 |
 | 103 | 외부 | Follow | USER | GET | `/api/creators/{creatorId}/follow` | 크리에이터 팔로우 여부 조회 | - |
 | 104 | 외부 | Follow | USER | GET | `/api/me/follows` | 내 팔로우 목록 | - |
 | 105 | 내부 | Follow | INTERNAL | CALL | `CreatorFollowQueryService.isFollowing(memberId, creatorId)` | 다른 도메인의 팔로우 여부 확인 | - |
+| 106 | 외부 | Calendar | USER | PUT | `/api/me/calendar/schedules/{scheduleId}` | 개인 캘린더에 일정 담기 | 상태 기반 |
+| 107 | 외부 | Calendar | USER | DELETE | `/api/me/calendar/schedules/{scheduleId}` | 개인 캘린더에서 일정 제거 | 상태 기반 |
+| 108 | 외부 | Calendar | USER | GET | `/api/me/calendar/schedules` | 개인 캘린더 기간 조회 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

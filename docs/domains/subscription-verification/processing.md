@@ -121,7 +121,6 @@ AND confidence >= 확정 threshold
 증거가 부족하거나 confidence가 threshold보다 낮으면 다른 관측값보다 먼저 `RETRY_REQUIRED`로 판정한다. 충분한 증거와 confidence가 확보되면 플랫폼, handle, 구독 상태 순으로 판정한다. 따라서 `YOUTUBE + 다른 handle + UNKNOWN 구독 상태`는 명확한 대상 채널 불일치이므로 `CHANNEL_MISMATCH / REJECTED`다. Handle이 일치한 뒤 구독 상태가 `UNKNOWN`이면 `INSUFFICIENT_EVIDENCE / RETRY_REQUIRED`다.
 
 안정적인 판정 사유는 다음과 같다.
-
 ```text
 PLATFORM_MISMATCH
 CHANNEL_MISMATCH
