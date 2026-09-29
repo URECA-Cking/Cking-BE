@@ -19,7 +19,7 @@ Creator Space 탭 구성(`[홈] [콘텐츠] [미션] [이벤트] [팬 활동]`)�
 
 ## Creator 판정과 소유권
 
-Creator 여부는 JWT Role이 아니라 `creator.member_id` 존재 여부로 판단한다(`CreatorRepository.findByMemberId()`). 존재하지 않으면 `FORBIDDEN`이다. 일정 소유권은 호출자 Creator의 `creatorId`와 일정의 `creatorId`가 같은지로 검증하며, 존재 자체가 없으면 `RESOURCE_NOT_FOUND`, 존재하지만 다른 Creator 소유면 `FORBIDDEN`으로 구분한다(`CreatorEventService.requireOwnership()`과 같은 원칙).
+Creator 여부는 JWT Role이 아니라 `creator.member_id` 존재 여부로 판단한다(`CreatorRepository.findByMemberId()`). 호출자 Member 자체가 없으면 `RESOURCE_NOT_FOUND`, Member는 있지만 Creator가 아니면 `FORBIDDEN`이다(`CreatorEventService.requireCreator()`와 같은 원칙). 일정 소유권은 호출자 Creator의 `creatorId`와 일정의 `creatorId`가 같은지로 검증하며, 존재 자체가 없으면 `RESOURCE_NOT_FOUND`, 존재하지만 다른 Creator 소유면 `FORBIDDEN`으로 구분한다(`CreatorEventService.requireOwnership()`과 같은 원칙).
 
 ## timeZone 검증과 정규화
 
@@ -33,7 +33,15 @@ Creator 여부는 JWT Role이 아니라 `creator.member_id` 존재 여부로 판
 
 페이지 번호 대신 `from`/`to`(UTC Instant) 기간으로 조회한다(`ScheduleQueryRange`). `from < to`이고 `to - from`이 365일을 넘지 않아야 하며, 위반하면 `VALIDATION_FAILED`다. 조회 조건은 `startAt < to AND endAt > from`으로, 조회 기간과 조금이라도 겹치는 일정을 모두 반환하고 `startAt ASC, scheduleId ASC`로 정렬한다.
 
+## 개인 캘린더(MemberCalendarEntry)
+
+사용자가 여러 크리에이터의 일정 중 관심 있는 일정만 개별적으로 담아, 크리에이터와 무관하게 통합 조회하는 기능이다(이슈 #319).
+
+- `member_calendar_entry`: `memberId`, `scheduleId`만 가지며 일정 내용을 복사하지 않는다. `CreatorSchedule`을 그대로 참조만 하므로 크리에이터가 일정을 수정하면 개인 캘린더에도 최신 값이 그대로 보인다.
+- `uk_member_calendar_entry_member_schedule(member_id, schedule_id)`가 중복 담기를 막는 유니크 제약이자 멱등성의 근거다. 담기(`PUT`)·제거(`DELETE`)는 모두 멱등하다 — 이미 담긴 일정을 다시 담거나 없는 일정을 제거해도 성공으로 처리한다.
+- `CreatorSchedule`은 하드 삭제되므로, 참조가 끊긴 행이 남지 않도록 `schedule_id` FK에 `ON DELETE CASCADE`를 둔다. 별도 Service 호출 없이 DB가 삭제를 전파한다.
+- 조회는 `member_calendar_entry ⋈ creator_schedule ⋈ creator`를 단일 JOIN Projection으로 수행해 크리에이터 이름을 포함한다(`MemberCalendarEntryRepository.findSchedulesByMemberIdAndRange`). per-entry로 반복 조회하지 않는다.
+
 ## 검증 범위(caveat)
 
-- 개인 캘린더(여러 크리에이터 일정을 모아보는 기능)는 이 도메인에 아직 없다. `CreatorSchedule`을 참조만 하는 별도 이슈로 진행한다.
 - Creator Space에 캘린더를 노출하는 UI 연동(신규 탭 등)은 `CreatorSpace`/`CreatorSpaceTemplate` 소유자와 별도로 조율한다.

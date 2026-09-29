@@ -6,6 +6,7 @@
 
 - `POST`/`PATCH`/`DELETE`/`GET /api/creator/calendar/schedules`(내 일정)는 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 query `userId`를 받지 않는다.
 - `GET /api/creators/{creatorId}/calendar/schedules`(공개 조회)는 인증이 필요 없다.
+- `PUT`/`DELETE`/`GET /api/me/calendar/schedules`(개인 캘린더)도 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다.
 - 존재하지 않는 Member·Creator·Schedule은 공통 `RESOURCE_NOT_FOUND`로 응답한다.
 
 ## 일정 필드
@@ -79,6 +80,37 @@
 ## GET /api/creators/{creatorId}/calendar/schedules/{scheduleId}
 
 인증 없이 조회할 수 있다. `scheduleId`가 해당 `creatorId` 소유가 아니면(다른 Creator 소유거나 존재하지 않으면) `RESOURCE_NOT_FOUND`다.
+
+## PUT /api/me/calendar/schedules/{scheduleId}
+
+인증된 사용자가 크리에이터 일정을 개인 캘린더에 담는다. 일정 내용을 복사하지 않고 `scheduleId`만 참조하므로, 크리에이터가 일정을 수정하면 개인 캘린더에도 최신 값이 그대로 보인다. 이미 담긴 일정을 다시 담아도 `200 SUCCESS`다(멱등). 존재하지 않는 `scheduleId`는 `RESOURCE_NOT_FOUND`다. 요청·성공 응답 본문은 없다.
+
+## DELETE /api/me/calendar/schedules/{scheduleId}
+
+인증된 사용자가 개인 캘린더에서 일정을 제거한다. 담겨 있지 않은 `scheduleId`를 제거해도 `204`다(멱등). 응답 본문은 없다.
+
+## GET /api/me/calendar/schedules
+
+인증된 사용자가 개인 캘린더에 담은 일정 중 `from`~`to`와 겹치는 일정을, 어느 크리에이터의 일정인지 알 수 있도록 `creatorName`을 포함해 조회한다. 그 외 필드와 정렬·기간 제약은 "기간 조회 계약"을 따른다.
+
+```json
+[
+  {
+    "scheduleId": 100,
+    "creatorId": 5,
+    "creatorName": "홍길동",
+    "scheduleType": "FAN_SIGN",
+    "title": "서울 팬사인회",
+    "description": "선착순 100명",
+    "startAt": "2026-10-10T05:00:00Z",
+    "endAt": "2026-10-10T07:00:00Z",
+    "timeZone": "Asia/Seoul",
+    "location": "서울 성수동",
+    "imageUrl": "https://cdn.cking.co.kr/schedule/1.png",
+    "externalUrl": "https://example.com/notice"
+  }
+]
+```
 
 ## 기간 조회 계약(GET 목록 공통)
 
