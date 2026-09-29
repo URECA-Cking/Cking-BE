@@ -34,6 +34,14 @@ cking:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
       submission-enabled: false
+  quiz:
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      model: ${GEMINI_MODEL:gemini-3.8-flash}
+      base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+      connect-timeout: ${GEMINI_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${GEMINI_READ_TIMEOUT:PT30S}
+      max-attempts: ${GEMINI_MAX_ATTEMPTS:2}
   snapshot:
     recovery:
       interval-ms: 60000
