@@ -20,6 +20,12 @@ spring:
     enabled: true
     baseline-on-migrate: true
 
+  servlet:
+    multipart:
+      # 구독 인증 이미지 계약은 파일 5MB까지 허용한다. 요청 전체에는 multipart overhead 여유를 둔다.
+      max-file-size: 5MB
+      max-request-size: 6MB
+
 management:
   endpoints:
     web:

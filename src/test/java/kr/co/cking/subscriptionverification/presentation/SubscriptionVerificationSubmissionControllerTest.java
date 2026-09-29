@@ -1,10 +1,11 @@
 package kr.co.cking.subscriptionverification.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,20 +17,24 @@ import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.subscriptionverification.application.SubscriptionVerificationFingerprint;
 import kr.co.cking.subscriptionverification.application.SubscriptionVerificationAvailability;
+import kr.co.cking.subscriptionverification.application.SubscriptionVerificationSubmissionCommand;
 import kr.co.cking.subscriptionverification.application.SubscriptionVerificationSubmissionResult;
 import kr.co.cking.subscriptionverification.application.SubscriptionVerificationSubmissionService;
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
-import kr.co.cking.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.util.unit.DataSize;
+import org.mockito.ArgumentCaptor;
 
 @WebMvcTest(SubscriptionVerificationSubmissionController.class)
 class SubscriptionVerificationSubmissionControllerTest {
@@ -38,6 +43,12 @@ class SubscriptionVerificationSubmissionControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Value("${spring.servlet.multipart.max-file-size}")
+    private DataSize maxFileSize;
+
+    @Value("${spring.servlet.multipart.max-request-size}")
+    private DataSize maxRequestSize;
 
     @MockitoBean
     private SubscriptionVerificationSubmissionService submissionService;
@@ -80,6 +91,30 @@ class SubscriptionVerificationSubmissionControllerTest {
                 .andExpect(jsonPath("$.data.status").value("VERIFYING"))
                 .andExpect(jsonPath("$.data.rewarded").value(false))
                 .andExpect(jsonPath("$.data.submittedAt").value("2026-09-29T03:00:00Z"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void _1MB를_초과한_이미지도_5MB_계약_안에서는_Controller를_통과한다() throws Exception {
+        byte[] imageBytes = new byte[1024 * 1024 + 1];
+        given(submissionService.submit(any()))
+                .willReturn(new SubscriptionVerificationSubmissionResult(verification(), true));
+
+        mockMvc.perform(multipart(
+                        "/api/creators/{creatorId}/missions/{missionId}/subscription-verifications",
+                        42L,
+                        103L)
+                        .file(new MockMultipartFile(
+                                "image", "proof.jpg", "image/jpeg", imageBytes))
+                        .param("requestId", REQUEST_ID))
+                .andExpect(status().isAccepted());
+
+        ArgumentCaptor<SubscriptionVerificationSubmissionCommand> commandCaptor =
+                ArgumentCaptor.forClass(SubscriptionVerificationSubmissionCommand.class);
+        then(submissionService).should().submit(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().imageBytes()).hasSize(imageBytes.length);
+        assertThat(maxFileSize).isEqualTo(DataSize.ofMegabytes(5));
+        assertThat(maxRequestSize).isEqualTo(DataSize.ofMegabytes(6));
     }
 
     @Test
