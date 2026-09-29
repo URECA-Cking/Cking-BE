@@ -1,5 +1,6 @@
 package kr.co.cking.subscriptionverification.application;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -136,6 +137,50 @@ class SubscriptionVerificationProcessingWorkerTest {
         then(fixture.objectStorage).should().get(claim.imageObjectKey());
         then(fixture.visionAnalysisPort).shouldHaveNoInteractions();
         then(fixture.completionService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void Provider_재시도_대기_인터럽트는_완료_상태를_저장하지_않는다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
+        willThrow(new VisionAnalysisException(
+                VisionAnalysisFailureType.RETRYABLE,
+                "DeepSeek API 재시도가 중단되었습니다.",
+                new InterruptedException()))
+                .given(fixture.visionAnalysisPort).analyze(any());
+
+        fixture.worker.process(123L);
+
+        then(fixture.completionService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 실패_상태_저장도_실패하면_예외를_전파하지_않는다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        willThrow(new IllegalStateException("object missing"))
+                .given(fixture.objectStorage).get(claim.imageObjectKey());
+        willThrow(new IllegalStateException("database unavailable"))
+                .given(fixture.completionService).complete(
+                        eq(claim.verificationId()),
+                        eq(claim.processingToken()),
+                        eq(SubscriptionVerificationProcessingOutcome.FAILED),
+                        eq("PROCESSING_FAILURE"),
+                        eq(fixture.clock.instant()));
+
+        assertThatCode(() -> fixture.worker.process(123L)).doesNotThrowAnyException();
+
+        then(fixture.completionService).should().complete(
+                eq(claim.verificationId()),
+                eq(claim.processingToken()),
+                eq(SubscriptionVerificationProcessingOutcome.FAILED),
+                eq("PROCESSING_FAILURE"),
+                eq(fixture.clock.instant()));
     }
 
     @Test
