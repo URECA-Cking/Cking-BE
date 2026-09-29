@@ -1,7 +1,6 @@
 package kr.co.cking.subscriptionverification.application;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import kr.co.cking.common.storage.ObjectStorage;
@@ -60,19 +59,32 @@ public class SubscriptionVerificationProcessingWorker {
 
     /** 선점한 Verification의 Object를 읽고 Provider 관측값을 최종 상태로 저장한다. */
     private void processClaimedVerification(SubscriptionVerificationProcessingClaim claim) {
+        SubscriptionVerificationDecision decision;
         try {
             byte[] image = objectStorage.get(claim.imageObjectKey());
-            SubscriptionVerificationDecision decision = analyzeWithProviderLimit(claim, image);
+            decision = analyzeWithProviderLimit(claim, image);
+        } catch (ProcessingInterruptedException exception) {
+            log.info("구독 인증 비동기 처리가 인터럽트되어 lease 만료 뒤 복구합니다. verificationId={}",
+                    claim.verificationId());
+            return;
+        } catch (VisionAnalysisException exception) {
+            completeFailed(claim, "PROVIDER_FAILURE", exception);
+            return;
+        } catch (RuntimeException exception) {
+            completeFailed(claim, "PROCESSING_FAILURE", exception);
+            return;
+        }
+
+        try {
             completionService.complete(
                     claim.verificationId(),
                     claim.processingToken(),
                     outcomeOf(decision),
                     decision.reasonCode(),
                     clock.instant());
-        } catch (VisionAnalysisException exception) {
-            completeFailed(claim, "PROVIDER_FAILURE", exception);
         } catch (RuntimeException exception) {
-            completeFailed(claim, "PROCESSING_FAILURE", exception);
+            log.warn("구독 인증 판정 결과 저장에 실패해 lease 만료 뒤 복구합니다. verificationId={}",
+                    claim.verificationId(), exception);
         }
     }
 
@@ -90,10 +102,7 @@ public class SubscriptionVerificationProcessingWorker {
                             image, claim.targetChannelName(), claim.targetChannelHandle())));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new VisionAnalysisException(
-                    kr.co.cking.subscriptionverification.application.vision.VisionAnalysisFailureType.RETRYABLE,
-                    "Provider 호출 대기 중 작업이 중단되었습니다.",
-                    exception);
+            throw new ProcessingInterruptedException(exception);
         } finally {
             if (acquired) {
                 providerCalls.release();
@@ -118,11 +127,24 @@ public class SubscriptionVerificationProcessingWorker {
             RuntimeException exception) {
         log.warn("구독 인증 비동기 처리에 실패했습니다. verificationId={}, reasonCode={}",
                 claim.verificationId(), reasonCode, exception);
-        completionService.complete(
-                claim.verificationId(),
-                claim.processingToken(),
-                SubscriptionVerificationProcessingOutcome.FAILED,
-                reasonCode,
-                Instant.now(clock));
+        try {
+            completionService.complete(
+                    claim.verificationId(),
+                    claim.processingToken(),
+                    SubscriptionVerificationProcessingOutcome.FAILED,
+                    reasonCode,
+                    clock.instant());
+        } catch (RuntimeException completionException) {
+            log.warn("구독 인증 실패 상태 저장에 실패해 lease 만료 뒤 복구합니다. verificationId={}",
+                    claim.verificationId(), completionException);
+        }
+    }
+
+    /** 인터럽트된 Executor 작업을 Provider 실패와 구분해 Recovery에 맡긴다. */
+    private static final class ProcessingInterruptedException extends RuntimeException {
+
+        private ProcessingInterruptedException(InterruptedException cause) {
+            super(cause);
+        }
     }
 }
