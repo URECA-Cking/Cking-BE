@@ -85,6 +85,8 @@ class CreatorSpaceShareE2EIntegrationTest {
             jdbcTemplate.update("DELETE FROM ticket_earn_request WHERE request_id IN "
                     + "(SELECT request_id FROM ticket_once_earn_request WHERE member_id = ?)", memberId);
             jdbcTemplate.update("DELETE FROM ticket_once_earn_request WHERE member_id = ?", memberId);
+        }
+        for (Long memberId : memberIds) {
             jdbcTemplate.update("DELETE FROM creator_space_slug_reservation WHERE creator_id IN "
                     + "(SELECT creator_id FROM creator WHERE member_id = ?)", memberId);
             jdbcTemplate.update("DELETE FROM creator_space WHERE creator_id IN "
@@ -162,14 +164,20 @@ class CreatorSpaceShareE2EIntegrationTest {
         awaitBalance(viewer.getMemberId(), creator.creatorId(), 1L);
         CreatorSpaceView changed = creatorSpaceProfileService.changeSlug(creator.ownerMemberId(), "after-share-slug");
 
-        assertThat(creatorSpaceProfileService.findBySlug(changed.space().getSlug()).space().getCreatorId())
-                .isEqualTo(creator.creatorId());
+        CreatorSpaceView resolved = creatorSpaceProfileService.findBySlug(changed.space().getSlug());
+        assertThat(resolved.space().getCreatorId()).isEqualTo(creator.creatorId());
         assertThatThrownBy(() -> creatorSpaceProfileService.findBySlug(creator.slug()))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
         assertThat(missionCompletionRepository.findByRequestId(requestId.toString()).orElseThrow().getCreatorId())
                 .isEqualTo(creator.creatorId());
+
+        Member newViewer = createMember("새slug공유참여자");
+        MissionCompleteOutcome outcome = complete(resolved.space().getCreatorId(), newViewer.getMemberId(), UUID.randomUUID());
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(awaitBalance(newViewer.getMemberId(), creator.creatorId(), 1L)).isEqualTo(1L);
     }
 
     /** 공개 조회와 SHARE 완료에 필요한 Creator·Space·기본 SHARE 미션을 직접 만든다. */
