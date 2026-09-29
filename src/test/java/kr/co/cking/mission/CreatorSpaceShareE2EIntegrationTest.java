@@ -36,6 +36,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,6 +49,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CreatorSpaceShareE2EIntegrationTest {
 
     private static final long AWAIT_TIMEOUT_MILLIS = 8000L;
+    private static final long FUTURE_TIMEOUT_SECONDS = 10L;
 
     @Autowired
     private CreatorSpaceProfileService creatorSpaceProfileService;
@@ -141,13 +143,22 @@ class CreatorSpaceShareE2EIntegrationTest {
             Future<String> third = executor.submit(() -> completeAfterStart(start, creator.creatorId(), viewer.getMemberId()));
             start.countDown();
 
-            List<String> results = List.of(first.get(), second.get(), third.get());
+            List<String> results = List.of(
+                    first.get(FUTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                    second.get(FUTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                    third.get(FUTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
             assertThat(results).containsExactlyInAnyOrder(
                     EarnResultCode.EARN_ACCEPTED.name(),
                     kr.co.cking.mission.domain.MissionErrorCode.DUPLICATE_MISSION.code(),
                     kr.co.cking.mission.domain.MissionErrorCode.DUPLICATE_MISSION.code());
             assertThat(awaitBalance(viewer.getMemberId(), creator.creatorId(), 1L)).isEqualTo(1L);
             assertThat(currentBalance(viewer.getMemberId(), creator.creatorId())).isEqualTo(1L);
+            assertThat(countMissionCompletions(viewer.getMemberId(), creator.creatorId(), creator.missionId()))
+                    .isEqualTo(1);
+            assertThat(countEarnLedgers(viewer.getMemberId(), creator.creatorId())).isEqualTo(1);
+            assertThat(countOnceEarnRequests(viewer.getMemberId(), creator.creatorId(), creator.missionId())).isEqualTo(1);
+            assertThat(onceEarnRequestStatus(viewer.getMemberId(), creator.creatorId(), creator.missionId()))
+                    .isEqualTo("ACCEPTED");
         } finally {
             executor.shutdownNow();
         }
@@ -235,6 +246,38 @@ class CreatorSpaceShareE2EIntegrationTest {
         return userTicketBalanceRepository.findByMemberIdAndCreatorId(memberId, creatorId)
                 .map(UserTicketBalance::getBalance)
                 .orElse(0L);
+    }
+
+    /** 동시 SHARE 요청이 한 번의 완료 이력만 남겼는지 확인한다. */
+    private int countMissionCompletions(Long memberId, Long creatorId, Long missionId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM mission_completion
+                WHERE member_id = ? AND creator_id = ? AND mission_id = ?
+                """, Integer.class, memberId, creatorId, missionId);
+    }
+
+    /** 동시 SHARE 요청이 한 번의 EARN Ledger만 남겼는지 확인한다. */
+    private int countEarnLedgers(Long memberId, Long creatorId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM ticket_ledger
+                WHERE member_id = ? AND creator_id = ? AND type = 'EARN'
+                """, Integer.class, memberId, creatorId);
+    }
+
+    /** ONCE Business Key가 하나만 생성됐는지 확인한다. */
+    private int countOnceEarnRequests(Long memberId, Long creatorId, Long missionId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM ticket_once_earn_request
+                WHERE member_id = ? AND creator_id = ? AND mission_id = ?
+                """, Integer.class, memberId, creatorId, missionId);
+    }
+
+    /** Redis 성공 뒤 ONCE Business Key가 ACCEPTED로 확정됐는지 확인한다. */
+    private String onceEarnRequestStatus(Long memberId, Long creatorId, Long missionId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT status FROM ticket_once_earn_request
+                WHERE member_id = ? AND creator_id = ? AND mission_id = ?
+                """, String.class, memberId, creatorId, missionId);
     }
 
     /** 테스트에서 사용할 USER Member를 만들고 정리 대상에 기록한다. */
