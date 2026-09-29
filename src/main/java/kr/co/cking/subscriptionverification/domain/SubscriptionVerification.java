@@ -301,6 +301,9 @@ public class SubscriptionVerification {
         if (processingStartedAt != null && processedAt.isBefore(processingStartedAt)) {
             throw new IllegalArgumentException("처리 완료 시각은 시작 시각보다 빠를 수 없습니다.");
         }
+        if (processingLeaseUntil == null || !processingLeaseUntil.isAfter(processedAt)) {
+            throw new IllegalStateException("처리 lease가 만료되었습니다.");
+        }
     }
 
     private void requireApprovedRewardState(Instant changedAt) {

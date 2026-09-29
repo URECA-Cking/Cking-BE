@@ -27,7 +27,10 @@ import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.subscriptionverification.domain.CreatorYoutubeChannel;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationImageReuseType;
 import kr.co.cking.subscriptionverification.repository.CreatorYoutubeChannelRepository;
+import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationImageReuseRepository;
+import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationImageHashLockRepository;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +52,12 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
     private SubscriptionVerificationRepository verificationRepository;
 
     @Autowired
+    private SubscriptionVerificationImageReuseRepository imageReuseRepository;
+
+    @Autowired
+    private SubscriptionVerificationImageHashLockRepository hashLockRepository;
+
+    @Autowired
     private CreatorYoutubeChannelRepository channelRepository;
 
     @Autowired
@@ -67,6 +76,10 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
     private Member participant;
     private Creator creator;
     private Mission mission;
+    private Member otherOwner;
+    private Member otherParticipant;
+    private Creator otherCreator;
+    private Mission otherMission;
     private byte[] image;
 
     @BeforeEach
@@ -85,18 +98,58 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
                 "구독 인증 채널",
                 "@subscription_" + suffix,
                 java.time.Instant.now()));
-        image = validImage();
+        otherOwner = memberRepository.saveAndFlush(
+                new Member("subscription-other-owner-" + suffix, null, null, MemberRole.USER));
+        otherParticipant = memberRepository.saveAndFlush(
+                new Member("subscription-other-user-" + suffix, null, null, MemberRole.USER));
+        otherCreator = creatorRepository.saveAndFlush(
+                new Creator(otherOwner.getMemberId(), "subscription-other-creator-" + suffix));
+        otherMission = missionRepository.saveAndFlush(new Mission(
+                otherCreator.getCreatorId(), MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null));
+        channelRepository.saveAndFlush(new CreatorYoutubeChannel(
+                otherCreator.getCreatorId(),
+                "다른 구독 인증 채널",
+                "@subscription_other_" + suffix,
+                java.time.Instant.now()));
+        image = validImage(suffix.hashCode());
     }
 
     @AfterEach
     void cleanUp() {
+        List<SubscriptionVerification> verifications = new java.util.ArrayList<>();
         if (participant != null && creator != null && mission != null) {
-            List<SubscriptionVerification> verifications =
-                    verificationRepository.findAllByMemberIdAndCreatorIdAndMissionId(
-                            participant.getMemberId(), creator.getCreatorId(), mission.getMissionId());
+            verifications.addAll(verificationRepository.findAllByMemberIdAndCreatorIdAndMissionId(
+                    participant.getMemberId(), creator.getCreatorId(), mission.getMissionId()));
+        }
+        if (otherParticipant != null && otherCreator != null && otherMission != null) {
+            verifications.addAll(verificationRepository.findAllByMemberIdAndCreatorIdAndMissionId(
+                    otherParticipant.getMemberId(), otherCreator.getCreatorId(), otherMission.getMissionId()));
+        }
+        if (!verifications.isEmpty()) {
             verifications.forEach(verification -> objectStorage.delete(verification.getImageObjectKey()));
+            imageReuseRepository.deleteAllById(verifications.stream()
+                    .map(SubscriptionVerification::getVerificationId).toList());
+            imageReuseRepository.flush();
             verificationRepository.deleteAll(verifications);
             verificationRepository.flush();
+            hashLockRepository.deleteAllById(verifications.stream()
+                    .map(SubscriptionVerification::getImageSha256).distinct().toList());
+            hashLockRepository.flush();
+        }
+        if (otherCreator != null) {
+            channelRepository.deleteById(otherCreator.getCreatorId());
+        }
+        if (otherMission != null) {
+            missionRepository.deleteById(otherMission.getMissionId());
+        }
+        if (otherCreator != null) {
+            creatorRepository.deleteById(otherCreator.getCreatorId());
+        }
+        if (otherParticipant != null) {
+            memberRepository.deleteById(otherParticipant.getMemberId());
+        }
+        if (otherOwner != null) {
+            memberRepository.deleteById(otherOwner.getMemberId());
         }
         if (creator != null) {
             channelRepository.deleteById(creator.getCreatorId());
@@ -165,6 +218,39 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
         assertThat(objectStorage.get(persisted.getImageObjectKey())).isNotEmpty();
     }
 
+    /** 다른 사용자·Creator의 동일 이미지 동시 제출은 최초 한 건과 재사용 한 건으로 기록한다. */
+    @Test
+    void 동일_이미지_동시_제출은_재사용_감사_기록으로_수렴한다() throws Exception {
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<SubscriptionVerificationSubmissionResult> first = executor.submit(() -> {
+                start.await();
+                return submit(participant, creator, mission, UUID.randomUUID());
+            });
+            Future<SubscriptionVerificationSubmissionResult> second = executor.submit(() -> {
+                start.await();
+                return submit(otherParticipant, otherCreator, otherMission, UUID.randomUUID());
+            });
+            start.countDown();
+            List<Long> verificationIds = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS))
+                    .stream().map(result -> result.verification().getVerificationId()).toList();
+
+            assertThat(imageReuseRepository.findAllById(verificationIds))
+                    .extracting(reuse -> reuse.getReuseType())
+                    .containsExactlyInAnyOrder(
+                            SubscriptionVerificationImageReuseType.FIRST_USE,
+                            SubscriptionVerificationImageReuseType.DIFFERENT_MEMBER);
+            assertThat(imageReuseRepository.findAllById(verificationIds))
+                    .filteredOn(reuse -> reuse.getReuseType()
+                            == SubscriptionVerificationImageReuseType.DIFFERENT_MEMBER)
+                    .singleElement()
+                    .satisfies(reuse -> assertThat(reuse.getMatchedVerificationId()).isIn(verificationIds));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     private List<Object> executeConcurrently(UUID firstRequestId, UUID secondRequestId) throws Exception {
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -192,11 +278,24 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
         }
     }
 
-    private byte[] validImage() throws Exception {
+    /** 각 사용자·Creator·Mission 조합으로 구독 인증 이미지를 제출한다. */
+    private SubscriptionVerificationSubmissionResult submit(
+            Member targetParticipant,
+            Creator targetCreator,
+            Mission targetMission,
+            UUID requestId
+    ) {
+        return submissionService.submit(new SubscriptionVerificationSubmissionCommand(
+                targetParticipant.getMemberId(), targetCreator.getCreatorId(), targetMission.getMissionId(),
+                requestId, image));
+    }
+
+    /** 테스트 실행마다 구분되는 정규화 이미지를 만들어 이전 실행 이력과 격리한다. */
+    private byte[] validImage(int rgb) throws Exception {
         BufferedImage bufferedImage = new BufferedImage(480, 480, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = bufferedImage.createGraphics();
         try {
-            graphics.setColor(Color.BLACK);
+            graphics.setColor(new Color(rgb & 0x00FFFFFF));
             graphics.fillRect(0, 0, 480, 480);
         } finally {
             graphics.dispose();

@@ -15,6 +15,7 @@ class SubscriptionVerificationAfterCommitListener {
 
     private final ObjectProvider<SubscriptionVerificationProcessingTrigger> triggerProvider;
 
+    /** commit된 Verification만 Trigger에 넘기고 제출 결과를 바꾸지 않도록 실패를 격리한다. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onSubmitted(SubscriptionVerificationSubmittedEvent event) {
         try {

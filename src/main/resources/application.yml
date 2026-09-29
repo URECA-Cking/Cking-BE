@@ -40,6 +40,16 @@ cking:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
       submission-enabled: false
+      processing-executor:
+        # Provider 계정 한도에 맞춘 인스턴스별 동시 호출 수이며 max-pool-size와 같아야 한다.
+        core-pool-size: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_CORE_POOL_SIZE:2}
+        max-pool-size: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_MAX_POOL_SIZE:2}
+        # 무제한 queue를 금지하고, 포화 거절 작업은 PENDING으로 남겨 Recovery가 다시 제출한다.
+        queue-capacity: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_QUEUE_CAPACITY:20}
+        provider-max-concurrent-calls: ${SUBSCRIPTION_VERIFICATION_PROVIDER_MAX_CONCURRENT_CALLS:2}
+        # connect/read timeout과 Provider 내부 재시도·backoff보다 길게 설정한다.
+        processing-lease-duration: ${SUBSCRIPTION_VERIFICATION_PROCESSING_LEASE_DURATION:PT90S}
+        await-termination-seconds: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
       deepseek:
         # API 키는 배포 환경의 DEEPSEEK_API_KEY Secret으로만 주입한다.
         api-key: ${DEEPSEEK_API_KEY:}

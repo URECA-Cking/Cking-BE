@@ -14,7 +14,10 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationImageReuse;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationImageReuseType;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
+import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationImageReuseRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -28,8 +31,11 @@ class SubscriptionVerificationQueryServiceTest {
     private final MemberQueryService memberQueryService = mock(MemberQueryService.class);
     private final SubscriptionVerificationRepository verificationRepository =
             mock(SubscriptionVerificationRepository.class);
+    private final SubscriptionVerificationImageReuseRepository imageReuseRepository =
+            mock(SubscriptionVerificationImageReuseRepository.class);
     private final SubscriptionVerificationQueryService service =
-            new SubscriptionVerificationQueryService(memberQueryService, verificationRepository);
+            new SubscriptionVerificationQueryService(
+                    memberQueryService, verificationRepository, imageReuseRepository);
 
     @Test
     void 본인_인증을_공개_상태로_조회한다() {
@@ -113,6 +119,50 @@ class SubscriptionVerificationQueryServiceTest {
         assertError(() -> service.getMine(MEMBER_ID, VERIFICATION_ID), CommonErrorCode.RESOURCE_NOT_FOUND);
 
         then(verificationRepository).should(never()).findById(VERIFICATION_ID);
+    }
+
+    @Test
+    void 관리자는_이미지_재사용_감사_기록을_조회한다() {
+        SubscriptionVerification verification = verification(MEMBER_ID);
+        SubscriptionVerificationImageReuse reuse = new SubscriptionVerificationImageReuse(
+                VERIFICATION_ID, 122L, SubscriptionVerificationImageReuseType.DIFFERENT_MEMBER,
+                Instant.parse("2026-09-28T03:01:00Z"));
+        given(verificationRepository.findById(VERIFICATION_ID)).willReturn(Optional.of(verification));
+        given(imageReuseRepository.findById(VERIFICATION_ID)).willReturn(Optional.of(reuse));
+
+        SubscriptionVerificationImageReuseQueryResult result =
+                service.getImageReuseForAdmin(MEMBER_ID, VERIFICATION_ID);
+
+        assertThat(result.matchedVerificationId()).isEqualTo(122L);
+        assertThat(result.reuseType()).isEqualTo(SubscriptionVerificationImageReuseType.DIFFERENT_MEMBER);
+        then(memberQueryService).should().validateAdmin(MEMBER_ID);
+    }
+
+    @Test
+    void 관리자가_아니면_감사_기록을_조회하지_않는다() {
+        org.mockito.BDDMockito.willThrow(new BusinessException(CommonErrorCode.FORBIDDEN))
+                .given(memberQueryService).validateAdmin(MEMBER_ID);
+
+        assertError(() -> service.getImageReuseForAdmin(MEMBER_ID, VERIFICATION_ID), CommonErrorCode.FORBIDDEN);
+
+        then(verificationRepository).should(never()).findById(VERIFICATION_ID);
+    }
+
+    @Test
+    void 대상_Verification이_없으면_감사_기록_조회는_실패한다() {
+        given(verificationRepository.findById(VERIFICATION_ID)).willReturn(Optional.empty());
+
+        assertError(() -> service.getImageReuseForAdmin(MEMBER_ID, VERIFICATION_ID),
+                SubscriptionVerificationErrorCode.VERIFICATION_NOT_FOUND);
+    }
+
+    @Test
+    void 감사_기록이_없으면_VERIFICATION_NOT_FOUND다() {
+        given(verificationRepository.findById(VERIFICATION_ID)).willReturn(Optional.of(verification(MEMBER_ID)));
+        given(imageReuseRepository.findById(VERIFICATION_ID)).willReturn(Optional.empty());
+
+        assertError(() -> service.getImageReuseForAdmin(MEMBER_ID, VERIFICATION_ID),
+                SubscriptionVerificationErrorCode.VERIFICATION_NOT_FOUND);
     }
 
     private SubscriptionVerification verification(Long memberId) {
