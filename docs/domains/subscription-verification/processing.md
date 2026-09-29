@@ -57,18 +57,18 @@ lease가 만료돼 새 Worker가 새 token으로 재선점했다면 이전 Worke
 
 ## 전용 Async Executor와 호출 제한
 
-구독 인증은 Spring 기본 Async executor를 사용하지 않고 bounded `ThreadPoolTaskExecutor`를 별도 Bean으로 구성해 `@Async`에서 이름을 명시한다.
+구독 인증은 Spring 기본 Async executor를 사용하지 않고 `subscriptionVerificationExecutor`라는 bounded `ThreadPoolTaskExecutor`를 별도 Bean으로 구성해 `@Async("subscriptionVerificationExecutor")`에서 이름을 명시한다.
 
-- core/max pool size, queue capacity, VLM 동시 호출 수를 설정값으로 분리한다.
+- core/max pool size, queue capacity, VLM 동시 호출 수를 설정값으로 분리한다. 기본값은 core/max=2, queue=20, Provider 동시 호출=2이며 `maxPoolSize`와 Provider 동시 호출 수가 일치하지 않으면 애플리케이션을 시작하지 않는다.
 - queue는 무제한으로 두지 않는다.
-- 거절 정책은 요청 thread에서 VLM을 실행하는 `CallerRunsPolicy`를 사용하지 않는다.
-- queue 거절은 로그·metric을 남기고 행을 `PENDING`으로 유지해 Recovery가 재제출한다.
+- 거절 정책은 요청 thread에서 VLM을 실행하는 `CallerRunsPolicy`가 아닌 `AbortPolicy`를 사용한다.
+- queue 거절은 `subscription_verification.executor.rejected` metric과 경고 로그를 남기고, Claim 전이 전이므로 행과 Object를 `PENDING`으로 유지해 Recovery가 재제출한다. 거절 예외는 AFTER_COMMIT listener와 HTTP 요청까지 전파하지 않는다.
 - Recovery batch size는 executor 수용량을 고려해 제한하며 `nextAttemptAt` 이전 행은 제출하지 않는다.
-- 애플리케이션 종료 시 bounded graceful shutdown을 사용하되, 미완료 작업의 최종 복구는 DB 상태와 Recovery가 담당한다.
+- 애플리케이션 종료 시 30초 bounded graceful shutdown을 사용하되, 미완료 작업의 최종 복구는 DB 상태와 Recovery가 담당한다.
 
-Executor 크기는 rate limiter가 아니다. Provider의 계정 단위 동시 호출·분당 요청 제한이 있으면 별도 rate limiter를 둔다. 다중 인스턴스의 합산 제한이 필요한 Provider라면 Redis 등 공유 저장소 기반 limiter를 사용하거나 최대 replica 수를 반영해 인스턴스별 한도를 나눈다.
+Executor 크기는 rate limiter가 아니다. Worker는 별도 semaphore로 인스턴스별 Provider 동시 호출을 제한한다. 다중 인스턴스의 합산 제한이 필요한 Provider라면 Redis 등 공유 저장소 기반 limiter를 사용하거나 최대 replica 수를 반영해 인스턴스별 한도를 나눈다.
 
-`processingLeaseUntil`은 선택 모델의 connect/read timeout, 한 처리 시도 안의 retry·backoff 최대 시간과 안전 여유보다 길어야 한다. 정확한 executor 크기, queue capacity, provider 호출 한도와 lease 시간은 모델 벤치마크 후 정본에 확정한다. 제한 없는 기본값이나 모델 최대 처리 시간보다 짧은 lease를 사용하지 않는다.
+`processingLeaseUntil`은 선택 모델의 connect/read timeout, 한 처리 시도 안의 retry·backoff 최대 시간과 안전 여유보다 길어야 한다. 기본 90초는 현재 connect 2초 + read 30초 + 최대 2회 시도와 1초 backoff보다 길다. Provider rate limit 변경 시 `SUBSCRIPTION_VERIFICATION_EXECUTOR_MAX_POOL_SIZE`와 `SUBSCRIPTION_VERIFICATION_PROVIDER_MAX_CONCURRENT_CALLS`를 함께 같은 값으로 조정한다. 제한 없는 기본값이나 모델 최대 처리 시간보다 짧은 lease를 사용하지 않는다.
 
 ## Vision 분석 Port
 
