@@ -107,5 +107,11 @@
 | 103 | 외부 | Follow | USER | GET | `/api/creators/{creatorId}/follow` | 크리에이터 팔로우 여부 조회 | - |
 | 104 | 외부 | Follow | USER | GET | `/api/me/follows` | 내 팔로우 목록 | - |
 | 105 | 내부 | Follow | INTERNAL | CALL | `CreatorFollowQueryService.isFollowing(memberId, creatorId)` | 다른 도메인의 팔로우 여부 확인 | - |
+| 106 | 외부 | Post | CREATOR | POST | `/api/creator/posts/images` | 게시글 이미지 1장 업로드 | - |
+| 107 | 외부 | Post | CREATOR | POST | `/api/creator/posts` | 게시글 작성 | - |
+| 108 | 외부 | Post | CREATOR | PATCH | `/api/creator/posts/{postId}` | 게시글 수정(전체 필드 교체) | 상태 기반 |
+| 109 | 외부 | Post | CREATOR | DELETE | `/api/creator/posts/{postId}` | 게시글 삭제(하드 삭제) | 상태 기반 |
+| 110 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts` | 크리에이터 게시글 목록(팔로워 공개는 잠금 표시) | - |
+| 111 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}` | 크리에이터 게시글 상세 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
