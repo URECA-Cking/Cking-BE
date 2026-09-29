@@ -30,6 +30,10 @@ management:
       enabled: true
 
 cking:
+  verification:
+    youtube-subscription:
+      # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
+      submission-enabled: false
   snapshot:
     recovery:
       interval-ms: 60000
