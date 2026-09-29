@@ -55,8 +55,8 @@ public class ImageNormalizer {
         DecodedImage decoded;
         int orientation;
         try {
-            decoded = decodeAfterHeaderValidation(stableSourceBytes, policy);
             orientation = readExifOrientation(stableSourceBytes);
+            decoded = decodeAfterHeaderValidation(stableSourceBytes, orientation, policy);
         } catch (IOException | ImageProcessingException e) {
             throw new InvalidImageException();
         }
@@ -84,8 +84,8 @@ public class ImageNormalizer {
         }
     }
 
-    private DecodedImage decodeAfterHeaderValidation(byte[] sourceBytes, ImagePolicy policy)
-            throws IOException {
+    private DecodedImage decodeAfterHeaderValidation(
+            byte[] sourceBytes, int orientation, ImagePolicy policy) throws IOException {
         try (ImageInputStream input =
                 ImageIO.createImageInputStream(new ByteArrayInputStream(sourceBytes))) {
             if (input == null) {
@@ -107,7 +107,7 @@ public class ImageNormalizer {
                 reader.setInput(input, true, true);
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
-                validateDimensions(width, height, policy);
+                validateDimensions(width, height, orientation, policy);
 
                 BufferedImage image = reader.read(0);
                 if (image == null) {
@@ -120,8 +120,12 @@ public class ImageNormalizer {
         }
     }
 
-    private void validateDimensions(int width, int height, ImagePolicy policy) {
-        if (width < policy.minWidth() || height < policy.minHeight()) {
+    /** 최소 해상도는 EXIF Orientation을 반영한 최종 표시 방향 기준으로 검증한다. */
+    private void validateDimensions(int width, int height, int orientation, ImagePolicy policy) {
+        boolean swapsAxes = swapsAxes(orientation);
+        int orientedWidth = swapsAxes ? height : width;
+        int orientedHeight = swapsAxes ? width : height;
+        if (orientedWidth < policy.minWidth() || orientedHeight < policy.minHeight()) {
             throw new InvalidImageException();
         }
         if ((long) width * (long) height > MAX_PIXEL_COUNT) {
@@ -147,7 +151,7 @@ public class ImageNormalizer {
     private BufferedImage normalize(BufferedImage source, int orientation, ImagePolicy policy) {
         int sourceWidth = source.getWidth();
         int sourceHeight = source.getHeight();
-        boolean swapsAxes = orientation >= 5 && orientation <= 8;
+        boolean swapsAxes = swapsAxes(orientation);
         int orientedWidth = swapsAxes ? sourceHeight : sourceWidth;
         int orientedHeight = swapsAxes ? sourceWidth : sourceHeight;
         int longestEdge = Math.max(orientedWidth, orientedHeight);
@@ -179,6 +183,10 @@ public class ImageNormalizer {
             graphics.dispose();
         }
         return result;
+    }
+
+    private boolean swapsAxes(int orientation) {
+        return orientation >= 5 && orientation <= 8;
     }
 
     private AffineTransform orientationTransform(

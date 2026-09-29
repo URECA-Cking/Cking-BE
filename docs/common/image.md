@@ -19,7 +19,7 @@
 
 ## 도메인별 정책
 
-`ImagePolicy(minWidth, minHeight, maxLongEdge)`로 도메인이 정한다.
+`ImagePolicy(minWidth, minHeight, maxLongEdge)`로 도메인이 정한다. 최소 해상도는 EXIF Orientation을 반영한 최종 표시 방향 기준으로 검증하므로, 가로·세로 최소값이 다른 정책도 정규화 결과 크기와 일치한다. 검증은 픽셀 전체를 디코딩하기 전에 헤더와 EXIF만으로 수행한다.
 
 | 도메인 | 최소 해상도 | 긴 변 최대 | 잘못된 이미지 오류 |
 | --- | --- | --- | --- |
