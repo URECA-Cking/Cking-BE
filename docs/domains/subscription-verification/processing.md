@@ -185,16 +185,18 @@ Verification 승인과 Ticket Stream/DB 반영은 하나의 DB Transaction으로
 
 ## Recovery Scheduler
 
-최종 구현은 일정 batch 크기로 다음 대상을 조회한다.
+Scheduler는 기본 1분 주기와 batch 20건으로 다음 대상을 조회한다. 설정으로 비활성화할 수 있으며 batch 크기는 전용 Executor의 max pool과 queue 용량 합계를 넘을 수 없다.
 
 1. 기준 시간보다 오래된 `PENDING`: 다시 처리 이벤트를 발행한다.
 2. `processingLeaseUntil`이 지난 `PROCESSING`: 새 processing token으로 조건부 재선점한다.
 3. `APPROVED`이며 reward가 `PENDING`/`RETRY_REQUIRED`: 같은 `rewardRequestId`와 저장된 `rewardPeriodKey`로 Ticket ONCE 적립을 재시도한다.
 4. Ticket ONCE durable request가 `PENDING`: 같은 requestId로 Redis 수락 여부를 재확인하고 `ACCEPTED`로 수렴시킨다.
 
-정확한 processing timeout, retry limit, backoff, scheduler interval은 선택 모델의 실제 latency와 rate limit 측정 후 확정한다. 값이 정해지기 전 임의 상수를 정본으로 만들지 않는다.
+`PENDING`은 생성 후 1분이 지난 건부터 제출한다. Processing Claim은 기본 최대 3회이며 Claim 조건 자체에 `attemptCount < maxProcessingAttempts`를 포함한다. 마지막 Claim의 lease가 만료되면 조건부 UPDATE로 `FAILED`, `PROCESSING_ATTEMPTS_EXHAUSTED`를 저장하고 `activeGuard`를 해제한다. 이 상태의 사용자 공개 결과는 `TEMPORARY_ERROR`다.
 
-Recovery는 batch 조회, PK 기반 tie-breaker, 다중 인스턴스 중복 선점을 고려한다. 같은 Verification을 여러 실행이 발견해도 조건부 UPDATE와 Ticket ONCE의 DB Business Key·비만료 Redis key로 결과가 하나로 수렴해야 한다. 반복 실패는 backoff와 운영 알림을 적용하지만 승인된 보상을 포기하는 terminal 상태로 바꾸지 않는다.
+보상 Recovery는 `reward_attempt_count`를 처리 횟수와 분리해 관리한다. 실패하면 `RETRY_REQUIRED`와 `nextAttemptAt`을 조건부 저장하고 기본 1분, 2분, 4분 순서의 지수 backoff를 적용하되 최대 1시간으로 제한한다. 보상에는 시도 상한이나 terminal 실패를 두지 않는다.
+
+Recovery는 생성/갱신 시각과 PK 기반 tie-breaker, 다중 인스턴스 중복 선점을 고려한다. 같은 Verification을 여러 실행이 발견해도 Processing Claim, 시도 상한 종료, 보상 backoff의 조건부 UPDATE와 Ticket ONCE의 DB Business Key·비만료 Redis key로 결과가 하나로 수렴해야 한다. 한 건의 실패는 같은 batch의 다른 건을 중단하지 않는다.
 
 ## 이미지 보관 만료
 

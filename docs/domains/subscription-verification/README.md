@@ -113,7 +113,7 @@ activeTo = null
 | 채널 동결 | `target_channel_name`, `target_channel_handle` |
 | 이미지 | `image_object_key`, 정규화 이미지 기준 `image_sha256`, `normalization_version` |
 | 처리 | `status`, `reason_code`, `attempt_count`, `processing_token`, `processing_started_at`, `processing_lease_until`, `next_attempt_at`, `processed_at` |
-| 보상 | 서버 생성 `reward_request_id` UUID, 생성 시 UTC 날짜로 동결한 `reward_period_key`, `reward_status`(`NOT_REQUESTED`, `PENDING`, `ACCEPTED`, `RETRY_REQUIRED`) |
+| 보상 | 서버 생성 `reward_request_id` UUID, 생성 시 UTC 날짜로 동결한 `reward_period_key`, `reward_status`(`NOT_REQUESTED`, `PENDING`, `ACCEPTED`, `RETRY_REQUIRED`), `reward_attempt_count` |
 | 동시성 | `active_guard`, `approved_guard`, 낙관적 잠금 `version` |
 | 감사 시각 | `created_at`, `updated_at` |
 
@@ -157,7 +157,8 @@ UNIQUE(member_id, creator_id, mission_id, approved_guard)
 - `PENDING`/`PROCESSING`: `active_guard=1`, 그 외 `NULL`
 - `APPROVED`: `approved_guard=1`, 그 외 `NULL`
 - MySQL UNIQUE가 여러 `NULL`을 허용하는 성질로 과거 종료 이력은 보존한다.
-- `INDEX(status, next_attempt_at)`, `INDEX(image_sha256)`, `INDEX(member_id, creator_id, mission_id, created_at)`을 둔다.
+- 처리·보상 Recovery는 상태, lease/다음 시도 시각과 식별자를 포함한 전용 복합 Index를 사용한다.
+- 이미지 Hash와 사용자별 이력 조회에도 별도 Index를 둔다.
 
 ONCE 인증 완료의 정본은 `APPROVED` Verification이다. 보상의 영구 멱등성은 아래 Ticket ONCE 적립 계약이 별도로 보장한다. Ticket의 UTC 일일 Guard와 25시간 `idem:mission:{requestId}`를 ONCE 업무키로 재사용하지 않는다.
 
@@ -231,6 +232,8 @@ RETRY_REQUIRED → ACCEPTED | RETRY_REQUIRED
 - timeout, Redis 장애, 결과 불명 등: `RETRY_REQUIRED`
 
 보상에는 terminal `FAILED`를 두지 않는다. 승인된 사용자가 보상 없이 영구 종료되지 않도록 Recovery가 같은 `rewardRequestId`와 `rewardPeriodKey`로 `ACCEPTED`까지 재시도한다. 반복 실패는 지수 backoff와 운영 알림을 적용하되 상태는 복구 가능하게 유지한다. Verification 코드가 `mission_completion`, `ticket_ledger`, `user_ticket_balance`를 직접 변경해서는 안 된다.
+
+Recovery 기본값은 1분 주기, batch 20건, 오래된 `PENDING` 유예 1분, Processing Claim 최대 3회다. 세 번째 Claim의 lease까지 만료되면 `PROCESSING_ATTEMPTS_EXHAUSTED`로 `FAILED` 처리하고 사용자에게는 `TEMPORARY_ERROR`를 노출한다. 보상 실패는 1분부터 최대 1시간까지 지수 backoff하며 `reward_attempt_count`를 별도로 증가시킨다.
 
 ## 기능 플래그
 
