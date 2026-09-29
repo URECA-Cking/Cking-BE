@@ -12,6 +12,8 @@ import java.util.concurrent.ConcurrentMap;
 
 public class InMemoryObjectStorage implements ObjectStorage {
 
+    private static final Duration MIN_PRESIGNED_TTL = Duration.ofSeconds(1);
+
     private final ConcurrentMap<String, byte[]> objects = new ConcurrentHashMap<>();
     private final Duration maxPresignedTtl;
 
@@ -52,8 +54,11 @@ public class InMemoryObjectStorage implements ObjectStorage {
     public URI presignedGetUrl(String objectKey, Duration ttl) {
         requireKey(objectKey);
         Objects.requireNonNull(ttl, "ttl");
-        if (ttl.isNegative() || ttl.isZero() || ttl.compareTo(maxPresignedTtl) > 0) {
-            throw new IllegalArgumentException("ttl must be in (0, " + maxPresignedTtl + "]: " + ttl);
+        if (ttl.compareTo(MIN_PRESIGNED_TTL) < 0
+                || ttl.toNanosPart() != 0
+                || ttl.compareTo(maxPresignedTtl) > 0) {
+            throw new IllegalArgumentException(
+                    "ttl must be whole seconds in [" + MIN_PRESIGNED_TTL + ", " + maxPresignedTtl + "]: " + ttl);
         }
         try {
             return new URI("memory", null, "/" + objectKey, "ttl=" + ttl.toSeconds(), null);

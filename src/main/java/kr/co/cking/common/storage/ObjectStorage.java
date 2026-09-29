@@ -14,6 +14,6 @@ public interface ObjectStorage {
     /** 없는 키를 지워도 예외를 던지지 않는다. */
     void delete(String objectKey);
 
-    /** 유효 시간이 0 이하이거나 상한을 넘으면 {@link IllegalArgumentException}을 던진다. */
+    /** 유효 시간이 1초 미만이거나, 초 단위가 아니거나, 상한을 넘으면 {@link IllegalArgumentException}을 던진다. */
     URI presignedGetUrl(String objectKey, Duration ttl);
 }

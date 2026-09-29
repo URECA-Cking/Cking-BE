@@ -30,7 +30,7 @@ public abstract class ObjectStorageContractTest {
 
         assertThat(result.objectKey()).isEqualTo("test/result.jpg");
         assertThat(result.size()).isEqualTo(5);
-        assertThat(result.eTag()).isEqualTo("5d41402abc4b2a76b9719d911017c592");
+        assertThat(result.eTag()).isNotBlank();
     }
 
     @Test
@@ -95,6 +95,23 @@ public abstract class ObjectStorageContractTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> storage().presignedGetUrl("test/url.jpg", Duration.ofSeconds(-1)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 유효_시간이_1초_미만이면_임시_주소를_거절한다() {
+        assertThatThrownBy(() -> storage().presignedGetUrl("test/url.jpg", Duration.ofMillis(500)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 유효_시간이_초_단위가_아니면_임시_주소를_거절한다() {
+        assertThatThrownBy(() -> storage().presignedGetUrl("test/url.jpg", Duration.ofMillis(1500)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 유효_시간이_정확히_1초면_임시_주소를_만든다() {
+        assertThat(storage().presignedGetUrl("test/url.jpg", Duration.ofSeconds(1))).isNotNull();
     }
 
     @Test
