@@ -1,7 +1,7 @@
 package kr.co.cking.subscriptionverification.application;
 
 import java.nio.charset.StandardCharsets;
-import kr.co.cking.subscriptionverification.application.image.ImageSha256;
+import kr.co.cking.common.image.ImageSha256;
 
 /** 구독 인증 제출의 멱등성 비교에 사용하는 canonical fingerprint를 만든다. */
 public final class SubscriptionVerificationFingerprint {

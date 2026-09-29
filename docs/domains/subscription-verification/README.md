@@ -179,7 +179,7 @@ ONCE 인증 완료의 정본은 `APPROVED` Verification이다. 보상의 영구 
 
 ## 이미지와 Object Storage
 
-이미지 검증·정규화·Hash는 HTTP 요청 안에서 동기 처리한다. 현재 `SubscriptionImageProcessor` 계약은 JPEG/PNG, 최대 5MB, 최소 480×480, 최대 20MP, 긴 변 2048px 이하, EXIF 방향 보정, metadata 제거, canonical JPEG다. `imageSha256`은 정규화된 bytes 기준이다.
+이미지 검증·정규화·Hash는 HTTP 요청 안에서 동기 처리한다. `SubscriptionImageProcessor`는 [공통 이미지 규칙](../../common/image.md)(JPEG/PNG, 최대 5MB, 최대 20MP, EXIF 방향 보정, metadata 제거, canonical JPEG `JPEG_V1`)에 구독 인증 정책(최소 480×480, 긴 변 2048px 이하)을 적용하고, 잘못된 이미지는 `INVALID_VERIFICATION_IMAGE`로 변환한다. `imageSha256`은 정규화된 bytes 기준이다.
 
 공통 Object Storage port는 호출자가 전체 key를 지정하는 `put/get/delete/presignedGetUrl`을 제공하고 저장소 구현은 bucket 설정만 안다. `put`은 기존 key 덮어쓰기를 허용하지 않는 조건부 쓰기이며 `objectKey`, 크기, `eTag`를 반환한다. `presignedGetUrl`은 만료 시간을 필수로 받고 공통 저장소가 최대 허용 시간을 제한한다. 구독 인증은 다음 key를 UTC `Clock`과 서버 UUID로 생성한다.
 
