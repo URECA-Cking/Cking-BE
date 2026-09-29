@@ -102,5 +102,10 @@
 | 98 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules | 크리에이터 캘린더 기간 조회 | - |
 | 99 | 외부 | Calendar | PUBLIC | GET | /api/creators/{creatorId}/calendar/schedules/{scheduleId} | 크리에이터 일정 상세 조회 | - |
 | 100 | 외부 | Mission | USER | POST | `/api/creators/{creatorId}/missions/share/complete` | Creator Space 공유 SHARE 미션 완료 | `requestId` |
+| 101 | 외부 | Follow | USER | PUT | `/api/creators/{creatorId}/follow` | 크리에이터 팔로우 | 상태 기반 |
+| 102 | 외부 | Follow | USER | DELETE | `/api/creators/{creatorId}/follow` | 크리에이터 언팔로우 | 상태 기반 |
+| 103 | 외부 | Follow | USER | GET | `/api/creators/{creatorId}/follow` | 크리에이터 팔로우 여부 조회 | - |
+| 104 | 외부 | Follow | USER | GET | `/api/me/follows` | 내 팔로우 목록 | - |
+| 105 | 내부 | Follow | INTERNAL | CALL | `CreatorFollowQueryService.isFollowing(memberId, creatorId)` | 다른 도메인의 팔로우 여부 확인 | - |
 
-No. 9, No. 50~61, No. 89~91은 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
