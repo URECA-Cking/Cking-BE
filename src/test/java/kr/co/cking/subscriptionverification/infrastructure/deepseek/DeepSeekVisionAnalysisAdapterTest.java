@@ -3,6 +3,9 @@ package kr.co.cking.subscriptionverification.infrastructure.deepseek;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -25,6 +28,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.core.type.TypeReference;
@@ -81,6 +85,25 @@ class DeepSeekVisionAnalysisAdapterTest {
         List<?> content = (List<?>) userMessage.get("content");
         Map<String, Object> imagePart = map(content.get(1));
         assertThat(map(imagePart.get("image_url")).get("url")).isEqualTo("data:image/jpeg;base64,/9j/");
+        assertThat(map(content.get(0))).doesNotContainKey("image_url");
+        assertThat(imagePart).doesNotContainKey("text");
+    }
+
+    @Test
+    void code_fence와_알수없는_Provider_필드가_있어도_응답을_파싱한다() throws Exception {
+        server.createContext("/chat/completions", exchange -> {
+            capture(exchange);
+            respond(exchange, 200, """
+                    {"id":"completion-id","object":"chat.completion","model":"deepseek-flash","choices":[
+                    {"index":0,"logprobs":null,"message":{"role":"assistant","content":"```json\\n{\\"platform\\":\\"YOUTUBE\\",\\"subscriptionState\\":\\"SUBSCRIBED\\",\\"detectedText\\":null,\\"observedChannelName\\":null,\\"observedChannelHandle\\":\\"@channelhandle\\",\\"evidenceSufficient\\":true,\\"confidence\\":0.98}\\n```"}}],
+                    "usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
+                    """);
+        });
+
+        VisionAnalysisResult result = client(1, 1_000).analyze(request());
+
+        assertThat(result.subscriptionState()).isEqualTo(VisionSubscriptionState.SUBSCRIBED);
+        assertThat(result.observedChannelHandle()).isEqualTo("@channelhandle");
     }
 
     @Test
@@ -159,6 +182,36 @@ class DeepSeekVisionAnalysisAdapterTest {
                 .extracting(exception -> ((VisionAnalysisException) exception).failureType())
                 .isEqualTo(VisionAnalysisFailureType.RETRYABLE);
         assertThat(requestCount).hasValue(2);
+    }
+
+    @Test
+    void 최종_HTTP_실패도_실제_지연시간과_함께_한번_기록한다() {
+        server.createContext("/chat/completions", exchange -> {
+            capture(exchange);
+            try {
+                Thread.sleep(20);
+                respond(exchange, 503, "{\"error\":{\"message\":\"temporary\"}}");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Logger logger = (Logger) LoggerFactory.getLogger(DeepSeekVisionAnalysisAdapter.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            assertThatThrownBy(() -> client(1, 1_000).analyze(request()))
+                    .isInstanceOf(VisionAnalysisException.class);
+
+            assertThat(appender.list)
+                    .filteredOn(event -> event.getFormattedMessage().contains("status=503"))
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .singleElement()
+                    .matches(message -> message.matches(".*latencyMs=[1-9]\\d*.*attempt=1"));
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test

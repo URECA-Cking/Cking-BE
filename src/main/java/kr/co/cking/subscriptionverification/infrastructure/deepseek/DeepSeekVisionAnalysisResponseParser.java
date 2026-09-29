@@ -31,7 +31,7 @@ public class DeepSeekVisionAnalysisResponseParser {
             if (choice == null || choice.message() == null || isBlank(choice.message().content())) {
                 throw new IllegalArgumentException("DeepSeek 응답에 분석 JSON이 없습니다.");
             }
-            return choice.message().content().trim();
+            return normalizeContent(choice.message().content());
         } catch (JacksonException exception) {
             throw new IllegalArgumentException("DeepSeek 응답 envelope를 파싱할 수 없습니다.", exception);
         }
@@ -116,5 +116,23 @@ public class DeepSeekVisionAnalysisResponseParser {
     /** 비어 있거나 공백뿐인 응답 문자열인지 확인한다. */
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /** 모델이 JSON을 Markdown code fence로 감싼 경우 본문만 반환한다. */
+    private String normalizeContent(String content) {
+        String normalized = content.trim();
+        if (!normalized.startsWith("```")) {
+            return normalized;
+        }
+
+        int firstLineEnd = normalized.indexOf('\n');
+        if (firstLineEnd < 0 || !normalized.endsWith("```")) {
+            throw new IllegalArgumentException("DeepSeek 분석 JSON code fence가 닫히지 않았습니다.");
+        }
+        String body = normalized.substring(firstLineEnd + 1, normalized.length() - 3).trim();
+        if (body.isEmpty()) {
+            throw new IllegalArgumentException("DeepSeek 분석 JSON이 비어 있습니다.");
+        }
+        return body;
     }
 }

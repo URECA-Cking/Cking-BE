@@ -47,39 +47,48 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
         requireApiKey();
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            long startedAt = System.nanoTime();
+            String response = null;
             try {
-                return parseResponse(callProvider(request, attempt));
+                response = callProvider(request);
+                VisionAnalysisResult result = parseResponse(response);
+                logProviderResult(200, elapsedMillis(startedAt), extractUsage(response), attempt);
+                return result;
             } catch (RestClientResponseException exception) {
                 int status = exception.getStatusCode().value();
-                logProviderResult(status, elapsedMillis(exception), null, attempt);
+                logProviderResult(status, elapsedMillis(startedAt), null, attempt);
                 if (!isRetryableStatus(status) || attempt == maxAttempts) {
                     throw providerFailure(status, isRetryableStatus(status), exception);
                 }
                 pauseBeforeRetry();
             } catch (ResourceAccessException exception) {
+                logProviderResult(isTimeout(exception) ? 408 : 0, elapsedMillis(startedAt), null, attempt);
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
                             isTimeout(exception) ? "DeepSeek API 응답 시간이 초과되었습니다." : "DeepSeek API 네트워크 요청이 실패했습니다.",
                             exception);
                 }
-                logProviderResult(isTimeout(exception) ? 408 : 0, 0L, null, attempt);
                 pauseBeforeRetry();
             } catch (IllegalArgumentException exception) {
+                logProviderResult(
+                        response == null ? 0 : 200,
+                        elapsedMillis(startedAt),
+                        response == null ? null : extractUsage(response),
+                        attempt);
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
                             "DeepSeek API 응답 형식이 올바르지 않습니다.", exception);
                 }
-                logProviderResult(200, 0L, null, attempt);
                 pauseBeforeRetry();
             } catch (RestClientException exception) {
+                logProviderResult(0, elapsedMillis(startedAt), null, attempt);
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
                             "DeepSeek API 요청이 실패했습니다.", exception);
                 }
-                logProviderResult(0, 0L, null, attempt);
                 pauseBeforeRetry();
             }
         }
@@ -87,16 +96,13 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
     }
 
     /** Provider를 한 번 호출하고 민감한 응답 본문은 기록하지 않은 채 반환한다. */
-    private String callProvider(VisionAnalysisRequest request, int attempt) {
-        long startedAt = System.nanoTime();
-        String response = restClient.post()
+    private String callProvider(VisionAnalysisRequest request) {
+        return restClient.post()
                 .uri(properties.getEndpoint())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
                 .body(DeepSeekChatCompletionRequest.from(request, properties))
                 .retrieve()
                 .body(String.class);
-        logProviderResult(200, elapsedMillis(startedAt), extractUsage(response), attempt);
-        return response;
     }
 
     /** Chat Completions envelope와 내부 JSON을 순서대로 검증해 Vision 결과로 만든다. */
@@ -183,11 +189,6 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
     /** 시작 시각으로부터 밀리초 단위 경과 시간을 계산한다. */
     private long elapsedMillis(long startedAt) {
         return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
-    }
-
-    /** HTTP 예외에서 제공되지 않는 지연 시간은 0으로 기록한다. */
-    private long elapsedMillis(RestClientResponseException exception) {
-        return 0L;
     }
 
     /** 호출 직전에 API 키 누락을 비재시도 설정 오류로 막는다. */

@@ -155,14 +155,14 @@ evidenceSufficient: boolean
 confidence: 0.0..1.0
 ```
 
-`detectedText`는 Provider 내부 판정 근거로만 사용하며 Domain·사용자 응답·로그로 원문을 전달하지 않는다. Parser는 필수 필드 누락, 잘못된 타입, 범위를 벗어난 confidence와 알 수 없는 enum 값을 거부하고 기술 오류로 전달한다.
+`detectedText`는 Provider 내부 판정 근거로만 사용하며 Domain·사용자 응답·로그로 원문을 전달하지 않는다. Parser는 envelope의 추가 필드를 무시하고, 모델 응답을 감싼 Markdown code fence를 제거한 뒤 필수 필드 누락, 잘못된 타입, 범위를 벗어난 confidence와 알 수 없는 enum 값을 거부하고 기술 오류로 전달한다.
 
 ### 재시도·관측성
 
 - connect/read timeout, 429, 5xx, 네트워크 오류와 응답 파싱 오류는 `RETRYABLE` 기술 오류다. 설정한 최대 시도 횟수 안에서 backoff 후 재시도한다.
 - 400 계열과 API key 누락은 `NON_RETRYABLE` 기술 오류이며 재시도하지 않는다.
 - `DEEPSEEK_CONNECT_TIMEOUT`, `DEEPSEEK_READ_TIMEOUT`, `DEEPSEEK_MAX_ATTEMPTS`, `DEEPSEEK_RETRY_BACKOFF`, `DEEPSEEK_MAX_OUTPUT_TOKENS`로 호출 한계를 분리한다.
-- 이미지 bytes, Base64, API key, VLM Raw 응답은 로그에 남기지 않는다. model, HTTP status, latency, usage token 수, 시도 횟수만 기록한다.
+- 이미지 bytes, Base64, API key, VLM Raw 응답은 로그에 남기지 않는다. 각 호출 시도마다 model, HTTP status, 실제 latency, usage token 수, 시도 횟수를 한 번만 기록한다.
 
 ## 보상 처리
 

@@ -4,6 +4,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRequest;
 
 /** DeepSeek Chat Completions API에 전달하는 Provider 전용 요청 DTO다. */
@@ -37,6 +38,7 @@ record DeepSeekChatMessage(String role, Object content) {
 }
 
 /** 텍스트 또는 이미지로 구성되는 사용자 메시지의 content part DTO다. */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 record DeepSeekContentPart(String type, String text, DeepSeekImageUrl image_url) {
 
     /** 텍스트 content part를 만든다. */
