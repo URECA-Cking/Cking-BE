@@ -102,6 +102,20 @@ public interface CreatorPostImageRepository extends JpaRepository<CreatorPostIma
             """)
     List<CreatorPostImage> findDeletePending(@Param("changedBefore") Instant changedBefore, Pageable pageable);
 
+    /**
+     * 삭제에 실패한 DELETE_PENDING 기록의 다음 시도를 뒤로 미룬다. 정리 스케줄러는 오래된 순으로 일정 건수만 가져오므로,
+     * 계속 실패하는 기록이 앞자리를 차지해 뒤의 기록이 처리되지 않는 일을 막는다.
+     */
+    @Transactional
+    @Modifying
+    @Query("""
+            update CreatorPostImage i
+               set i.statusChangedAt = :now
+             where i.objectKey = :objectKey
+               and i.status = kr.co.cking.post.domain.PostImageStatus.DELETE_PENDING
+            """)
+    int postponeDeletePending(@Param("objectKey") String objectKey, @Param("now") Instant now);
+
     /** 저장소 삭제가 끝난 DELETE_PENDING 기록을 지운다. 다른 상태로 바뀐 기록은 지우지 않는다. */
     @Transactional
     @Modifying

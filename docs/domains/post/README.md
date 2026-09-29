@@ -49,6 +49,6 @@ V34의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록)를 �
 `PostImageCleanupScheduler`가 `cking.post.image-cleanup-interval-ms`(기본 10분)마다 실행한다.
 
 1. 24시간이 지나도록 연결되지 않은 `UPLOADING`·`UPLOADED` 기록을 `post_id IS NULL` 조건부 UPDATE로 `DELETE_PENDING`으로 선점한다. 같은 이미지를 게시글에 연결하는 요청과 경합해도 한쪽만 성공하므로, 연결된 이미지는 지워지지 않는다.
-2. `DELETE_PENDING`이 된 지 10분이 지난 기록을 최대 100건씩 저장소에서 지우고 기록을 삭제한다. 유예 시간은 방금 Commit된 수정·삭제의 AFTER_COMMIT 삭제와 겹치지 않게 하기 위함이다. 실패한 기록은 다음 실행에서 다시 시도한다. 저장소 delete는 없는 key도 성공하므로 여러 번 실행돼도 안전하다.
+2. `DELETE_PENDING`이 된 지 10분이 지난 기록을 최대 100건씩 저장소에서 지우고 기록을 삭제한다. 유예 시간은 방금 Commit된 수정·삭제의 AFTER_COMMIT 삭제와 겹치지 않게 하기 위함이다. 실패한 기록은 `status_changed_at`을 현재 시각으로 미뤄 대기열 뒤로 보내고 유예 시간 뒤 다시 시도한다. 계속 실패하는 기록이 앞 100건을 차지해 뒤의 기록이 처리되지 않는 일을 막기 위함이다. 저장소 delete는 없는 key도 성공하므로 여러 번 실행돼도 안전하다.
 
 임시 저장 기능이 생기면 미연결 보관 시간(24시간)을 다시 정한다.

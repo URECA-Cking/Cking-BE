@@ -20,7 +20,8 @@ import java.util.List;
  *   <li>{@link #UNLINKED_RETENTION}이 지나도록 연결되지 않은 UPLOADING·UPLOADED 기록을 조건부 UPDATE로
  *       DELETE_PENDING으로 선점한다. 같은 이미지를 게시글에 연결하는 요청과 경합해도 한쪽만 성공한다.</li>
  *   <li>DELETE_PENDING이 된 지 {@link #DELETE_PENDING_GRACE}가 지난 기록을 저장소에서 지우고 기록을 삭제한다.
- *       유예 시간은 방금 Commit된 게시글 수정·삭제의 AFTER_COMMIT 삭제와 겹치지 않게 하기 위함이다.</li>
+ *       유예 시간은 방금 Commit된 게시글 수정·삭제의 AFTER_COMMIT 삭제와 겹치지 않게 하기 위함이다. 삭제에 실패한
+ *       기록은 상태 변경 시각을 현재로 미뤄 대기열 뒤로 보내므로, 계속 실패하는 기록이 뒤의 기록을 막지 않는다.</li>
  * </ol>
  */
 @Component
@@ -53,9 +54,19 @@ public class PostImageCleanupScheduler {
             try {
                 storageCleaner.delete(image.getObjectKey());
             } catch (RuntimeException exception) {
-                log.warn("게시글 이미지 정리에 실패했습니다. 다음 실행에서 다시 시도합니다. objectKey={}",
+                log.warn("게시글 이미지 정리에 실패했습니다. 유예 시간 뒤 다시 시도합니다. objectKey={}",
                         image.getObjectKey(), exception);
+                postpone(image.getObjectKey(), now);
             }
+        }
+    }
+
+    /** 실패한 기록을 대기열 뒤로 보내 다른 기록이 먼저 처리되게 한다. 미루기에 실패해도 다음 기록을 계속 처리한다. */
+    private void postpone(String objectKey, Instant now) {
+        try {
+            imageRepository.postponeDeletePending(objectKey, now);
+        } catch (RuntimeException exception) {
+            log.warn("게시글 이미지 정리 재시도 시각을 미루지 못했습니다. objectKey={}", objectKey, exception);
         }
     }
 }
