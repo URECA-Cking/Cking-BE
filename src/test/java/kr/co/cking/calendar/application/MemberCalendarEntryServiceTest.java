@@ -107,13 +107,30 @@ class MemberCalendarEntryServiceTest {
     }
 
     @Test
-    void 담기_저장_중_유니크_제약이_아닌_다른_제약을_위반하면_예외를_그대로_던진다() {
-        when(scheduleRepository.existsById(SCHEDULE_ID)).thenReturn(true);
-        // 저장 전후 모두 false — uk_member_calendar_entry_member_schedule 위반이 아니라 다른
-        // 원인(예: 저장 순간 일정이 삭제되어 fk_member_calendar_entry_schedule 위반)이므로
-        // 멱등 성공으로 감춰서는 안 되고 예외를 그대로 전달해야 한다.
+    void 담기_저장_중_일정이_동시에_하드_삭제되면_RESOURCE_NOT_FOUND로_수렴한다() {
+        // 초기 존재 확인(true)은 통과했지만, 저장 시도 도중 크리에이터가 같은 일정을 하드
+        // 삭제해 INSERT가 fk_member_calendar_entry_schedule 위반으로 실패한 상황을 흉내낸다.
+        // 진짜 중복도 아니고(entry 재확인 false) 일정도 사라졌으므로(schedule 재확인 false)
+        // 이 경합은 500이 아니라 RESOURCE_NOT_FOUND로 수렴해야 한다.
+        when(scheduleRepository.existsById(SCHEDULE_ID)).thenReturn(true, false);
         when(entryRepository.existsByMemberIdAndScheduleId(MEMBER_ID, SCHEDULE_ID)).thenReturn(false, false);
-        DataIntegrityViolationException exception = new DataIntegrityViolationException("fk violation");
+        doThrow(new DataIntegrityViolationException("fk violation"))
+                .when(entryPersistenceService).create(MEMBER_ID, SCHEDULE_ID, NOW);
+
+        assertThatThrownBy(() -> service.add(MEMBER_ID, SCHEDULE_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void 담기_저장_중_유니크_제약이나_일정_삭제가_아닌_다른_제약을_위반하면_예외를_그대로_던진다() {
+        // 일정은 여전히 존재하는데(schedule 재확인 true) INSERT가 실패했다면, 유니크 제약도
+        // 일정 하드 삭제도 아닌 예상 못 한 원인이므로 멱등 성공이나 404로 감춰서는 안 되고
+        // 예외를 그대로 전달해야 한다.
+        when(scheduleRepository.existsById(SCHEDULE_ID)).thenReturn(true);
+        when(entryRepository.existsByMemberIdAndScheduleId(MEMBER_ID, SCHEDULE_ID)).thenReturn(false, false);
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("unexpected");
         doThrow(exception).when(entryPersistenceService).create(MEMBER_ID, SCHEDULE_ID, NOW);
 
         assertThatThrownBy(() -> service.add(MEMBER_ID, SCHEDULE_ID)).isSameAs(exception);

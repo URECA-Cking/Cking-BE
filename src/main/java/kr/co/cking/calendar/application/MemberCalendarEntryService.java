@@ -55,11 +55,18 @@ public class MemberCalendarEntryService {
             entryPersistenceService.create(memberId, scheduleId, Instant.now(clock));
         } catch (DataIntegrityViolationException exception) {
             // uk_member_calendar_entry_member_schedule 위반(동시 중복 담기)이면 이미 담겨 있다는
-            // 뜻이므로 멱등 성공으로 처리한다. 그 외 제약 위반(예: 저장 순간 일정이 삭제되어
-            // fk_member_calendar_entry_schedule 위반)이면 실제로 담기지 않았으므로 그대로 던진다.
-            if (!entryRepository.existsByMemberIdAndScheduleId(memberId, scheduleId)) {
-                throw exception;
+            // 뜻이므로 멱등 성공으로 처리한다.
+            if (entryRepository.existsByMemberIdAndScheduleId(memberId, scheduleId)) {
+                return;
             }
+            // 담기지 않았다면, 저장 시도 도중 크리에이터가 같은 일정을 하드 삭제해
+            // fk_member_calendar_entry_schedule 위반이 났을 가능성을 구분한다. 이 경합은
+            // "일정이 없어졌다"는 정상적인 결과로 수렴해야 하며 500으로 노출돼선 안 된다.
+            if (!scheduleRepository.existsById(scheduleId)) {
+                throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+            }
+            // 그 외 원인(예: 예상 못 한 제약 위반)은 실제로 담기지 않았으므로 그대로 던진다.
+            throw exception;
         }
     }
 
