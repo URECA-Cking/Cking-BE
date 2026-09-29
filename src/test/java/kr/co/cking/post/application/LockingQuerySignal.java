@@ -30,6 +30,9 @@ public class LockingQuerySignal implements StatementInspector {
 
     @Override
     public String inspect(String sql) {
+        if (EXPECTED.isEmpty()) {
+            return sql;
+        }
         String normalized = sql.toLowerCase(Locale.ROOT);
         EXPECTED.forEach((key, latch) -> {
             String[] parts = key.split("\\|", 2);

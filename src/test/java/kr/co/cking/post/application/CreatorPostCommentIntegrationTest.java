@@ -33,9 +33,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** 실제 MySQL에서 댓글 저장·조회와 게시글 삭제 시 댓글 삭제(FK)를 확인한다. */
-@SpringBootTest(properties =
-        "spring.jpa.properties.hibernate.session_factory.statement_inspector="
-                + "kr.co.cking.post.application.LockingQuerySignal")
+@SpringBootTest
 class CreatorPostCommentIntegrationTest {
 
     @Autowired
