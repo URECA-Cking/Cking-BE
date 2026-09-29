@@ -34,8 +34,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 
 @SpringBootTest(properties = "cking.verification.youtube-subscription.submission-enabled=true")
+@Import(SubscriptionVerificationSubmissionConcurrencyIntegrationTest.TriggerFailureTestConfig.class)
 class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
 
     @Autowired
@@ -141,6 +145,26 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
                 .isPresent();
     }
 
+    @Test
+    void AFTER_COMMIT_Trigger가_실패해도_PENDING_Verification과_Object를_유지한다() {
+        UUID requestId = UUID.randomUUID();
+
+        SubscriptionVerificationSubmissionResult result = submissionService.submit(
+                new SubscriptionVerificationSubmissionCommand(
+                        participant.getMemberId(),
+                        creator.getCreatorId(),
+                        mission.getMissionId(),
+                        requestId,
+                        image));
+
+        assertThat(result.created()).isTrue();
+        SubscriptionVerification persisted = verificationRepository.findByRequestId(requestId.toString())
+                .orElseThrow();
+        assertThat(persisted.getStatus())
+                .isEqualTo(kr.co.cking.subscriptionverification.domain.SubscriptionVerificationStatus.PENDING);
+        assertThat(objectStorage.get(persisted.getImageObjectKey())).isNotEmpty();
+    }
+
     private List<Object> executeConcurrently(UUID firstRequestId, UUID secondRequestId) throws Exception {
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -180,6 +204,17 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             ImageIO.write(bufferedImage, "png", output);
             return output.toByteArray();
+        }
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class TriggerFailureTestConfig {
+
+        @Bean
+        SubscriptionVerificationProcessingTrigger failingSubscriptionVerificationProcessingTrigger() {
+            return verificationId -> {
+                throw new IllegalStateException("queue rejected");
+            };
         }
     }
 }
