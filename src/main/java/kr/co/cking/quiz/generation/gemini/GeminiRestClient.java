@@ -45,11 +45,10 @@ public class GeminiRestClient implements GeminiApiClient {
                 if (!isRetryableStatus(status) || attempt == maxAttempts) {
                     throw new GeminiApiException("Gemini API 요청이 실패했습니다. status=" + status, exception);
                 }
+                pauseBeforeRetry();
             } catch (ResourceAccessException exception) {
                 if (isTimeout(exception)) {
-                    if (attempt == maxAttempts) {
-                        throw new QuizProviderTimeoutException("Gemini API 응답 시간이 초과되었습니다.", exception);
-                    }
+                    throw new QuizProviderTimeoutException("Gemini API 응답 시간이 초과되었습니다.", exception);
                 } else {
                     throw new GeminiApiException("Gemini API 네트워크 요청이 실패했습니다.", exception);
                 }
@@ -57,10 +56,7 @@ public class GeminiRestClient implements GeminiApiClient {
                 throw exception;
             } catch (RestClientException exception) {
                 if (isTimeout(exception)) {
-                    if (attempt == maxAttempts) {
-                        throw new QuizProviderTimeoutException("Gemini API 응답 시간이 초과되었습니다.", exception);
-                    }
-                    continue;
+                    throw new QuizProviderTimeoutException("Gemini API 응답 시간이 초과되었습니다.", exception);
                 }
                 throw new GeminiApiException("Gemini API 요청이 실패했습니다.", exception);
             }
@@ -96,6 +92,15 @@ public class GeminiRestClient implements GeminiApiClient {
 
     private boolean isRetryableStatus(int status) {
         return status == 429 || status >= 500;
+    }
+
+    private void pauseBeforeRetry() {
+        try {
+            Thread.sleep(1_000);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new GeminiApiException("Gemini API 재시도가 중단되었습니다.", exception);
+        }
     }
 
     private boolean isTimeout(Throwable throwable) {

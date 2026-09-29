@@ -2,6 +2,7 @@ package kr.co.cking.quiz.generation.gemini;
 
 import kr.co.cking.quiz.generation.GeneratedQuiz;
 import kr.co.cking.quiz.generation.QuizGenerationInput;
+import kr.co.cking.quiz.generation.QuizGenerationValidationException;
 import kr.co.cking.quiz.generation.QuizGenerationValidator;
 import kr.co.cking.quiz.generation.QuizGenerator;
 import kr.co.cking.quiz.generation.QuizPromptTemplate;
@@ -34,6 +35,9 @@ public class GeminiQuizGenerator implements QuizGenerator {
         String responseJson = apiClient.generateContent(prompt, input.questionCount(), input.optionCount());
         GeneratedQuiz quiz = responseParser.parse(responseJson);
         validator.validate(input, quiz);
+        if (!promptTemplate.version().value().equals(quiz.promptVersion())) {
+            throw new QuizGenerationValidationException("생성 결과의 promptVersion이 요청한 프롬프트와 다릅니다.");
+        }
         return quiz;
     }
 }

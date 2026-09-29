@@ -204,6 +204,10 @@ export OAUTH_KAKAO_CLIENT_SECRET=...
 ./gradlew bootRun
 ```
 
+AI 퀴즈 생성에서 Gemini Provider를 호출하려면 배포 환경에 `GEMINI_API_KEY`를 Secret으로 설정해야 합니다. 키가 없어도 애플리케이션은 기동되지만, Gemini 퀴즈 생성 호출은 Provider 오류로 실패합니다. 키 값은 저장소나 로그에 남기지 않습니다.
+
+`application.yml`의 Gemini 설정은 환경변수 `GEMINI_MODEL`, `GEMINI_BASE_URL`, `GEMINI_CONNECT_TIMEOUT`, `GEMINI_READ_TIMEOUT`, `GEMINI_MAX_ATTEMPTS`로 변경할 수 있습니다. 타임아웃은 ISO-8601 Duration 형식(예: `PT30S`)이고, `GEMINI_MAX_ATTEMPTS`는 최초 호출을 포함한 최대 시도 횟수입니다. HTTP 429·5xx만 제한적으로 재시도하며 타임아웃은 재시도하지 않습니다. 실제 Gemini API 연동 검증은 별도로 수행해야 합니다.
+
 실행을 종료하려면:
 
 ```text

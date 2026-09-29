@@ -105,7 +105,9 @@ class GeminiRestClientTest {
             }
         });
 
+        long startedAt = System.nanoTime();
         assertThat(client(2, 1_000).generateContent("prompt", 1, 4)).isEqualTo("ok");
+        assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isGreaterThanOrEqualTo(Duration.ofMillis(900));
         assertThat(requestCount).hasValue(2);
     }
 
@@ -150,6 +152,24 @@ class GeminiRestClientTest {
 
         assertThatThrownBy(() -> client(1, 20).generateContent("prompt", 1, 4))
                 .isInstanceOf(QuizProviderTimeoutException.class);
+    }
+
+    @Test
+    @Timeout(3)
+    void read_timeout은_과금될_수_있으므로_재시도하지_않는다() {
+        server.createContext("/v1beta/models/test-model:generateContent", exchange -> {
+            capture(exchange);
+            try {
+                Thread.sleep(250);
+                respond(exchange, 200, "{\"candidates\":[]}");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        assertThatThrownBy(() -> client(2, 20).generateContent("prompt", 1, 4))
+                .isInstanceOf(QuizProviderTimeoutException.class);
+        assertThat(requestCount).hasValue(1);
     }
 
     @Test

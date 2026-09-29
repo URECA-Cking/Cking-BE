@@ -98,6 +98,18 @@ class GeminiQuizGeneratorTest {
         verify(apiClient).generateContent(anyString(), eq(1), eq(4));
     }
 
+    @Test
+    void 모델이_다른_promptVersion을_반환하면_결과를_거부한다() {
+        GeneratedQuiz wrongVersion = new GeneratedQuiz(validQuiz().questions(), "quiz-mcq-v2");
+        when(apiClient.generateContent(anyString(), eq(1), eq(4))).thenReturn("provider-json");
+        when(parser.parse("provider-json")).thenReturn(wrongVersion);
+
+        assertThatThrownBy(() -> generator().generate(INPUT))
+                .isInstanceOf(QuizGenerationValidationException.class);
+
+        verify(apiClient).generateContent(anyString(), eq(1), eq(4));
+    }
+
     private GeminiQuizGenerator generator() {
         return new GeminiQuizGenerator(
                 apiClient,

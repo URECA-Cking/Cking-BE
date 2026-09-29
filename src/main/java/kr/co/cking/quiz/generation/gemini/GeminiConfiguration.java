@@ -20,21 +20,15 @@ import tools.jackson.databind.ObjectMapper;
 public class GeminiConfiguration {
 
     @Bean
-    RestClient geminiRestClient(GeminiQuizProperties properties) {
+    GeminiApiClient geminiApiClient(GeminiQuizProperties properties, ObjectMapper objectMapper) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(safeDuration(properties.getConnectTimeout(), Duration.ofSeconds(2)));
         requestFactory.setReadTimeout(safeDuration(properties.getReadTimeout(), Duration.ofSeconds(30)));
-        return RestClient.builder()
+        RestClient restClient = RestClient.builder()
                 .baseUrl(properties.getBaseUrl())
                 .requestFactory(requestFactory)
                 .build();
-    }
-
-    @Bean
-    GeminiApiClient geminiApiClient(RestClient geminiRestClient,
-                                    GeminiQuizProperties properties,
-                                    ObjectMapper objectMapper) {
-        return new GeminiRestClient(geminiRestClient, properties, objectMapper);
+        return new GeminiRestClient(restClient, properties, objectMapper);
     }
 
     @Bean
