@@ -212,6 +212,25 @@ class SubscriptionVerificationProcessingClaimIntegrationTest {
     }
 
     @Test
+    void lease가_만료되면_재선점_전이어도_기존_token의_결과를_저장하지_않는다() {
+        SubscriptionVerificationProcessingClaim claimed = claim(BASE_TIME);
+
+        boolean completed = completionService.complete(
+                verification.getVerificationId(),
+                claimed.processingToken(),
+                SubscriptionVerificationProcessingOutcome.FAILED,
+                "PROVIDER_FAILURE",
+                claimed.processingLeaseUntil());
+
+        assertThat(completed).isFalse();
+        SubscriptionVerification persisted = verificationRepository
+                .findById(verification.getVerificationId()).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(SubscriptionVerificationStatus.PROCESSING);
+        assertThat(persisted.getProcessingToken()).isEqualTo(claimed.processingToken());
+        assertThat(persisted.getProcessingLeaseUntil()).isEqualTo(claimed.processingLeaseUntil());
+    }
+
+    @Test
     void 선점은_호출자_Transaction이_rollback되어도_독립적으로_commit된다() {
         TransactionTemplate outerTransaction = new TransactionTemplate(transactionManager);
 

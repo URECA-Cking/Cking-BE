@@ -49,9 +49,10 @@ WHERE verification_id = :id
 WHERE verification_id = :id
   AND status = 'PROCESSING'
   AND processing_token = :processingToken
+  AND processing_lease_until > :processedAt
 ```
 
-lease가 만료돼 새 Worker가 새 token으로 재선점했다면 이전 Worker의 늦은 응답은 저장되지 않는다. `processingToken`은 상태 판정용 임시 fencing token이며 외부 API에 노출하지 않는다.
+lease가 만료된 순간부터 기존 Worker는 아직 새 Worker가 재선점하지 않았더라도 결과를 저장할 수 없다. 새 Worker가 새 token으로 재선점한 뒤의 이전 Worker 응답도 저장되지 않는다. `processingToken`은 상태 판정용 임시 fencing token이며 외부 API에 노출하지 않는다.
 
 `SubscriptionVerificationProcessingCompletionService.complete()`도 짧은 `REQUIRES_NEW` Transaction에서 위 fencing 조건을 포함한 조건부 UPDATE를 실행한다. affected row가 0이면 소유권을 잃었거나 이미 종료된 작업이므로 결과를 저장하지 않는다. `APPROVED`는 `approvedGuard=1`, `rewardStatus=PENDING`으로 함께 전환하고, 나머지 결과는 안정적인 reason code를 필수로 저장한다. 실제 Vision 결과를 어떤 종료 상태로 변환하고 Ticket 보상을 호출하는 오케스트레이션은 후속 SUB-13이 담당한다.
 

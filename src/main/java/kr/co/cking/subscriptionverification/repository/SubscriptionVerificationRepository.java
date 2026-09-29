@@ -62,6 +62,7 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
                and v.status = :processingStatus
                and v.processingToken = :processingToken
                and v.processingStartedAt <= :processedAt
+               and v.processingLeaseUntil > :processedAt
             """)
     int completeProcessing(
             @Param("verificationId") Long verificationId,
