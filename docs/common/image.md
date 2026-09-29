@@ -24,7 +24,7 @@
 | 도메인 | 최소 해상도 | 긴 변 최대 | 잘못된 이미지 오류 |
 | --- | --- | --- | --- |
 | YouTube 구독 인증 | 480×480 | 2048px | `INVALID_VERIFICATION_IMAGE` |
-| Creator 게시글 (예정) | 200×200 | 2048px | 게시글 도메인 ErrorCode |
+| Creator 게시글 | 200×200 | 2048px | `INVALID_POST_IMAGE` |
 
 ## 오류
 

@@ -110,5 +110,11 @@
 | 106 | 외부 | Calendar | USER | PUT | `/api/me/calendar/schedules/{scheduleId}` | 개인 캘린더에 일정 담기 | 상태 기반 |
 | 107 | 외부 | Calendar | USER | DELETE | `/api/me/calendar/schedules/{scheduleId}` | 개인 캘린더에서 일정 제거 | 상태 기반 |
 | 108 | 외부 | Calendar | USER | GET | `/api/me/calendar/schedules` | 개인 캘린더 기간 조회 | - |
+| 109 | 외부 | Post | CREATOR | POST | `/api/creator/posts/images` | 게시글 이미지 1장 업로드 | - |
+| 110 | 외부 | Post | CREATOR | POST | `/api/creator/posts` | 게시글 작성 | - |
+| 111 | 외부 | Post | CREATOR | PATCH | `/api/creator/posts/{postId}` | 게시글 수정(전체 필드 교체) | 상태 기반 |
+| 112 | 외부 | Post | CREATOR | DELETE | `/api/creator/posts/{postId}` | 게시글 삭제(하드 삭제) | 상태 기반 |
+| 113 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts` | 크리에이터 게시글 목록(팔로워 공개는 잠금 표시) | - |
+| 114 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}` | 크리에이터 게시글 상세 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

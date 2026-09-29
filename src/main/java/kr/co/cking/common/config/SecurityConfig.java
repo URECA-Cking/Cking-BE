@@ -115,6 +115,8 @@ public class SecurityConfig {
                                 "/api/creator/applications/me",
                                 "/api/creator/space",
                                 "/api/creator/calendar/**",
+                                "/api/creator/posts",
+                                "/api/creator/posts/**",
                                 "/api/creator/youtube-channel",
                                 "/api/creator/space/slug"
                         ).authenticated()
@@ -123,6 +125,8 @@ public class SecurityConfig {
                                 HttpMethod.GET,
                                 "/api/creators/*/calendar/schedules",
                                 "/api/creators/*/calendar/schedules/*",
+                                "/api/creators/*/posts",
+                                "/api/creators/*/posts/*",
                                 "/api/creators/*/youtube-channel"
                         ).permitAll()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
