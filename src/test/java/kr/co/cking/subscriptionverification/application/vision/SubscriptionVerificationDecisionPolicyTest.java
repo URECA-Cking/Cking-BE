@@ -144,6 +144,19 @@ class SubscriptionVerificationDecisionPolicyTest {
     }
 
     @Test
+    void 구독상태가_UNKNOWN이어도_다른_채널이_명확하면_채널_불일치로_거절한다() {
+        assertDecision(
+                result(
+                        VisionPlatform.YOUTUBE,
+                        "@clearly-other-channel",
+                        VisionSubscriptionState.UNKNOWN,
+                        true,
+                        0.99),
+                SubscriptionVerificationDecisionStatus.REJECTED,
+                SubscriptionVerificationDecisionReason.CHANNEL_MISMATCH);
+    }
+
+    @Test
     void 관측_handle이_없거나_유효하지_않으면_재제출을_요청한다() {
         assertDecision(
                 result(

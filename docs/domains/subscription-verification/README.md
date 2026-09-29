@@ -129,7 +129,7 @@ PROCESSING → APPROVED | REJECTED | RETRY_REQUIRED | FAILED
 | `APPROVED` | 서버 판정 정책 충족 |
 | `REJECTED` | 분석 가능하지만 대상·구독 조건 불충족 |
 | `RETRY_REQUIRED` | 이미지가 흐리거나 정보가 잘려 증거 불충분 |
-| `FAILED` | timeout, 429, 5xx, 파싱 실패 등 기술 오류가 처리 시도 상한을 소진함 |
+| `FAILED` | 재시도 가능한 기술 오류가 처리 시도 상한을 소진했거나 비재시도 기술 오류가 발생함 |
 
 사용자 공개 상태는 내부 처리 상세를 숨긴다.
 

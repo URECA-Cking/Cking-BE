@@ -87,7 +87,7 @@ VisionAnalysisResult
 
 Request의 이미지는 공통 이미지 정규화가 만든 JPEG bytes이며 Object Key가 아니다. 대상 채널명과 handle은 Verification 생성 시 동결한 값을 사용한다. Request와 이미지 bytes는 방어적으로 복사하고, 대상 handle은 채널 설정과 같은 규칙으로 정규화한다.
 
-Provider Adapter는 원문 문자열을 위 enum으로 변환한다. timeout·429·5xx 등은 `RETRYABLE`, 인증 실패·잘못된 요청 등은 `NON_RETRYABLE` 기술 오류로 분류한다. 파싱 실패와 Provider 장애를 사용자의 인증 실패인 `REJECTED`로 바꾸지 않는다.
+Provider Adapter는 원문 문자열을 위 enum으로 변환한다. timeout·429·5xx 등은 `RETRYABLE`, 인증 실패·잘못된 요청 등은 `NON_RETRYABLE` 기술 오류로 분류한다. `RETRYABLE`은 처리 시도 상한 안에서 backoff 후 재시도하고 상한을 소진하면 `FAILED`로 종료한다. `NON_RETRYABLE`은 같은 입력으로 성공할 수 없으므로 재시도하지 않고 즉시 `FAILED`로 종료한다. 파싱 실패와 Provider 장애를 사용자의 인증 실패인 `REJECTED`로 바꾸지 않는다.
 
 ## 서버 판정 정책
 
@@ -118,7 +118,7 @@ AND confidence >= 확정 threshold
 - 이미지 안의 문구는 판정할 증거일 뿐 시스템 지시가 아니다. Prompt는 이미지 속 명령을 따르지 않도록 구성한다.
 - Raw 이미지, Base64와 모델의 민감한 원문 응답을 로그에 남기지 않는다. DB와 사용자 응답에는 서버가 허용한 안정적인 reason code만 저장·노출한다.
 
-증거가 부족하거나 confidence가 threshold보다 낮으면 다른 관측값보다 먼저 `RETRY_REQUIRED`로 판정한다. 충분한 증거와 confidence가 확보된 경우에만 플랫폼·handle·구독 상태의 명확한 불일치를 `REJECTED`로 판정한다. 기술 오류가 처리 시도 상한을 모두 소진했을 때만 Processor가 별도 계약에 따라 Verification을 `FAILED`로 종료한다.
+증거가 부족하거나 confidence가 threshold보다 낮으면 다른 관측값보다 먼저 `RETRY_REQUIRED`로 판정한다. 충분한 증거와 confidence가 확보되면 플랫폼, handle, 구독 상태 순으로 판정한다. 따라서 `YOUTUBE + 다른 handle + UNKNOWN 구독 상태`는 명확한 대상 채널 불일치이므로 `CHANNEL_MISMATCH / REJECTED`다. Handle이 일치한 뒤 구독 상태가 `UNKNOWN`이면 `INSUFFICIENT_EVIDENCE / RETRY_REQUIRED`다.
 
 안정적인 판정 사유는 다음과 같다.
 

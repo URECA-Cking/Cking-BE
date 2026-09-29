@@ -40,11 +40,6 @@ public final class SubscriptionVerificationDecisionPolicy {
             return SubscriptionVerificationDecision.rejected(
                     SubscriptionVerificationDecisionReason.PLATFORM_MISMATCH);
         }
-        if (analysis.subscriptionState() == VisionSubscriptionState.UNKNOWN) {
-            return SubscriptionVerificationDecision.retryRequired(
-                    SubscriptionVerificationDecisionReason.INSUFFICIENT_EVIDENCE);
-        }
-
         String observedHandle = normalizeObservedHandle(analysis.observedChannelHandle());
         if (observedHandle == null) {
             return SubscriptionVerificationDecision.retryRequired(
@@ -53,6 +48,10 @@ public final class SubscriptionVerificationDecisionPolicy {
         if (!normalizedTargetHandle.equals(observedHandle)) {
             return SubscriptionVerificationDecision.rejected(
                     SubscriptionVerificationDecisionReason.CHANNEL_MISMATCH);
+        }
+        if (analysis.subscriptionState() == VisionSubscriptionState.UNKNOWN) {
+            return SubscriptionVerificationDecision.retryRequired(
+                    SubscriptionVerificationDecisionReason.INSUFFICIENT_EVIDENCE);
         }
         if (analysis.subscriptionState() == VisionSubscriptionState.NOT_SUBSCRIBED) {
             return SubscriptionVerificationDecision.rejected(
