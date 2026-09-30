@@ -40,6 +40,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS;
+import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS;
 import static org.springframework.http.HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD;
@@ -243,6 +244,19 @@ class SecurityConfigTest {
                         .containsIgnoringCase("Authorization"))
                 .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_CREDENTIALS))
                         .isNull());
+    }
+
+    /** PUT을 쓰는 API(팔로우 등)의 사전 요청이 CORS에서 거부되지 않는지 검증한다(이슈 #357). */
+    @Test
+    void 허용된_origin의_PUT_CORS_사전_요청을_처리한다() throws Exception {
+        mockMvc.perform(options("/api/creators/1/follow")
+                        .header(ORIGIN, "https://frontend.cking.co.kr")
+                        .header(ACCESS_CONTROL_REQUEST_METHOD, "PUT")
+                        .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, "https://frontend.cking.co.kr"))
+                .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_METHODS))
+                        .contains("PUT"));
     }
 
     /** 문서 계정이 없는 로컬 환경에서는 Swagger 경로를 Basic Auth 없이 처리하는지 검증한다. */
