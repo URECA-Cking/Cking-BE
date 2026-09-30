@@ -185,7 +185,7 @@ Verification 승인과 Ticket Stream/DB 반영은 하나의 DB Transaction으로
 
 ## Recovery Scheduler
 
-Scheduler는 기본 1분 주기와 batch 20건으로 다음 대상을 조회한다. 설정으로 비활성화할 수 있으며 batch 크기는 전용 Executor의 max pool과 queue 용량 합계를 넘을 수 없다.
+Scheduler는 기본 1분 주기와 batch 20건으로 다음 대상을 조회한다. 보상 호출 지연이 Event 마감 등 다른 정기 작업을 막지 않도록 `subscriptionVerificationRecoveryTaskScheduler` 전용 단일 스레드에서 실행한다. 설정으로 비활성화할 수 있으며 batch 크기는 전용 Executor의 max pool과 queue 용량 합계를 넘을 수 없다.
 
 1. 기준 시간보다 오래된 `PENDING`: 다시 처리 이벤트를 발행한다.
 2. `processingLeaseUntil`이 지난 `PROCESSING`: 새 processing token으로 조건부 재선점한다.
@@ -197,6 +197,8 @@ Scheduler는 기본 1분 주기와 batch 20건으로 다음 대상을 조회한�
 보상 Recovery는 `reward_attempt_count`를 처리 횟수와 분리해 관리한다. 실패하면 `RETRY_REQUIRED`와 `nextAttemptAt`을 조건부 저장하고 기본 1분, 2분, 4분 순서의 지수 backoff를 적용하되 최대 1시간으로 제한한다. 보상에는 시도 상한이나 terminal 실패를 두지 않는다.
 
 Recovery는 생성/갱신 시각과 PK 기반 tie-breaker, 다중 인스턴스 중복 선점을 고려한다. 같은 Verification을 여러 실행이 발견해도 Processing Claim, 시도 상한 종료, 보상 backoff의 조건부 UPDATE와 Ticket ONCE의 DB Business Key·비만료 Redis key로 결과가 하나로 수렴해야 한다. 한 건의 실패는 같은 batch의 다른 건을 중단하지 않는다.
+
+`subscription_verification.recovery.processing.attempted`는 bounded executor에 전달을 시도한 횟수다. 실제 queue 수락 건수가 아니며, queue 거절은 `subscription_verification.executor.rejected`에서 별도로 집계한다.
 
 ## 이미지 보관 만료
 

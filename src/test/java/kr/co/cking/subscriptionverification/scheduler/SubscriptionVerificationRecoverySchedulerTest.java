@@ -70,8 +70,8 @@ class SubscriptionVerificationRecoverySchedulerTest {
         then(processingTrigger).should().trigger(4L);
         assertThat(counter("subscription_verification.recovery.processing.exhausted"))
                 .isEqualTo(1.0);
-        assertThat(counter("subscription_verification.recovery.processing.submitted"))
-                .isEqualTo(1.0);
+        assertThat(counter("subscription_verification.recovery.processing.attempted"))
+                .isEqualTo(2.0);
     }
 
     @Test

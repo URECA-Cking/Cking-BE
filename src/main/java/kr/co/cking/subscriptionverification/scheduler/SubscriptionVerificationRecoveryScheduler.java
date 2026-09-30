@@ -30,7 +30,7 @@ public class SubscriptionVerificationRecoveryScheduler {
     private final SubscriptionVerificationRewardService rewardService;
     private final SubscriptionVerificationRecoveryProperties properties;
     private final Clock clock;
-    private final Counter processingSubmittedCounter;
+    private final Counter processingAttemptedCounter;
     private final Counter processingExhaustedCounter;
     private final Counter rewardAcceptedCounter;
     private final Counter rewardRetryCounter;
@@ -47,8 +47,8 @@ public class SubscriptionVerificationRecoveryScheduler {
         this.rewardService = rewardService;
         this.properties = properties;
         this.clock = clock;
-        this.processingSubmittedCounter = counter(
-                meterRegistry, "subscription_verification.recovery.processing.submitted");
+        this.processingAttemptedCounter = counter(
+                meterRegistry, "subscription_verification.recovery.processing.attempted");
         this.processingExhaustedCounter = counter(
                 meterRegistry, "subscription_verification.recovery.processing.exhausted");
         this.rewardAcceptedCounter = counter(
@@ -58,6 +58,7 @@ public class SubscriptionVerificationRecoveryScheduler {
     }
 
     @Scheduled(
+            scheduler = "subscriptionVerificationRecoveryTaskScheduler",
             fixedDelayString = "${cking.verification.youtube-subscription.recovery.interval-ms:60000}",
             initialDelayString = "${cking.verification.youtube-subscription.recovery.interval-ms:60000}")
     public void recover() {
@@ -91,8 +92,8 @@ public class SubscriptionVerificationRecoveryScheduler {
                 properties.getMaxProcessingAttempts(),
                 properties.getBatchSize())) {
             try {
+                processingAttemptedCounter.increment();
                 processingTrigger.trigger(verificationId);
-                processingSubmittedCounter.increment();
             } catch (RuntimeException exception) {
                 log.warn("구독 인증 복구 작업 제출에 실패했습니다. verificationId={}",
                         verificationId, exception);
