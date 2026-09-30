@@ -10,6 +10,7 @@
 - [통합 RTM](management/rtm.csv): 요구사항 추적·릴리스 점검에 사용한다.
 - [DrawingEngine JMH 성능 테스트](performance/drawing-engine-jmh.md): 추첨 엔진의 처리량, p95 및 메모리 할당량 측정 방법을 확인한다.
 - [더미 데이터·운영 검증](operations/dummy-data-and-verification.md): 시딩 실행 조건과 Event·Ticket 운영 검증 범위를 확인한다.
+- [YouTube 구독 인증 운영 검증](operations/youtube-subscription-verification.md): 결정론적 E2E와 실제 DeepSeek·S3 smoke 및 기능 활성화 기준을 확인한다.
 
 ## 정본
 

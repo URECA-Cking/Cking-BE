@@ -31,7 +31,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-@SpringBootTest
+@SpringBootTest(properties = "cking.scheduling.enabled=false")
 class SubscriptionVerificationProcessingClaimIntegrationTest {
 
     private static final Instant BASE_TIME = Instant.parse("2026-09-29T00:00:00Z");
