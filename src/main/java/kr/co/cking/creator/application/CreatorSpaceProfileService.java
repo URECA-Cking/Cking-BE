@@ -12,11 +12,15 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Creator Space 홈·프로필 조회와 Creator 본인의 수정·커스텀 slug 변경을 처리한다(이슈 #286, #290).
@@ -44,6 +48,32 @@ public class CreatorSpaceProfileService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Creator creator = requireCreatorById(space.getCreatorId());
         return new CreatorSpaceView(space, creator.getName());
+    }
+
+    /**
+     * 공개 Creator 목록을 이름 오름차순(같으면 creatorId 오름차순)으로 조회한다(이슈 #352).
+     * keyword가 없거나 공백이면 전체를, 있으면 Creator 이름에 포함된(대소문자 무시) 항목만 반환한다.
+     * Space가 없는 Creator는 공개 대상이 아니므로 제외된다.
+     */
+    public Page<CreatorSpaceView> findPublicSpaces(String keyword, Pageable pageable) {
+        Page<CreatorSpace> spaces = spaceRepository.findAllByCreatorNamePattern(toNamePattern(keyword), pageable);
+        Map<Long, String> creatorNames = creatorRepository
+                .findByCreatorIdIn(spaces.map(CreatorSpace::getCreatorId).toList())
+                .stream()
+                .collect(Collectors.toMap(Creator::getCreatorId, Creator::getName));
+        return spaces.map(space -> new CreatorSpaceView(space, creatorNames.get(space.getCreatorId())));
+    }
+
+    /** LIKE 특수문자({@code %}, {@code _})와 이스케이프 문자({@code !})를 이스케이프해 포함 검색 패턴을 만든다. */
+    private String toNamePattern(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return "%";
+        }
+        String escaped = keyword.trim()
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
     }
 
     /** 인증된 Creator 본인의 Creator Space를 조회한다. */
