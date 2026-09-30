@@ -97,11 +97,12 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 - 업무 의미가 있는 오류는 해당 도메인 `*ErrorCode` enum에 둔다.
 - 각 API 문서는 그 API가 반환할 수 있는 오류 코드만 적는다.
 
-`VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `SYSTEM_ERROR`는 전 도메인 공통 오류로서
+`VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UPLOAD_TOO_LARGE`, `SYSTEM_ERROR`는 전 도메인 공통 오류로서
 `CommonErrorCode`에 둔다. `INVALID_LOGIN_CODE`처럼 Auth 업무 의미가 있는 오류만 `AuthErrorCode`에 둔다.
 
 - 존재하지 않는 API 경로는 `RESOURCE_NOT_FOUND`(404)를 반환한다.
 - 지원하지 않는 HTTP Method는 `METHOD_NOT_ALLOWED`(405)를 반환한다.
+- 파일 업로드가 파일 5MB 또는 요청 6MB를 넘으면 `UPLOAD_TOO_LARGE`(413)를 반환한다.
 - 인증이 필요한 경로 패턴에 해당하면 인증 검사가 먼저 적용되어 `UNAUTHORIZED`(401)를 반환한다.
 
 ### 인증 도입 후 오류 기준

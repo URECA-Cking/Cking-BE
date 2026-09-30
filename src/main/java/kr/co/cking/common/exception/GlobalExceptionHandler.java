@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
@@ -96,6 +97,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(CommonErrorCode.RESOURCE_NOT_FOUND.status())
                 .body(ApiResponse.error(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUploadTooLarge(MaxUploadSizeExceededException e) {
+        log.warn("upload too large: {}", e.getMessage());
+        return ResponseEntity
+                .status(CommonErrorCode.UPLOAD_TOO_LARGE.status())
+                .body(ApiResponse.error(CommonErrorCode.UPLOAD_TOO_LARGE));
     }
 
     /** 인증된 Principal이 필요한 Controller 인자에 인증 정보가 없으면 401로 응답한다. */
