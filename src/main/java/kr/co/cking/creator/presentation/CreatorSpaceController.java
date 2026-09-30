@@ -3,26 +3,51 @@ package kr.co.cking.creator.presentation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceRequest;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Creator Space 홈·프로필 공개 조회와 Creator 본인의 조회·수정 HTTP 요청을 처리한다. */
 @RestController
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "Creator Space", description = "Creator Space 홈·프로필 조회·수정과 커스텀 slug 변경 API를 제공합니다.")
 public class CreatorSpaceController {
 
     private final CreatorSpaceProfileService profileService;
+
+    /** 공개 Creator Space가 있는 Creator 목록을 페이지로 조회한다. */
+    @Operation(
+            summary = "공개 Creator 목록 조회",
+            description = "인증 없이 조회할 수 있습니다. Creator 이름 오름차순(같으면 creatorId 오름차순)이며, "
+                    + "keyword가 있으면 이름에 포함된 Creator만 반환합니다."
+    )
+    @GetMapping("/api/creators")
+    public ApiResponse<PageResponse<CreatorSpaceResponse.Detail>> findAll(
+            @RequestParam(required = false) @Size(max = 50) String keyword,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+    ) {
+        return ApiResponse.success(PageResponse.from(
+                profileService.findPublicSpaces(keyword, PageRequest.of(page, size))
+                        .map(CreatorSpaceResponse.Detail::from)));
+    }
 
     /** Creator ID로 공개 Creator Space를 조회한다. */
     @Operation(

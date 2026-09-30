@@ -148,9 +148,8 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 ### GET /api/creators
 
 - 권한: PUBLIC
-- 역할: Creator 목록을 조회한다.
+- 역할: Creator 목록을 조회한다. 요청·응답 계약은 [Creator Space API](../domains/creator/space-api.md#get-apicreators)를 따른다.
 
 ### GET /api/creators/{creatorId}
 
-- 권한: PUBLIC
-- 역할: Creator 상세를 조회한다.
+별도 상세 API는 제공하지 않는다. Creator 이름·소개·이미지·slug는 `GET /api/creators/{creatorId}/space`로 조회한다. 계약은 [Creator Space API](../domains/creator/space-api.md#get-apicreatorscreatoridspace)를 따른다.
