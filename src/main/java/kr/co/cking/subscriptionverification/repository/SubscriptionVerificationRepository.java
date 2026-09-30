@@ -29,6 +29,7 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
                 updated_at = :startedAt,
                 version = version + 1
             WHERE verification_id = :verificationId
+              AND attempt_count < :maxAttempts
               AND (
                   status = 'PENDING'
                   OR (status = 'PROCESSING' AND processing_lease_until <= :startedAt)
@@ -38,7 +39,8 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
             @Param("verificationId") Long verificationId,
             @Param("processingToken") String processingToken,
             @Param("startedAt") Instant startedAt,
-            @Param("leaseUntil") Instant leaseUntil
+            @Param("leaseUntil") Instant leaseUntil,
+            @Param("maxAttempts") int maxAttempts
     );
 
     Optional<SubscriptionVerification> findByVerificationIdAndStatusAndProcessingToken(
@@ -94,6 +96,109 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
             @Param("acceptableStatuses") Collection<VerificationRewardStatus> acceptableStatuses,
             @Param("acceptedStatus") VerificationRewardStatus acceptedStatus,
             @Param("acceptedAt") Instant acceptedAt
+    );
+
+    @Query("""
+            select v
+            from SubscriptionVerification v
+            where (
+                    v.status = :pendingStatus
+                    and v.createdAt <= :pendingBefore
+                    and (v.nextAttemptAt is null or v.nextAttemptAt <= :now)
+                    and v.attemptCount < :maxAttempts
+                  )
+               or (
+                    v.status = :processingStatus
+                    and v.processingLeaseUntil <= :now
+                    and v.attemptCount < :maxAttempts
+                  )
+            order by v.createdAt asc, v.verificationId asc
+            """)
+    List<SubscriptionVerification> findProcessingRecoveryCandidates(
+            @Param("pendingStatus") SubscriptionVerificationStatus pendingStatus,
+            @Param("processingStatus") SubscriptionVerificationStatus processingStatus,
+            @Param("pendingBefore") Instant pendingBefore,
+            @Param("now") Instant now,
+            @Param("maxAttempts") int maxAttempts,
+            Pageable pageable
+    );
+
+    @Query("""
+            select v.verificationId
+            from SubscriptionVerification v
+            where v.status = :processingStatus
+              and v.processingLeaseUntil <= :now
+              and v.attemptCount >= :maxAttempts
+            order by v.createdAt asc, v.verificationId asc
+            """)
+    List<Long> findExhaustedProcessingIds(
+            @Param("processingStatus") SubscriptionVerificationStatus processingStatus,
+            @Param("now") Instant now,
+            @Param("maxAttempts") int maxAttempts,
+            Pageable pageable
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update SubscriptionVerification v
+               set v.status = :failedStatus,
+                   v.reasonCode = :reasonCode,
+                   v.activeGuard = null,
+                   v.processingLeaseUntil = null,
+                   v.nextAttemptAt = null,
+                   v.processedAt = :failedAt,
+                   v.updatedAt = :failedAt,
+                   v.version = v.version + 1
+             where v.verificationId = :verificationId
+               and v.status = :processingStatus
+               and v.processingLeaseUntil <= :failedAt
+               and v.attemptCount >= :maxAttempts
+            """)
+    int failExhaustedProcessing(
+            @Param("verificationId") Long verificationId,
+            @Param("processingStatus") SubscriptionVerificationStatus processingStatus,
+            @Param("failedStatus") SubscriptionVerificationStatus failedStatus,
+            @Param("reasonCode") String reasonCode,
+            @Param("failedAt") Instant failedAt,
+            @Param("maxAttempts") int maxAttempts
+    );
+
+    @Query("""
+            select v
+            from SubscriptionVerification v
+            where v.status = :approvedStatus
+              and v.rewardStatus in :recoverableStatuses
+              and (v.nextAttemptAt is null or v.nextAttemptAt <= :now)
+            order by v.updatedAt asc, v.verificationId asc
+            """)
+    List<SubscriptionVerification> findRewardRecoveryCandidates(
+            @Param("approvedStatus") SubscriptionVerificationStatus approvedStatus,
+            @Param("recoverableStatuses") Collection<VerificationRewardStatus> recoverableStatuses,
+            @Param("now") Instant now,
+            Pageable pageable
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update SubscriptionVerification v
+               set v.rewardStatus = :retryStatus,
+                   v.rewardAttemptCount = v.rewardAttemptCount + 1,
+                   v.nextAttemptAt = :nextAttemptAt,
+                   v.updatedAt = :failedAt,
+                   v.version = v.version + 1
+             where v.verificationId = :verificationId
+               and v.status = :approvedStatus
+               and v.rewardStatus in :recoverableStatuses
+               and v.rewardAttemptCount = :expectedAttemptCount
+            """)
+    int scheduleRewardRetry(
+            @Param("verificationId") Long verificationId,
+            @Param("approvedStatus") SubscriptionVerificationStatus approvedStatus,
+            @Param("recoverableStatuses") Collection<VerificationRewardStatus> recoverableStatuses,
+            @Param("retryStatus") VerificationRewardStatus retryStatus,
+            @Param("expectedAttemptCount") int expectedAttemptCount,
+            @Param("nextAttemptAt") Instant nextAttemptAt,
+            @Param("failedAt") Instant failedAt
     );
 
     Optional<SubscriptionVerification> findByRequestId(String requestId);

@@ -1,7 +1,6 @@
 package kr.co.cking.subscriptionverification.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -40,7 +39,7 @@ class SubscriptionVerificationRewardServiceTest {
         SubscriptionVerificationProcessingClaim claim = claim();
         given(ticketOnceEarnService.earn(any())).willReturn(new EarnResult(resultCode));
 
-        service.reward(claim);
+        SubscriptionVerificationRewardAttemptResult attemptResult = service.reward(claim);
 
         ArgumentCaptor<EarnCommand> commandCaptor = ArgumentCaptor.forClass(EarnCommand.class);
         then(ticketOnceEarnService).should().earn(commandCaptor.capture());
@@ -54,6 +53,7 @@ class SubscriptionVerificationRewardServiceTest {
         assertThat(command.periodKey()).isEqualTo(claim.rewardPeriodKey());
         assertThat(command.amount()).isEqualTo(1L);
         assertThat(command.rewardPolicy()).isEqualTo(EarnRewardPolicy.ONCE);
+        assertThat(attemptResult).isEqualTo(SubscriptionVerificationRewardAttemptResult.ACCEPTED);
         then(completionService).should().accept(claim.verificationId(), NOW);
     }
 
@@ -62,8 +62,9 @@ class SubscriptionVerificationRewardServiceTest {
         given(ticketOnceEarnService.earn(any()))
                 .willReturn(new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED));
 
-        service.reward(claim());
+        SubscriptionVerificationRewardAttemptResult result = service.reward(claim());
 
+        assertThat(result).isEqualTo(SubscriptionVerificationRewardAttemptResult.RETRY_REQUIRED);
         then(completionService).should(never()).accept(any(), any());
     }
 
@@ -72,7 +73,8 @@ class SubscriptionVerificationRewardServiceTest {
         willThrow(new IllegalStateException("redis unavailable"))
                 .given(ticketOnceEarnService).earn(any());
 
-        assertThatCode(() -> service.reward(claim())).doesNotThrowAnyException();
+        assertThat(service.reward(claim()))
+                .isEqualTo(SubscriptionVerificationRewardAttemptResult.RETRY_REQUIRED);
 
         then(completionService).should(never()).accept(any(), any());
     }
@@ -84,7 +86,8 @@ class SubscriptionVerificationRewardServiceTest {
         willThrow(new IllegalStateException("database unavailable"))
                 .given(completionService).accept(123L, NOW);
 
-        assertThatCode(() -> service.reward(claim())).doesNotThrowAnyException();
+        assertThat(service.reward(claim()))
+                .isEqualTo(SubscriptionVerificationRewardAttemptResult.RETRY_REQUIRED);
     }
 
     private static SubscriptionVerificationProcessingClaim claim() {

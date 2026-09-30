@@ -50,6 +50,15 @@ cking:
         # connect/read timeout과 Provider 내부 재시도·backoff보다 길게 설정한다.
         processing-lease-duration: ${SUBSCRIPTION_VERIFICATION_PROCESSING_LEASE_DURATION:PT90S}
         await-termination-seconds: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+      recovery:
+        enabled: ${SUBSCRIPTION_VERIFICATION_RECOVERY_ENABLED:true}
+        interval-ms: ${SUBSCRIPTION_VERIFICATION_RECOVERY_INTERVAL_MS:60000}
+        pending-grace-period: ${SUBSCRIPTION_VERIFICATION_RECOVERY_PENDING_GRACE_PERIOD:PT1M}
+        # 기본 Executor의 max pool 2 + queue 20을 넘지 않도록 제한한다.
+        batch-size: ${SUBSCRIPTION_VERIFICATION_RECOVERY_BATCH_SIZE:20}
+        max-processing-attempts: ${SUBSCRIPTION_VERIFICATION_MAX_PROCESSING_ATTEMPTS:3}
+        reward-backoff-base: ${SUBSCRIPTION_VERIFICATION_REWARD_BACKOFF_BASE:PT1M}
+        reward-backoff-max: ${SUBSCRIPTION_VERIFICATION_REWARD_BACKOFF_MAX:PT1H}
       deepseek:
         # API 키는 배포 환경의 DEEPSEEK_API_KEY Secret으로만 주입한다.
         api-key: ${DEEPSEEK_API_KEY:}

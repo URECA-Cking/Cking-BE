@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationStatus;
+import kr.co.cking.subscriptionverification.infrastructure.recovery.SubscriptionVerificationRecoveryProperties;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SubscriptionVerificationProcessingClaimService {
 
     private final SubscriptionVerificationRepository verificationRepository;
+    private final SubscriptionVerificationRecoveryProperties recoveryProperties;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<SubscriptionVerificationProcessingClaim> claim(
@@ -43,7 +45,11 @@ public class SubscriptionVerificationProcessingClaimService {
         }
         String processingToken = UUID.randomUUID().toString();
         int affected = verificationRepository.claimProcessing(
-                verificationId, processingToken, startedAt, leaseUntil);
+                verificationId,
+                processingToken,
+                startedAt,
+                leaseUntil,
+                recoveryProperties.getMaxProcessingAttempts());
         if (affected == 0) {
             return Optional.empty();
         }
