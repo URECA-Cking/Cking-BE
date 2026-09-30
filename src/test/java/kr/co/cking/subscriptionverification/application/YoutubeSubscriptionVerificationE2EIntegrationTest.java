@@ -1,6 +1,7 @@
 package kr.co.cking.subscriptionverification.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -16,9 +17,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
@@ -36,6 +39,7 @@ import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRes
 import kr.co.cking.subscriptionverification.application.vision.VisionPlatform;
 import kr.co.cking.subscriptionverification.application.vision.VisionSubscriptionState;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationImageReuseType;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationStatus;
 import kr.co.cking.subscriptionverification.domain.VerificationRewardStatus;
@@ -58,6 +62,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** 채널 설정부터 VLM 판정과 Ticket Stream DB 반영까지 구독 인증의 최종 사용자 흐름을 검증한다. */
 @SpringBootTest(properties = {
@@ -161,6 +166,7 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
                 .startsWith((byte) 0xFF, (byte) 0xD8)
                 .endsWith((byte) 0xFF, (byte) 0xD9);
         assertThat(firstCompleted.getImageSha256()).hasSize(64);
+        assertThat(visionAnalysisPort.commitBoundaryObserved()).isTrue();
         assertTicketPersistedOnce(firstParticipant, fixture, firstCompleted);
         assertThat(imageReuseRepository.findById(firstCompleted.getVerificationId()).orElseThrow().getReuseType())
                 .isEqualTo(SubscriptionVerificationImageReuseType.FIRST_USE);
@@ -172,6 +178,15 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
         assertThat(verificationRepository.findAllByMemberIdAndCreatorIdAndMissionId(
                 firstParticipant.getMemberId(), fixture.creatorId(), fixture.missionId())).hasSize(1);
         assertThat(currentBalance(firstParticipant.getMemberId(), fixture.creatorId())).isEqualTo(1L);
+
+        assertThatThrownBy(() -> submit(
+                firstParticipant, fixture, UUID.randomUUID(), image))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(SubscriptionVerificationErrorCode.VERIFICATION_ALREADY_APPROVED));
+        assertThat(verificationRepository.findAllByMemberIdAndCreatorIdAndMissionId(
+                firstParticipant.getMemberId(), fixture.creatorId(), fixture.missionId())).hasSize(1);
+        assertTicketPersistedOnce(firstParticipant, fixture, firstCompleted);
 
         SubscriptionVerificationSubmissionResult reused = submit(
                 secondParticipant, fixture, UUID.randomUUID(), image);
@@ -406,8 +421,10 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
 
         @Bean
         @Primary
-        ControllableVisionAnalysisPort subscriptionVerificationE2EVisionAnalysisPort() {
-            return new ControllableVisionAnalysisPort();
+        ControllableVisionAnalysisPort subscriptionVerificationE2EVisionAnalysisPort(
+                JdbcTemplate jdbcTemplate
+        ) {
+            return new ControllableVisionAnalysisPort(jdbcTemplate);
         }
     }
 
@@ -452,11 +469,18 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
         private final AtomicInteger calls = new AtomicInteger();
         private final AtomicReference<VisionSubscriptionState> subscriptionState =
                 new AtomicReference<>(VisionSubscriptionState.SUBSCRIBED);
+        private final AtomicBoolean commitBoundaryObserved = new AtomicBoolean();
+        private final JdbcTemplate jdbcTemplate;
+
+        private ControllableVisionAnalysisPort(JdbcTemplate jdbcTemplate) {
+            this.jdbcTemplate = jdbcTemplate;
+        }
 
         void reset() {
             remainingRetryableFailures.set(0);
             calls.set(0);
             subscriptionState.set(VisionSubscriptionState.SUBSCRIBED);
+            commitBoundaryObserved.set(false);
         }
 
         void failRetryably(int count) {
@@ -471,8 +495,13 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
             return calls.get();
         }
 
+        boolean commitBoundaryObserved() {
+            return commitBoundaryObserved.get();
+        }
+
         @Override
         public VisionAnalysisResult analyze(VisionAnalysisRequest request) {
+            assertCommittedProcessingVisible(request.targetChannelHandle());
             calls.incrementAndGet();
             if (remainingRetryableFailures.getAndUpdate(value -> Math.max(0, value - 1)) > 0) {
                 throw new VisionAnalysisException(
@@ -485,6 +514,20 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
                     subscriptionState.get(),
                     true,
                     0.99);
+        }
+
+        private void assertCommittedProcessingVisible(String targetChannelHandle) {
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                throw new AssertionError("Vision 분석은 제출 Transaction 밖에서 실행되어야 합니다.");
+            }
+            Integer count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*) FROM subscription_verification
+                    WHERE target_channel_handle = ? AND status = 'PROCESSING'
+                    """, Integer.class, targetChannelHandle);
+            if (count == null || count != 1) {
+                throw new AssertionError("Commit된 PROCESSING Verification을 조회할 수 없습니다.");
+            }
+            commitBoundaryObserved.set(true);
         }
     }
 }
