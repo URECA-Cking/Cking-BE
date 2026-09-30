@@ -4,8 +4,7 @@
 
 | No. | 구분 | 도메인 | 역할 | Method | 경로·호출 | 기능 | 멱등성 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 3 | 외부 | 공통 | PUBLIC | GET | `/api/creators` | Creator 목록 | - |
-| 4 | 외부 | 공통 | PUBLIC | GET | `/api/creators/{creatorId}` | Creator 상세 | - |
+| 3 | 외부 | Creator Space | PUBLIC | GET | `/api/creators` | 공개 Creator 목록 조회(이름 검색·페이지) | - |
 | 5 | 외부 | Mission | USER | GET | `/api/creators/{creatorId}/missions` | 미션 조회 | - |
 | 6 | 외부 | Mission | USER | POST | `/api/creators/{creatorId}/missions/{missionId}/complete` | 미션 완료 | `requestId` |
 | 7 | 외부 | Ticket | USER | GET | `/api/creators/{creatorId}/tickets` | Balance 조회 | - |

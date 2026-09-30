@@ -5,7 +5,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 ## 범위와 권한
 
 - Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 이 API는 만들어진 Space의 조회·수정만 다룬다.
-- 공개 조회(`GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)는 인증 없이 호출할 수 있다.
+- 공개 조회(`GET /api/creators`, `GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)는 인증 없이 호출할 수 있다.
 - 본인 API(`/api/creator/space`, `/api/creator/space/slug`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 공유 URL은 프론트엔드의 `/space/{slug}` 형식이다. slug는 이 공개 조회의 탐색에만 사용하고, 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용한다. slug를 업무 기록에 저장하지 않는다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
@@ -47,6 +47,38 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
   "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
   "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
   "slugChangeableAt": "2026-10-12T03:00:00Z"
+}
+```
+
+## GET /api/creators
+
+공개 Space가 있는 Creator 목록을 페이지로 조회한다(이슈 #352). 인증이 필요 없다. 이벤트 유무·팔로우 여부와 관계없이 Creator와 Space가 모두 있는 항목을 반환하며, Space가 없는 Creator는 포함하지 않는다. 클라이언트는 이 목록으로 탐색·관심 크리에이터 선택 화면을 구성한다.
+
+| 쿼리 | 기본값 | 제약 |
+| --- | --- | --- |
+| `page` | 0 | 0 이상 |
+| `size` | 20 | 1~100 |
+| `keyword` | 없음 | 최대 50자. Creator 이름에 포함된 항목만 반환한다(대소문자 무시). 없거나 공백이면 전체를 반환한다. 앞뒤 공백은 무시하고 `%`·`_`는 문자 그대로 찾는다 |
+
+정렬은 Creator 이름 오름차순이며, 이름이 같으면 `creatorId` 오름차순이다. 항상 같은 순서를 보장하므로 페이지를 순회해도 항목이 누락되거나 중복되지 않는다(순회 중 Creator가 추가·삭제되면 경계 항목이 이동할 수 있다). 응답은 [공통 API 규약](../../common/api.md)의 `PageResponse`이며 각 `items` 항목은 위 공개 조회 응답과 같은 필드다. 결과가 없으면 `items`가 빈 배열이고 `totalElements`가 0이다.
+
+```json
+{
+  "items": [
+    {
+      "creatorId": 42,
+      "creatorName": "크리에이터",
+      "slug": "iu-official",
+      "introText": "크리에이터와 함께하는 공간이에요",
+      "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
+      "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasNext": false
 }
 ```
 
@@ -98,7 +130,8 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 
 ## 오류
 
-- 공개 조회에서 Creator·Space·slug가 없으면 `RESOURCE_NOT_FOUND`(404)다.
+- 공개 조회에서 Creator·Space·slug가 없으면 `RESOURCE_NOT_FOUND`(404)다. 목록 조회는 결과가 없어도 404가 아니라 빈 `items`로 성공한다.
+- 목록 조회의 `page`·`size`·`keyword`가 제약을 어기거나 숫자가 아니면 `VALIDATION_FAILED`(400)다.
 - 본인 API에서 JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`(401)다.
 - 본인 API 호출자가 Creator가 아니면 `FORBIDDEN`(403)이다.
 - 본인 API 호출자가 Creator지만 Space가 없으면 `RESOURCE_NOT_FOUND`(404)다. V19 백필이 건너뛰어진 기존 Creator가 해당한다([README.md](README.md#기존-승인-creator-백필v19)).
