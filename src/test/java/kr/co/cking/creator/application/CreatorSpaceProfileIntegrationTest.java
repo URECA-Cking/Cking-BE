@@ -21,6 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -288,6 +290,73 @@ class CreatorSpaceProfileIntegrationTest {
 
         assertThat(profileService.changeSlug(other.getMemberId(), releasedSlug).space().getSlug())
                 .isEqualTo(releasedSlug);
+    }
+
+    /**
+     * 공개 Creator 목록은 Space가 있는 Creator만 이름 오름차순으로 페이지 조회하고, 이름 검색은 대소문자를 무시하며
+     * LIKE 특수문자를 문자 그대로 찾는다(이슈 #352). 다른 데이터와 섞이지 않게 테스트 전용 이름 접두어로 검색한다.
+     */
+    @Test
+    void 공개_Creator_목록은_Space가_있는_Creator만_이름순으로_페이지_조회하고_이름으로_검색한다() {
+        Member admin = createMember("목록관리자", MemberRole.ADMIN);
+        Member second = createMember("목록검증Q7-나", MemberRole.USER);
+        Member first = createMember("목록검증Q7-가", MemberRole.USER);
+        Member underscore = createMember("목록검증Q7_다", MemberRole.USER);
+        Member withoutSpace = createMember("목록검증Q7-공간없음", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, second);
+        approve(admin, first);
+        approve(admin, underscore);
+        creatorRepository.saveAndFlush(new Creator(withoutSpace.getMemberId(), "목록검증Q7-공간없음"));
+
+        Page<CreatorSpaceView> firstPage = profileService.findPublicSpaces("목록검증Q7-", PageRequest.of(0, 1));
+        Page<CreatorSpaceView> secondPage = profileService.findPublicSpaces("목록검증Q7-", PageRequest.of(1, 1));
+        Page<CreatorSpaceView> beyondLast = profileService.findPublicSpaces("목록검증Q7-", PageRequest.of(2, 1));
+
+        assertThat(firstPage.getTotalElements()).isEqualTo(2);
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(firstPage.getContent()).extracting(CreatorSpaceView::creatorName).containsExactly("목록검증Q7-가");
+        assertThat(secondPage.hasNext()).isFalse();
+        assertThat(secondPage.getContent()).extracting(CreatorSpaceView::creatorName).containsExactly("목록검증Q7-나");
+        assertThat(beyondLast.getContent()).isEmpty();
+        assertThat(profileService.findPublicSpaces("  목록검증q7-  ", PageRequest.of(0, 20)).getContent())
+                .extracting(CreatorSpaceView::creatorName)
+                .containsExactly("목록검증Q7-가", "목록검증Q7-나");
+        assertThat(profileService.findPublicSpaces("Q7_", PageRequest.of(0, 20)).getContent())
+                .extracting(CreatorSpaceView::creatorName)
+                .containsExactly("목록검증Q7_다");
+        assertThat(profileService.findPublicSpaces("목록검증Q7-공간없음", PageRequest.of(0, 20)).getContent()).isEmpty();
+        assertThat(profileService.findPublicSpaces("목록검증Q7-없는이름", PageRequest.of(0, 20)).getContent()).isEmpty();
+    }
+
+    /** 이름이 같은 Creator는 creatorId 오름차순으로 정렬되어, 같은 이름이 페이지 경계에 걸쳐도 누락·중복이 없다(이슈 #352). */
+    @Test
+    void 공개_Creator_목록은_동명이인을_creatorId_순으로_정렬해_페이지_경계에서도_누락과_중복이_없다() {
+        Member admin = createMember("동명관리자", MemberRole.ADMIN);
+        Member sameNameFirst = createMember("동명검증Q8-동일", MemberRole.USER);
+        Member earlierName = createMember("동명검증Q8-가", MemberRole.USER);
+        Member sameNameSecond = createMember("동명검증Q8-동일", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, sameNameFirst);
+        approve(admin, earlierName);
+        approve(admin, sameNameSecond);
+        Long sameNameFirstId = creatorRepository.findByMemberId(sameNameFirst.getMemberId()).orElseThrow().getCreatorId();
+        Long earlierNameId = creatorRepository.findByMemberId(earlierName.getMemberId()).orElseThrow().getCreatorId();
+        Long sameNameSecondId = creatorRepository.findByMemberId(sameNameSecond.getMemberId()).orElseThrow().getCreatorId();
+
+        Page<CreatorSpaceView> firstPage = profileService.findPublicSpaces("동명검증Q8-", PageRequest.of(0, 2));
+        Page<CreatorSpaceView> secondPage = profileService.findPublicSpaces("동명검증Q8-", PageRequest.of(1, 2));
+
+        assertThat(sameNameFirstId).isLessThan(sameNameSecondId);
+        assertThat(firstPage.getTotalElements()).isEqualTo(3);
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(firstPage.getContent()).extracting(view -> view.space().getCreatorId())
+                .containsExactly(earlierNameId, sameNameFirstId);
+        assertThat(secondPage.hasNext()).isFalse();
+        assertThat(secondPage.getContent()).extracting(view -> view.space().getCreatorId())
+                .containsExactly(sameNameSecondId);
     }
 
     private void assertSlugTaken(ThrowingCallable call) {

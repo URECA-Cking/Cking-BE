@@ -17,11 +17,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -84,6 +88,62 @@ class CreatorSpaceProfileServiceTest {
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
 
         assertErrorCode(() -> service.findByCreatorId(42L), CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void findPublicSpacesAttachesCreatorNamesAndKeepsRepositoryOrder() {
+        Creator other = new Creator(8L, "다른 크리에이터");
+        ReflectionTestUtils.setField(other, "creatorId", 43L);
+        CreatorSpace otherSpace = CreatorSpace.fromTemplate(43L, new CreatorSpaceTemplate(
+                1L, "소개2", "https://img/profile2.png", "https://img/banner2.png", "creator-{creatorId}"
+        ), "creator-43");
+        PageRequest pageable = PageRequest.of(0, 20);
+        given(spaceRepository.findAllByCreatorNamePattern("%", pageable))
+                .willReturn(new PageImpl<>(List.of(otherSpace, space), pageable, 2));
+        given(creatorRepository.findByCreatorIdIn(List.of(43L, 42L))).willReturn(List.of(creator, other));
+
+        Page<CreatorSpaceView> result = service.findPublicSpaces(null, pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        assertThat(result.getContent()).extracting(view -> view.space().getCreatorId()).containsExactly(43L, 42L);
+        assertThat(result.getContent()).extracting(CreatorSpaceView::creatorName)
+                .containsExactly("다른 크리에이터", "크리에이터");
+    }
+
+    @Test
+    void findPublicSpacesReturnsEmptyPageWhenNothingMatches() {
+        PageRequest pageable = PageRequest.of(0, 20);
+        given(spaceRepository.findAllByCreatorNamePattern("%없음%", pageable))
+                .willReturn(new PageImpl<>(List.of(), pageable, 0));
+        given(creatorRepository.findByCreatorIdIn(List.of())).willReturn(List.of());
+
+        Page<CreatorSpaceView> result = service.findPublicSpaces("없음", pageable);
+
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.getTotalElements()).isZero();
+    }
+
+    @Test
+    void findPublicSpacesTreatsBlankKeywordAsAll() {
+        PageRequest pageable = PageRequest.of(0, 20);
+        given(spaceRepository.findAllByCreatorNamePattern("%", pageable))
+                .willReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        service.findPublicSpaces("   ", pageable);
+
+        then(spaceRepository).should().findAllByCreatorNamePattern("%", pageable);
+    }
+
+    /** 검색어의 LIKE 특수문자는 문자 그대로 찾도록 이스케이프하고, 앞뒤 공백은 제거한다. */
+    @Test
+    void findPublicSpacesEscapesLikeWildcardsInKeyword() {
+        PageRequest pageable = PageRequest.of(0, 20);
+        given(spaceRepository.findAllByCreatorNamePattern("%100!%!_a!!%", pageable))
+                .willReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        service.findPublicSpaces(" 100%_a! ", pageable);
+
+        then(spaceRepository).should().findAllByCreatorNamePattern("%100!%!_a!!%", pageable);
     }
 
     @Test

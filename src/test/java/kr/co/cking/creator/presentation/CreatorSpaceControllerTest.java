@@ -15,11 +15,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -267,6 +270,58 @@ class CreatorSpaceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"slug\": \"iu-official\"}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void publicCreatorListIsReadableWithoutJwtAndUsesDefaultPaging() throws Exception {
+        given(profileService.findPublicSpaces(null, PageRequest.of(0, 20)))
+                .willReturn(new PageImpl<>(List.of(view()), PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get("/api/creators"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[0].creatorId").value(42))
+                .andExpect(jsonPath("$.data.items[0].creatorName").value("크리에이터"))
+                .andExpect(jsonPath("$.data.items[0].slug").value("creator-42"))
+                .andExpect(jsonPath("$.data.items[0].introText").value("소개"))
+                .andExpect(jsonPath("$.data.items[0].profileImageUrl").value("https://img/profile.png"))
+                .andExpect(jsonPath("$.data.items[0].bannerImageUrl").value("https://img/banner.png"))
+                .andExpect(jsonPath("$.data.items[0].slugChangeableAt").doesNotExist())
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void publicCreatorListPassesKeywordAndPagingToService() throws Exception {
+        given(profileService.findPublicSpaces("크리", PageRequest.of(1, 5)))
+                .willReturn(new PageImpl<>(List.of(), PageRequest.of(1, 5), 5));
+
+        mockMvc.perform(get("/api/creators").param("keyword", "크리").param("page", "1").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"page=-1", "size=0", "size=101", "page=abc"})
+    void publicCreatorListRejectsInvalidPaging(String query) throws Exception {
+        mockMvc.perform(get("/api/creators?" + query))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(profileService).should(never()).findPublicSpaces(any(), any());
+    }
+
+    @Test
+    void publicCreatorListRejectsTooLongKeyword() throws Exception {
+        mockMvc.perform(get("/api/creators").param("keyword", "가".repeat(51)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(profileService).should(never()).findPublicSpaces(any(), any());
     }
 
     private CreatorSpaceView view() {
