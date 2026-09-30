@@ -39,7 +39,7 @@ public class CorsConfig {
         configuration.setAllowedOrigins(Arrays.stream(allowedOrigins)
                 .filter(StringUtils::hasText)
                 .toList());
-        configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of(HttpHeaders.CONTENT_TYPE, HttpHeaders.AUTHORIZATION));
         configuration.setAllowCredentials(allowCredentials);
         configuration.setMaxAge(3600L);
