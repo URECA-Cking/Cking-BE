@@ -31,5 +31,20 @@ services:
       interval: 5s
       retries: 10
 
+  s3mock:
+    image: adobe/s3mock:5.2.3
+    container_name: cking-s3mock
+    ports:
+      - "9090:9090"
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: cking-local-uploads
+      COM_ADOBE_TESTING_S3MOCK_STORE_REGION: ap-northeast-2
+      # 이미지가 실행 사용자(cnb) 소유로 만들어 둔 경로다. 새 볼륨이 이 소유권을 이어받아야 쓰기가 된다.
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+    volumes:
+      - s3mock-data:/s3mockroot
+
 volumes:
   mysql-data:
+  s3mock-data:

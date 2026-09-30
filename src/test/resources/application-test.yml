@@ -11,3 +11,6 @@ cking:
     jwt:
       # 테스트 전용 키이며 런타임 환경변수로 사용하지 않는다.
       secret: 2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA=
+  storage:
+    # CI에는 S3Mock이 없어 메모리 구현을 쓴다. S3 구현은 S3ObjectStorageTest가 Testcontainers로 검증한다.
+    type: memory

@@ -105,8 +105,11 @@ Docker Compose 실행 시 아래 환경이 자동으로 생성됩니다.
 | Password   | cking     |
 | Redis Host | localhost |
 | Redis Port | 6379      |
+| S3Mock (이미지 저장소) | http://localhost:9090 |
+| S3 버킷    | cking-local-uploads |
 
-별도의 MySQL Database 생성이나 Redis 설정은 필요하지 않습니다.
+별도의 MySQL Database 생성이나 Redis·버킷 설정은 필요하지 않습니다.
+로컬에서 올린 이미지는 S3Mock에 저장되고, 게시글 등의 이미지 주소도 `http://localhost:9090/...`으로 나옵니다.
 
 ---
 
@@ -117,6 +120,12 @@ Docker Compose 실행 시 아래 환경이 자동으로 생성됩니다.
 ```bash
 git switch develop
 git pull origin develop
+```
+
+`docker-compose.yml`이 바뀌었으면 새 컨테이너가 뜨도록 한 번 더 실행합니다.
+
+```bash
+docker compose up -d
 ```
 
 이후 작업 브랜치를 생성합니다.

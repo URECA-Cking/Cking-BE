@@ -18,3 +18,8 @@ cking:
     refresh-cookie-secure: false
     jwt:
       secret: ${JWT_SECRET}
+  storage:
+    type: s3
+    bucket: cking-local-uploads
+    region: ap-northeast-2
+    endpoint: http://localhost:9090

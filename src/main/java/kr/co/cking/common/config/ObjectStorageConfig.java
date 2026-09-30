@@ -8,8 +8,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 @Configuration
@@ -29,14 +33,30 @@ public class ObjectStorageConfig {
     @ConditionalOnProperty(name = "cking.storage.type", havingValue = "s3")
     static class S3 {
 
+        // 로컬 S3 호환 저장소는 서명을 검사하지 않지만 SDK는 서명할 자격 증명이 필요하다.
+        private static final StaticCredentialsProvider LOCAL_CREDENTIALS =
+                StaticCredentialsProvider.create(AwsBasicCredentials.create("local", "local"));
+
         @Bean(destroyMethod = "close")
         S3Client s3Client(ObjectStorageProperties properties) {
-            return S3Client.builder().region(Region.of(properties.region())).build();
+            S3ClientBuilder builder = S3Client.builder().region(Region.of(properties.region()));
+            if (properties.endpoint() != null) {
+                builder.endpointOverride(properties.endpoint())
+                        .forcePathStyle(true)
+                        .credentialsProvider(LOCAL_CREDENTIALS);
+            }
+            return builder.build();
         }
 
         @Bean(destroyMethod = "close")
         S3Presigner s3Presigner(ObjectStorageProperties properties) {
-            return S3Presigner.builder().region(Region.of(properties.region())).build();
+            S3Presigner.Builder builder = S3Presigner.builder().region(Region.of(properties.region()));
+            if (properties.endpoint() != null) {
+                builder.endpointOverride(properties.endpoint())
+                        .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                        .credentialsProvider(LOCAL_CREDENTIALS);
+            }
+            return builder.build();
         }
 
         @Bean
