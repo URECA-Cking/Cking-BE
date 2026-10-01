@@ -127,11 +127,10 @@ class SubscriptionVerificationSubmissionValidatorTest {
         given(verificationRepository.findByMemberIdAndCreatorIdAndMissionIdAndStatus(
                 MEMBER_ID, CREATOR_ID, MISSION_ID, SubscriptionVerificationStatus.APPROVED))
                 .willReturn(Optional.empty());
-        given(verificationRepository.existsByMemberIdAndCreatorIdAndMissionIdAndStatusIn(
-                org.mockito.ArgumentMatchers.eq(MEMBER_ID),
-                org.mockito.ArgumentMatchers.eq(CREATOR_ID),
-                org.mockito.ArgumentMatchers.eq(MISSION_ID),
-                any())).willReturn(true);
+        given(verificationRepository
+                .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
+                        MEMBER_ID, CREATOR_ID, MISSION_ID))
+                .willReturn(Optional.of(verification(FINGERPRINT, NOW.minusSeconds(60))));
         assertError(
                 () -> validateRequest(),
                 SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS);
@@ -142,7 +141,7 @@ class SubscriptionVerificationSubmissionValidatorTest {
         given(verificationRepository
                 .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
                         MEMBER_ID, CREATOR_ID, MISSION_ID))
-                .willReturn(Optional.of(verification(FINGERPRINT, NOW.minusSeconds(29))));
+                .willReturn(Optional.of(rejectedVerification(FINGERPRINT, NOW.minusSeconds(29))));
         assertError(
                 () -> validateRequest(),
                 SubscriptionVerificationErrorCode.VERIFICATION_SUBMISSION_LIMIT_EXCEEDED);
@@ -179,6 +178,16 @@ class SubscriptionVerificationSubmissionValidatorTest {
                 "JPEG_V1",
                 UUID.randomUUID().toString(),
                 createdAt);
+    }
+
+    private SubscriptionVerification rejectedVerification(String fingerprint, Instant createdAt) {
+        SubscriptionVerification verification = verification(fingerprint, createdAt);
+        String processingToken = UUID.randomUUID().toString();
+        Instant processingStartedAt = createdAt.plusSeconds(1);
+        verification.startProcessing(
+                processingToken, processingStartedAt, processingStartedAt.plusSeconds(60));
+        verification.reject(processingToken, "NOT_SUBSCRIBED", processingStartedAt.plusSeconds(1));
+        return verification;
     }
 
     private void assertError(
