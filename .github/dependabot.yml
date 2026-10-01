@@ -8,3 +8,13 @@ updates:
       github-actions:
         patterns:
           - "*"
+    # 빌드·배포 job의 액션은 develop 머지 후에만 실행돼 PR CI로 확인되지 않는다. 메이저는 사람이 계획해서 올린다.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "[TASK]"
+    labels:
+      - task
+    assignees:
+      - rmsckd1640
