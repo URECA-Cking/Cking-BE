@@ -24,28 +24,12 @@ echo "[2/4] Parameter Store 읽기: $PARAM_PATH"
 for name in DB_HOST DB_USERNAME DB_PASSWORD DOCS_USERNAME DOCS_PASSWORD \
             JWT_SECRET OAUTH_GOOGLE_CLIENT_ID OAUTH_GOOGLE_CLIENT_SECRET \
             OAUTH_KAKAO_CLIENT_ID OAUTH_KAKAO_CLIENT_SECRET \
-            SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED; do
+            SUBSCRIPTION_GEMINI_API_KEY; do
   value=$(aws ssm get-parameter --region "$REGION" --name "${PARAM_PATH}${name}" \
     --with-decryption --query 'Parameter.Value' --output text)
   export "$name=$value"
 done
 
-# 제출 기능을 켠 배포에서만 Gemini Secret을 요구한다. 기능을 닫은 환경은 Key 없이도 기동한다.
-case "$SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED" in
-  true)
-    value=$(aws ssm get-parameter --region "$REGION" \
-      --name "${PARAM_PATH}SUBSCRIPTION_GEMINI_API_KEY" \
-      --with-decryption --query 'Parameter.Value' --output text)
-    export "SUBSCRIPTION_GEMINI_API_KEY=$value"
-    ;;
-  false)
-    unset SUBSCRIPTION_GEMINI_API_KEY
-    ;;
-  *)
-    echo "SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED는 true 또는 false여야 합니다." >&2
-    exit 1
-    ;;
-esac
 export IMAGE_TAG="$TAG"
 
 echo "[3/4] 이미지 pull 및 기동: $IMAGE_TAG"
