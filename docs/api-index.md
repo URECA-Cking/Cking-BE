@@ -120,5 +120,8 @@
 | 117 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/comments` | 게시글 댓글 작성(팔로워·작성 Creator) | - |
 | 118 | 외부 | Post | USER | PATCH | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}` | 게시글 댓글 수정(작성자) | 상태 기반 |
 | 119 | 외부 | Post | USER | DELETE | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}` | 게시글 댓글 삭제(작성자·게시글 Creator) | 상태 기반 |
+| 120 | 외부 | 비정상 행동 탐지 | ADMIN | GET | `/api/admin/abuse-detections` | Detection 목록 조회 | - |
+| 121 | 외부 | 비정상 행동 탐지 | ADMIN | GET | `/api/admin/abuse-detections/{detectionId}` | Detection 상세·Evidence 조회 | - |
+| 122 | 외부 | 비정상 행동 탐지 | ADMIN | PATCH | `/api/admin/abuse-detections/{detectionId}/review` | Detection 검토 판정 | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
