@@ -246,7 +246,9 @@ cking:
       submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:false}
 ```
 
-설정 누락 시 기본값은 `false`다. POST는 이미지 처리·S3 저장 전에 `503 VERIFICATION_UNAVAILABLE`로 종료하고 GET 상태 조회는 항상 허용한다. 비활성화 환경은 `SUBSCRIPTION_GEMINI_API_KEY` 없이도 배포·기동할 수 있다. 활성화 환경은 별도 Gemini Key가 반드시 필요하며, 누락되거나 blank이면 애플리케이션이 기동에 실패한다. VLM Client, 판정 정책, Processor, Ticket ONCE 적립, Recovery, Reward retry, E2E 및 운영 환경변수 검증이 끝난 뒤에만 개발·운영 환경의 `SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED`를 `true`로 설정한다.
+설정 누락 시 기본값은 `false`다. POST는 이미지 처리·S3 저장 전에 `503 VERIFICATION_UNAVAILABLE`로 종료하고 GET 상태 조회는 항상 허용한다. 플래그가 꺼진 환경(로컬·테스트)은 `SUBSCRIPTION_GEMINI_API_KEY` 없이도 기동할 수 있다. 켜진 환경은 Gemini Key가 반드시 필요하며, 누락되거나 blank이면 애플리케이션이 기동에 실패한다.
+
+개발 서버는 플래그를 `application-dev.yml`에서 관리하고(기본 `false`), Gemini Key는 기능 상태와 관계없이 Parameter Store에서 항상 주입한다. VLM Client, 판정 정책, Processor, Ticket ONCE 적립, Recovery, Reward retry, E2E 및 운영 환경변수 검증이 끝난 뒤 `application-dev.yml`의 값을 `true`로 바꾸는 PR로 활성화한다.
 
 ## 구현 금지 사항
 
