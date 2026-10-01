@@ -7,11 +7,11 @@
 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 query `userId`를 받지 않는다.
 존재하지 않는 사용자나 Creator는 공통 `RESOURCE_NOT_FOUND`로 응답한다.
 
-해당 Creator의 활성 LIKE·SHARE 미션을 반환한다. 출석은 Creator와 무관한 공용 미션이므로 `GET /api/missions`에서 조회한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
+해당 Creator의 활성 `LIKE`, `SHARE`, `YOUTUBE_SUBSCRIPTION` 미션을 반환한다. 출석은 Creator와 무관한 공용 미션이므로 `GET /api/missions`에서 조회한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
 
 각 항목은 `missionId`, `type`, `rewardAmount`, `activeFrom`, `activeTo`, `completedToday`를 포함한다. `activeFrom`과 `activeTo`는 UTC Instant이며 nullable이다.
 
-`completedToday`는 LIKE 미션이면 요청 사용자·Creator·미션과 서버 UTC 오늘의 `periodKey`(`yyyy-MM-dd`)가 일치하는 MissionCompletion이 있는지, SHARE 미션이면 날짜와 무관하게 평생 완료 이력이 있는지를 나타낸다. 이 API는 완료 기록을 생성하거나 변경하지 않는다.
+`completedToday`는 기존 응답 호환을 위해 필드명을 유지한다. `LIKE`는 요청 사용자·Creator·미션과 서버 UTC 오늘의 `periodKey`(`yyyy-MM-dd`)가 일치하는 MissionCompletion이 있는지를 뜻한다. ONCE 미션인 `SHARE`, `YOUTUBE_SUBSCRIPTION`은 날짜와 무관하게 `completionKey=ONCE`인 평생 완료 이력이 있는지를 뜻한다. 이 API는 완료 기록을 생성하거나 변경하지 않는다.
 
 ```json
 {
