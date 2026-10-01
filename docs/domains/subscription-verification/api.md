@@ -56,6 +56,7 @@
 - 권한: USER
 - Content-Type: `multipart/form-data`
 - 기능 플래그가 꺼져 있으면 파일 처리 전에 `VERIFICATION_UNAVAILABLE`을 반환한다.
+- 사용자는 `GET /api/creators/{creatorId}/missions`에서 `YOUTUBE_SUBSCRIPTION` 유형과 제출에 필요한 `missionId`를 조회한다.
 
 Form:
 

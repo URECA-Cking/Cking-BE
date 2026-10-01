@@ -22,6 +22,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -58,21 +59,26 @@ class MissionQueryServiceTest {
         Mission noBounds = mission(102L, MissionType.SHARE, null, null);
         Mission endsNow = mission(103L, MissionType.LIKE, NOW.minusSeconds(60), NOW);
         Mission startsLater = mission(104L, MissionType.LIKE, NOW.plusSeconds(1), null);
+        Mission youtubeSubscription = mission(105L, MissionType.YOUTUBE_SUBSCRIPTION, null, null);
         when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), argThat(types ->
-                Set.copyOf(types).equals(Set.of(MissionType.LIKE, MissionType.SHARE)))))
-                .thenReturn(List.of(startsNow, noBounds, endsNow, startsLater));
+                Set.copyOf(types).equals(Set.of(
+                        MissionType.LIKE,
+                        MissionType.SHARE,
+                        MissionType.YOUTUBE_SUBSCRIPTION)))))
+                .thenReturn(List.of(startsNow, noBounds, endsNow, startsLater, youtubeSubscription));
         when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
                 eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(101L))),
                 eq(UTC_PERIOD_KEY)))
                 .thenReturn(List.of(completion(101L, USER_ID, CREATOR_ID, UTC_PERIOD_KEY)));
         when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(
-                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(102L))), eq("ONCE")))
+                eq(USER_ID), eq(CREATOR_ID),
+                argThat(ids -> Set.copyOf(ids).equals(Set.of(102L, 105L))), eq("ONCE")))
                 .thenReturn(List.of());
 
         List<MissionQueryItem> result = service.findMissions(CREATOR_ID, USER_ID);
 
-        assertThat(result).extracting(MissionQueryItem::missionId).containsExactly(101L, 102L);
-        assertThat(result).extracting(MissionQueryItem::completedToday).containsExactly(true, false);
+        assertThat(result).extracting(MissionQueryItem::missionId).containsExactly(101L, 102L, 105L);
+        assertThat(result).extracting(MissionQueryItem::completedToday).containsExactly(true, false, false);
         assertThat(result.getFirst().activeFrom()).isEqualTo(NOW);
         assertThat(result.getFirst().activeTo()).isEqualTo(NOW.plusSeconds(60));
         verify(completionRepository).findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
@@ -135,6 +141,26 @@ class MissionQueryServiceTest {
                 org.mockito.ArgumentMatchers.anyCollection(), org.mockito.ArgumentMatchers.any());
     }
 
+    /** 구독 인증은 일일 미션이 아니므로 과거 ONCE 완료 이력을 현재 완료 상태로 반환한다. */
+    @Test
+    void YOUTUBE_SUBSCRIPTION은_이전_날짜_ONCE_완료_이력을_완료로_표시한다() {
+        Mission subscription = mission(106L, MissionType.YOUTUBE_SUBSCRIPTION, null, null);
+        when(missionRepository.findByCreatorIdAndTypeIn(eq(CREATOR_ID), org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(subscription));
+        when(completionRepository.findAllByMemberIdAndCreatorIdAndMissionIdInAndCompletionKey(
+                eq(USER_ID), eq(CREATOR_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(106L))), eq("ONCE")))
+                .thenReturn(List.of(onceCompletion(106L, USER_ID, CREATOR_ID, "2026-09-01")));
+
+        List<MissionQueryItem> result = service.findMissions(CREATOR_ID, USER_ID);
+
+        assertThat(result)
+                .extracting(MissionQueryItem::type, MissionQueryItem::completedToday)
+                .containsExactly(tuple(MissionType.YOUTUBE_SUBSCRIPTION, true));
+        verify(completionRepository, never()).findAllByMemberIdAndCreatorIdAndMissionIdInAndPeriodKey(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyCollection(), org.mockito.ArgumentMatchers.any());
+    }
+
     @Test
     void LIKE만_있으면_평생_완료_이력은_조회하지_않는다() {
         Mission like = mission(101L, MissionType.LIKE, null, null);
@@ -166,6 +192,19 @@ class MissionQueryServiceTest {
                 .memberId(memberId)
                 .creatorId(creatorId)
                 .periodKey(periodKey)
+                .requestId("request-" + missionId)
+                .payloadFingerprint("fingerprint-" + missionId)
+                .completedAt(NOW)
+                .build();
+    }
+
+    private MissionCompletion onceCompletion(Long missionId, Long memberId, Long creatorId, String periodKey) {
+        return MissionCompletion.builder()
+                .missionId(missionId)
+                .memberId(memberId)
+                .creatorId(creatorId)
+                .periodKey(periodKey)
+                .completionKey("ONCE")
                 .requestId("request-" + missionId)
                 .payloadFingerprint("fingerprint-" + missionId)
                 .completedAt(NOW)

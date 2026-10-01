@@ -9,11 +9,13 @@
 검증 범위:
 
 - Creator 채널 최초 설정과 `YOUTUBE_SUBSCRIPTION` 미션 자동 생성
+- 사용자 Creator 미션 목록에서 `YOUTUBE_SUBSCRIPTION` 미션과 `missionId` 조회
 - PNG 입력의 JPEG 정규화·SHA-256·Object Storage 저장
 - `PENDING` commit 뒤 AFTER_COMMIT 비동기 처리
 - Processing Claim·fencing과 서버 승인 판정
 - Ticket ONCE 적립, Redis Balance, Stream Consumer의 Ledger·DB Balance·MissionCompletion 반영
 - 사용자 공개 상태 `VERIFIED`
+- 완료 후 Creator 미션 목록의 ONCE 완료 상태 반영
 - 동일 `requestId` 재전송 멱등성과 exact-hash 이미지 재사용 감사 기록
 - 재시도 가능한 Provider 오류 뒤 lease 만료·Recovery 재선점·최종 보상 수렴
 

@@ -39,6 +39,8 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 - `ATTENDANCE` 신규 완료는 `CommonMissionController`/`CommonMissionCompletionService`와 공용 EARN 경로에서 처리한다. 과거 Creator ATTENDANCE의 기존 성공 `requestId` replay는 허용하지만, 신규 요청은 `MissionCompletionService`가 거부한다.
 - `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 선행되어야 한다. 일반 `POST .../complete` 경로에서는 `TicketEarnService.findExisting()`이나 `earn()`을 호출하기 전에 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 따라서 클라이언트가 일반 완료 API로 인증과 보상 경계를 우회할 수 없다. 이미지 제출·판정·보상은 [YouTube 구독 인증 정본](../subscription-verification/README.md)을 따른다.
 
+사용자용 Creator 미션 목록은 활성 `LIKE`, `SHARE`, `YOUTUBE_SUBSCRIPTION`을 함께 반환한다. 완료 표시는 `LIKE`만 UTC 일일 완료 이력으로 계산하고, `SHARE`와 `YOUTUBE_SUBSCRIPTION`은 `completionKey=ONCE`인 평생 완료 이력으로 계산한다. 사용자는 이 목록에서 구독 인증 제출에 필요한 `missionId`를 얻는다.
+
 ### 검증 범위(caveat)
 
 - **기본 미션 생성 규약**: `MissionInitializationService.initializeDefaultMissions()`는 Creator 승인 트랜잭션에 참여해 크리에이터별 LIKE·SHARE를 각각 `rewardAmount=1`, `activeFrom=null`, `activeTo=null`로 생성한다. 출석은 `V16__add_common_ticket.sql`이 공용 ATTENDANCE를 시딩하므로 Creator 승인 시 생성하지 않고, `YOUTUBE_SUBSCRIPTION`도 기본 미션으로 자동 생성하지 않는다. 이미 존재하는 유형은 건너뛰므로 재호출해도 안전하다. 이번 배포 전 기존 Creator의 SHARE 누락분은 `V27__seed_share_mission.sql`이 멱등 시딩하며, 이후 수동 복구가 필요하면 `MissionBackfillRunner`가 별도 `REQUIRES_NEW` 트랜잭션으로 채운다. `Mission` 생성자는 일반 규칙으로 `rewardAmount > 0`만 강제하며, 기본값 1은 이 초기화 서비스의 정책이다.
