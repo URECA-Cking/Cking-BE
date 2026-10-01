@@ -48,7 +48,7 @@ Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward po
 | Creator SHARE ONCE | `MISSION:CREATOR:ONCE:{userId}:{creatorId}:{missionId}` |
 | Common ATTENDANCE DAILY | `MISSION:COMMON:DAILY:{userId}:{missionId}:{yyyy-MM-dd}` |
 
-`REQUEST_ID_ROTATION`은 이 key별 **rotation sliding window** 안의 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. Evidence에는 userId가 포함된 원문 key 문자열을 중복 저장하지 않고 creatorId·missionId·periodKey 등 구조화된 Scope만 기록한다.
+`REQUEST_ID_ROTATION`은 이 key별 **rotation sliding window** 안의 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. Evidence에는 userId가 포함된 원문 key 문자열을 중복 저장하지 않고 creatorId·missionId·periodKey 등 구조화된 Scope만 기록한다. `periodKey`는 DAILY Mission의 audit context이며 Business Key에도 포함된다. SHARE ONCE는 `periodKey=null`이고 Business Key에도 날짜를 포함하지 않는다.
 
 ## Detection과 Feature
 
@@ -87,7 +87,7 @@ Abuse 전용 Lua는 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 �
 
 `AbuseFeatureStore.record(observation, windowPolicy)`는 Feature를 갱신하고 Snapshot을 반환할 뿐 Threshold 비교나 Detection 생성을 하지 않는다. `AbuseCooldownStore`는 UUID 소유 Token이 포함된 `CooldownLease`를 반환하며, 해제는 저장된 Token이 일치할 때만 성공해야 한다. `AbuseDetectionRepository.reviewIfDetected()`는 `DETECTED` 조건부 UPDATE의 영향 행 수를 반환한다. Port 구현체는 장애를 정상 결과로 숨기지 않으며 최종 Fail Open은 Observation 호출 경계가 담당한다.
 
-`AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
+`AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `AbuseReviewDecision.CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. Repository Port도 상태 enum 대신 `AbuseReviewDecision`만 받아 `DETECTED → DETECTED`와 검토 정보 기록을 타입 수준에서 차단한다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
 
 ## Detection 저장과 운영
 

@@ -43,7 +43,7 @@ public record AbuseObservationEvent(
             if (eventId != null) {
                 throw new IllegalArgumentException("MISSION_COMPLETE에는 eventId를 지정할 수 없습니다.");
             }
-            requireText(periodKey, "periodKey");
+            requireOptionalText(periodKey, "periodKey");
             requireText(businessKey, "businessKey");
             if (balanceScope.type() == BalanceScope.Type.COMMON && creatorId != null) {
                 throw new IllegalArgumentException("공용 Mission에는 creatorId를 지정할 수 없습니다.");
@@ -75,6 +75,12 @@ public record AbuseObservationEvent(
     private static void requireText(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + "는 필수입니다.");
+        }
+    }
+
+    private static void requireOptionalText(String value, String name) {
+        if (value != null && value.isBlank()) {
+            throw new IllegalArgumentException(name + "는 값이 있으면 비어 있을 수 없습니다.");
         }
     }
 }

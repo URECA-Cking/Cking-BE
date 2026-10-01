@@ -2,7 +2,7 @@ package kr.co.cking.abuse.application.port;
 
 import kr.co.cking.abuse.application.model.AbuseDetectionSearchCondition;
 import kr.co.cking.abuse.domain.AbuseDetection;
-import kr.co.cking.abuse.domain.AbuseDetectionStatus;
+import kr.co.cking.abuse.domain.AbuseReviewDecision;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -22,7 +22,7 @@ public interface AbuseDetectionRepository {
     /** DETECTED 상태인 행만 조건부 전이하고 영향 행 수(0 또는 1)를 반환한다. */
     int reviewIfDetected(
             Long detectionId,
-            AbuseDetectionStatus targetStatus,
+            AbuseReviewDecision decision,
             Long reviewedBy,
             Instant reviewedAt
     );

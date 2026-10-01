@@ -51,7 +51,7 @@ Query는 선택 `memberId`(양수 Long), `abuseType`, `status`, `page`, `size`�
 { "status": "CONFIRMED" }
 ```
 
-요청 status는 `CONFIRMED` 또는 `FALSE_POSITIVE`만 허용한다. `DETECTED`를 요청하거나 값이 없거나 다른 값이면 `VALIDATION_FAILED`다. 성공하면 변경된 상세를 반환하고 `reviewedAt`은 현재 UTC, `reviewedBy`는 인증된 ADMIN memberId로 기록한다.
+요청 status는 `AbuseReviewDecision`의 `CONFIRMED` 또는 `FALSE_POSITIVE`만 허용한다. `DETECTED`를 요청하거나 값이 없거나 다른 값이면 `VALIDATION_FAILED`다. Application과 Repository Port도 이 별도 타입을 사용하므로 `DETECTED`를 검토 목표로 전달할 수 없다. 성공하면 변경된 상세를 반환하고 `reviewedAt`은 현재 UTC, `reviewedBy`는 인증된 ADMIN memberId로 기록한다.
 
 검토 전이는 행을 먼저 읽고 저장하지 않는다. 아래 조건부 UPDATE로 `DETECTED` 상태만 하나의 Transaction에서 전이한다.
 

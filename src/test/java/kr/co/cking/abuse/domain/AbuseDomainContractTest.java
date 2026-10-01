@@ -92,15 +92,57 @@ class AbuseDomainContractTest {
         AbuseDetection detection = AbuseDetection.detected(1L, result);
         Instant reviewedAt = OBSERVED_AT.plusSeconds(10);
 
-        detection.review(AbuseDetectionStatus.CONFIRMED, 99L, reviewedAt);
-        detection.review(AbuseDetectionStatus.CONFIRMED, 100L, reviewedAt.plusSeconds(1));
+        detection.review(AbuseReviewDecision.CONFIRMED, 99L, reviewedAt);
+        detection.review(AbuseReviewDecision.CONFIRMED, 100L, reviewedAt.plusSeconds(1));
 
         assertThat(detection.status()).isEqualTo(AbuseDetectionStatus.CONFIRMED);
         assertThat(detection.reviewedBy()).isEqualTo(99L);
         assertThat(detection.reviewedAt()).isEqualTo(reviewedAt);
         assertThatThrownBy(() -> detection.review(
-                AbuseDetectionStatus.FALSE_POSITIVE, 100L, reviewedAt.plusSeconds(1)))
+                AbuseReviewDecision.FALSE_POSITIVE, 100L, reviewedAt.plusSeconds(1)))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void 검토_목표는_종결_판정만_표현한다() {
+        assertThat(AbuseReviewDecision.values())
+                .containsExactly(
+                        AbuseReviewDecision.CONFIRMED,
+                        AbuseReviewDecision.FALSE_POSITIVE);
+        assertThat(AbuseReviewDecision.CONFIRMED.toStatus())
+                .isEqualTo(AbuseDetectionStatus.CONFIRMED);
+        assertThat(AbuseReviewDecision.FALSE_POSITIVE.toStatus())
+                .isEqualTo(AbuseDetectionStatus.FALSE_POSITIVE);
+    }
+
+    @Test
+    void SHARE_ONCE_Observation은_periodKey_없이_생성할_수_있다() {
+        AbuseObservationEvent observation = new AbuseObservationEvent(
+                UUID.randomUUID(),
+                1L,
+                AbuseActionType.MISSION_COMPLETE,
+                UUID.randomUUID(),
+                "EARN_ACCEPTED",
+                ResultClassification.NEW_SUCCESS,
+                5L,
+                null,
+                3L,
+                null,
+                BalanceScope.creator(5L),
+                "MISSION:CREATOR:ONCE:1:5:3",
+                REQUESTED_AT,
+                OBSERVED_AT
+        );
+
+        assertThat(observation.periodKey()).isNull();
+        assertThat(observation.businessKey()).isEqualTo("MISSION:CREATOR:ONCE:1:5:3");
+        assertThatThrownBy(() -> new AbuseObservationEvent(
+                UUID.randomUUID(), 1L, AbuseActionType.MISSION_COMPLETE, UUID.randomUUID(),
+                "EARN_ACCEPTED", ResultClassification.NEW_SUCCESS,
+                5L, null, 3L, " ", BalanceScope.creator(5L),
+                "MISSION:CREATOR:ONCE:1:5:3", REQUESTED_AT, OBSERVED_AT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("periodKey");
     }
 
     @Test

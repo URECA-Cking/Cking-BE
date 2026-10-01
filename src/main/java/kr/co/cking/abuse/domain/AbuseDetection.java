@@ -72,10 +72,11 @@ public final class AbuseDetection {
     }
 
     /** 단일 객체 사용 시의 상태 불변식이며, DB 동시 전이는 Repository 조건부 UPDATE가 최종 방어한다. */
-    public void review(AbuseDetectionStatus targetStatus, Long adminId, Instant now) {
-        requireReviewTarget(targetStatus);
+    public void review(AbuseReviewDecision decision, Long adminId, Instant now) {
+        Objects.requireNonNull(decision, "decision은 필수입니다.");
         requirePositive(adminId, "adminId");
         Objects.requireNonNull(now, "now는 필수입니다.");
+        AbuseDetectionStatus targetStatus = decision.toStatus();
         if (status == targetStatus) {
             return;
         }
@@ -85,13 +86,6 @@ public final class AbuseDetection {
         status = targetStatus;
         reviewedAt = now;
         reviewedBy = adminId;
-    }
-
-    private static void requireReviewTarget(AbuseDetectionStatus targetStatus) {
-        if (targetStatus != AbuseDetectionStatus.CONFIRMED
-                && targetStatus != AbuseDetectionStatus.FALSE_POSITIVE) {
-            throw new IllegalArgumentException("검토 결과는 CONFIRMED 또는 FALSE_POSITIVE여야 합니다.");
-        }
     }
 
     private static void validateReview(
