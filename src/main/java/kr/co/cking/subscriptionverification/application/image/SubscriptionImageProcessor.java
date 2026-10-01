@@ -6,6 +6,7 @@ import kr.co.cking.common.image.ImagePolicy;
 import kr.co.cking.common.image.InvalidImageException;
 import kr.co.cking.common.image.NormalizedImage;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
  * 변환한다.
  */
 @Component
+@RequiredArgsConstructor
 public class SubscriptionImageProcessor {
 
     public static final String NORMALIZATION_VERSION = ImageNormalizer.NORMALIZATION_VERSION;
@@ -26,7 +28,7 @@ public class SubscriptionImageProcessor {
 
     private static final ImagePolicy POLICY = new ImagePolicy(MIN_WIDTH, MIN_HEIGHT, MAX_LONG_EDGE);
 
-    private final ImageNormalizer normalizer = new ImageNormalizer();
+    private final ImageNormalizer normalizer;
 
     public ProcessedSubscriptionImage process(byte[] sourceBytes) {
         NormalizedImage normalized;

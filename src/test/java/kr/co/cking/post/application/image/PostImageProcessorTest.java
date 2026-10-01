@@ -1,6 +1,8 @@
 package kr.co.cking.post.application.image;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.image.ImageNormalizer;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.post.domain.PostErrorCode;
 import org.junit.jupiter.api.Test;
 
@@ -8,13 +10,15 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PostImageProcessorTest {
 
-    private final PostImageProcessor processor = new PostImageProcessor();
+    private final PostImageProcessor processor = new PostImageProcessor(
+            new ImageNormalizer(new ImageProcessingLimiter(1, Duration.ofSeconds(5))));
 
     @Test
     void 게시글_정책의_최소_해상도_200x200을_허용한다() throws IOException {

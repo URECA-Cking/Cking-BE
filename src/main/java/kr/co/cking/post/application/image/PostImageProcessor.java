@@ -6,10 +6,12 @@ import kr.co.cking.common.image.ImagePolicy;
 import kr.co.cking.common.image.InvalidImageException;
 import kr.co.cking.common.image.NormalizedImage;
 import kr.co.cking.post.domain.PostErrorCode;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** 게시글 이미지를 공통 {@link ImageNormalizer}로 검증·정규화한다. 잘못된 이미지는 {@code INVALID_POST_IMAGE}다. */
 @Component
+@RequiredArgsConstructor
 public class PostImageProcessor {
 
     public static final int MIN_WIDTH = 200;
@@ -18,7 +20,7 @@ public class PostImageProcessor {
 
     private static final ImagePolicy POLICY = new ImagePolicy(MIN_WIDTH, MIN_HEIGHT, MAX_LONG_EDGE);
 
-    private final ImageNormalizer normalizer = new ImageNormalizer();
+    private final ImageNormalizer normalizer;
 
     public NormalizedImage process(byte[] sourceBytes) {
         try {

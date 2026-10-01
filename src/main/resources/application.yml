@@ -36,6 +36,11 @@ management:
       enabled: true
 
 cking:
+  image-processing:
+    # 20MP 한 장이 heap 약 80MiB를 쓰고, 동시 4장부터 GCLocker로 OutOfMemoryError가 났다(로컬 측정). CPU 2개라 처리량도 2에서 멈춘다.
+    max-concurrent: 2
+    # 임시값. 개발 서버에서 처리 시간을 확인한 뒤 확정한다.
+    acquire-timeout: 3s
   verification:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
