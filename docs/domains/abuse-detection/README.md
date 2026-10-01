@@ -48,7 +48,7 @@ Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward po
 | Creator SHARE ONCE | `MISSION:CREATOR:ONCE:{userId}:{creatorId}:{missionId}` |
 | Common ATTENDANCE DAILY | `MISSION:COMMON:DAILY:{userId}:{missionId}:{yyyy-MM-dd}` |
 
-`REQUEST_ID_ROTATION`은 이 key별 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. 원래 구조화 key는 Evidence에 기록한다.
+`REQUEST_ID_ROTATION`은 이 key별 **rotation sliding window** 안의 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. 원래 구조화 key는 Evidence에 기록한다.
 
 ## Detection과 Feature
 
@@ -58,7 +58,7 @@ Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward po
 | `DUPLICATE_MISSION_BURST` | business key | `DUPLICATE_MISSION` sliding count ≥ N |
 | `ENTRY_REQUEST_BURST` | user + event | `EVENT_ENTRY` 중 replay/system이 아닌 요청의 sliding count ≥ N |
 | `INSUFFICIENT_BALANCE_BURST` | user + balance scope | 부족 잔액 sliding count ≥ N 또는 연속 count ≥ N |
-| `REQUEST_ID_ROTATION` | mission business key | distinct requestId ≥ N; Signal only |
+| `REQUEST_ID_ROTATION` | mission business key | rotation window 안의 distinct requestId ≥ N; Signal only |
 | `RAPID_EARN_AND_SPEND` | user + balance scope | 같은 scope의 `EARN_ACCEPTED` 뒤 `SUCCESS`가 D 이내인 pair sliding count ≥ N |
 | `FAILURE_BURST` | user | business failure sliding count ≥ N 또는 연속 count ≥ N |
 
@@ -73,11 +73,11 @@ Redis는 실시간 feature와 cooldown만 보관하고 Observation이나 최종 
 | key | type | TTL |
 | --- | --- | --- |
 | `mission-request:{userId}`, `duplicate-mission:{businessKeyHash}`, `entry-request:{userId}:{eventId}`, `insufficient:{userId}:{balanceScope}`, `rapid-earn-spend:{userId}:{balanceScope}`, `failure:{userId}` | ZSET, score=timestamp ms/member=observationId | 각 Window + 60초 |
-| `request-id:{businessKeyHash}` | SET, member=requestId | 마지막 요청부터 25시간 |
+| `request-id:{businessKeyHash}` | ZSET, score=observedAt epoch ms/member=requestId | rotation window + 60초 |
 | `last-earn:{userId}:{balanceScope}` | STRING, observedAt | rapid maxDelay |
 | `cooldown:{abuseType}:{scopeHash}` | STRING | primary Window × 2 |
 
-Abuse 전용 Lua는 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 수행해 count를 반환한다. sequence 갱신과 cooldown은 필요한 key를 한 호출에서 원자적으로 처리한다. cooldown은 `SET NX EX`; 획득한 요청만 DB를 insert하며 insert 실패 시 key를 best-effort 삭제한다.
+Abuse 전용 Lua는 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 수행해 count를 반환한다. rotation은 `requestId`를 member로 쓰므로 같은 requestId 재시도는 distinct count를 늘리지 않고, 새 requestId는 해당 window에서만 집계된다. sequence 갱신과 cooldown은 필요한 key를 한 호출에서 원자적으로 처리한다. cooldown은 `SET NX EX`; 획득한 요청만 DB를 insert하며 insert 실패 시 key를 best-effort 삭제한다.
 
 `ticket-earn.lua`, `common-ticket-earn.lua`, `entry-spend.lua`는 수정하지 않는다. 이들은 멱등성·잔액·Stream의 기존 책임만 가지며 Abuse는 별도 script와 key 공간을 사용한다.
 
@@ -106,16 +106,16 @@ Evidence는 request body, token, authorization header, 개인정보를 담지 �
 }
 ```
 
-Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation/Redis/DB 오류는 WARN 또는 ERROR로 남기되 catch하여 원래 Mission/Entry 결과와 예외를 그대로 반환하는 Fail Open이다.
+Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. 독립 Transaction의 시작·flush·commit 오류까지 Observation 호출 경계에서 catch해 WARN/ERROR로 남기고, 원래 Mission/Entry 결과와 예외를 그대로 반환한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
 
 ## 설정과 Calibration
 
-`cking.abuse.enabled=false`가 기본이다. true이면 모든 rule의 window/threshold, insufficient·failure의 consecutive threshold, rotation distinct threshold, rapid의 maxDelay/window/threshold, failure distinct-type threshold가 필수다. 누락 값·0 이하 값은 시작 시 validation 실패하며 코드 default를 두지 않는다.
+`cking.abuse.enabled=false`가 기본이다. true이면 모든 rule의 window/threshold, insufficient·failure의 consecutive threshold, rotation의 window/distinct threshold, rapid의 maxDelay/window/threshold, failure distinct-type threshold가 필수다. 누락 값·0 이하 값은 시작 시 validation 실패하며 코드 default를 두지 않는다.
 
-Initial threshold는 k6로 산출한다. 각 count rule에 1/5/10/30/60초 window 후보의 `normalMax`와 `abuseMin`을 기록하고, 처음 `normalMax < abuseMin`인 최소 window와 `N=normalMax+1`을 채택한다. 후보가 모두 겹치면 calibration 실패이며 임의 수치를 설정하지 않는다. 운영 중에는 CONFIRMED/FALSE_POSITIVE/미탐을 근거로 설정만 조정한다.
+Initial threshold는 k6로 산출한다. rotation을 포함한 각 count rule에 1/5/10/30/60초 window 후보의 `normalMax`와 `abuseMin`을 기록하고, 처음 `normalMax < abuseMin`인 최소 window와 `N=normalMax+1`을 채택한다. 후보가 모두 겹치면 calibration 실패이며 임의 수치를 설정하지 않는다. 운영 중에는 CONFIRMED/FALSE_POSITIVE/미탐을 근거로 설정만 조정한다.
 
 k6는 `normal-user.js`, `mission-request-burst.js`, `duplicate-mission-burst.js`, `entry-request-burst.js`, `insufficient-balance-burst.js`, `request-id-rotation.js`, `rapid-earn-and-spend.js`, `failure-burst.js`로 분리한다. 정상군은 1회 완료, 2~3회 클릭, 같은 requestId 재시도, 정상 다중 응모, 부족 1~2회와 EARN 뒤 재응모, 즉시 EARN-SPEND, Creator 순차 수행을 포함한다. 비정상군은 각 rule을 넘기는 자동 반복을 만든다.
 
 ## v1 완료 기준
 
-7개 행동 모델(그중 rotation은 signal), 4개 API 연결, Redis feature/Lua, 6개 Detection rule·5개 composite rule, scope cooldown, migration/Evidence, 관리자 API, 정상·비정상 k6와 calibration, 그리고 Redis/DB 장애에도 기존 처리 결과가 유지됨을 자동화 테스트로 검증하면 완료다. 구현 단계에서 위 범위, 분류, scope, key/TTL, Lua 분리, cooldown, 상태, Fail Open 정책은 다시 결정하지 않는다. 숫자 threshold만 Calibration 산출물이다.
+7개 행동 모델(그중 rotation은 signal), 4개 API 연결, Redis feature/Lua, 6개 Detection rule·5개 composite rule, scope cooldown, migration/Evidence, 관리자 API, 정상·비정상 k6와 calibration, 그리고 성공·업무 실패 각각에서 Redis/독립 Detection Transaction 장애에도 기존 처리 결과가 유지됨을 자동화 테스트로 검증하면 완료다. 관리자 동시 검토에서 같은 판정은 멱등 반환되고 상반된 판정은 정확히 하나만 성공하는 테스트도 포함한다. 구현 단계에서 위 범위, 분류, scope, key/TTL, Lua 분리, cooldown, 상태, Fail Open 정책은 다시 결정하지 않는다. 숫자 threshold만 Calibration 산출물이다.

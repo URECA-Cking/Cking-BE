@@ -53,4 +53,12 @@ Query는 선택 `memberId`(양수 Long), `abuseType`, `status`, `page`, `size`�
 
 요청 status는 `CONFIRMED` 또는 `FALSE_POSITIVE`만 허용한다. `DETECTED`를 요청하거나 값이 없거나 다른 값이면 `VALIDATION_FAILED`다. 성공하면 변경된 상세를 반환하고 `reviewedAt`은 현재 UTC, `reviewedBy`는 인증된 ADMIN memberId로 기록한다.
 
-이미 같은 결과인 검토는 상태와 검토자를 바꾸지 않고 현재 값을 반환한다. 이미 반대 결과로 검토된 Detection의 재판정은 허용하지 않으며 `INVALID_STATE`다. 없는 Detection은 `RESOURCE_NOT_FOUND`, 관리자 업무 권한 부족은 `FORBIDDEN`이다.
+검토 전이는 행을 먼저 읽고 저장하지 않는다. 아래 조건부 UPDATE로 `DETECTED` 상태만 하나의 Transaction에서 전이한다.
+
+```sql
+UPDATE abuse_detection
+SET status = :targetStatus, reviewed_at = :now, reviewed_by = :adminId
+WHERE id = :detectionId AND status = 'DETECTED'
+```
+
+영향 행이 1이면 변경된 상세를 반환한다. 0이면 현재 row를 다시 읽어 없는 경우 `RESOURCE_NOT_FOUND`, 이미 같은 결과인 경우 상태·검토자를 바꾸지 않는 멱등 반환, 반대 결과인 경우 `INVALID_STATE`로 처리한다. 따라서 동시에 서로 다른 판정을 요청하면 하나만 성공하고, 같은 판정의 동시 재요청은 하나가 전이한 뒤 나머지가 같은 결과를 반환한다. 관리자 업무 권한 부족은 `FORBIDDEN`이다.
