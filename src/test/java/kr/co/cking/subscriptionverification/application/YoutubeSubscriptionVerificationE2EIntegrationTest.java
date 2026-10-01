@@ -30,6 +30,8 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.Mission;
 import kr.co.cking.mission.MissionRepository;
+import kr.co.cking.mission.application.MissionQueryService;
+import kr.co.cking.mission.application.dto.MissionQueryItem;
 import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisException;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisFailureType;
@@ -83,6 +85,7 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
     private static final long AWAIT_TIMEOUT_MILLIS = 10_000L;
 
     @Autowired private CreatorYoutubeChannelService channelService;
+    @Autowired private MissionQueryService missionQueryService;
     @Autowired private SubscriptionVerificationSubmissionService submissionService;
     @Autowired private SubscriptionVerificationQueryService queryService;
     @Autowired private SubscriptionVerificationRecoveryScheduler recoveryScheduler;
@@ -150,6 +153,14 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
         byte[] image = validImage(new Color(32, 96, 160));
         UUID firstRequestId = UUID.randomUUID();
 
+        assertThat(missionQueryService.findMissions(fixture.creatorId(), firstParticipant.getMemberId()))
+                .singleElement()
+                .satisfies(mission -> {
+                    assertThat(mission.missionId()).isEqualTo(fixture.missionId());
+                    assertThat(mission.type()).isEqualTo(MissionType.YOUTUBE_SUBSCRIPTION);
+                    assertThat(mission.completedToday()).isFalse();
+                });
+
         SubscriptionVerificationSubmissionResult first = submit(
                 firstParticipant, fixture, firstRequestId, image);
         SubscriptionVerification firstCompleted = awaitRewardAccepted(first.verification().getVerificationId());
@@ -169,6 +180,9 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
         assertThat(firstCompleted.getImageSha256()).hasSize(64);
         assertThat(visionAnalysisPort.commitBoundaryObserved()).isTrue();
         assertTicketPersistedOnce(firstParticipant, fixture, firstCompleted);
+        assertThat(missionQueryService.findMissions(fixture.creatorId(), firstParticipant.getMemberId()))
+                .extracting(MissionQueryItem::completedToday)
+                .containsExactly(true);
         assertThat(imageReuseRepository.findById(firstCompleted.getVerificationId()).orElseThrow().getReuseType())
                 .isEqualTo(SubscriptionVerificationImageReuseType.FIRST_USE);
 

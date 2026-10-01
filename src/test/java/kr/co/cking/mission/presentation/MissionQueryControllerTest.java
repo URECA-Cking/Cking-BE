@@ -13,7 +13,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.Mockito.never;
@@ -37,10 +36,10 @@ class MissionQueryControllerTest {
     private MissionQueryService missionQueryService;
 
     @Test
-    void creator의_미션과_completedToday를_공통응답으로_반환한다() throws Exception {
+    void creator의_구독_인증_미션과_ONCE_완료_상태를_공통응답으로_반환한다() throws Exception {
         MissionQueryItem item = new MissionQueryItem(
-                101L, MissionType.LIKE, 2,
-                Instant.parse("2026-09-16T00:00:00Z"), Instant.parse("2026-09-17T00:00:00Z"), true);
+                101L, MissionType.YOUTUBE_SUBSCRIPTION, 1,
+                null, null, true);
         when(missionQueryService.findMissions(11L, 7L)).thenReturn(List.of(item));
 
         mockMvc.perform(get("/api/creators/11/missions")
@@ -48,10 +47,10 @@ class MissionQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data[0].missionId").value(101))
-                .andExpect(jsonPath("$.data[0].type").value("LIKE"))
-                .andExpect(jsonPath("$.data[0].rewardAmount").value(2))
-                .andExpect(jsonPath("$.data[0].activeFrom").value("2026-09-16T00:00:00Z"))
-                .andExpect(jsonPath("$.data[0].activeTo").value("2026-09-17T00:00:00Z"))
+                .andExpect(jsonPath("$.data[0].type").value("YOUTUBE_SUBSCRIPTION"))
+                .andExpect(jsonPath("$.data[0].rewardAmount").value(1))
+                .andExpect(jsonPath("$.data[0].activeFrom").doesNotExist())
+                .andExpect(jsonPath("$.data[0].activeTo").doesNotExist())
                 .andExpect(jsonPath("$.data[0].completedToday").value(true));
     }
 

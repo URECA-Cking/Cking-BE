@@ -27,7 +27,11 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class MissionQueryService {
 
-    private static final List<MissionType> SUPPORTED_TYPES = List.of(MissionType.LIKE, MissionType.SHARE);
+    private static final List<MissionType> SUPPORTED_TYPES = List.of(
+            MissionType.LIKE,
+            MissionType.SHARE,
+            MissionType.YOUTUBE_SUBSCRIPTION
+    );
 
     private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;
@@ -35,7 +39,7 @@ public class MissionQueryService {
     private final MissionCompletionRepository completionRepository;
     private final Clock clock;
 
-    /** 인증된 사용자를 기준으로 Creator의 활성 LIKE·SHARE 미션과 오늘 완료 여부를 조회한다. */
+    /** 인증된 사용자를 기준으로 Creator의 활성 미션과 DAILY·ONCE 정책별 완료 여부를 조회한다. */
     public List<MissionQueryItem> findMissions(Long creatorId, Long userId) {
         if (!memberRepository.existsById(userId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
@@ -55,11 +59,12 @@ public class MissionQueryService {
         }
 
         Set<Long> dailyMissionIds = activeMissions.stream()
-                .filter(mission -> mission.getType() != MissionType.SHARE)
+                .filter(mission -> mission.getType() == MissionType.LIKE)
                 .map(Mission::getMissionId)
                 .collect(Collectors.toSet());
         Set<Long> onceMissionIds = activeMissions.stream()
-                .filter(mission -> mission.getType() == MissionType.SHARE)
+                .filter(mission -> mission.getType() == MissionType.SHARE
+                        || mission.getType() == MissionType.YOUTUBE_SUBSCRIPTION)
                 .map(Mission::getMissionId)
                 .collect(Collectors.toSet());
         String utcPeriodKey = now.atZone(ZoneOffset.UTC).toLocalDate().toString();
