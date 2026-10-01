@@ -13,7 +13,7 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     commit-message:
-      prefix: "[TASK]"
+      prefix: "[TASK] "
     labels:
       - task
     assignees:
