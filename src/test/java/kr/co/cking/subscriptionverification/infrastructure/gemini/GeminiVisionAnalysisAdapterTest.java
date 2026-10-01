@@ -132,16 +132,44 @@ class GeminiVisionAnalysisAdapterTest {
     }
 
     @Test
-    void malformed_JSON과_필수_필드_누락은_재시도_가능한_기술_오류다() {
-        server.createContext("/v1beta/models/gemini-3.5-flash-lite:generateContent", exchange -> {
-            capture(exchange);
-            respond(exchange, 200, completion("{"));
-        });
+    void malformed_JSON은_재시도_가능한_기술_오류다() {
+        assertRetryableAnalysisJson("{");
+    }
 
-        assertThatThrownBy(() -> client(1, 1_000).analyze(request()))
-                .isInstanceOf(VisionAnalysisException.class)
-                .extracting(exception -> ((VisionAnalysisException) exception).failureType())
-                .isEqualTo(VisionAnalysisFailureType.RETRYABLE);
+    @Test
+    void 필수_필드_누락은_재시도_가능한_기술_오류다() {
+        assertRetryableAnalysisJson("""
+                {"platform":"YOUTUBE","subscriptionState":"SUBSCRIBED","detectedText":"구독중",
+                "observedChannelName":"채널 이름","observedChannelHandle":"@channelhandle",
+                "evidenceSufficient":true}
+                """);
+    }
+
+    @Test
+    void 알수없는_enum은_재시도_가능한_기술_오류다() {
+        assertRetryableAnalysisJson("""
+                {"platform":"YOUTUBE","subscriptionState":"MAYBE","detectedText":"구독중",
+                "observedChannelName":"채널 이름","observedChannelHandle":"@channelhandle",
+                "evidenceSufficient":true,"confidence":0.98}
+                """);
+    }
+
+    @Test
+    void 잘못된_field_type은_재시도_가능한_기술_오류다() {
+        assertRetryableAnalysisJson("""
+                {"platform":"YOUTUBE","subscriptionState":"SUBSCRIBED","detectedText":"구독중",
+                "observedChannelName":"채널 이름","observedChannelHandle":"@channelhandle",
+                "evidenceSufficient":"true","confidence":0.98}
+                """);
+    }
+
+    @Test
+    void confidence_범위_오류는_재시도_가능한_기술_오류다() {
+        assertRetryableAnalysisJson("""
+                {"platform":"YOUTUBE","subscriptionState":"SUBSCRIBED","detectedText":"구독중",
+                "observedChannelName":"채널 이름","observedChannelHandle":"@channelhandle",
+                "evidenceSufficient":true,"confidence":1.01}
+                """);
     }
 
     @Test
@@ -196,13 +224,17 @@ class GeminiVisionAnalysisAdapterTest {
     void _400_계열은_재시도하지_않는_기술_오류다() {
         server.createContext("/v1beta/models/gemini-3.5-flash-lite:generateContent", exchange -> {
             capture(exchange);
-            respond(exchange, 400, "{\"error\":{\"message\":\"bad request\"}}");
+            respond(exchange, 400, "{\"error\":{\"message\":\"provider-sensitive-body\"}}");
         });
 
         assertThatThrownBy(() -> client(3, 1_000).analyze(request()))
                 .isInstanceOf(VisionAnalysisException.class)
-                .extracting(exception -> ((VisionAnalysisException) exception).failureType())
-                .isEqualTo(VisionAnalysisFailureType.NON_RETRYABLE);
+                .satisfies(exception -> {
+                    VisionAnalysisException analysisException = (VisionAnalysisException) exception;
+                    assertThat(analysisException.failureType()).isEqualTo(VisionAnalysisFailureType.NON_RETRYABLE);
+                    assertThat(analysisException).hasNoCause();
+                    assertThat(analysisException.getMessage()).doesNotContain("provider-sensitive-body");
+                });
         assertThat(requestCount).hasValue(1);
     }
 
@@ -282,6 +314,19 @@ class GeminiVisionAnalysisAdapterTest {
                 "observedChannelName":"채널 이름","observedChannelHandle":"@channelhandle",
                 "evidenceSufficient":true,"confidence":0.98}
                 """;
+    }
+
+    /** 지정한 모델 JSON이 Parser 계약을 위반할 때 재시도 가능한 기술 오류인지 확인한다. */
+    private void assertRetryableAnalysisJson(String analysisJson) {
+        server.createContext("/v1beta/models/gemini-3.5-flash-lite:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 200, completion(analysisJson));
+        });
+
+        assertThatThrownBy(() -> client(1, 1_000).analyze(request()))
+                .isInstanceOf(VisionAnalysisException.class)
+                .extracting(exception -> ((VisionAnalysisException) exception).failureType())
+                .isEqualTo(VisionAnalysisFailureType.RETRYABLE);
     }
 
     private String completion(String content) throws IOException {

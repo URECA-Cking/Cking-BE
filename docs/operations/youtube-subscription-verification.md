@@ -29,6 +29,7 @@
 - `CKING_STORAGE_TYPE=s3`, S3 bucket·region과 EC2 IAM Role 권한을 확인한다.
 - S3 `subscription-verifications/` prefix에 30일 Lifecycle 만료 규칙을 적용한다.
 - `SUBSCRIPTION_GEMINI_API_KEY`를 Secret으로 주입하고 구독 인증 모델이 `gemini-3.5-flash-lite`인지 확인한다.
+- Parameter Store의 `SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED`는 smoke 전까지 `false`로 유지하고, 검증할 배포에서만 `true`로 변경한다.
 - Gemini connect/read timeout과 최대 시도 시간이 Processing lease보다 짧은지 확인한다.
 - Executor max pool과 Provider 동시 호출 수를 같은 값으로 설정하고 queue를 bounded 상태로 유지한다.
 - Recovery Scheduler와 `subscription_verification.executor.rejected` 등 관련 metric·로그를 확인한다.

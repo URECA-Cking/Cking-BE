@@ -23,7 +23,8 @@ echo "[2/4] Parameter Store 읽기: $PARAM_PATH"
 # 값은 환경변수로만 넘기고 파일·로그에 남기지 않는다.
 for name in DB_HOST DB_USERNAME DB_PASSWORD DOCS_USERNAME DOCS_PASSWORD \
             JWT_SECRET OAUTH_GOOGLE_CLIENT_ID OAUTH_GOOGLE_CLIENT_SECRET \
-            OAUTH_KAKAO_CLIENT_ID OAUTH_KAKAO_CLIENT_SECRET; do
+            OAUTH_KAKAO_CLIENT_ID OAUTH_KAKAO_CLIENT_SECRET \
+            SUBSCRIPTION_GEMINI_API_KEY SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED; do
   value=$(aws ssm get-parameter --region "$REGION" --name "${PARAM_PATH}${name}" \
     --with-decryption --query 'Parameter.Value' --output text)
   export "$name=$value"

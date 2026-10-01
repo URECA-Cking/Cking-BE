@@ -57,7 +57,7 @@ public class GeminiVisionAnalysisAdapter implements VisionAnalysisPort {
                 int status = exception.getStatusCode().value();
                 logProviderResult(status, elapsedMillis(startedAt), null, attempt);
                 if (!isRetryableStatus(status) || attempt == maxAttempts) {
-                    throw providerFailure(status, isRetryableStatus(status), exception);
+                    throw providerFailure(status, isRetryableStatus(status));
                 }
                 pauseBeforeRetry();
             } catch (ResourceAccessException exception) {
@@ -149,11 +149,11 @@ public class GeminiVisionAnalysisAdapter implements VisionAnalysisPort {
         return status == 429 || status >= 500;
     }
 
-    private VisionAnalysisException providerFailure(int status, boolean retryable, Throwable cause) {
+    /** Provider 응답 본문을 가진 HTTP 예외를 cause로 연결하지 않고 상태 코드만 전달한다. */
+    private VisionAnalysisException providerFailure(int status, boolean retryable) {
         return new VisionAnalysisException(
                 retryable ? VisionAnalysisFailureType.RETRYABLE : VisionAnalysisFailureType.NON_RETRYABLE,
-                "Gemini API 요청이 실패했습니다. status=" + status,
-                cause);
+                "Gemini API 요청이 실패했습니다. status=" + status);
     }
 
     private void pauseBeforeRetry() {

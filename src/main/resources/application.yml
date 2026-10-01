@@ -39,7 +39,7 @@ cking:
   verification:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
-      submission-enabled: false
+      submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:false}
       processing-executor:
         # Provider 계정 한도에 맞춘 인스턴스별 동시 호출 수이며 max-pool-size와 같아야 한다.
         core-pool-size: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_CORE_POOL_SIZE:2}
