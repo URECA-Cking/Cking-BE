@@ -9,6 +9,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +18,8 @@ class ImageNormalizerTest {
     private static final ImagePolicy SMALL_MIN_POLICY = new ImagePolicy(200, 200, 2048);
     private static final ImagePolicy LARGE_MIN_POLICY = new ImagePolicy(480, 480, 2048);
 
-    private final ImageNormalizer normalizer = new ImageNormalizer();
+    private final ImageNormalizer normalizer =
+            new ImageNormalizer(new ImageProcessingLimiter(1, 0, Duration.ofSeconds(5)));
 
     @Test
     void 최소_해상도는_정책마다_다르게_적용된다() throws IOException {

@@ -30,3 +30,14 @@
 
 - 형식·크기·해상도 위반과 손상된 이미지는 공통 `InvalidImageException`으로 던진다. 업무 오류 코드는 도메인마다 다르므로 호출한 도메인이 자기 `ErrorCode`로 변환한다.
 - 입력은 유효하지만 정규화 중 서버 오류가 나면 `SYSTEM_ERROR`로 처리한다.
+
+## 동시 처리 한도
+
+정규화는 이미지 한 장에 heap을 많이 써서(20MP 약 80MiB) 서버 전체에서 한도를 둔다. 모든 도메인이 같은 한도를 나눠 쓴다.
+
+| 한도 | 기본값 | 위치 | 넘으면 |
+| --- | --- | --- | --- |
+| 입장 (처리 중 + 대기 중) | 2 + 4 | 업로드 컨트롤러, 원본을 읽기(`getBytes()`) 전 | 즉시 `IMAGE_PROCESSING_BUSY`(503) |
+| 처리 | 2 | `ImageNormalizer` | 대기 시간(`acquire-timeout`) 뒤 `IMAGE_PROCESSING_BUSY`(503) |
+
+설정은 `cking.image-processing.*`이다. 새 업로드 API는 원본을 읽기 전에 `ImageProcessingLimiter.admit`으로 입장한다.

@@ -173,6 +173,7 @@ image: JPEG 또는 PNG 한 장
 | --- | ---: | --- |
 | `VALIDATION_FAILED` | 400 | 식별자·UUID·multipart·필드 길이·이미지 요청 형식 오류 |
 | `INVALID_VERIFICATION_IMAGE` | 400 | 지원하지 않거나 손상된 이미지, 크기·해상도 위반 |
+| `UPLOAD_TOO_LARGE` | 413 | 파일 5MB 또는 요청 6MB 초과 |
 | `UNAUTHORIZED` | 401 | Access JWT 인증 실패 |
 | `FORBIDDEN` | 403 | Creator 소유권 없음 또는 타인의 Verification 접근 |
 | `RESOURCE_NOT_FOUND` | 404 | Member·Creator·Mission 없음 |
@@ -187,6 +188,7 @@ image: JPEG 또는 PNG 한 장
 | `CHANNEL_HANDLE_CONFLICT` | 409 | 다른 Creator가 같은 정규화 handle 사용 |
 | `VERIFICATION_SUBMISSION_LIMIT_EXCEEDED` | 429 | cooldown 또는 UTC 일일 제출 한도 초과 |
 | `VERIFICATION_UNAVAILABLE` | 503 | 제출 기능 플래그 비활성 또는 일시 이용 불가 |
+| `IMAGE_PROCESSING_BUSY` | 503 | 이미지 처리 요청이 몰림. 잠시 후 다시 시도한다 |
 | `SYSTEM_ERROR` | 500 | 예상하지 못한 서버 오류 |
 
 VLM 분석의 timeout·429·5xx는 제출 HTTP 요청의 오류가 아니라 비동기 `FAILED` 및 공개 `TEMPORARY_ERROR`로 기록한다.

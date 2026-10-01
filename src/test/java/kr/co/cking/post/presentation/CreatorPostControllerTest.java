@@ -1,6 +1,8 @@
 package kr.co.cking.post.presentation;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.image.ImageProcessingLimiter;
+import kr.co.cking.common.image.ImageProcessingTestSupport;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.CreatorPostService;
@@ -12,6 +14,7 @@ import kr.co.cking.post.domain.PostVisibility;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -34,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CreatorPostController.class)
+@Import(ImageProcessingTestSupport.Config.class)
 class CreatorPostControllerTest {
 
     private static final String SAVE_BODY = """
@@ -52,6 +56,9 @@ class CreatorPostControllerTest {
     @MockitoBean
     private MemberRepository memberRepository;
 
+    @Autowired
+    private ImageProcessingLimiter imageProcessingLimiter;
+
     @Test
     @WithMockJwt(memberId = "7")
     void 이미지_업로드는_201과_imageKey를_반환한다() throws Exception {
@@ -61,6 +68,19 @@ class CreatorPostControllerTest {
         mockMvc.perform(multipart("/api/creator/posts/images").file(image))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.imageKey").value("post-images/1/a.jpg"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 이미지_처리_입장_자리가_없으면_503이고_업로드를_처리하지_않는다() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "a.png", "image/png", new byte[] {1, 2});
+
+        try (AutoCloseable ignored = ImageProcessingTestSupport.occupyAdmission(imageProcessingLimiter)) {
+            mockMvc.perform(multipart("/api/creator/posts/images").file(image))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("IMAGE_PROCESSING_BUSY"));
+        }
+        then(imageUploadService).should(never()).upload(anyLong(), any());
     }
 
     @Test

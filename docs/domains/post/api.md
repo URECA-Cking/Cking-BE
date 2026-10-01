@@ -49,6 +49,8 @@
 | --- | --- | --- |
 | `VALIDATION_FAILED` | 400 | `image` 파트 없음 |
 | `INVALID_POST_IMAGE` | 400 | 지원하지 않거나 손상된 이미지, 크기·해상도 위반 |
+| `UPLOAD_TOO_LARGE` | 413 | 파일 5MB 또는 요청 6MB 초과 |
+| `IMAGE_PROCESSING_BUSY` | 503 | 이미지 처리 요청이 몰림. 잠시 후 다시 시도한다 |
 
 ## POST /api/creator/posts
 

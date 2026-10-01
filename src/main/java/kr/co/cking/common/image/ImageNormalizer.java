@@ -42,13 +42,24 @@ public class ImageNormalizer {
 
     private static final float JPEG_QUALITY = 0.90F;
 
+    private final ImageProcessingLimiter limiter;
+
+    public ImageNormalizer(ImageProcessingLimiter limiter) {
+        this.limiter = Objects.requireNonNull(limiter, "limiter");
+    }
+
     /**
      * @throws InvalidImageException 형식·크기·해상도 위반이나 손상된 이미지
-     * @throws BusinessException 입력은 유효하지만 정규화 중 서버 오류가 난 경우 ({@code SYSTEM_ERROR})
+     * @throws BusinessException 입력은 유효하지만 정규화 중 서버 오류가 난 경우 ({@code SYSTEM_ERROR}),
+     *         동시 실행 한도에 걸려 대기 시간을 넘긴 경우 ({@code IMAGE_PROCESSING_BUSY})
      */
     public NormalizedImage normalize(byte[] sourceBytes, ImagePolicy policy) {
         Objects.requireNonNull(policy, "policy");
         validateSourceSize(sourceBytes);
+        return limiter.run(() -> normalizeWithinLimit(sourceBytes, policy));
+    }
+
+    private NormalizedImage normalizeWithinLimit(byte[] sourceBytes, ImagePolicy policy) {
         byte[] stableSourceBytes = sourceBytes.clone();
         String sourceHash = ImageSha256.calculate(stableSourceBytes);
 

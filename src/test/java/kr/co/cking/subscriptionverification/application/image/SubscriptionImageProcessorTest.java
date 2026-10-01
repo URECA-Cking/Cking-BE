@@ -14,10 +14,13 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.image.ImageNormalizer;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.common.image.ImageSha256;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 import org.junit.jupiter.api.Test;
@@ -26,7 +29,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class SubscriptionImageProcessorTest {
 
-    private final SubscriptionImageProcessor processor = new SubscriptionImageProcessor();
+    private final SubscriptionImageProcessor processor = new SubscriptionImageProcessor(
+            new ImageNormalizer(new ImageProcessingLimiter(1, 0, Duration.ofSeconds(5))));
 
     @Test
     void jpeg를_정규화하고_원본과_정규화_해시를_반환한다() throws IOException {
