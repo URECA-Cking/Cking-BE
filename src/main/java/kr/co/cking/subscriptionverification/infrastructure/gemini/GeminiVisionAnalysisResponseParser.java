@@ -1,4 +1,4 @@
-package kr.co.cking.subscriptionverification.infrastructure.deepseek;
+package kr.co.cking.subscriptionverification.infrastructure.gemini;
 
 import java.util.List;
 import java.util.Map;
@@ -10,30 +10,44 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
-/** DeepSeek JSON 응답을 Provider 독립 Vision 분석 결과로 엄격하게 변환한다. */
-public class DeepSeekVisionAnalysisResponseParser {
+/** Gemini generateContent 응답을 Provider 독립 Vision 분석 결과로 엄격하게 변환한다. */
+public class GeminiVisionAnalysisResponseParser {
 
     private final ObjectMapper objectMapper;
 
-    public DeepSeekVisionAnalysisResponseParser(ObjectMapper objectMapper) {
+    public GeminiVisionAnalysisResponseParser(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
-    /** Chat Completions envelope에서 첫 번째 모델 JSON 문자열을 꺼낸다. */
+    /** generateContent envelope에서 정상 종료된 첫 번째 candidate의 JSON text를 꺼낸다. */
     public String extractContent(String responseJson) {
         try {
-            DeepSeekChatCompletionResponse response = objectMapper.readValue(
-                    responseJson, DeepSeekChatCompletionResponse.class);
-            if (response == null || response.choices() == null || response.choices().isEmpty()) {
-                throw new IllegalArgumentException("DeepSeek 응답에 choices가 없습니다.");
+            Map<String, Object> root = objectMapper.readValue(responseJson, new TypeReference<>() {
+            });
+            if (root == null || !(root.get("candidates") instanceof List<?> candidates) || candidates.isEmpty()) {
+                throw new IllegalArgumentException("Gemini 응답에 candidates가 없습니다.");
             }
-            DeepSeekChoice choice = response.choices().getFirst();
-            if (choice == null || choice.message() == null || isBlank(choice.message().content())) {
-                throw new IllegalArgumentException("DeepSeek 응답에 분석 JSON이 없습니다.");
+            if (!(candidates.getFirst() instanceof Map<?, ?> candidate)) {
+                throw new IllegalArgumentException("Gemini candidate 형식이 올바르지 않습니다.");
             }
-            return normalizeContent(choice.message().content());
+            if (!"STOP".equals(candidate.get("finishReason"))) {
+                throw new IllegalArgumentException("Gemini 응답이 정상적으로 완료되지 않았습니다.");
+            }
+            if (!(candidate.get("content") instanceof Map<?, ?> content)
+                    || !(content.get("parts") instanceof List<?> parts)) {
+                throw new IllegalArgumentException("Gemini 응답에 content parts가 없습니다.");
+            }
+            for (Object partValue : parts) {
+                if (partValue instanceof Map<?, ?> part
+                        && !Boolean.TRUE.equals(part.get("thought"))
+                        && part.get("text") instanceof String text
+                        && !text.isBlank()) {
+                    return normalizeContent(text);
+                }
+            }
+            throw new IllegalArgumentException("Gemini 응답에 분석 JSON이 없습니다.");
         } catch (JacksonException | IllegalArgumentException exception) {
-            throw new DeepSeekResponseParseException("DeepSeek 응답 envelope를 파싱할 수 없습니다.", exception);
+            throw new GeminiResponseParseException("Gemini 응답 envelope를 파싱할 수 없습니다.", exception);
         }
     }
 
@@ -43,7 +57,7 @@ public class DeepSeekVisionAnalysisResponseParser {
             Map<String, Object> root = objectMapper.readValue(contentJson, new TypeReference<>() {
             });
             if (root == null) {
-                throw new IllegalArgumentException("DeepSeek 분석 JSON은 객체여야 합니다.");
+                throw new IllegalArgumentException("Gemini 분석 JSON은 객체여야 합니다.");
             }
             requireFields(root, List.of(
                     "platform", "subscriptionState", "detectedText", "observedChannelName",
@@ -57,68 +71,57 @@ public class DeepSeekVisionAnalysisResponseParser {
                     requiredBoolean(root.get("evidenceSufficient"), "evidenceSufficient"),
                     requiredConfidence(root.get("confidence")));
         } catch (JacksonException | IllegalArgumentException exception) {
-            throw new DeepSeekResponseParseException("DeepSeek 분석 JSON을 파싱할 수 없습니다.", exception);
+            throw new GeminiResponseParseException("Gemini 분석 JSON을 파싱할 수 없습니다.", exception);
         }
     }
 
-    /** 응답이 요구된 필드를 하나도 생략하지 않았는지 확인한다. */
     private void requireFields(Map<String, Object> root, List<String> fields) {
         for (String field : fields) {
             if (!root.containsKey(field)) {
-                throw new IllegalArgumentException("DeepSeek 분석 JSON에 필수 필드가 없습니다: " + field);
+                throw new IllegalArgumentException("Gemini 분석 JSON에 필수 필드가 없습니다: " + field);
             }
         }
     }
 
-    /** 문자열 enum만 받아 정의되지 않은 Provider 값을 거부한다. */
     private <T extends Enum<T>> T parseEnum(Object value, Class<T> enumType, String field) {
         if (!(value instanceof String raw) || raw.isBlank()) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON의 " + field + " 값이 올바르지 않습니다.");
+            throw new IllegalArgumentException("Gemini 분석 JSON의 " + field + " 값이 올바르지 않습니다.");
         }
         try {
             return Enum.valueOf(enumType, raw);
         } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON의 " + field + " 값이 알려지지 않았습니다.", exception);
+            throw new IllegalArgumentException("Gemini 분석 JSON의 " + field + " 값이 알려지지 않았습니다.", exception);
         }
     }
 
-    /** null 또는 문자열만 관측 채널 필드로 허용한다. */
     private String nullableString(Object value, String field) {
         if (value == null) {
             return null;
         }
         if (!(value instanceof String text)) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON의 " + field + " 값이 문자열이 아닙니다.");
+            throw new IllegalArgumentException("Gemini 분석 JSON의 " + field + " 값이 문자열이 아닙니다.");
         }
         return text;
     }
 
-    /** boolean 타입의 증거 충분성만 허용한다. */
     private boolean requiredBoolean(Object value, String field) {
         if (!(value instanceof Boolean result)) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON의 " + field + " 값이 boolean이 아닙니다.");
+            throw new IllegalArgumentException("Gemini 분석 JSON의 " + field + " 값이 boolean이 아닙니다.");
         }
         return result;
     }
 
-    /** 0.0 이상 1.0 이하의 유한한 숫자 confidence만 허용한다. */
     private double requiredConfidence(Object value) {
         if (!(value instanceof Number number)) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON의 confidence 값이 숫자가 아닙니다.");
+            throw new IllegalArgumentException("Gemini 분석 JSON의 confidence 값이 숫자가 아닙니다.");
         }
         double confidence = number.doubleValue();
         if (!Double.isFinite(confidence) || confidence < 0.0 || confidence > 1.0) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON의 confidence 범위가 올바르지 않습니다.");
+            throw new IllegalArgumentException("Gemini 분석 JSON의 confidence 범위가 올바르지 않습니다.");
         }
         return confidence;
     }
 
-    /** 비어 있거나 공백뿐인 응답 문자열인지 확인한다. */
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
-
-    /** 모델이 JSON을 Markdown code fence로 감싼 경우 본문만 반환한다. */
     private String normalizeContent(String content) {
         String normalized = content.trim();
         if (!normalized.startsWith("```")) {
@@ -127,11 +130,11 @@ public class DeepSeekVisionAnalysisResponseParser {
 
         int firstLineEnd = normalized.indexOf('\n');
         if (firstLineEnd < 0 || !normalized.endsWith("```")) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON code fence가 닫히지 않았습니다.");
+            throw new IllegalArgumentException("Gemini 분석 JSON code fence가 닫히지 않았습니다.");
         }
         String body = normalized.substring(firstLineEnd + 1, normalized.length() - 3).trim();
         if (body.isEmpty()) {
-            throw new IllegalArgumentException("DeepSeek 분석 JSON이 비어 있습니다.");
+            throw new IllegalArgumentException("Gemini 분석 JSON이 비어 있습니다.");
         }
         return body;
     }

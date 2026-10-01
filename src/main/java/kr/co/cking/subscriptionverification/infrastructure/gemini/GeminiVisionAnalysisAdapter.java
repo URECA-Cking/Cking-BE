@@ -1,4 +1,4 @@
-package kr.co.cking.subscriptionverification.infrastructure.deepseek;
+package kr.co.cking.subscriptionverification.infrastructure.gemini;
 
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
@@ -12,7 +12,6 @@ import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPor
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRequest;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -21,19 +20,19 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
-/** DeepSeek Chat Completions REST API를 VisionAnalysisPort로 변환하는 Adapter다. */
+/** Gemini generateContent REST API를 VisionAnalysisPort로 변환하는 Adapter다. */
 @Slf4j
-public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
+public class GeminiVisionAnalysisAdapter implements VisionAnalysisPort {
 
     private final RestClient restClient;
-    private final DeepSeekVisionAnalysisProperties properties;
-    private final DeepSeekVisionAnalysisResponseParser responseParser;
+    private final GeminiVisionAnalysisProperties properties;
+    private final GeminiVisionAnalysisResponseParser responseParser;
     private final ObjectMapper objectMapper;
 
-    public DeepSeekVisionAnalysisAdapter(
+    public GeminiVisionAnalysisAdapter(
             RestClient restClient,
-            DeepSeekVisionAnalysisProperties properties,
-            DeepSeekVisionAnalysisResponseParser responseParser,
+            GeminiVisionAnalysisProperties properties,
+            GeminiVisionAnalysisResponseParser responseParser,
             ObjectMapper objectMapper) {
         this.restClient = restClient;
         this.properties = properties;
@@ -66,11 +65,11 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
-                            isTimeout(exception) ? "DeepSeek API 응답 시간이 초과되었습니다." : "DeepSeek API 네트워크 요청이 실패했습니다.",
+                            isTimeout(exception) ? "Gemini API 응답 시간이 초과되었습니다." : "Gemini API 네트워크 요청이 실패했습니다.",
                             exception);
                 }
                 pauseBeforeRetry();
-            } catch (DeepSeekResponseParseException exception) {
+            } catch (GeminiResponseParseException exception) {
                 logProviderResult(
                         200,
                         elapsedMillis(startedAt),
@@ -79,57 +78,55 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
-                            "DeepSeek API 응답 형식이 올바르지 않습니다.", exception);
+                            "Gemini API 응답 형식이 올바르지 않습니다.", exception);
                 }
                 pauseBeforeRetry();
             } catch (IllegalArgumentException exception) {
                 logProviderResult(0, elapsedMillis(startedAt), null, attempt);
                 throw new VisionAnalysisException(
                         VisionAnalysisFailureType.NON_RETRYABLE,
-                        "DeepSeek API 요청 설정이 올바르지 않습니다.", exception);
+                        "Gemini API 요청 설정이 올바르지 않습니다.", exception);
             } catch (RestClientException exception) {
                 logProviderResult(0, elapsedMillis(startedAt), null, attempt);
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
-                            "DeepSeek API 요청이 실패했습니다.", exception);
+                            "Gemini API 요청이 실패했습니다.", exception);
                 }
                 pauseBeforeRetry();
             }
         }
-        throw new VisionAnalysisException(VisionAnalysisFailureType.RETRYABLE, "DeepSeek API 요청이 실패했습니다.");
+        throw new VisionAnalysisException(VisionAnalysisFailureType.RETRYABLE, "Gemini API 요청이 실패했습니다.");
     }
 
-    /** Provider를 한 번 호출하고 민감한 응답 본문은 기록하지 않은 채 반환한다. */
     private String callProvider(VisionAnalysisRequest request) {
         return restClient.post()
-                .uri(properties.getEndpoint())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
-                .body(DeepSeekChatCompletionRequest.from(request, properties))
+                .uri(uriBuilder -> uriBuilder
+                        .path("/models/{model}:generateContent")
+                        .build(properties.getModel()))
+                .header("x-goog-api-key", properties.getApiKey())
+                .body(GeminiGenerateContentRequest.from(request, properties))
                 .retrieve()
                 .body(String.class);
     }
 
-    /** Chat Completions envelope와 내부 JSON을 순서대로 검증해 Vision 결과로 만든다. */
     private VisionAnalysisResult parseResponse(String response) {
         return responseParser.parse(responseParser.extractContent(response));
     }
 
-    /** Provider가 반환한 상태·지연 시간·usage만 민감정보 없이 기록한다. */
     private void logProviderResult(int status, long latencyMillis, Map<String, Object> usage, int attempt) {
-        int promptTokens = numberValue(usage, "prompt_tokens");
-        int completionTokens = numberValue(usage, "completion_tokens");
-        int totalTokens = numberValue(usage, "total_tokens");
-        log.info("DeepSeek VLM 호출 완료: model={}, status={}, latencyMs={}, promptTokens={}, completionTokens={}, totalTokens={}, attempt={}",
+        int promptTokens = numberValue(usage, "promptTokenCount");
+        int completionTokens = numberValue(usage, "candidatesTokenCount");
+        int totalTokens = numberValue(usage, "totalTokenCount");
+        log.info("Gemini VLM 호출 완료: model={}, status={}, latencyMs={}, promptTokens={}, completionTokens={}, totalTokens={}, attempt={}",
                 properties.getModel(), status, latencyMillis, promptTokens, completionTokens, totalTokens, attempt);
     }
 
-    /** 응답 envelope에서 usage 숫자만 최선으로 추출하며 실패해도 분석 결과에 영향을 주지 않는다. */
     private Map<String, Object> extractUsage(String response) {
         try {
             Map<String, Object> root = objectMapper.readValue(response, new TypeReference<>() {
             });
-            Object usage = root == null ? null : root.get("usage");
+            Object usage = root == null ? null : root.get("usageMetadata");
             if (usage instanceof Map<?, ?> value) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> typed = (Map<String, Object>) value;
@@ -141,7 +138,6 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
         return null;
     }
 
-    /** usage의 숫자 필드를 로그용 정수로 안전하게 변환한다. */
     private int numberValue(Map<String, Object> usage, String field) {
         if (usage == null || !(usage.get(field) instanceof Number value)) {
             return -1;
@@ -149,20 +145,17 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
         return value.intValue();
     }
 
-    /** 429와 5xx만 동일 입력으로 다시 시도할 수 있는 HTTP 상태로 판단한다. */
     private boolean isRetryableStatus(int status) {
         return status == 429 || status >= 500;
     }
 
-    /** HTTP 실패를 Processing 계층이 이해하는 재시도 가능 기술 오류로 변환한다. */
     private VisionAnalysisException providerFailure(int status, boolean retryable, Throwable cause) {
         return new VisionAnalysisException(
                 retryable ? VisionAnalysisFailureType.RETRYABLE : VisionAnalysisFailureType.NON_RETRYABLE,
-                "DeepSeek API 요청이 실패했습니다. status=" + status,
+                "Gemini API 요청이 실패했습니다. status=" + status,
                 cause);
     }
 
-    /** 설정한 backoff만큼 대기하고 인터럽트 시 재시도 가능한 기술 오류로 종료한다. */
     private void pauseBeforeRetry() {
         Duration backoff = properties.getRetryBackoff();
         long millis = backoff == null || backoff.isNegative() || backoff.isZero() ? 0L : backoff.toMillis();
@@ -173,11 +166,10 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new VisionAnalysisException(
-                    VisionAnalysisFailureType.RETRYABLE, "DeepSeek API 재시도가 중단되었습니다.", exception);
+                    VisionAnalysisFailureType.RETRYABLE, "Gemini API 재시도가 중단되었습니다.", exception);
         }
     }
 
-    /** 예외 원인 체인에 timeout 계열 예외가 있는지 확인한다. */
     private boolean isTimeout(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
@@ -191,16 +183,14 @@ public class DeepSeekVisionAnalysisAdapter implements VisionAnalysisPort {
         return false;
     }
 
-    /** 시작 시각으로부터 밀리초 단위 경과 시간을 계산한다. */
     private long elapsedMillis(long startedAt) {
         return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
     }
 
-    /** 호출 직전에 API 키 누락을 비재시도 설정 오류로 막는다. */
     private void requireApiKey() {
         if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
             throw new VisionAnalysisException(
-                    VisionAnalysisFailureType.NON_RETRYABLE, "DeepSeek API key가 설정되지 않았습니다.");
+                    VisionAnalysisFailureType.NON_RETRYABLE, "Gemini API key가 설정되지 않았습니다.");
         }
     }
 }

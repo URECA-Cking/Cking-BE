@@ -1,6 +1,6 @@
 # YouTube 구독 인증 비동기 처리
 
-이 문서는 [README.md](README.md)의 Verification을 실제로 판정하고 보상하는 비동기 경계를 정의한다. Production VLM은 벤치마크 결과에 따라 DeepSeek V4.1 Flash(`deepseek-flash`)로 선정했다. Provider 호출 상세는 후속 DeepSeek Adapter가 담당하고, Application은 이 문서의 Provider 독립 Port와 판정 계약에만 의존한다.
+이 문서는 [README.md](README.md)의 Verification을 실제로 판정하고 보상하는 비동기 경계를 정의한다. Production VLM은 벤치마크 결과에 따라 Gemini 3.5 Flash-Lite(`gemini-3.5-flash-lite`)로 선정했다. Provider 호출 상세는 Gemini Adapter가 담당하고, Application은 이 문서의 Provider 독립 Port와 판정 계약에만 의존한다.
 
 ## Trigger와 Transaction
 
@@ -75,7 +75,7 @@ Executor 크기는 rate limiter가 아니다. Worker는 별도 semaphore로 인�
 
 ## Vision 분석 Port
 
-Application은 `VisionAnalysisPort`를 통해 이미지를 분석한다. DeepSeek SDK·HTTP Client·전용 Request/Response DTO는 Adapter 내부에만 둔다.
+Application은 `VisionAnalysisPort`를 통해 이미지를 분석한다. Gemini HTTP Client·전용 Request/Response DTO는 Adapter 내부에만 둔다.
 
 ```text
 VisionAnalysisRequest
@@ -104,7 +104,7 @@ Processor 입력은 다음으로 제한한다.
 - Verification에 동결한 `targetChannelName`
 - Verification에 동결한 정규화 `targetChannelHandle`
 
-VLM은 관측 결과만 제공하고 승인이나 Ticket 지급을 직접 결정하지 않는다. `SubscriptionVerificationDecisionPolicy`는 Repository·Object Storage·Ticket Service에 의존하지 않는 순수 정책이며, confidence threshold를 생성자에서 주입받는다. 운영 threshold는 최신 Prompt 확인 결과에 따라 후속 DeepSeek Adapter 작업에서 확정한다.
+VLM은 관측 결과만 제공하고 승인이나 Ticket 지급을 직접 결정하지 않는다. `SubscriptionVerificationDecisionPolicy`는 Repository·Object Storage·Ticket Service에 의존하지 않는 순수 정책이며, confidence threshold를 생성자에서 주입받는다. 운영 threshold는 Gemini 벤치마크에 사용한 Prompt와 판정 기준을 따른다.
 
 서버 판정의 최소 개념은 다음과 같다.
 
@@ -136,15 +136,17 @@ INSUFFICIENT_EVIDENCE
 LOW_CONFIDENCE
 ```
 
-## DeepSeek Adapter 계약
+## Gemini Adapter 계약
 
-`DeepSeekVisionAnalysisAdapter`는 SDK 없이 `POST https://api.deepseek.com/chat/completions`를 호출한다. 기본 모델은 `deepseek-flash`이며 API key는 `DEEPSEEK_API_KEY` Secret으로만 주입한다. Adapter는 `VisionAnalysisResult`까지만 반환하고 Verification 상태·reason code·Ticket 보상을 직접 결정하지 않는다.
+`GeminiVisionAnalysisAdapter`는 SDK 없이 Gemini `generateContent` REST API를 호출한다. 기본 모델은 `gemini-3.5-flash-lite`이며 API key는 퀴즈 기능과 분리된 `SUBSCRIPTION_GEMINI_API_KEY` Secret으로만 주입한다. 구독 인증의 key·quota·모델·timeout·retry 설정은 퀴즈와 분리한다. Adapter는 `VisionAnalysisResult`까지만 반환하고 Verification 상태·reason code·Ticket 보상을 직접 결정하지 않는다.
+
+선정 벤치마크에서는 171장 중 양성 16장을 대상으로 3회 모두 `TP 16 / FP 0 / TN 155 / FN 0`을 재현했다. 누적 `TP 48 / FP 0 / TN 465 / FN 0`으로 오승인과 누락이 없었고, 초기 라벨에서 빠졌던 실제 양성 이미지도 일관되게 찾아낸 결과를 최종 라벨에 반영했다. 모델 선정 근거는 이 고정 평가셋의 정확성과 재현성이며, 운영 입력 분포에서 같은 수치를 보장한다는 의미는 아니다.
 
 ### 요청
 
-- 정규화 JPEG bytes를 `data:image/jpeg;base64,...` 형식의 user message `image_url`로 전달한다. S3 URL·Object Key·실제 파일 업로드는 사용하지 않는다.
+- 정규화 JPEG bytes를 `inlineData(mimeType=image/jpeg, data=Base64)` 형식으로 전달한다. S3 URL·Object Key·Files API는 사용하지 않는다.
 - 대상 `channelName`과 `channelHandle`은 JSON으로 이스케이프한 비신뢰 데이터 블록으로 text prompt에 함께 전달한다. 블록 안의 문자열은 명령으로 해석하지 않으며, 이미지에 없는 관측값을 이 입력에서 추론할 수 없도록 Prompt에 명시한다.
-- `thinking: { type: disabled }`, `response_format: { type: json_object }`와 최대 출력 토큰을 요청한다.
+- `thinkingLevel=minimal`, JSON Structured Output schema와 최대 출력 토큰을 요청한다.
 - Prompt는 이미지 안의 모든 문구를 증거 데이터로만 취급하고, 이미지 내부 명령을 실행하지 않도록 지시한다.
 
 ### 응답과 검증
@@ -167,7 +169,7 @@ confidence: 0.0..1.0
 
 - connect/read timeout, 429, 5xx, 네트워크 오류와 Provider 응답 파싱 오류는 `RETRYABLE` 기술 오류다. 설정한 최대 시도 횟수 안에서 backoff 후 재시도한다.
 - 400 계열, API key 누락과 endpoint·요청 생성 설정 오류는 `NON_RETRYABLE` 기술 오류이며 재시도하지 않는다.
-- `DEEPSEEK_CONNECT_TIMEOUT`, `DEEPSEEK_READ_TIMEOUT`, `DEEPSEEK_MAX_ATTEMPTS`, `DEEPSEEK_RETRY_BACKOFF`, `DEEPSEEK_MAX_OUTPUT_TOKENS`로 호출 한계를 분리한다.
+- `SUBSCRIPTION_GEMINI_CONNECT_TIMEOUT`, `SUBSCRIPTION_GEMINI_READ_TIMEOUT`, `SUBSCRIPTION_GEMINI_MAX_ATTEMPTS`, `SUBSCRIPTION_GEMINI_RETRY_BACKOFF`, `SUBSCRIPTION_GEMINI_MAX_OUTPUT_TOKENS`로 호출 한계를 분리한다.
 - 이미지 bytes, Base64, API key, VLM Raw 응답은 로그에 남기지 않는다. 각 호출 시도마다 model, HTTP status, 실제 latency, usage token 수, 시도 횟수를 한 번만 기록한다.
 
 ## 보상 처리

@@ -1,9 +1,9 @@
-package kr.co.cking.subscriptionverification.infrastructure.deepseek;
+package kr.co.cking.subscriptionverification.infrastructure.gemini;
 
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRequest;
 
-/** YouTube 구독 상태 분석에 사용하는 DeepSeek 프롬프트를 한 곳에서 관리한다. */
-public final class DeepSeekSubscriptionAnalysisPrompt {
+/** YouTube 구독 상태 분석에 사용하는 Gemini 프롬프트를 한 곳에서 관리한다. */
+public final class GeminiSubscriptionAnalysisPrompt {
 
     private static final String TEMPLATE = """
             너는 YouTube 채널 구독 상태 스크린샷을 판정하는 이미지 분석기다.
@@ -27,11 +27,11 @@ public final class DeepSeekSubscriptionAnalysisPrompt {
             4. 그 UI의 상태 텍스트를 읽는다.
 
             subscriptionState 규칙:
-            - 실제 구독 상태 UI가 있고 상태 텍스트가 명확하게 \"구독중\"이면 SUBSCRIBED, detectedText는 \"구독중\"이다.
-            - 실제 구독 버튼이 있고 상태 텍스트가 명확하게 \"구독\"이면 NOT_SUBSCRIBED, detectedText는 \"구독\"이다.
-            - 버튼 또는 상태 UI가 없거나, 화면 밖으로 잘렸거나, 가려졌거나, 흐리거나, \"구독\"과 \"구독중\"을 구분할 수 없거나,
+            - 실제 구독 상태 UI가 있고 상태 텍스트가 명확하게 "구독중"이면 SUBSCRIBED, detectedText는 "구독중"이다.
+            - 실제 구독 버튼이 있고 상태 텍스트가 명확하게 "구독"이면 NOT_SUBSCRIBED, detectedText는 "구독"이다.
+            - 버튼 또는 상태 UI가 없거나, 화면 밖으로 잘렸거나, 가려졌거나, 흐리거나, "구독"과 "구독중"을 구분할 수 없거나,
               실제 상태 UI인지 확신할 수 없거나, 모순되는 상태가 보이면 UNKNOWN이고 detectedText는 null이다.
-            - \"구독자 N명\", 댓글, 영상 제목·설명, 추천 영상, 채널 설명, 일반 텍스트, 버튼 색상·모양·아이콘·종 모양만으로 판정하지 마라.
+            - "구독자 N명", 댓글, 영상 제목·설명, 추천 영상, 채널 설명, 일반 텍스트, 버튼 색상·모양·아이콘·종 모양만으로 판정하지 마라.
 
             observedChannelName과 observedChannelHandle은 구독 상태를 판정한 동일 채널의 프로필 영역 또는 채널 헤더에서만 읽는다.
             observedChannelName은 확실히 읽을 수 없으면 null이고, observedChannelHandle은 실제로 보이는 @로 시작하는 핸들만 반환하며 추론하지 마라.
@@ -39,21 +39,11 @@ public final class DeepSeekSubscriptionAnalysisPrompt {
             evidenceSufficient는 실제 구독 상태 UI와 동일 채널 식별 근거를 명확히 읽을 수 있을 때만 true다.
             confidence는 이 JSON 관측값의 신뢰도를 0.0 이상 1.0 이하 숫자로 반환한다. 불확실하면 낮은 값을 사용한다.
 
-            설명, 분석 과정, Markdown, 코드 블록을 출력하지 마라. 반드시 JSON 객체 하나만 반환한다.
+            설명, 분석 과정, Markdown, 코드 블록을 출력하지 마라. 응답 스키마의 JSON 객체만 반환한다.
             모든 필드는 반드시 포함하고 null은 문자열이 아닌 JSON null을 사용한다.
-            JSON 형식:
-            {
-              \"platform\": \"YOUTUBE | OTHER | UNKNOWN\",
-              \"subscriptionState\": \"SUBSCRIBED | NOT_SUBSCRIBED | UNKNOWN\",
-              \"detectedText\": \"실제로 읽은 구독 상태 UI 텍스트 또는 null\",
-              \"observedChannelName\": \"화면에서 읽은 동일 채널의 표시명 또는 null\",
-              \"observedChannelHandle\": \"화면에서 읽은 동일 채널의 @핸들 또는 null\",
-              \"evidenceSufficient\": true,
-              \"confidence\": 0.0
-            }
             """;
 
-    private DeepSeekSubscriptionAnalysisPrompt() {
+    private GeminiSubscriptionAnalysisPrompt() {
     }
 
     /** 동결된 대상 채널 정보를 포함한 Provider용 분석 프롬프트를 만든다. */
@@ -61,7 +51,6 @@ public final class DeepSeekSubscriptionAnalysisPrompt {
         return TEMPLATE.formatted(targetChannelJson(request));
     }
 
-    /** 제어문자와 구분 태그를 이스케이프해 대상 채널 정보를 JSON 데이터 영역으로만 넣는다. */
     private static String targetChannelJson(VisionAnalysisRequest request) {
         return "{\"targetChannelName\":%s,\"targetChannelHandle\":%s}"
                 .formatted(jsonString(request.targetChannelName()), jsonString(request.targetChannelHandle()));
