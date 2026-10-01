@@ -87,13 +87,14 @@ class SubscriptionVerificationSubmissionValidator {
                 memberId, creatorId, missionId, SubscriptionVerificationStatus.APPROVED).isPresent()) {
             throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_ALREADY_APPROVED);
         }
+        if (verificationRepository.existsByMemberIdAndCreatorIdAndMissionIdAndStatusIn(
+                memberId, creatorId, missionId, ACTIVE_STATUSES)) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS);
+        }
+
         Optional<SubscriptionVerification> latest = verificationRepository
                 .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
                         memberId, creatorId, missionId);
-        // 진행 여부와 cooldown을 같은 조회 결과로 판정해 동시 Commit 사이의 불일치 창을 없앤다.
-        if (latest.isPresent() && ACTIVE_STATUSES.contains(latest.get().getStatus())) {
-            throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS);
-        }
         if (latest.isPresent() && latest.get().getCreatedAt().isAfter(now.minus(SUBMISSION_COOLDOWN))) {
             throw new BusinessException(
                     SubscriptionVerificationErrorCode.VERIFICATION_SUBMISSION_LIMIT_EXCEEDED);
