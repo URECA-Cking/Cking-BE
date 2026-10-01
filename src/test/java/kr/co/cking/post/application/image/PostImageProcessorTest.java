@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PostImageProcessorTest {
 
     private final PostImageProcessor processor = new PostImageProcessor(
-            new ImageNormalizer(new ImageProcessingLimiter(1, Duration.ofSeconds(5))));
+            new ImageNormalizer(new ImageProcessingLimiter(1, 0, Duration.ofSeconds(5))));
 
     @Test
     void 게시글_정책의_최소_해상도_200x200을_허용한다() throws IOException {

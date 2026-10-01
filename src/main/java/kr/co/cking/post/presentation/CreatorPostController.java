@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.post.application.CreatorPostService;
@@ -39,6 +40,7 @@ import java.io.IOException;
 public class CreatorPostController {
 
     private final PostImageUploadService imageUploadService;
+    private final ImageProcessingLimiter imageProcessingLimiter;
     private final CreatorPostService postService;
 
     @Operation(
@@ -51,7 +53,8 @@ public class CreatorPostController {
             @CurrentMemberId Long memberId,
             @RequestPart(value = "image", required = false) MultipartFile image
     ) {
-        String imageKey = imageUploadService.upload(memberId, readBytes(image));
+        String imageKey = imageProcessingLimiter.admit(
+                () -> imageUploadService.upload(memberId, readBytes(image)));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(new CreatorPostResponse.UploadedImage(imageKey)));
     }

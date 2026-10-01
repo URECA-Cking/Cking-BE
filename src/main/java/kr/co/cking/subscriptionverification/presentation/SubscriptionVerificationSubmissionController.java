@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.subscriptionverification.application.SubscriptionVerificationSubmissionCommand;
@@ -35,6 +36,7 @@ public class SubscriptionVerificationSubmissionController {
 
     private final SubscriptionVerificationSubmissionService submissionService;
     private final SubscriptionVerificationAvailability availability;
+    private final ImageProcessingLimiter imageProcessingLimiter;
 
     @PostMapping(
             value = "/api/creators/{creatorId}/missions/{missionId}/subscription-verifications",
@@ -49,9 +51,10 @@ public class SubscriptionVerificationSubmissionController {
             @CurrentMemberId Long memberId
     ) {
         availability.requireSubmissionEnabled();
-        SubscriptionVerificationSubmissionResult result = submissionService.submit(
-                new SubscriptionVerificationSubmissionCommand(
-                        memberId, creatorId, missionId, requestId, readBytes(image)));
+        SubscriptionVerificationSubmissionResult result = imageProcessingLimiter.admit(
+                () -> submissionService.submit(
+                        new SubscriptionVerificationSubmissionCommand(
+                                memberId, creatorId, missionId, requestId, readBytes(image))));
         HttpStatus status = result.created() ? HttpStatus.ACCEPTED : HttpStatus.OK;
         return ResponseEntity.status(status).body(ApiResponse.success(
                 SubscriptionVerificationSubmissionResponse.from(result.verification())));

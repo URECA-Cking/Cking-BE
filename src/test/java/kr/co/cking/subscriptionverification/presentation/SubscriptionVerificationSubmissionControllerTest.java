@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
+import kr.co.cking.common.image.ImageProcessingLimiter;
+import kr.co.cking.common.image.ImageProcessingTestSupport;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.subscriptionverification.application.SubscriptionVerificationFingerprint;
@@ -28,6 +30,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -37,6 +40,7 @@ import org.springframework.util.unit.DataSize;
 import org.mockito.ArgumentCaptor;
 
 @WebMvcTest(SubscriptionVerificationSubmissionController.class)
+@Import(ImageProcessingTestSupport.Config.class)
 class SubscriptionVerificationSubmissionControllerTest {
 
     private static final String REQUEST_ID = "11111111-1111-1111-1111-111111111111";
@@ -58,6 +62,20 @@ class SubscriptionVerificationSubmissionControllerTest {
 
     @MockitoBean
     private MemberRepository memberRepository;
+
+    @Autowired
+    private ImageProcessingLimiter imageProcessingLimiter;
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 이미지_처리_입장_자리가_없으면_503이고_제출을_처리하지_않는다() throws Exception {
+        try (AutoCloseable ignored = ImageProcessingTestSupport.occupyAdmission(imageProcessingLimiter)) {
+            mockMvc.perform(request(42L, 103L))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("IMAGE_PROCESSING_BUSY"));
+        }
+        then(submissionService).should(never()).submit(any());
+    }
 
     @Test
     void 인증이_없으면_제출을_거부한다() throws Exception {

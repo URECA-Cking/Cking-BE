@@ -30,7 +30,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 class SubscriptionImageProcessorTest {
 
     private final SubscriptionImageProcessor processor = new SubscriptionImageProcessor(
-            new ImageNormalizer(new ImageProcessingLimiter(1, Duration.ofSeconds(5))));
+            new ImageNormalizer(new ImageProcessingLimiter(1, 0, Duration.ofSeconds(5))));
 
     @Test
     void jpeg를_정규화하고_원본과_정규화_해시를_반환한다() throws IOException {

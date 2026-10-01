@@ -39,6 +39,8 @@ cking:
   image-processing:
     # 20MP 한 장이 heap 약 80MiB를 쓰고, 동시 4장부터 GCLocker로 OutOfMemoryError가 났다(로컬 측정). CPU 2개라 처리량도 2에서 멈춘다.
     max-concurrent: 2
+    # 처리를 기다리는 요청 수. 원본(최대 5MB)을 heap에 올린 요청을 처리 중 + 대기 중으로 묶는다.
+    max-waiting: 4
     # 임시값. 개발 서버에서 처리 시간을 확인한 뒤 확정한다.
     acquire-timeout: 3s
   verification:

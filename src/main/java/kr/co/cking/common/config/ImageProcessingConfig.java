@@ -11,8 +11,13 @@ import org.springframework.context.annotation.Configuration;
 public class ImageProcessingConfig {
 
     @Bean
-    public ImageNormalizer imageNormalizer(ImageProcessingProperties properties) {
-        return new ImageNormalizer(
-                new ImageProcessingLimiter(properties.maxConcurrent(), properties.acquireTimeout()));
+    public ImageProcessingLimiter imageProcessingLimiter(ImageProcessingProperties properties) {
+        return new ImageProcessingLimiter(
+                properties.maxConcurrent(), properties.maxWaiting(), properties.acquireTimeout());
+    }
+
+    @Bean
+    public ImageNormalizer imageNormalizer(ImageProcessingLimiter imageProcessingLimiter) {
+        return new ImageNormalizer(imageProcessingLimiter);
     }
 }
