@@ -3,6 +3,8 @@ package kr.co.cking.subscriptionverification.infrastructure.gemini;
 import java.time.Duration;
 
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPort;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +16,14 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(GeminiVisionAnalysisProperties.class)
 public class GeminiVisionAnalysisConfiguration {
+
+    @Bean
+    InitializingBean geminiSubscriptionConfigurationValidator(
+            GeminiVisionAnalysisProperties properties,
+            @Value("${cking.verification.youtube-subscription.submission-enabled:false}")
+                    boolean submissionEnabled) {
+        return new GeminiVisionAnalysisConfigurationValidator(properties, submissionEnabled);
+    }
 
     @Bean
     RestClient geminiVisionRestClient(GeminiVisionAnalysisProperties properties) {

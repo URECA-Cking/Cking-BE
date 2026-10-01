@@ -42,7 +42,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 
-@SpringBootTest(properties = "cking.verification.youtube-subscription.submission-enabled=true")
+@SpringBootTest(properties = {
+        "cking.verification.youtube-subscription.submission-enabled=true",
+        "cking.verification.youtube-subscription.gemini.api-key=test-gemini-key"
+})
 @Import(SubscriptionVerificationSubmissionConcurrencyIntegrationTest.TriggerFailureTestConfig.class)
 class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
 

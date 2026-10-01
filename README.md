@@ -217,7 +217,7 @@ AI 퀴즈 생성에서 Gemini Provider를 호출하려면 배포 환경에 `GEMI
 
 `application.yml`의 Gemini 설정은 환경변수 `GEMINI_MODEL`, `GEMINI_BASE_URL`, `GEMINI_CONNECT_TIMEOUT`, `GEMINI_READ_TIMEOUT`, `GEMINI_MAX_ATTEMPTS`로 변경할 수 있습니다. 타임아웃은 ISO-8601 Duration 형식(예: `PT30S`)이고, `GEMINI_MAX_ATTEMPTS`는 최초 호출을 포함한 최대 시도 횟수입니다. HTTP 429·5xx만 제한적으로 재시도하며 타임아웃은 재시도하지 않습니다. 실제 Gemini API 연동 검증은 별도로 수행해야 합니다.
 
-YouTube 구독 인증 VLM은 퀴즈와 분리된 `SUBSCRIPTION_GEMINI_API_KEY`를 사용합니다. 기본 모델은 `gemini-3.5-flash-lite`이며, `SUBSCRIPTION_GEMINI_MODEL`, `SUBSCRIPTION_GEMINI_BASE_URL`, `SUBSCRIPTION_GEMINI_CONNECT_TIMEOUT`, `SUBSCRIPTION_GEMINI_READ_TIMEOUT`, `SUBSCRIPTION_GEMINI_MAX_ATTEMPTS`, `SUBSCRIPTION_GEMINI_RETRY_BACKOFF`, `SUBSCRIPTION_GEMINI_MAX_OUTPUT_TOKENS`로 변경할 수 있습니다. API 키·정규화 이미지 bytes·Base64·Provider 원문 응답은 로그에 기록하지 않습니다.
+YouTube 구독 인증 VLM은 퀴즈와 분리된 `SUBSCRIPTION_GEMINI_API_KEY`를 사용합니다. 제출 기능이 비활성화된 환경은 Key 없이도 기동할 수 있고, `SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED=true`이면 Key가 없거나 blank일 때 기동에 실패합니다. 기본 모델은 `gemini-3.5-flash-lite`이며, `SUBSCRIPTION_GEMINI_MODEL`, `SUBSCRIPTION_GEMINI_BASE_URL`, `SUBSCRIPTION_GEMINI_CONNECT_TIMEOUT`, `SUBSCRIPTION_GEMINI_READ_TIMEOUT`, `SUBSCRIPTION_GEMINI_MAX_ATTEMPTS`, `SUBSCRIPTION_GEMINI_RETRY_BACKOFF`, `SUBSCRIPTION_GEMINI_MAX_OUTPUT_TOKENS`로 변경할 수 있습니다. API 키·정규화 이미지 bytes·Base64·Provider 원문 응답은 로그에 기록하지 않습니다.
 
 실행을 종료하려면:
 
