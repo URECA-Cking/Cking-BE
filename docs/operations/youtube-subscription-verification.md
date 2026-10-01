@@ -26,10 +26,10 @@
 
 ## 개발 환경 활성화 전 점검
 
-- `CKING_STORAGE_TYPE=s3`, S3 bucket·region과 EC2 IAM Role 권한을 확인한다.
+- `application-dev.yml`의 `cking.storage.type: s3`, 버킷·리전과 EC2 IAM Role 권한을 확인한다.
 - S3 `subscription-verifications/` prefix에 30일 Lifecycle 만료 규칙을 적용한다.
-- Parameter Store의 `SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED`는 smoke 전까지 `false`로 유지하고, 검증할 배포에서만 `true`로 변경한다. `false`일 때는 Gemini Key가 없어도 배포·기동할 수 있다.
-- 제출 기능을 `true`로 바꾸기 전에 `SUBSCRIPTION_GEMINI_API_KEY`를 Secret으로 주입하고 구독 인증 모델이 `gemini-3.5-flash-lite`인지 확인한다. `true`인데 Key가 없거나 blank이면 애플리케이션 기동이 실패한다.
+- 개발 서버의 제출 기능 플래그는 `application-dev.yml`의 `cking.verification.youtube-subscription.submission-enabled`다. smoke 전까지 `false`로 두고, 켤 때는 `true`로 바꾸는 PR을 머지해 배포한다.
+- `SUBSCRIPTION_GEMINI_API_KEY`는 Parameter Store(`/cking/dev/SUBSCRIPTION_GEMINI_API_KEY`)에 기능 상태와 관계없이 항상 두고 배포 때 주입한다. 없으면 배포가 컨테이너 교체 전에 실패한다. 구독 인증 모델이 `gemini-3.5-flash-lite`인지 확인한다.
 - Gemini connect/read timeout과 최대 시도 시간이 Processing lease보다 짧은지 확인한다.
 - Executor max pool과 Provider 동시 호출 수를 같은 값으로 설정하고 queue를 bounded 상태로 유지한다.
 - Recovery Scheduler와 `subscription_verification.executor.rejected` 등 관련 metric·로그를 확인한다.
@@ -40,7 +40,7 @@
 실제 Provider smoke는 API 비용과 외부 상태 때문에 CI에서 자동 실행하지 않는다. 개발 환경에서 승인된 테스트 계정과 민감정보가 없는 전용 스크린샷으로 다음을 한 번 검증한다.
 
 1. 제출 기능 플래그를 끈 상태에서 POST가 `503 VERIFICATION_UNAVAILABLE`인지 확인한다.
-2. `SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED=true`와 `SUBSCRIPTION_GEMINI_API_KEY`를 함께 주입해 배포한다.
+2. `application-dev.yml`의 `submission-enabled`를 `true`로 바꾸는 PR을 머지해 배포한다. Gemini Key는 Parameter Store에서 항상 주입된다.
 3. Creator 채널을 설정하고 자동 생성된 구독 미션을 조회한다.
 4. 구독 상태와 대상 handle이 명확한 테스트 이미지를 한 장 제출한다.
 5. 응답의 `verificationId`로 상태를 polling해 `VERIFIED`까지 전이되는지 확인한다.
@@ -49,4 +49,4 @@
 8. 같은 `requestId`를 다시 보내 기존 Verification이 반환되고 보상이 늘지 않는지 확인한다.
 9. Provider·Executor 장애를 모의해 `PENDING`/`PROCESSING` Recovery와 metric을 확인한다.
 
-이미지 bytes·Base64·API key·Provider 원문 응답은 로그나 Issue·PR에 남기지 않는다. smoke가 끝난 뒤에만 기능 플래그를 유지하고, 장애 시에는 조회 API는 열어둔 채 신규 제출 플래그만 다시 끈다.
+이미지 bytes·Base64·API key·Provider 원문 응답은 로그나 Issue·PR에 남기지 않는다. smoke가 끝난 뒤에만 기능 플래그를 유지하고, 장애 시에는 조회 API는 열어둔 채 `application-dev.yml`의 플래그를 `false`로 되돌리는 PR로 신규 제출만 다시 끈다.
