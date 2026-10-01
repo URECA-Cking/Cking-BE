@@ -19,7 +19,7 @@
 }
 ```
 
-`evidenceSummary`는 `matchedRules`, `signals`, `scope.type`와 scope 식별자(eventId/creatorId/missionId/periodKey/ticketScope 중 존재 값)만 담는다. request body, access token, authorization header, 개인정보는 어떤 응답에도 포함하지 않는다.
+`evidenceSummary`는 `matchedRules`, `signals`, `scope.type`과 scope 식별자(eventId/creatorId/missionId/periodKey/balanceScope 중 존재 값)만 담는다. `balanceScope`는 `{ "type":"COMMON", "creatorId":null }` 또는 `{ "type":"CREATOR", "creatorId":10 }` 형태다. request body, access token, authorization header, 개인정보는 어떤 응답에도 포함하지 않는다.
 
 ## GET /api/admin/abuse-detections
 
@@ -34,7 +34,7 @@ Query는 선택 `memberId`(양수 Long), `abuseType`, `status`, `page`, `size`�
 ```json
 {
   "policyVersion":"ABUSE_V1",
-  "scope":{"type":"USER_EVENT","eventId":20,"ticketScope":"COMMON"},
+  "scope":{"type":"USER_EVENT","eventId":20,"balanceScope":{"type":"COMMON","creatorId":null}},
   "window":{"windowMs":10000},
   "features":{"entryRequestCount":14},
   "thresholds":{"entryRequestCount":8},

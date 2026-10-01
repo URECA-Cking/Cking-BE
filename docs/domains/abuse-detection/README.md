@@ -21,11 +21,11 @@ Mission 완료와 Event 응모의 여러 요청에 걸친 패턴을 탐지해 �
 
 ```text
 observationId, userId, actionType, requestId, resultCode, resultClass,
-creatorId?, eventId?, missionId?, periodKey?, ticketScope?, balanceScope?,
+creatorId?, eventId?, missionId?, periodKey?, balanceScope,
 businessKey?, requestedAt, observedAt
 ```
 
-`ticketScope`는 요청의 `couponType` 또는 Mission 보상 경로에서 도출한 `CREATOR`/`COMMON`이다. Balance Scope는 `CREATOR:{creatorId}` 또는 `COMMON`이며, `userId + balanceScope`가 하나의 잔액 풀이다.
+`balanceScope`는 요청의 `couponType` 또는 Mission 보상 경로에서 도출한다. 표현은 `CREATOR:{creatorId}` 또는 `COMMON`이며, `userId + balanceScope`가 하나의 잔액 풀이다. `COMMON`은 creatorId를 갖지 않고 `CREATOR`는 양수 creatorId를 필수로 갖는다.
 
 ## 결과 분류
 
@@ -48,7 +48,7 @@ Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward po
 | Creator SHARE ONCE | `MISSION:CREATOR:ONCE:{userId}:{creatorId}:{missionId}` |
 | Common ATTENDANCE DAILY | `MISSION:COMMON:DAILY:{userId}:{missionId}:{yyyy-MM-dd}` |
 
-`REQUEST_ID_ROTATION`은 이 key별 **rotation sliding window** 안의 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. 원래 구조화 key는 Evidence에 기록한다.
+`REQUEST_ID_ROTATION`은 이 key별 **rotation sliding window** 안의 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. Evidence에는 userId가 포함된 원문 key 문자열을 중복 저장하지 않고 creatorId·missionId·periodKey 등 구조화된 Scope만 기록한다.
 
 ## Detection과 Feature
 
@@ -81,6 +81,14 @@ Abuse 전용 Lua는 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 �
 
 `ticket-earn.lua`, `common-ticket-earn.lua`, `entry-spend.lua`는 수정하지 않는다. 이들은 멱등성·잔액·Stream의 기존 책임만 가지며 Abuse는 별도 script와 key 공간을 사용한다.
 
+## 공통 Domain과 Port 계약
+
+공통 코드는 `abuse.domain`, `abuse.application.model`, `abuse.application.port`에 둔다. Detection row를 만드는 유형은 `AbuseType`, 단독 row를 만들지 않는 보조 신호는 `AbuseSignal`로 분리한다. `AbuseObservationEvent`는 원 업무가 확정한 scalar context만 전달하고, `AbuseFeatureSnapshot`은 Feature Store의 원자 갱신 직후 값을 불변 Map으로 전달한다.
+
+`AbuseFeatureStore.record(observation, windowPolicy)`는 Feature를 갱신하고 Snapshot을 반환할 뿐 Threshold 비교나 Detection 생성을 하지 않는다. `AbuseCooldownStore`는 UUID 소유 Token이 포함된 `CooldownLease`를 반환하며, 해제는 저장된 Token이 일치할 때만 성공해야 한다. `AbuseDetectionRepository.reviewIfDetected()`는 `DETECTED` 조건부 UPDATE의 영향 행 수를 반환한다. Port 구현체는 장애를 정상 결과로 숨기지 않으며 최종 Fail Open은 Observation 호출 경계가 담당한다.
+
+`AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
+
 ## Detection 저장과 운영
 
 최종 Detection은 MySQL `abuse_detection`에만 저장한다.
@@ -98,7 +106,7 @@ Evidence는 request body, token, authorization header, 개인정보를 담지 �
 ```json
 {
   "policyVersion":"ABUSE_V1",
-  "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","ticketScope":"CREATOR"},
+  "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","balanceScope":{"type":"CREATOR","creatorId":10}},
   "window":{"windowMs":10000},
   "features":{"duplicateMissionFailureCount":8,"distinctRequestIdCountPerBusinessKey":6},
   "thresholds":{"duplicateMissionFailureCount":5,"distinctRequestIdCountPerBusinessKey":3},
@@ -110,7 +118,21 @@ Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType
 
 ## 설정과 Calibration
 
-`cking.abuse.enabled=false`가 기본이다. true이면 모든 rule의 window/threshold, insufficient·failure의 consecutive threshold, rotation의 window/distinct threshold, rapid의 maxDelay/window/threshold, failure distinct-type threshold가 필수다. 누락 값·0 이하 값은 시작 시 validation 실패하며 코드 default를 두지 않는다.
+`cking.abuse.enabled=false`가 기본이다. false이면 하위 설정 없이 기동하고 Observation은 Port를 호출하지 않는 no-op이어야 한다. true이면 모든 rule의 window/threshold, insufficient·failure의 consecutive threshold, rotation의 window/distinct threshold, rapid의 maxDelay/window/threshold, failure distinct-type threshold가 필수다. 누락 값·0 이하 값은 시작 시 validation 실패하며 코드 default를 두지 않는다.
+
+설정 key는 아래 구조로 고정한다. Duration은 ISO-8601 형식이며 실제 숫자는 Calibration 뒤 환경변수로 주입한다.
+
+```text
+cking.abuse.mission-request-burst.{window,threshold}
+cking.abuse.duplicate-mission-burst.{window,threshold}
+cking.abuse.entry-request-burst.{window,threshold}
+cking.abuse.insufficient-balance-burst.{window,threshold,consecutive-threshold}
+cking.abuse.request-id-rotation.{window,distinct-threshold}
+cking.abuse.rapid-earn-and-spend.{max-delay,window,threshold}
+cking.abuse.failure-burst.{window,threshold,consecutive-threshold,distinct-type-threshold}
+```
+
+정책 버전은 `ABUSE_V1`, Feature TTL padding은 60초, Cooldown TTL은 해당 AbuseType primary window의 두 배로 고정하며 Calibration 설정으로 노출하지 않는다.
 
 Initial threshold는 k6로 산출한다. rotation을 포함한 각 count rule에 1/5/10/30/60초 window 후보의 `normalMax`와 `abuseMin`을 기록하고, 처음 `normalMax < abuseMin`인 최소 window와 `N=normalMax+1`을 채택한다. 후보가 모두 겹치면 calibration 실패이며 임의 수치를 설정하지 않는다. 운영 중에는 CONFIRMED/FALSE_POSITIVE/미탐을 근거로 설정만 조정한다.
 
