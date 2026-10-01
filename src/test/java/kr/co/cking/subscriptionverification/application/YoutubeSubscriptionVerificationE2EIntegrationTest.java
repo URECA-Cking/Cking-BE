@@ -68,6 +68,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @SpringBootTest(properties = {
         "cking.scheduling.enabled=false",
         "cking.verification.youtube-subscription.submission-enabled=true",
+        "cking.verification.youtube-subscription.gemini.api-key=test-gemini-key",
         "cking.verification.youtube-subscription.processing-executor.core-pool-size=1",
         "cking.verification.youtube-subscription.processing-executor.max-pool-size=1",
         "cking.verification.youtube-subscription.processing-executor.queue-capacity=4",

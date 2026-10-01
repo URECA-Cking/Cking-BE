@@ -39,7 +39,7 @@ cking:
   verification:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
-      submission-enabled: false
+      submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:false}
       processing-executor:
         # Provider 계정 한도에 맞춘 인스턴스별 동시 호출 수이며 max-pool-size와 같아야 한다.
         core-pool-size: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_CORE_POOL_SIZE:2}
@@ -59,16 +59,16 @@ cking:
         max-processing-attempts: ${SUBSCRIPTION_VERIFICATION_MAX_PROCESSING_ATTEMPTS:3}
         reward-backoff-base: ${SUBSCRIPTION_VERIFICATION_REWARD_BACKOFF_BASE:PT1M}
         reward-backoff-max: ${SUBSCRIPTION_VERIFICATION_REWARD_BACKOFF_MAX:PT1H}
-      deepseek:
-        # API 키는 배포 환경의 DEEPSEEK_API_KEY Secret으로만 주입한다.
-        api-key: ${DEEPSEEK_API_KEY:}
-        model: ${DEEPSEEK_MODEL:deepseek-flash}
-        endpoint: ${DEEPSEEK_ENDPOINT:https://api.deepseek.com/chat/completions}
-        connect-timeout: ${DEEPSEEK_CONNECT_TIMEOUT:PT2S}
-        read-timeout: ${DEEPSEEK_READ_TIMEOUT:PT30S}
-        max-attempts: ${DEEPSEEK_MAX_ATTEMPTS:2}
-        retry-backoff: ${DEEPSEEK_RETRY_BACKOFF:PT1S}
-        max-output-tokens: ${DEEPSEEK_MAX_OUTPUT_TOKENS:512}
+      gemini:
+        # 퀴즈와 키·quota·호출 설정을 분리해 구독 인증 장애가 다른 AI 기능으로 전파되지 않게 한다.
+        api-key: ${SUBSCRIPTION_GEMINI_API_KEY:}
+        model: ${SUBSCRIPTION_GEMINI_MODEL:gemini-3.5-flash-lite}
+        base-url: ${SUBSCRIPTION_GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+        connect-timeout: ${SUBSCRIPTION_GEMINI_CONNECT_TIMEOUT:PT2S}
+        read-timeout: ${SUBSCRIPTION_GEMINI_READ_TIMEOUT:PT30S}
+        max-attempts: ${SUBSCRIPTION_GEMINI_MAX_ATTEMPTS:2}
+        retry-backoff: ${SUBSCRIPTION_GEMINI_RETRY_BACKOFF:PT1S}
+        max-output-tokens: ${SUBSCRIPTION_GEMINI_MAX_OUTPUT_TOKENS:512}
   quiz:
     gemini:
       api-key: ${GEMINI_API_KEY:}

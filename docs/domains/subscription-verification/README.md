@@ -243,10 +243,10 @@ Processor와 Recovery가 완성되기 전에는 제출만 닫는다.
 cking:
   verification:
     youtube-subscription:
-      submission-enabled: false
+      submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:false}
 ```
 
-설정 누락 시 기본값은 `false`다. POST는 이미지 처리·S3 저장 전에 `503 VERIFICATION_UNAVAILABLE`로 종료한다. GET 상태 조회는 항상 허용한다. VLM Client, 판정 정책, Processor, Ticket ONCE 적립, Recovery, Reward retry, E2E 및 운영 환경변수 검증이 끝난 뒤에만 운영에서 `true`로 설정한다.
+설정 누락 시 기본값은 `false`다. POST는 이미지 처리·S3 저장 전에 `503 VERIFICATION_UNAVAILABLE`로 종료하고 GET 상태 조회는 항상 허용한다. 비활성화 환경은 `SUBSCRIPTION_GEMINI_API_KEY` 없이도 배포·기동할 수 있다. 활성화 환경은 별도 Gemini Key가 반드시 필요하며, 누락되거나 blank이면 애플리케이션이 기동에 실패한다. VLM Client, 판정 정책, Processor, Ticket ONCE 적립, Recovery, Reward retry, E2E 및 운영 환경변수 검증이 끝난 뒤에만 개발·운영 환경의 `SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED`를 `true`로 설정한다.
 
 ## 구현 금지 사항
 
@@ -258,7 +258,7 @@ cking:
 - 재시도마다 새 `rewardRequestId`를 만들지 않는다.
 - 재시도마다 `rewardPeriodKey`를 현재 날짜로 다시 계산하지 않는다.
 - 이미지를 public으로 저장하거나 bytes/Base64를 로그에 남기지 않는다.
-- Application의 Vision Port·판정 정책에 DeepSeek SDK·전용 DTO를 노출하지 않는다.
+- Application의 Vision Port·판정 정책에 Gemini SDK·전용 DTO를 노출하지 않는다.
 
 ## 구현 순서
 
@@ -273,4 +273,4 @@ cking:
 7. 본인 상태·최신 상태 조회 API와 Security matcher
 8. AFTER_COMMIT 이벤트 경계와 Recovery용 조회 계약
 
-선정 모델은 DeepSeek V4.1 Flash(`deepseek-flash`)다. [processing.md](processing.md)의 Provider 독립 Vision Port와 서버 판정 계약을 기준으로 DeepSeek Adapter, Processing Claim, Reward retry, Recovery Scheduler와 E2E를 구현한다. 단위·Repository·Controller 테스트 외에 동일 requestId 및 동시 제출, 채널 수정과 제출 경쟁, DB 저장 실패 후 Object 삭제, 중복 보상 방지를 통합 테스트한다.
+선정 모델은 Gemini 3.5 Flash-Lite(`gemini-3.5-flash-lite`)다. [processing.md](processing.md)의 Provider 독립 Vision Port와 서버 판정 계약을 기준으로 Gemini Adapter, Processing Claim, Reward retry, Recovery Scheduler와 E2E를 구현한다. 단위·Repository·Controller 테스트 외에 동일 requestId 및 동시 제출, 채널 수정과 제출 경쟁, DB 저장 실패 후 Object 삭제, 중복 보상 방지를 통합 테스트한다.

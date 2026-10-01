@@ -174,7 +174,7 @@ class SubscriptionVerificationProcessingWorkerTest {
         given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
         willThrow(new VisionAnalysisException(
                 VisionAnalysisFailureType.RETRYABLE,
-                "DeepSeek API 재시도가 중단되었습니다.",
+                "Gemini API 재시도가 중단되었습니다.",
                 new InterruptedException()))
                 .given(fixture.visionAnalysisPort).analyze(any());
 
