@@ -82,6 +82,65 @@ class AbuseDomainContractTest {
     }
 
     @Test
+    void Evidence_Scope는_타입별_필수_식별자를_검증한다() {
+        DetectionEvidence.Scope commonTicketEventScope = new DetectionEvidence.Scope(
+                DetectionEvidence.Scope.Type.USER_EVENT,
+                5L, 9L, null, null, BalanceScope.common());
+
+        assertThat(commonTicketEventScope.eventId()).isEqualTo(9L);
+        assertThat(commonTicketEventScope.balanceScope()).isEqualTo(BalanceScope.common());
+        assertThatThrownBy(() -> new DetectionEvidence.Scope(
+                DetectionEvidence.Scope.Type.USER_EVENT,
+                null, null, null, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("eventId");
+        assertThatThrownBy(() -> new DetectionEvidence.Scope(
+                DetectionEvidence.Scope.Type.USER_BALANCE_SCOPE,
+                null, null, null, null, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("balanceScope");
+        assertThatThrownBy(() -> new DetectionEvidence.Scope(
+                DetectionEvidence.Scope.Type.BUSINESS_KEY,
+                5L, null, null, null, BalanceScope.creator(5L)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("missionId");
+        assertThatThrownBy(() -> new DetectionEvidence.Scope(
+                DetectionEvidence.Scope.Type.BUSINESS_KEY,
+                5L, null, 3L, null, BalanceScope.creator(6L)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("일치");
+    }
+
+    @Test
+    void Evidence는_Feature_0은_허용하고_Threshold_0은_거부한다() {
+        DetectionEvidence evidence = new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new DetectionEvidence.Scope(
+                        DetectionEvidence.Scope.Type.USER,
+                        null, null, null, null, null),
+                new DetectionEvidence.Window(10_000L, null),
+                Map.of(AbuseMetric.FAILURE_COUNT, 0L),
+                Map.of(AbuseMetric.FAILURE_COUNT, 1L),
+                Set.of(),
+                Set.of()
+        );
+
+        assertThat(evidence.features()).containsEntry(AbuseMetric.FAILURE_COUNT, 0L);
+        assertThatThrownBy(() -> new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new DetectionEvidence.Scope(
+                        DetectionEvidence.Scope.Type.USER,
+                        null, null, null, null, null),
+                new DetectionEvidence.Window(10_000L, null),
+                Map.of(AbuseMetric.FAILURE_COUNT, 0L),
+                Map.of(AbuseMetric.FAILURE_COUNT, 0L),
+                Set.of(),
+                Set.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("양수");
+    }
+
+    @Test
     void 새_Detection은_DETECTED로_생성되고_같은_검토는_멱등이다() {
         DetectionResult result = new DetectionResult(
                 AbuseType.MISSION_REQUEST_BURST,

@@ -25,21 +25,23 @@ public record DetectionEvidence(
         }
         Objects.requireNonNull(scope, "scope는 필수입니다.");
         Objects.requireNonNull(window, "window는 필수입니다.");
-        features = immutableMetricMap(features, "features");
-        thresholds = immutableMetricMap(thresholds, "thresholds");
+        features = immutableMetricMap(features, "features", true);
+        thresholds = immutableMetricMap(thresholds, "thresholds", false);
         signals = Set.copyOf(Objects.requireNonNull(signals, "signals는 필수입니다."));
         matchedRules = Set.copyOf(Objects.requireNonNull(matchedRules, "matchedRules는 필수입니다."));
     }
 
     private static Map<AbuseMetric, Long> immutableMetricMap(
             Map<AbuseMetric, Long> source,
-            String name
+            String name,
+            boolean allowZero
     ) {
         Objects.requireNonNull(source, name + "는 필수입니다.");
         source.forEach((metric, value) -> {
             Objects.requireNonNull(metric, name + "의 metric은 필수입니다.");
-            if (value == null || value < 0) {
-                throw new IllegalArgumentException(name + " 값은 0 이상이어야 합니다.");
+            if (value == null || value < 0 || (!allowZero && value == 0)) {
+                throw new IllegalArgumentException(
+                        allowZero ? name + " 값은 0 이상이어야 합니다." : name + " 값은 양수여야 합니다.");
             }
         });
         return Map.copyOf(source);
@@ -70,6 +72,85 @@ public record DetectionEvidence(
             }
             if (missionId != null) {
                 requirePositive(missionId, "missionId");
+            }
+            if (periodKey != null && periodKey.isBlank()) {
+                throw new IllegalArgumentException("periodKey는 값이 있으면 비어 있을 수 없습니다.");
+            }
+
+            switch (type) {
+                case USER -> requireAbsent(
+                        creatorId, eventId, missionId, periodKey, balanceScope,
+                        "USER scope에는 업무 식별자를 지정할 수 없습니다.");
+                case BUSINESS_KEY -> {
+                    requirePositive(missionId, "BUSINESS_KEY scope의 missionId");
+                    Objects.requireNonNull(
+                            balanceScope,
+                            "BUSINESS_KEY scope의 balanceScope는 필수입니다.");
+                    if (eventId != null) {
+                        throw new IllegalArgumentException(
+                                "BUSINESS_KEY scope에는 eventId를 지정할 수 없습니다.");
+                    }
+                    validateMissionBalanceScope(creatorId, balanceScope);
+                }
+                case USER_EVENT -> {
+                    requirePositive(eventId, "USER_EVENT scope의 eventId");
+                    if (missionId != null || periodKey != null) {
+                        throw new IllegalArgumentException(
+                                "USER_EVENT scope에는 missionId와 periodKey를 지정할 수 없습니다.");
+                    }
+                    validateEventBalanceScope(creatorId, balanceScope);
+                }
+                case USER_BALANCE_SCOPE -> {
+                    Objects.requireNonNull(
+                            balanceScope,
+                            "USER_BALANCE_SCOPE의 balanceScope는 필수입니다.");
+                    if (eventId != null || missionId != null || periodKey != null) {
+                        throw new IllegalArgumentException(
+                                "USER_BALANCE_SCOPE에는 eventId, missionId, periodKey를 지정할 수 없습니다.");
+                    }
+                    validateMissionBalanceScope(creatorId, balanceScope);
+                }
+            }
+        }
+
+        private static void requireAbsent(
+                Long creatorId,
+                Long eventId,
+                Long missionId,
+                String periodKey,
+                BalanceScope balanceScope,
+                String message
+        ) {
+            if (creatorId != null
+                    || eventId != null
+                    || missionId != null
+                    || periodKey != null
+                    || balanceScope != null) {
+                throw new IllegalArgumentException(message);
+            }
+        }
+
+        private static void validateMissionBalanceScope(
+                Long creatorId,
+                BalanceScope balanceScope
+        ) {
+            if (balanceScope.type() == BalanceScope.Type.COMMON && creatorId != null) {
+                throw new IllegalArgumentException("COMMON balanceScope에는 creatorId를 지정할 수 없습니다.");
+            }
+            if (balanceScope.type() == BalanceScope.Type.CREATOR
+                    && !balanceScope.creatorId().equals(creatorId)) {
+                throw new IllegalArgumentException("creatorId와 balanceScope가 일치해야 합니다.");
+            }
+        }
+
+        private static void validateEventBalanceScope(
+                Long creatorId,
+                BalanceScope balanceScope
+        ) {
+            if (balanceScope != null
+                    && balanceScope.type() == BalanceScope.Type.CREATOR
+                    && !balanceScope.creatorId().equals(creatorId)) {
+                throw new IllegalArgumentException("creatorId와 balanceScope가 일치해야 합니다.");
             }
         }
     }
