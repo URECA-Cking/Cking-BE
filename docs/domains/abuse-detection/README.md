@@ -66,6 +66,8 @@ Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward po
 
 같은 Balance Scope의 새 EARN 또는 Entry 성공은 insufficient 연속 실패를 끊는다. 새 성공은 전체 failure 연속 상태를 끊고, replay/system failure는 연속 상태를 늘리거나 끊지 않는다. rapid pair는 하나의 최근 EARN을 한 번의 SPEND에만 연결한 후 EARN 상태를 지운다. 단일 pair는 Detection하지 않는다.
 
+빠른 EARN-SPEND의 Feature Snapshot은 같은 사용자·Balance Scope에서 현재 성공한 Entry가 `maxDelay` 이내의 미사용 `EARN_ACCEPTED`와 새 pair를 만들었는지 `rapidEarnSpendPairCreated`(0 또는 1)로 전달한다. `rapidEarnSpendPairCount`는 해당 scope의 sliding window 내 pair 수다. Rule은 현재 Entry의 pairCreated가 1이고 count가 설정 threshold와 최소 2에 모두 도달했을 때만 후보를 만든다. 이전 pair 수가 높아도 현재 요청이 pair를 만들지 않았다면 탐지하지 않는다. Evidence는 `USER_BALANCE_SCOPE`, pair count, 현재 pair 생성 여부, window, maxDelay 및 설정 threshold를 보존한다. 이 계산과 최근 EARN의 1회 소비는 Feature Store 책임이며 Rule은 전달된 Snapshot만 판정한다.
+
 Composite rule은 별도 row가 아니라 기존 Detection Evidence를 강화한다: `RULE-01` duplicate+rotation, `RULE-02` mission burst+rotation, `RULE-03` entry burst+(insufficient 또는 failure), `RULE-04` rapid pair+(mission 또는 entry burst), `RULE-05` failure burst+distinct failure type ≥ M. 동시에 충족한 모든 rule을 기록한다.
 
 ## Redis와 Lua
