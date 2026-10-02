@@ -75,6 +75,14 @@ class AbuseDetectionPersistenceAdapterIntegrationTest {
         assertThat(rowCount).isEqualTo(1);
     }
 
+    /** save는 null Detection을 명확한 입력 검증 오류로 거부한다. */
+    @Test
+    void null_Detection은_저장할_수_없다() {
+        assertThatThrownBy(() -> adapter.save(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("detection은 필수입니다.");
+    }
+
     /** search는 선택 조건을 적용하고 호출자가 전달한 정렬과 관계없이 탐지 최신순으로 반환한다. */
     @Test
     void 조건으로_검색하고_detectedAt과_ID_내림차순으로_정렬한다() {

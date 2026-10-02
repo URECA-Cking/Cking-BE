@@ -1,6 +1,7 @@
 package kr.co.cking.abuse.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,41 @@ class AbuseDetectionEvidenceJsonMapperTest {
 
         evidenceValues.forEach(evidence -> assertThat(mapper.fromJson(mapper.toJson(evidence))).isEqualTo(evidence));
         assertThat(mapper.toJson(userEvidence())).contains("\"features\":{}", "\"signals\":[]");
+    }
+
+    /** Scope와 Window는 해당하지 않는 선택 필드를 JSON에 남기지 않는다. */
+    @Test
+    void 선택_Scope_식별자와_maxDelayMs는_null이면_JSON에서_생략한다() {
+        AbuseDetectionEvidenceJsonMapper mapper = new AbuseDetectionEvidenceJsonMapper(new ObjectMapper());
+
+        String userJson = mapper.toJson(userEvidence());
+        String businessKeyJson = mapper.toJson(businessKeyEvidence());
+        String userEventJson = mapper.toJson(userEventEvidence());
+
+        assertThat(userJson)
+                .doesNotContain("creatorId", "eventId", "missionId", "periodKey", "balanceScope", "maxDelayMs");
+        assertThat(businessKeyJson).doesNotContain("eventId", "maxDelayMs");
+        assertThat(userEventJson)
+                .doesNotContain("missionId", "periodKey")
+                .contains(
+                        "\"creatorId\":10",
+                        "\"maxDelayMs\":3000",
+                        "\"balanceScope\":{\"type\":\"COMMON\",\"creatorId\":null}");
+    }
+
+    /** 필수 JSON 객체가 누락되어도 mapper 경계의 일관된 예외로 변환한다. */
+    @Test
+    void 필수_Evidence_객체가_누락되면_일관된_예외로_변환한다() {
+        AbuseDetectionEvidenceJsonMapper mapper = new AbuseDetectionEvidenceJsonMapper(new ObjectMapper());
+        String missingScopeJson = """
+                {"policyVersion":"ABUSE_V1","window":{"windowMs":10000},"features":{},"thresholds":{},"signals":[],
+                "matchedRules":[]}
+                """;
+
+        assertThatThrownBy(() -> mapper.fromJson(missingScopeJson))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DetectionEvidence JSON을 복원할 수 없습니다.")
+                .hasCauseInstanceOf(NullPointerException.class);
     }
 
     /** 업무 식별자를 갖지 않고 빈 Feature·Signal·Rule 컬렉션을 가진 USER Scope를 생성한다. */

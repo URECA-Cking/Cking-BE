@@ -1,5 +1,6 @@
 package kr.co.cking.abuse.infrastructure.persistence;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +39,7 @@ class AbuseDetectionEvidenceJsonMapper {
     DetectionEvidence fromJson(String evidenceJson) {
         try {
             return toDomain(objectMapper.readValue(evidenceJson, EvidenceJson.class));
-        } catch (JacksonException | IllegalArgumentException exception) {
+        } catch (JacksonException | IllegalArgumentException | NullPointerException exception) {
             throw new IllegalStateException("DetectionEvidence JSON을 복원할 수 없습니다.", exception);
         }
     }
@@ -130,6 +131,7 @@ class AbuseDetectionEvidenceJsonMapper {
     }
 
     /** Evidence Scope의 구조화된 식별자를 JSON 필드로 유지한다. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private record ScopeJson(
             String type,
             Long creatorId,
@@ -141,6 +143,7 @@ class AbuseDetectionEvidenceJsonMapper {
     }
 
     /** Evidence window의 밀리초 단위 측정값을 JSON 필드로 유지한다. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private record WindowJson(long windowMs, Long maxDelayMs) {
     }
 

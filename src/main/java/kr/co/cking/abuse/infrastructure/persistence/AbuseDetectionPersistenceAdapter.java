@@ -41,6 +41,7 @@ class AbuseDetectionPersistenceAdapter implements AbuseDetectionRepository {
     @Override
     @Transactional
     public AbuseDetection save(AbuseDetection detection) {
+        Objects.requireNonNull(detection, "detection은 필수입니다.");
         if (detection.detectionId() != null) {
             throw new IllegalArgumentException("이미 영속화된 Detection은 save할 수 없습니다.");
         }
