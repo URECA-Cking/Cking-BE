@@ -203,20 +203,6 @@ public interface SubscriptionVerificationRepository extends JpaRepository<Subscr
 
     Optional<SubscriptionVerification> findByRequestId(String requestId);
 
-    Optional<SubscriptionVerification> findByMemberIdAndCreatorIdAndMissionIdAndStatus(
-            Long memberId,
-            Long creatorId,
-            Long missionId,
-            SubscriptionVerificationStatus status
-    );
-
-    boolean existsByMemberIdAndCreatorIdAndMissionIdAndStatusIn(
-            Long memberId,
-            Long creatorId,
-            Long missionId,
-            Collection<SubscriptionVerificationStatus> statuses
-    );
-
     boolean existsByCreatorIdAndStatusIn(
             Long creatorId,
             Collection<SubscriptionVerificationStatus> statuses
