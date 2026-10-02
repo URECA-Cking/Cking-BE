@@ -32,7 +32,8 @@ import org.springframework.util.StringUtils;
 /**
  * API 인증 전환을 위한 Spring Security 진입점이다.
  * Resource Server는 Bearer JWT를 검증하고, 인증 전환한 업무 API는 경로별로 인증을 요구한다.
- * Swagger는 전용 Basic Auth 체인에서 보호하고, actuator는 필요한 상태 확인 경로만 공개한다.
+ * Swagger는 전용 Basic Auth 체인에서 보호한다. actuator는 호스트에 열지 않는 관리 포트에만 있어 인증 없이 허용하고,
+ * 서비스 포트에는 ALB 헬스체크용 /readyz만 둔다.
  */
 @Configuration
 @EnableWebSecurity
@@ -85,7 +86,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/readyz", "/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/readyz", "/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/winners/*/history").authenticated()
                         .requestMatchers(

@@ -12,11 +12,10 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Swagger Basic Auth와 actuator 공개 경로를 실제 SecurityFilterChain으로 검증한다. */
+/** Swagger Basic Auth와 서비스 포트의 공개 상태 확인 경로를 실제 SecurityFilterChain으로 검증한다. */
 @SpringBootTest(properties = {
         "cking.docs.username=docs-user",
-        "cking.docs.password=docs-password",
-        "management.endpoints.web.exposure.include=health,info"
+        "cking.docs.password=docs-password"
 })
 @AutoConfigureMockMvc
 class DocsBasicAuthSecurityTest {
@@ -51,20 +50,6 @@ class DocsBasicAuthSecurityTest {
     @Test
     void readyz는_인증_없이_조회할_수_있다() throws Exception {
         mockMvc.perform(get("/readyz"))
-                .andExpect(status().isOk());
-    }
-
-    /** ALB 상태 확인에 필요한 health endpoint가 인증 없이 열려 있는지 검증한다. */
-    @Test
-    void actuator_health는_인증_없이_조회할_수_있다() throws Exception {
-        mockMvc.perform(get("/actuator/health"))
-                .andExpect(status().isOk());
-    }
-
-    /** 운영 정보 확인에 필요한 info endpoint가 인증 없이 열려 있는지 검증한다. */
-    @Test
-    void actuator_info는_인증_없이_조회할_수_있다() throws Exception {
-        mockMvc.perform(get("/actuator/info"))
                 .andExpect(status().isOk());
     }
 }
