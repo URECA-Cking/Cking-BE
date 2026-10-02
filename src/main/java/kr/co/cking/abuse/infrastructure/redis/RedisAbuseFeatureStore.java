@@ -73,20 +73,31 @@ public class RedisAbuseFeatureStore implements AbuseFeatureStore {
 
     /** Lua의 고정 KEYS 순서에 맞춰 관찰 범위별 Redis key를 준비한다. */
     private List<String> keysFor(AbuseObservationEvent observation) {
-        String missionBusinessKey = observation.businessKey() == null ? UNUSED_KEY : observation.businessKey();
         return List.of(
                 AbuseRedisKeys.missionRequest(observation.userId()),
-                AbuseRedisKeys.duplicateMission(missionBusinessKey),
+                duplicateMissionKey(observation),
                 observation.eventId() == null
                         ? UNUSED_KEY : AbuseRedisKeys.entryRequest(observation.userId(), observation.eventId()),
                 AbuseRedisKeys.insufficientBalance(observation.userId(), observation.balanceScope()),
-                AbuseRedisKeys.requestIdRotation(missionBusinessKey),
+                requestIdRotationKey(observation),
                 AbuseRedisKeys.lastEarn(observation.userId(), observation.balanceScope()),
                 AbuseRedisKeys.rapidEarnSpend(observation.userId(), observation.balanceScope()),
                 AbuseRedisKeys.failure(observation.userId()),
                 AbuseRedisKeys.failureType(observation.userId()),
                 AbuseRedisKeys.failureSequence(observation.userId()),
                 AbuseRedisKeys.insufficientBalanceSequence(observation.userId(), observation.balanceScope()));
+    }
+
+    /** Mission business key가 있을 때만 중복 Mission window key를 hash로 생성한다. */
+    private String duplicateMissionKey(AbuseObservationEvent observation) {
+        return observation.businessKey() == null
+                ? UNUSED_KEY : AbuseRedisKeys.duplicateMission(observation.businessKey());
+    }
+
+    /** Mission business key가 있을 때만 requestId rotation window key를 hash로 생성한다. */
+    private String requestIdRotationKey(AbuseObservationEvent observation) {
+        return observation.businessKey() == null
+                ? UNUSED_KEY : AbuseRedisKeys.requestIdRotation(observation.businessKey());
     }
 
     /** Lua가 반환한 metric 순서와 값 개수를 검증해 불변 Snapshot으로 바꾼다. */
