@@ -271,3 +271,9 @@ FR-P4-138,4조,파트4 명령 API의 상세 Request 및 HTTP Status 매핑을 �
 UNAUTHORIZED는 회원가입·로그인 없이 가상 사용자를 선택하는 현재 인증 정책상 사용하지 않는다.
 동일 요청이 이미 성공한 경우에는 새로운 작업을 수행하지 않고 기존 성공 결과를 반환한다.
 여러 도메인에서 동일한 의미로 사용하는 오류는 공통 코드를 사용하고, 특정 도메인에서만 의미가 있는 오류는 도메인 전용 코드로 정의한다.",1차 확정,시작 전,No
+FR-AI-001,AI,LLM의 단일 크리에이터 유사 후보 묶음을 계약 검증 후 저장한다,성원,Creator 추천,"creatorId·similarCreatorId·score·rank·method·modelVersion·inputHash를 검증하고 자기 자신·중복·없는 Creator를 거부",확정,완료,No
+FR-AI-002,AI,새 추천 결과는 부분 상태 없이 원자적으로 공개 전환한다,성원,Creator 추천,"generation·candidate 저장 후 state 포인터를 같은 Transaction에서 전환하고 과거 세대를 보존",확정,완료,No
+FR-AI-003,AI,동일 입력 추천 결과 적재는 멱등해야 한다,성원,Creator 추천,"(creatorId,inputHash)를 멱등 키로 사용하며 동일 payload 재전송은 기존 generation을 반환",확정,완료,No
+FR-AI-004,AI,교체된 과거 입력 해시의 결과를 재활성화하지 않는다,성원,Creator 추천,저장 이력이 있으나 현재가 아닌 inputHash는 STALE_RECOMMENDATION_INPUT으로 거부,확정,완료,No
+FR-AI-005,AI,공개 API로 저장된 유사 크리에이터를 조회한다,성원,Creator 추천,"GET /api/creators/{creatorId}/similar?size=5, size 1~20, 결과 없음은 빈 목록",확정,완료,No
+FR-AI-006,AI,공개 조회는 모델 API 장애와 독립적으로 동작한다,성원,Creator 추천,조회 서비스는 DB Repository만 사용하고 BGE-M3·GPT 클라이언트를 의존하지 않음,확정,완료,No
