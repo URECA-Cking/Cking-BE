@@ -129,10 +129,19 @@ class RequestBurstRuleEvaluatorTest {
                 share, features(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L));
         assertThat(result.matches()).isEmpty();
         assertThat(result.signals()).containsExactly(AbuseSignal.REQUEST_ID_ROTATION);
+        var evidence = result.signalEvidence().get(AbuseSignal.REQUEST_ID_ROTATION);
+        assertThat(evidence.scope().type()).isEqualTo(Type.BUSINESS_KEY);
+        assertThat(evidence.scope().missionId()).isEqualTo(103L);
+        assertThat(evidence.scope().creatorId()).isEqualTo(5L);
+        assertThat(evidence.scope().periodKey()).isNull();
+        assertThat(evidence.window().windowMs()).isEqualTo(30_000L);
+        assertThat(evidence.features()).containsOnlyKeys(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)
+                .containsEntry(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L);
+        assertThat(evidence.thresholds()).containsEntry(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L);
     }
 
     @Test
-    void 회전_Signal이_함께_충족되면_탐지_근거에도_횟수와_임계치를_남긴다() {
+    void 회전_Signal과_Burst가_동시_충족되어도_각각의_범위와_Window를_분리한다() {
         AbuseObservationEvent observation = mission("DUPLICATE_MISSION", ResultClassification.BUSINESS_FAILURE,
                 17L, 5L, 103L, "MISSION:CREATOR:DAILY:17:5:103:2026-10-02", "2026-10-02");
         RequestBurstRuleEvaluation result = evaluator.evaluate(observation, new AbuseFeatureSnapshot(Map.of(
@@ -143,10 +152,19 @@ class RequestBurstRuleEvaluatorTest {
         assertThat(result.matches()).extracting(AbuseRuleMatch::abuseType)
                 .containsExactly(AbuseType.MISSION_REQUEST_BURST, AbuseType.DUPLICATE_MISSION_BURST);
         assertThat(result.matches()).allSatisfy(match -> {
-            assertThat(match.evidence().signals()).containsExactly(AbuseSignal.REQUEST_ID_ROTATION);
-            assertThat(match.evidence().features()).containsEntry(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L);
-            assertThat(match.evidence().thresholds()).containsEntry(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L);
+            assertThat(match.evidence().signals()).isEmpty();
+            assertThat(match.evidence().features()).doesNotContainKey(AbuseMetric.DISTINCT_REQUEST_ID_COUNT);
+            assertThat(match.evidence().thresholds()).doesNotContainKey(AbuseMetric.DISTINCT_REQUEST_ID_COUNT);
+            assertThat(match.evidence().window().windowMs()).isEqualTo(10_000L);
         });
+        assertThat(result.matches().getFirst().evidence().scope().type()).isEqualTo(Type.USER);
+        var rotation = result.signalEvidence().get(AbuseSignal.REQUEST_ID_ROTATION);
+        assertThat(rotation.scope().type()).isEqualTo(Type.BUSINESS_KEY);
+        assertThat(rotation.scope().missionId()).isEqualTo(103L);
+        assertThat(rotation.scope().periodKey()).isEqualTo("2026-10-02");
+        assertThat(rotation.window().windowMs()).isEqualTo(30_000L);
+        assertThat(rotation.features()).containsEntry(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L);
+        assertThat(rotation.thresholds()).containsEntry(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L);
     }
 
     @Test
@@ -216,7 +234,7 @@ class RequestBurstRuleEvaluatorTest {
                 new AbuseProperties.CountRule(window, 2),
                 new AbuseProperties.CountRule(window, 4),
                 new AbuseProperties.ConsecutiveRule(window, 3, 2),
-                new AbuseProperties.RotationRule(window, 3),
+                new AbuseProperties.RotationRule(Duration.ofSeconds(30), 3),
                 new AbuseProperties.RapidRule(Duration.ofSeconds(2), window, 2),
                 new AbuseProperties.FailureRule(window, 3, 2, 2));
     }

@@ -2,7 +2,6 @@ package kr.co.cking.abuse.application.rule;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,7 +51,9 @@ public class RequestBurstRuleEvaluator {
         List<AbuseRuleMatch> matches = new ArrayList<>();
         boolean rotation = snapshot.valueOf(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)
                 >= properties.requestIdRotation().distinctThreshold();
-        Set<AbuseSignal> signals = rotation ? Set.of(AbuseSignal.REQUEST_ID_ROTATION) : Set.of();
+        Map<AbuseSignal, DetectionEvidence> signalEvidence = rotation
+                ? Map.of(AbuseSignal.REQUEST_ID_ROTATION, rotationEvidence(observation, snapshot))
+                : Map.of();
 
         if (snapshot.valueOf(AbuseMetric.MISSION_REQUEST_COUNT)
                 >= properties.missionRequestBurst().threshold()) {
@@ -62,8 +63,7 @@ public class RequestBurstRuleEvaluator {
                     properties.missionRequestBurst().window(),
                     AbuseMetric.MISSION_REQUEST_COUNT,
                     snapshot,
-                    properties.missionRequestBurst().threshold(),
-                    signals
+                    properties.missionRequestBurst().threshold()
             ));
         }
 
@@ -78,12 +78,11 @@ public class RequestBurstRuleEvaluator {
                     properties.duplicateMissionBurst().window(),
                     AbuseMetric.DUPLICATE_MISSION_FAILURE_COUNT,
                     snapshot,
-                    properties.duplicateMissionBurst().threshold(),
-                    signals
+                    properties.duplicateMissionBurst().threshold()
             ));
         }
 
-        return new RequestBurstRuleEvaluation(matches, signals);
+        return new RequestBurstRuleEvaluation(matches, signalEvidence);
     }
 
     private RequestBurstRuleEvaluation evaluateEntry(
@@ -100,9 +99,24 @@ public class RequestBurstRuleEvaluator {
                 properties.entryRequestBurst().window(),
                 AbuseMetric.ENTRY_REQUEST_COUNT,
                 snapshot,
-                properties.entryRequestBurst().threshold(),
+                properties.entryRequestBurst().threshold()
+        )), Map.of());
+    }
+
+    private DetectionEvidence rotationEvidence(
+            AbuseObservationEvent observation, AbuseFeatureSnapshot snapshot
+    ) {
+        AbuseMetric metric = AbuseMetric.DISTINCT_REQUEST_ID_COUNT;
+        return new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new Scope(Scope.Type.BUSINESS_KEY, observation.creatorId(), null,
+                        observation.missionId(), observation.periodKey(), observation.balanceScope()),
+                new DetectionEvidence.Window(properties.requestIdRotation().window().toMillis(), null),
+                Map.of(metric, snapshot.valueOf(metric)),
+                Map.of(metric, properties.requestIdRotation().distinctThreshold().longValue()),
+                Set.of(AbuseSignal.REQUEST_ID_ROTATION),
                 Set.of()
-        )), Set.of());
+        );
     }
 
     private AbuseRuleMatch match(
@@ -111,26 +125,15 @@ public class RequestBurstRuleEvaluator {
             Duration window,
             AbuseMetric metric,
             AbuseFeatureSnapshot snapshot,
-            long threshold,
-            Set<AbuseSignal> signals
+            long threshold
     ) {
-        Map<AbuseMetric, Long> features = new EnumMap<>(AbuseMetric.class);
-        Map<AbuseMetric, Long> thresholds = new EnumMap<>(AbuseMetric.class);
-        features.put(metric, snapshot.valueOf(metric));
-        thresholds.put(metric, threshold);
-        if (signals.contains(AbuseSignal.REQUEST_ID_ROTATION)) {
-            features.put(AbuseMetric.DISTINCT_REQUEST_ID_COUNT,
-                    snapshot.valueOf(AbuseMetric.DISTINCT_REQUEST_ID_COUNT));
-            thresholds.put(AbuseMetric.DISTINCT_REQUEST_ID_COUNT,
-                    properties.requestIdRotation().distinctThreshold().longValue());
-        }
         DetectionEvidence evidence = new DetectionEvidence(
                 DetectionEvidence.POLICY_VERSION,
                 scope,
                 new DetectionEvidence.Window(window.toMillis(), null),
-                features,
-                thresholds,
-                signals,
+                Map.of(metric, snapshot.valueOf(metric)),
+                Map.of(metric, threshold),
+                Set.of(),
                 Set.of()
         );
         return new AbuseRuleMatch(type, evidence);
