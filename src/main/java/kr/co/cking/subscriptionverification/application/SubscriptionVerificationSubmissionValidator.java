@@ -83,21 +83,22 @@ class SubscriptionVerificationSubmissionValidator {
             return existing;
         }
 
-        if (verificationRepository.findByMemberIdAndCreatorIdAndMissionIdAndStatus(
-                memberId, creatorId, missionId, SubscriptionVerificationStatus.APPROVED).isPresent()) {
-            throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_ALREADY_APPROVED);
-        }
-        if (verificationRepository.existsByMemberIdAndCreatorIdAndMissionIdAndStatusIn(
-                memberId, creatorId, missionId, ACTIVE_STATUSES)) {
-            throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS);
-        }
-
         Optional<SubscriptionVerification> latest = verificationRepository
                 .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
                         memberId, creatorId, missionId);
-        if (latest.isPresent() && latest.get().getCreatedAt().isAfter(now.minus(SUBMISSION_COOLDOWN))) {
-            throw new BusinessException(
-                    SubscriptionVerificationErrorCode.VERIFICATION_SUBMISSION_LIMIT_EXCEEDED);
+        // 트랜잭션 밖 사전 검증의 조회가 서로 다른 Commit을 읽지 않도록 같은 최신 행으로 판정한다.
+        if (latest.isPresent()) {
+            SubscriptionVerification current = latest.get();
+            if (current.getStatus() == SubscriptionVerificationStatus.APPROVED) {
+                throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_ALREADY_APPROVED);
+            }
+            if (ACTIVE_STATUSES.contains(current.getStatus())) {
+                throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS);
+            }
+            if (current.getCreatedAt().isAfter(now.minus(SUBMISSION_COOLDOWN))) {
+                throw new BusinessException(
+                        SubscriptionVerificationErrorCode.VERIFICATION_SUBMISSION_LIMIT_EXCEEDED);
+            }
         }
 
         LocalDate utcDate = now.atZone(ZoneOffset.UTC).toLocalDate();

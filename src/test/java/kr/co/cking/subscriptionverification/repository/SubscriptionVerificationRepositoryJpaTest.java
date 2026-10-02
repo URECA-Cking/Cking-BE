@@ -70,9 +70,6 @@ class SubscriptionVerificationRepositoryJpaTest {
         SubscriptionVerification saved = verificationRepository.saveAndFlush(newVerification(BASE_TIME));
 
         assertThat(verificationRepository.findByRequestId(saved.getRequestId())).contains(saved);
-        assertThat(verificationRepository.existsByMemberIdAndCreatorIdAndMissionIdAndStatusIn(
-                memberId, creatorId, missionId, ACTIVE_STATUSES
-        )).isTrue();
         assertThat(verificationRepository.existsByCreatorIdAndStatusIn(creatorId, ACTIVE_STATUSES)).isTrue();
         assertThat(verificationRepository.findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
                 memberId, creatorId, missionId
@@ -170,17 +167,16 @@ class SubscriptionVerificationRepositoryJpaTest {
     }
 
     @Test
-    void 승인_조회는_APPROVED만_반환한다() {
+    void 최신_조회는_APPROVED_상태를_반환한다() {
         SubscriptionVerification verification = verificationRepository.saveAndFlush(newVerification(BASE_TIME));
         approve(verification, BASE_TIME.plusSeconds(1));
         verificationRepository.flush();
 
-        assertThat(verificationRepository.findByMemberIdAndCreatorIdAndMissionIdAndStatus(
-                memberId, creatorId, missionId, SubscriptionVerificationStatus.APPROVED
-        )).contains(verification);
-        assertThat(verificationRepository.existsByMemberIdAndCreatorIdAndMissionIdAndStatusIn(
-                memberId, creatorId, missionId, ACTIVE_STATUSES
-        )).isFalse();
+        assertThat(verificationRepository
+                .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
+                        memberId, creatorId, missionId))
+                .contains(verification);
+        assertThat(verificationRepository.existsByCreatorIdAndStatusIn(creatorId, ACTIVE_STATUSES)).isFalse();
     }
 
     @Test
