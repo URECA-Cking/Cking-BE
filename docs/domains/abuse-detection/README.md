@@ -93,6 +93,8 @@ Redis Key에는 Business Key와 Cooldown Scope의 원문을 넣지 않는다. �
 
 `AbuseFeatureStore.record(observation, windowPolicy)`는 Feature를 갱신하고 Snapshot을 반환할 뿐 Threshold 비교나 Detection 생성을 하지 않는다. `AbuseCooldownStore`는 UUID 소유 Token이 포함된 `CooldownLease`를 반환하며, 해제는 저장된 Token이 일치할 때만 성공해야 한다. `AbuseDetectionRepository.reviewIfDetected()`는 `DETECTED` 조건부 UPDATE의 영향 행 수를 반환한다. Port 구현체는 장애를 정상 결과로 숨기지 않으며 최종 Fail Open은 Observation 호출 경계가 담당한다.
 
+기본 요청 Rule은 `AbuseFeatureSnapshot`과 활성 정책 임계치를 비교해 `AbuseRuleMatch` 후보를 반환한다. 후보에는 탐지 유형과 구조화된 Evidence를 담되 Cooldown scope hash와 DB 저장은 후속 Evaluator/Processor가 맡는다. `REQUEST_ID_ROTATION`은 Mission에서만 별도 `signalEvidence`로 반환하며 단독 Detection 후보를 만들지 않는다. Rotation Evidence는 자신의 Business Key scope, rotation window, distinct requestId 측정값·임계치를 보존한다. Burst Evidence의 primary window·scope에 Rotation 값을 합치지 않으며, 후속 Composite Rule이 별도 Signal 근거를 전달받아 처리한다.
+
 `AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `AbuseReviewDecision.CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. Repository Port도 상태 enum 대신 `AbuseReviewDecision`만 받아 `DETECTED → DETECTED`와 검토 정보 기록을 타입 수준에서 차단한다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
 
 Evidence Scope의 필수 구성은 타입별로 고정한다. `USER`는 추가 업무 식별자를 갖지 않고, `BUSINESS_KEY`는 `missionId`와 `balanceScope`, `USER_EVENT`는 `eventId`, `USER_BALANCE_SCOPE`는 `balanceScope`가 필수다. Creator 전용 Balance Scope는 creatorId가 일치해야 한다. Event는 Creator 소유이면서 공용 응모권을 사용할 수 있으므로 `USER_EVENT`의 creatorId와 `COMMON` Balance Scope 조합은 허용한다. Feature 측정값은 0 이상, 실제 적용한 Threshold는 양수만 허용한다.
