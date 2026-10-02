@@ -47,6 +47,13 @@ class DocsBasicAuthSecurityTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    /** ALB 헬스체크가 쓰는 readiness 경로가 서비스 포트에서 인증 없이 열려 있는지 검증한다. */
+    @Test
+    void readyz는_인증_없이_조회할_수_있다() throws Exception {
+        mockMvc.perform(get("/readyz"))
+                .andExpect(status().isOk());
+    }
+
     /** ALB 상태 확인에 필요한 health endpoint가 인증 없이 열려 있는지 검증한다. */
     @Test
     void actuator_health는_인증_없이_조회할_수_있다() throws Exception {

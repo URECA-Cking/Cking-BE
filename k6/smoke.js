@@ -15,7 +15,6 @@ export const options = {
 };
 
 export default function () {
-  health();
   version();
   eventList();
   authRequired();
@@ -24,14 +23,6 @@ export default function () {
   corsAllowed();
   oauthLogin('google', 'accounts.google.com');
   oauthLogin('kakao', 'kauth.kakao.com');
-}
-
-function health() {
-  const res = http.get(`${BASE_URL}/actuator/health`, { tags: { name: 'health' } });
-  check(res, {
-    'health 200': (r) => r.status === 200,
-    'health UP': (r) => r.json('status') === 'UP',
-  });
 }
 
 function version() {

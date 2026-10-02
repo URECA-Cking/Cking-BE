@@ -31,6 +31,15 @@ management:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
+      group:
+        # ALB 헬스체크가 쓰는 /readyz. 기존 /actuator/health처럼 DB·Redis 연결까지 확인한다.
+        readiness:
+          include: readinessState,db,redis
   info:
     env:
       enabled: true
