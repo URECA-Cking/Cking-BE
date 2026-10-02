@@ -12,7 +12,10 @@ public enum CreatorErrorCode implements ErrorCode {
     INVALID_ACTIVE_SPACE_TEMPLATE(HttpStatus.CONFLICT, "활성화된 기본 Creator Space 템플릿의 slug 생성 규칙이 올바르지 않습니다."),
     RESERVED_SLUG(HttpStatus.BAD_REQUEST, "사용할 수 없는 slug입니다."),
     SLUG_ALREADY_TAKEN(HttpStatus.CONFLICT, "이미 사용 중인 slug입니다."),
-    SLUG_CHANGE_TOO_SOON(HttpStatus.CONFLICT, "slug는 마지막 변경 후 14일이 지나야 다시 바꿀 수 있습니다.");
+    SLUG_CHANGE_TOO_SOON(HttpStatus.CONFLICT, "slug는 마지막 변경 후 14일이 지나야 다시 바꿀 수 있습니다."),
+    INVALID_RECOMMENDATION_RESULT(HttpStatus.BAD_REQUEST, "유사 추천 결과 묶음이 올바르지 않습니다."),
+    RECOMMENDATION_INPUT_CONFLICT(HttpStatus.CONFLICT, "같은 입력 해시에 다른 추천 결과가 전달되었습니다."),
+    STALE_RECOMMENDATION_INPUT(HttpStatus.CONFLICT, "이미 교체된 과거 추천 입력 결과입니다.");
 
     private final HttpStatus status;
     private final String message;
