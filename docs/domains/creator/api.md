@@ -113,6 +113,9 @@ Bearer Access JWT와 ADMIN 역할이 필수다. Path와 body 최상위 및 각 �
 ```json
 {
   "creatorId": 10,
+  "method": "M4",
+  "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
+  "inputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "candidates": [{
     "creatorId": 10,
     "similarCreatorId": 20,
@@ -125,11 +128,25 @@ Bearer Access JWT와 ADMIN 역할이 필수다. Path와 body 최상위 및 각 �
 }
 ```
 
-- 후보는 1~100건이다. 원본·후보 Creator가 모두 존재해야 하고 자기 자신과 중복 후보는 허용하지 않는다.
+- 후보는 0~100건이다. 원본·후보 Creator가 모두 존재해야 하고 자기 자신과 중복 후보는 허용하지 않는다.
 - `score`는 `-1.0~2.0`, 소수점 8자리 이하다.
 - `rank`는 1부터 연속이며 점수 내림차순, 동점 `similarCreatorId` 오름차순이다.
-- 모든 후보의 `method`(최대 20자), `modelVersion`(최대 255자), lowercase SHA-256 `inputHash`가 같아야 한다.
+- 최상위 `method`(최대 20자), `modelVersion`(최대 255자), lowercase SHA-256 `inputHash`는 생성 세대의 메타데이터다.
+- 후보가 있으면 기존 후보별 메타데이터만 보내는 계약도 허용한다. 최상위 메타데이터를 함께 보내면 모든 후보 값과 같아야 한다.
+- 후보가 비어 있으면 최상위 생성 메타데이터가 필수다. 빈 세대를 활성화해 기존 공개 추천을 비운다.
 - 전체 검증 뒤 새 세대와 후보를 저장하고 현재 포인터를 같은 Transaction에서 교체한다.
+
+빈 정상 결과는 다음처럼 전달한다.
+
+```json
+{
+  "creatorId": 10,
+  "method": "M4",
+  "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
+  "inputHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "candidates": []
+}
+```
 
 ```json
 {
@@ -163,4 +180,4 @@ Bearer Access JWT와 ADMIN 역할이 필수다. Path와 body 최상위 및 각 �
 }
 ```
 
-활성 결과가 없으면 정상 200으로 `{ "creatorId": 10, "candidates": [] }`를 반환한다. 존재하지 않는 Creator는 `RESOURCE_NOT_FOUND`, 범위를 벗어난 `size`는 `VALIDATION_FAILED`다. 관심사·인기순 대체 추천은 수행하지 않는다.
+활성 결과가 없으면 정상 200으로 `{ "creatorId": 10, "candidates": [] }`를 반환한다. 빈 결과 세대가 활성화된 경우에는 해당 세대의 `method`, `modelVersion`, `inputHash`, `generatedAt`과 빈 `candidates`를 반환한다. 존재하지 않는 Creator는 `RESOURCE_NOT_FOUND`, 범위를 벗어난 `size`는 `VALIDATION_FAILED`다. 관심사·인기순 대체 추천은 수행하지 않는다.
