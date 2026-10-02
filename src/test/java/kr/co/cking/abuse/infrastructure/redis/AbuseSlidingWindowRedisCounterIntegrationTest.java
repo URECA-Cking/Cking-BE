@@ -40,18 +40,20 @@ class AbuseSlidingWindowRedisCounterIntegrationTest {
         }
     }
 
-    /** window 밖 score를 제거하고 현재 member 수와 window 더하기 60초 TTL을 반환한다. */
+    /** window 경계 score는 제거하고 경계 안쪽 score는 보존한 뒤 count와 TTL을 갱신한다. */
     @Test
     void window_밖_데이터를_제거하고_count와_TTL을_갱신한다() {
         String key = key("expiration");
         Instant now = Instant.parse("2026-10-02T00:00:10Z");
         Duration window = Duration.ofSeconds(10);
-        redisTemplate.opsForZSet().add(key, "expired-observation", 0);
+        redisTemplate.opsForZSet().add(key, "boundary-observation", now.minus(window).toEpochMilli());
+        redisTemplate.opsForZSet().add(key, "retained-observation", now.minus(window).plusMillis(1).toEpochMilli());
 
         long count = counter.recordAndCount(key, now, "current-observation", window);
 
-        assertThat(count).isEqualTo(1L);
-        assertThat(redisTemplate.opsForZSet().range(key, 0, -1)).containsExactly("current-observation");
+        assertThat(count).isEqualTo(2L);
+        assertThat(redisTemplate.opsForZSet().range(key, 0, -1))
+                .containsExactly("retained-observation", "current-observation");
         assertThat(redisTemplate.getExpire(key, TimeUnit.SECONDS)).isBetween(69L, 70L);
     }
 

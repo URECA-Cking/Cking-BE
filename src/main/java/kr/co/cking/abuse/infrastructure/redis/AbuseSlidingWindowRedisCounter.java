@@ -54,7 +54,7 @@ public class AbuseSlidingWindowRedisCounter {
         return ttl.getSeconds() + (ttl.getNano() == 0 ? 0 : 1);
     }
 
-    /** Lua 호출 전에 Redis key, member, 시각, window의 필수·양수 조건을 검증한다. */
+    /** Lua 호출 전에 Redis key, member, 시각, window의 필수·밀리초 단위 조건을 검증한다. */
     private void validateArguments(String key, Instant observedAt, String member, Duration window) {
         if (!StringUtils.hasText(key)) {
             throw new IllegalArgumentException("key는 필수입니다.");
@@ -64,8 +64,8 @@ public class AbuseSlidingWindowRedisCounter {
             throw new IllegalArgumentException("member는 필수입니다.");
         }
         Objects.requireNonNull(window, "window는 필수입니다.");
-        if (window.isZero() || window.isNegative()) {
-            throw new IllegalArgumentException("window는 양수여야 합니다.");
+        if (window.toMillis() <= 0) {
+            throw new IllegalArgumentException("window는 최소 1밀리초 이상이어야 합니다.");
         }
     }
 }
