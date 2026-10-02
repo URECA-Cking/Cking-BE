@@ -25,7 +25,7 @@ public final class CreatorSimilarityRequest {
             @Size(max = 20) String method,
             @Size(max = 255) String modelVersion,
             @Pattern(regexp = "[0-9a-f]{64}") String inputHash,
-            @NotNull @Size(max = 100) List<@Valid Candidate> candidates
+            @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates
     ) {
         public CreatorSimilarityResultCommand toCommand() {
             return new CreatorSimilarityResultCommand(

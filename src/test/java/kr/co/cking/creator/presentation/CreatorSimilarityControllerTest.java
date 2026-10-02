@@ -99,6 +99,23 @@ class CreatorSimilarityControllerTest {
     }
 
     @Test
+    @WithMockJwt(memberId = "7")
+    void null_후보는_서비스_호출_전에_400으로_거부한다() throws Exception {
+        mockMvc.perform(put("/api/admin/creators/10/similar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "creatorId": 10,
+                                  "candidates": [null]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(resultService).should(never()).replace(any(), any(), any());
+    }
+
+    @Test
     void 공개_조회는_기본_size_5로_저장된_결과를_반환한다() throws Exception {
         given(queryService.findSimilar(10L, 5)).willReturn(new CreatorSimilarityView(
                 10L, "M4", "model-v1", INPUT_HASH, Instant.parse("2026-10-02T00:00:00Z"),
