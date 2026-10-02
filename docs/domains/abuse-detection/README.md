@@ -50,6 +50,8 @@ Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward po
 
 `REQUEST_ID_ROTATION`은 이 key별 **rotation sliding window** 안의 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. Evidence에는 userId가 포함된 원문 key 문자열을 중복 저장하지 않고 creatorId·missionId·periodKey 등 구조화된 Scope만 기록한다. `periodKey`는 DAILY Mission의 audit context이며 Business Key에도 포함된다. SHARE ONCE는 `periodKey=null`이고 Business Key에도 날짜를 포함하지 않는다.
 
+`MissionBusinessKeyFactory`의 `periodAt`에는 해당 Mission이 EARN `periodKey`를 확정할 때 사용한 시각을 전달한다. 요청 시작 시각과 EARN 시각이 UTC 자정을 사이에 두고 달라도 DAILY 키가 실제 보상 기간과 일치해야 한다. SHARE가 Ticket EARN에 전달하는 날짜는 이 Abuse ONCE 키·Observation `periodKey`에 사용하지 않는다. Event 응모의 `BalanceScope`는 요청에서 확정한 `couponType`으로 선택하며, CREATOR일 때만 Event 소유 Creator의 잔액을 사용한다.
+
 ## Detection과 Feature
 
 | abuse type | scope | feature / 판정 |
