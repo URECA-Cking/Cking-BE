@@ -51,7 +51,7 @@ class AbuseDetectionPersistenceAdapterIntegrationTest {
                 "select evidence from abuse_detection where id = ?", String.class, saved.detectionId());
 
         assertThat(saved.detectionId()).isPositive();
-        assertThat(evidenceJson).contains("ABUSE_V1", "DUPLICATE_MISSION_FAILURE_COUNT", "RULE_01");
+        assertThat(evidenceJson).contains("ABUSE_V1", "duplicateMissionFailureCount", "RULE-01");
         assertThat(adapter.findById(saved.detectionId()))
                 .hasValueSatisfying(found -> {
                     assertThat(found.memberId()).isEqualTo(member.getMemberId());
