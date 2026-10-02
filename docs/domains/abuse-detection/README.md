@@ -74,15 +74,15 @@ Redis는 실시간 feature와 cooldown만 보관하고 Observation이나 최종 
 
 | key | type | TTL |
 | --- | --- | --- |
-| `mission-request:{userId}`, `duplicate-mission:{businessKeyHash}`, `entry-request:{userId}:{eventId}`, `insufficient:{userId}:{balanceScope}`, `rapid-earn-spend:{userId}:{balanceScope}`, `failure:{userId}` | ZSET, score=timestamp ms/member=observationId | 각 Window + 60초 |
-| `request-id:{businessKeyHash}` | ZSET, score=observedAt epoch ms/member=requestId | rotation window + 60초 |
+| `mission-request:{userId}`, `duplicate-mission:{businessKeyHash}`, `entry-request:{userId}:{eventId}`, `insufficient:{userId}:{balanceScope}`, `rapid-earn-spend:{userId}:{balanceScope}`, `failure:{userId}` | ZSET, score=Redis Lua 실행 timestamp ms/member=observationId | 각 Window + 60초 |
+| `request-id:{businessKeyHash}` | ZSET, score=Redis Lua 실행 epoch ms/member=requestId | rotation window + 60초 |
 | `last-earn:{userId}:{balanceScope}` | STRING, observedAt | rapid maxDelay |
 | `failure-type:{userId}` | HASH, field=실패 코드·value=해당 코드의 count | failure window + 60초 |
 | `failure-sequence:{userId}` | HASH, fields=`count`, `lastObservedAtEpochMs`; 전체 업무 실패 연속 상태 | failure window + 60초 |
 | `insufficient-sequence:{userId}:{balanceScope}` | HASH, fields=`count`, `lastObservedAtEpochMs`; 해당 잔액 범위의 부족 잔액 연속 상태 | insufficient window + 60초 |
 | `cooldown:{abuseType}:{scopeHash}` | STRING | primary Window × 2 |
 
-`scripts/abuse-sliding-window-count.lua`는 `KEYS[1]` ZSET과 `observedAt epoch ms`, `member`, `window ms`, `window + 60초` TTL 초를 받아 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 수행해 count를 반환한다. 일반 window 호출자는 `observationId`, rotation 호출자는 `requestId`를 member로 전달한다. rotation은 같은 requestId를 member로 쓰므로 재시도는 distinct count를 늘리지 않고, 새 requestId는 해당 window에서만 집계된다. 연속 상태는 각각 `failure-sequence`와 `insufficient-sequence`에 분리해 갱신한다. 두 HASH의 `count`는 현재 연속 횟수이고 `lastObservedAtEpochMs`는 마지막 집계 시각이다. 해당 Rule의 관찰·성공으로 상태가 갱신될 때마다 각 Rule의 TTL을 다시 설정하며, 전체 성공은 `failure-sequence`를, 같은 Balance Scope의 EARN 또는 Entry 성공은 해당 `insufficient-sequence`만 제거한다. cooldown은 필요한 key를 한 호출에서 원자적으로 처리한다. cooldown은 `SET NX EX`; 획득한 요청만 DB를 insert하며 insert 실패 시 key를 best-effort 삭제한다.
+`scripts/abuse-sliding-window-count.lua`는 `KEYS[1]` ZSET과 `member`, `window ms`, `window + 60초` TTL 초를 받아 Redis `TIME`으로 실행 시각을 만든 뒤 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 수행해 count를 반환한다. Sliding Window의 score와 cutoff는 업무 `observedAt`이 아니라 실제 Redis Lua 실행 시각이 기준이므로, 관찰 시각의 순서와 실행 순서가 역전돼도 반환 count는 실행 순서 기준으로 일관된다. 일반 window 호출자는 `observationId`, rotation 호출자는 `requestId`를 member로 전달한다. rotation은 같은 requestId를 member로 쓰므로 재시도는 distinct count를 늘리지 않고, 새 requestId는 해당 window에서만 집계된다. 연속 상태는 각각 `failure-sequence`와 `insufficient-sequence`에 분리해 갱신한다. 두 HASH의 `count`는 현재 연속 횟수이고 `lastObservedAtEpochMs`는 마지막 집계 시각이다. 해당 Rule의 관찰·성공으로 상태가 갱신될 때마다 각 Rule의 TTL을 다시 설정하며, 전체 성공은 `failure-sequence`를, 같은 Balance Scope의 EARN 또는 Entry 성공은 해당 `insufficient-sequence`만 제거한다. cooldown은 필요한 key를 한 호출에서 원자적으로 처리한다. cooldown은 `SET NX EX`; 획득한 요청만 DB를 insert하며 insert 실패 시 key를 best-effort 삭제한다.
 
 ### Scope Hash 공통 계약
 
