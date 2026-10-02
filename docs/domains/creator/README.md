@@ -8,6 +8,7 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 - [Creator Space Template 관리자 API](space-template-api.md): 기본 템플릿 CRUD·활성화 외부 API 계약
 - [Creator Space API](space-api.md): 공개 Creator 목록, Space 공개 조회(creatorId·slug), Creator 본인 조회·수정·커스텀 slug 변경 외부 API 계약
 - [Creator Space slug 정책](space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
+- [Creator 유사 추천 결과](similarity-recommendation.md): Cking-LLM 후보 묶음 검증, 세대 보존, 원자 교체와 공개 조회 계약
 
 ## Creator Space 자동 생성(이슈 #270)
 
