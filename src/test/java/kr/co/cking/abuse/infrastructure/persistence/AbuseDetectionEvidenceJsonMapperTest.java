@@ -2,6 +2,7 @@ package kr.co.cking.abuse.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import kr.co.cking.abuse.domain.AbuseCompositeRule;
@@ -29,6 +30,34 @@ class AbuseDetectionEvidenceJsonMapperTest {
         assertThat(mapper.fromJson(json)).isEqualTo(evidence);
     }
 
+    /** 네 Scope와 공용·Creator 잔액 범위, 빈 Map·Set도 손실 없이 JSON 왕복한다. */
+    @Test
+    void 모든_Scope와_컬렉션_형태를_JSON으로_왕복한다() {
+        AbuseDetectionEvidenceJsonMapper mapper = new AbuseDetectionEvidenceJsonMapper(new ObjectMapper());
+        List<DetectionEvidence> evidenceValues = List.of(
+                userEvidence(),
+                businessKeyEvidence(),
+                userEventEvidence(),
+                userBalanceScopeEvidence());
+
+        evidenceValues.forEach(evidence -> assertThat(mapper.fromJson(mapper.toJson(evidence))).isEqualTo(evidence));
+        assertThat(mapper.toJson(userEvidence())).contains("\"features\":{}", "\"signals\":[]");
+    }
+
+    /** 업무 식별자를 갖지 않고 빈 Feature·Signal·Rule 컬렉션을 가진 USER Scope를 생성한다. */
+    private DetectionEvidence userEvidence() {
+        return new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new DetectionEvidence.Scope(
+                        DetectionEvidence.Scope.Type.USER,
+                        null, null, null, null, null),
+                new DetectionEvidence.Window(10_000L, null),
+                Map.of(),
+                Map.of(),
+                Set.of(),
+                Set.of());
+    }
+
     /** 문서 예시에 맞는 BUSINESS_KEY Scope Evidence를 생성한다. */
     private DetectionEvidence businessKeyEvidence() {
         return new DetectionEvidence(
@@ -45,5 +74,33 @@ class AbuseDetectionEvidenceJsonMapperTest {
                         AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L),
                 Set.of(AbuseSignal.REQUEST_ID_ROTATION),
                 Set.of(AbuseCompositeRule.RULE_01));
+    }
+
+    /** COMMON 응모권을 사용하는 Event의 USER_EVENT Scope를 생성한다. */
+    private DetectionEvidence userEventEvidence() {
+        return new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new DetectionEvidence.Scope(
+                        DetectionEvidence.Scope.Type.USER_EVENT,
+                        10L, 20L, null, null, BalanceScope.common()),
+                new DetectionEvidence.Window(10_000L, 3_000L),
+                Map.of(AbuseMetric.ENTRY_REQUEST_COUNT, 14L),
+                Map.of(AbuseMetric.ENTRY_REQUEST_COUNT, 8L),
+                Set.of(),
+                Set.of(AbuseCompositeRule.RULE_03));
+    }
+
+    /** CREATOR 응모권을 사용하는 USER_BALANCE_SCOPE Evidence를 생성한다. */
+    private DetectionEvidence userBalanceScopeEvidence() {
+        return new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new DetectionEvidence.Scope(
+                        DetectionEvidence.Scope.Type.USER_BALANCE_SCOPE,
+                        10L, null, null, null, BalanceScope.creator(10L)),
+                new DetectionEvidence.Window(10_000L, null),
+                Map.of(AbuseMetric.INSUFFICIENT_BALANCE_FAILURE_COUNT, 5L),
+                Map.of(AbuseMetric.INSUFFICIENT_BALANCE_FAILURE_COUNT, 3L),
+                Set.of(),
+                Set.of());
     }
 }

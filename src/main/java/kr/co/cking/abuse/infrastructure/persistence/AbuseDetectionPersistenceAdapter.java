@@ -41,6 +41,9 @@ class AbuseDetectionPersistenceAdapter implements AbuseDetectionRepository {
     @Override
     @Transactional
     public AbuseDetection save(AbuseDetection detection) {
+        if (detection.detectionId() != null) {
+            throw new IllegalArgumentException("이미 영속화된 Detection은 save할 수 없습니다.");
+        }
         AbuseDetectionJpaEntity entity = AbuseDetectionJpaEntity.create(
                 detection.memberId(),
                 detection.abuseType(),

@@ -60,6 +60,21 @@ class AbuseDetectionPersistenceAdapterIntegrationTest {
                 });
     }
 
+    /** ID가 있는 Detection을 다시 save해 중복 행을 삽입하지 않는다. */
+    @Test
+    void 이미_저장된_Detection은_다시_save할_수_없다() {
+        Member member = saveMember("중복 저장 검증 회원");
+        AbuseDetection saved = adapter.save(detection(
+                member.getMemberId(), AbuseType.MISSION_REQUEST_BURST,
+                Instant.parse("2026-10-01T00:00:00Z")));
+
+        assertThatThrownBy(() -> adapter.save(saved)).isInstanceOf(RuntimeException.class);
+
+        Integer rowCount = jdbcTemplate.queryForObject(
+                "select count(*) from abuse_detection where member_id = ?", Integer.class, member.getMemberId());
+        assertThat(rowCount).isEqualTo(1);
+    }
+
     /** search는 선택 조건을 적용하고 호출자가 전달한 정렬과 관계없이 탐지 최신순으로 반환한다. */
     @Test
     void 조건으로_검색하고_detectedAt과_ID_내림차순으로_정렬한다() {
