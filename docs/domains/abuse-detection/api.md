@@ -45,6 +45,8 @@ Query는 선택 `memberId`(양수 Long), `abuseType`, `status`, `page`, `size`�
 
 없으면 `RESOURCE_NOT_FOUND`다.
 
+Composite Rule을 충족한 상세 Evidence에는 `matchedRules` 외에 선택 필드 `supportingEvidence`가 포함된다. Rule 이름별 배열의 각 원소는 보조 `abuseType` 또는 `signal` 하나, 독립적인 `scope`, `window`, `features`, `thresholds`를 담는다. 예를 들어 `RULE-02`의 Rotation 근거는 Mission burst의 USER scope/window에 합치지 않고 Rotation의 BUSINESS_KEY scope/window로 반환한다. 기존 Detection처럼 보조 근거가 없는 JSON에는 이 필드가 없을 수 있다. 목록의 `evidenceSummary`에는 이 배열을 포함하지 않는다.
+
 ## PATCH /api/admin/abuse-detections/{detectionId}/review
 
 ```json

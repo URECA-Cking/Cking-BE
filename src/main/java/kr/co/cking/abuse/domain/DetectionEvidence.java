@@ -2,9 +2,11 @@ package kr.co.cking.abuse.domain;
 
 import static kr.co.cking.common.validation.DomainValidator.requirePositive;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /** 탐지 시점의 범위·Feature·Threshold를 재현 가능하게 보존하는 근거다. */
 public record DetectionEvidence(
@@ -14,7 +16,8 @@ public record DetectionEvidence(
         Map<AbuseMetric, Long> features,
         Map<AbuseMetric, Long> thresholds,
         Set<AbuseSignal> signals,
-        Set<AbuseCompositeRule> matchedRules
+        Set<AbuseCompositeRule> matchedRules,
+        Map<AbuseCompositeRule, List<SupportingEvidence>> supportingEvidence
 ) {
 
     public static final String POLICY_VERSION = "ABUSE_V1";
@@ -29,6 +32,52 @@ public record DetectionEvidence(
         thresholds = immutableMetricMap(thresholds, "thresholds", false);
         signals = Set.copyOf(Objects.requireNonNull(signals, "signals는 필수입니다."));
         matchedRules = Set.copyOf(Objects.requireNonNull(matchedRules, "matchedRules는 필수입니다."));
+        Set<AbuseCompositeRule> validatedRules = matchedRules;
+        Objects.requireNonNull(supportingEvidence, "supportingEvidence는 필수입니다.");
+        supportingEvidence.forEach((rule, supports) -> {
+            if (rule == null || !validatedRules.contains(rule) || supports == null || supports.isEmpty()) {
+                throw new IllegalArgumentException("보조 근거는 충족한 Composite Rule에만 지정할 수 있습니다.");
+            }
+        });
+        supportingEvidence = supportingEvidence.entrySet().stream().collect(
+                Collectors.toUnmodifiableMap(
+                        Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
+    }
+
+    /** 기존 단일 Rule Evidence 생성 경로는 보조 근거 없이 유지한다. */
+    public DetectionEvidence(
+            String policyVersion,
+            Scope scope,
+            Window window,
+            Map<AbuseMetric, Long> features,
+            Map<AbuseMetric, Long> thresholds,
+            Set<AbuseSignal> signals,
+            Set<AbuseCompositeRule> matchedRules
+    ) {
+        this(policyVersion, scope, window, features, thresholds, signals, matchedRules, Map.of());
+    }
+
+    /** 다른 scope·window의 Rule 또는 Signal 근거를 primary Evidence와 분리해 보존한다. */
+    public record SupportingEvidence(
+            AbuseType abuseType,
+            AbuseSignal signal,
+            Scope scope,
+            Window window,
+            Map<AbuseMetric, Long> features,
+            Map<AbuseMetric, Long> thresholds
+    ) {
+        public SupportingEvidence {
+            if ((abuseType == null) == (signal == null)) {
+                throw new IllegalArgumentException("보조 근거에는 AbuseType 또는 AbuseSignal 하나만 지정해야 합니다.");
+            }
+            Objects.requireNonNull(scope, "보조 근거 scope는 필수입니다.");
+            Objects.requireNonNull(window, "보조 근거 window는 필수입니다.");
+            features = immutableMetricMap(features, "보조 근거 features", true);
+            thresholds = immutableMetricMap(thresholds, "보조 근거 thresholds", false);
+            if (features.isEmpty() || thresholds.isEmpty()) {
+                throw new IllegalArgumentException("보조 근거에는 측정값과 임계치가 필요합니다.");
+            }
+        }
     }
 
     private static Map<AbuseMetric, Long> immutableMetricMap(
