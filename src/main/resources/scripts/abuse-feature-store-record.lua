@@ -1,8 +1,8 @@
 -- KEYS[1..11]: mission request, duplicate mission, entry request, insufficient balance,
 --              requestId rotation, last earn, rapid earn-spend, failure, failure type,
 --              failure sequence, insufficient balance sequence
--- ARGV[1..14]: action type, result classification, result code, observedAt epoch ms,
---              observationId, requestId, each feature window in ms, rapid max delay in ms
+-- ARGV[1..13]: action type, result classification, result code, observationId, requestId,
+--              each feature window in ms, rapid max delay in ms
 
 local missionRequestKey = KEYS[1]
 local duplicateMissionKey = KEYS[2]
@@ -19,17 +19,18 @@ local insufficientBalanceSequenceKey = KEYS[11]
 local actionType = ARGV[1]
 local resultClassification = ARGV[2]
 local resultCode = ARGV[3]
-local observedAtEpochMs = tonumber(ARGV[4])
-local observationId = ARGV[5]
-local requestId = ARGV[6]
-local missionRequestWindowMs = tonumber(ARGV[7])
-local duplicateMissionWindowMs = tonumber(ARGV[8])
-local entryRequestWindowMs = tonumber(ARGV[9])
-local insufficientBalanceWindowMs = tonumber(ARGV[10])
-local requestIdRotationWindowMs = tonumber(ARGV[11])
-local rapidEarnSpendWindowMs = tonumber(ARGV[12])
-local rapidEarnSpendMaxDelayMs = tonumber(ARGV[13])
-local failureWindowMs = tonumber(ARGV[14])
+local observationId = ARGV[4]
+local requestId = ARGV[5]
+local missionRequestWindowMs = tonumber(ARGV[6])
+local duplicateMissionWindowMs = tonumber(ARGV[7])
+local entryRequestWindowMs = tonumber(ARGV[8])
+local insufficientBalanceWindowMs = tonumber(ARGV[9])
+local requestIdRotationWindowMs = tonumber(ARGV[10])
+local rapidEarnSpendWindowMs = tonumber(ARGV[11])
+local rapidEarnSpendMaxDelayMs = tonumber(ARGV[12])
+local failureWindowMs = tonumber(ARGV[13])
+local redisTime = redis.call('TIME')
+local observedAtEpochMs = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
 
 local ttlPaddingMs = 60000
 local zero = 0

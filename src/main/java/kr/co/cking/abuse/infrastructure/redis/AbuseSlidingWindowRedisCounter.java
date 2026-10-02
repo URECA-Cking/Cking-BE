@@ -1,7 +1,6 @@
 package kr.co.cking.abuse.infrastructure.redis;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
@@ -29,16 +28,15 @@ public class AbuseSlidingWindowRedisCounter {
     }
 
     /**
-     * member를 현재 시각 점수로 기록하고 window 밖 항목을 제거한 뒤 원자적으로 count를 반환한다.
+     * Redis Lua 실행 시각을 score로 기록하고 window 밖 항목을 제거한 뒤 원자적으로 count를 반환한다.
      * 일반 window에는 observationId, rotation window에는 requestId를 member로 전달한다.
      */
-    public long recordAndCount(String key, Instant observedAt, String member, Duration window) {
-        validateArguments(key, observedAt, member, window);
+    public long recordAndCount(String key, String member, Duration window) {
+        validateArguments(key, member, window);
 
         Long count = redisTemplate.execute(
                 slidingWindowCountLuaScript,
                 List.of(key),
-                String.valueOf(observedAt.toEpochMilli()),
                 member,
                 String.valueOf(window.toMillis()),
                 String.valueOf(ttlSeconds(window)));
@@ -54,12 +52,11 @@ public class AbuseSlidingWindowRedisCounter {
         return ttl.getSeconds() + (ttl.getNano() == 0 ? 0 : 1);
     }
 
-    /** Lua 호출 전에 Redis key, member, 시각, window의 필수·밀리초 단위 조건을 검증한다. */
-    private void validateArguments(String key, Instant observedAt, String member, Duration window) {
+    /** Lua 호출 전에 Redis key, member, window의 필수·밀리초 단위 조건을 검증한다. */
+    private void validateArguments(String key, String member, Duration window) {
         if (!StringUtils.hasText(key)) {
             throw new IllegalArgumentException("key는 필수입니다.");
         }
-        Objects.requireNonNull(observedAt, "observedAt은 필수입니다.");
         if (!StringUtils.hasText(member)) {
             throw new IllegalArgumentException("member는 필수입니다.");
         }

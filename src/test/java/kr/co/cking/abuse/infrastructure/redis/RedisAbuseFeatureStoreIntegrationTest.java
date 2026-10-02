@@ -130,21 +130,36 @@ class RedisAbuseFeatureStoreIntegrationTest {
 
     /** failure window 경계 밖의 유형은 제거해 distinct failure type count에 포함하지 않는지 검증한다. */
     @Test
-    void Failure_Window_밖_유형은_Distinct_Count에서_제외한다() {
-        record(entry("EVENT_CLOSED", ResultClassification.BUSINESS_FAILURE, BASE_TIME));
-        AbuseFeatureSnapshot withinWindow = record(entry(
-                "INSUFFICIENT_BALANCE", ResultClassification.BUSINESS_FAILURE, BASE_TIME.plusSeconds(9)));
+    void Failure_Window_밖_유형은_Distinct_Count에서_제외한다() throws InterruptedException {
+        AbuseFeatureWindowPolicy shortFailureWindowPolicy = new AbuseFeatureWindowPolicy(
+                Duration.ofSeconds(10), Duration.ofSeconds(10), Duration.ofSeconds(10),
+                Duration.ofSeconds(10), Duration.ofSeconds(10), Duration.ofSeconds(10),
+                Duration.ofSeconds(5), Duration.ofMillis(1));
+        record(entry("EVENT_CLOSED", ResultClassification.BUSINESS_FAILURE, BASE_TIME), shortFailureWindowPolicy);
+        waitForRedisWindowExpiration();
         AbuseFeatureSnapshot outsideWindow = record(entry(
-                "EVENT_NOT_OPEN", ResultClassification.BUSINESS_FAILURE, BASE_TIME.plusSeconds(10)));
+                "EVENT_NOT_OPEN", ResultClassification.BUSINESS_FAILURE, BASE_TIME.plusSeconds(10)),
+                shortFailureWindowPolicy);
 
-        assertThat(withinWindow.valueOf(AbuseMetric.DISTINCT_FAILURE_TYPE_COUNT)).isEqualTo(2L);
-        assertThat(outsideWindow.valueOf(AbuseMetric.DISTINCT_FAILURE_TYPE_COUNT)).isEqualTo(2L);
-        assertThat(outsideWindow.valueOf(AbuseMetric.FAILURE_COUNT)).isEqualTo(2L);
+        assertThat(outsideWindow.valueOf(AbuseMetric.DISTINCT_FAILURE_TYPE_COUNT)).isEqualTo(1L);
+        assertThat(outsideWindow.valueOf(AbuseMetric.FAILURE_COUNT)).isEqualTo(1L);
     }
 
     /** 지정한 Observation을 공통 Window 정책으로 Feature Store에 기록한다. */
     private AbuseFeatureSnapshot record(AbuseObservationEvent observation) {
         return featureStore.record(observation, WINDOW_POLICY);
+    }
+
+    /** 지정한 Window 정책으로 Observation을 기록해 짧은 window 경계 테스트를 수행한다. */
+    private AbuseFeatureSnapshot record(
+            AbuseObservationEvent observation, AbuseFeatureWindowPolicy windowPolicy
+    ) {
+        return featureStore.record(observation, windowPolicy);
+    }
+
+    /** Redis TIME 기준 1밀리초 window가 지나도록 짧게 대기한다. */
+    private void waitForRedisWindowExpiration() throws InterruptedException {
+        Thread.sleep(20L);
     }
 
     /** Creator Mission의 유효한 관찰 이벤트를 생성한다. */

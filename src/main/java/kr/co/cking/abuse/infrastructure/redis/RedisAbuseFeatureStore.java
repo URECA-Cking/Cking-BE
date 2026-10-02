@@ -58,7 +58,6 @@ public class RedisAbuseFeatureStore implements AbuseFeatureStore {
                 observation.actionType().name(),
                 observation.resultClassification().name(),
                 observation.resultCode(),
-                String.valueOf(observation.observedAt().toEpochMilli()),
                 observation.observationId().toString(),
                 observation.requestId().toString(),
                 milliseconds(windowPolicy.missionRequestWindow()),
