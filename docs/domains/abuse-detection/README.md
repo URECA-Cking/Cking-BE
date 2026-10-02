@@ -77,6 +77,7 @@ Redis는 실시간 feature와 cooldown만 보관하고 Observation이나 최종 
 | `mission-request:{userId}`, `duplicate-mission:{businessKeyHash}`, `entry-request:{userId}:{eventId}`, `insufficient:{userId}:{balanceScope}`, `rapid-earn-spend:{userId}:{balanceScope}`, `failure:{userId}` | ZSET, score=timestamp ms/member=observationId | 각 Window + 60초 |
 | `request-id:{businessKeyHash}` | ZSET, score=observedAt epoch ms/member=requestId | rotation window + 60초 |
 | `last-earn:{userId}:{balanceScope}` | STRING, observedAt | rapid maxDelay |
+| `failure-type:{userId}`, `sequence:{userId}` | HASH 또는 STRING, failure 유형·연속 판정 상태 | 해당 rule Window + 60초 |
 | `cooldown:{abuseType}:{scopeHash}` | STRING | primary Window × 2 |
 
 Abuse 전용 Lua는 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 수행해 count를 반환한다. rotation은 `requestId`를 member로 쓰므로 같은 requestId 재시도는 distinct count를 늘리지 않고, 새 requestId는 해당 window에서만 집계된다. sequence 갱신과 cooldown은 필요한 key를 한 호출에서 원자적으로 처리한다. cooldown은 `SET NX EX`; 획득한 요청만 DB를 insert하며 insert 실패 시 key를 best-effort 삭제한다.
