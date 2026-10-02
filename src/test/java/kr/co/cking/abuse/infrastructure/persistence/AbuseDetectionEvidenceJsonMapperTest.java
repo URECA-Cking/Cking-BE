@@ -45,6 +45,27 @@ class AbuseDetectionEvidenceJsonMapperTest {
         assertThat(mapper.toJson(userEvidence())).contains("\"features\":{}", "\"signals\":[]");
     }
 
+    @Test
+    void 빠른_EARN_SPEND의_현재_pair와_maxDelay를_JSON으로_보존한다() {
+        AbuseDetectionEvidenceJsonMapper mapper = new AbuseDetectionEvidenceJsonMapper(new ObjectMapper());
+        DetectionEvidence evidence = new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new DetectionEvidence.Scope(
+                        DetectionEvidence.Scope.Type.USER_BALANCE_SCOPE,
+                        10L, null, null, null, BalanceScope.creator(10L)),
+                new DetectionEvidence.Window(10_000L, 2_000L),
+                Map.of(
+                        AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT, 3L,
+                        AbuseMetric.RAPID_EARN_SPEND_PAIR_CREATED, 1L),
+                Map.of(AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT, 3L),
+                Set.of(), Set.of());
+
+        String json = mapper.toJson(evidence);
+
+        assertThat(json).contains("rapidEarnSpendPairCount", "rapidEarnSpendPairCreated", "\"maxDelayMs\":2000");
+        assertThat(mapper.fromJson(json)).isEqualTo(evidence);
+    }
+
     /** Scope와 Window는 해당하지 않는 선택 필드를 JSON에 남기지 않는다. */
     @Test
     void 선택_Scope_식별자와_maxDelayMs는_null이면_JSON에서_생략한다() {
