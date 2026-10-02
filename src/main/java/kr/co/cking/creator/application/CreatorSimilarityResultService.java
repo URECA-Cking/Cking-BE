@@ -82,8 +82,7 @@ public class CreatorSimilarityResultService {
 
     private NormalizedBundle normalize(Long creatorId, CreatorSimilarityResultCommand command) {
         if (command == null || !Objects.equals(creatorId, command.creatorId())
-                || command.candidates() == null || command.candidates().isEmpty()
-                || command.candidates().size() > 100) {
+                || command.candidates() == null || command.candidates().size() > 100) {
             throw invalidResult();
         }
 
@@ -111,6 +110,12 @@ public class CreatorSimilarityResultService {
         }
 
         candidates.sort(Comparator.comparingInt(NormalizedCandidate::rank));
+        if (candidates.isEmpty()) {
+            validateMetadata(command.method(), command.modelVersion(), command.inputHash());
+            return new NormalizedBundle(
+                    command.method(), command.modelVersion(), command.inputHash(), List.of());
+        }
+
         NormalizedCandidate first = candidates.getFirst();
         for (int index = 0; index < candidates.size(); index++) {
             NormalizedCandidate candidate = candidates.get(index);
@@ -124,8 +129,35 @@ public class CreatorSimilarityResultService {
                 throw invalidResult();
             }
         }
+
+        String method = first.method();
+        String modelVersion = first.modelVersion();
+        String inputHash = first.inputHash();
+        if (hasAnyMetadata(command)) {
+            validateMetadata(command.method(), command.modelVersion(), command.inputHash());
+            if (!method.equals(command.method())
+                    || !modelVersion.equals(command.modelVersion())
+                    || !inputHash.equals(command.inputHash())) {
+                throw invalidResult();
+            }
+            method = command.method();
+            modelVersion = command.modelVersion();
+            inputHash = command.inputHash();
+        }
         return new NormalizedBundle(
-                first.method(), first.modelVersion(), first.inputHash(), List.copyOf(candidates));
+                method, modelVersion, inputHash, List.copyOf(candidates));
+    }
+
+    private boolean hasAnyMetadata(CreatorSimilarityResultCommand command) {
+        return command.method() != null || command.modelVersion() != null || command.inputHash() != null;
+    }
+
+    private void validateMetadata(String method, String modelVersion, String inputHash) {
+        if (isBlank(method) || method.length() > 20
+                || isBlank(modelVersion) || modelVersion.length() > 255
+                || inputHash == null || !inputHash.matches("[0-9a-f]{64}")) {
+            throw invalidResult();
+        }
     }
 
     private boolean isOutOfOrder(NormalizedCandidate previous, NormalizedCandidate current) {
@@ -135,6 +167,9 @@ public class CreatorSimilarityResultService {
     }
 
     private void requireExistingCandidates(List<NormalizedCandidate> candidates) {
+        if (candidates.isEmpty()) {
+            return;
+        }
         Set<Long> requestedIds = candidates.stream()
                 .map(NormalizedCandidate::similarCreatorId)
                 .collect(java.util.stream.Collectors.toSet());

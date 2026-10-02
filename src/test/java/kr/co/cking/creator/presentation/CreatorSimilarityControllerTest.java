@@ -18,6 +18,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -66,6 +67,35 @@ class CreatorSimilarityControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
         then(resultService).should(never()).replace(any(), any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 생성_메타데이터가_있는_빈_후보_묶음을_적재한다() throws Exception {
+        given(resultService.replace(eq(7L), eq(10L), any()))
+                .willReturn(new CreatorSimilarityResultService.StoreResult(10L, 101L, INPUT_HASH, 0, true));
+
+        mockMvc.perform(put("/api/admin/creators/10/similar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "creatorId": 10,
+                                  "method": "M4",
+                                  "modelVersion": "model-v1",
+                                  "inputHash": "%s",
+                                  "candidates": []
+                                }
+                                """.formatted(INPUT_HASH)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidateCount").value(0))
+                .andExpect(jsonPath("$.data.applied").value(true));
+
+        then(resultService).should().replace(eq(7L), eq(10L), argThat(command ->
+                command.creatorId() == 10L
+                        && command.method().equals("M4")
+                        && command.modelVersion().equals("model-v1")
+                        && command.inputHash().equals(INPUT_HASH)
+                        && command.candidates().isEmpty()));
     }
 
     @Test

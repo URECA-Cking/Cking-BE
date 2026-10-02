@@ -136,8 +136,37 @@ class CreatorSimilarityIntegrationTest {
         }
     }
 
+    @Test
+    void 기존_추천_뒤_빈_결과를_반영하면_공개_후보가_비워진다() {
+        resultService.replace(
+                admin.getMemberId(), source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000"));
+
+        CreatorSimilarityResultService.StoreResult emptyResult = resultService.replace(
+                admin.getMemberId(),
+                source.getCreatorId(),
+                new CreatorSimilarityResultCommand(
+                        source.getCreatorId(), "M4", "model-v2", SECOND_HASH, List.of()));
+        CreatorSimilarityResultService.StoreResult replay = resultService.replace(
+                admin.getMemberId(),
+                source.getCreatorId(),
+                new CreatorSimilarityResultCommand(
+                        source.getCreatorId(), "M4", "model-v2", SECOND_HASH, List.of()));
+
+        CreatorSimilarityView view = queryService.findSimilar(source.getCreatorId(), 5);
+        assertThat(emptyResult.applied()).isTrue();
+        assertThat(emptyResult.candidateCount()).isZero();
+        assertThat(replay.applied()).isFalse();
+        assertThat(replay.generationId()).isEqualTo(emptyResult.generationId());
+        assertThat(view.method()).isEqualTo("M4");
+        assertThat(view.modelVersion()).isEqualTo("model-v2");
+        assertThat(view.inputHash()).isEqualTo(SECOND_HASH);
+        assertThat(view.candidates()).isEmpty();
+        assertThat(generationRepository.count()).isEqualTo(2);
+        assertThat(candidateRepository.count()).isEqualTo(1);
+    }
+
     private CreatorSimilarityResultCommand command(String hash, Creator candidate, String score) {
-        return new CreatorSimilarityResultCommand(source.getCreatorId(), List.of(
+        return new CreatorSimilarityResultCommand(source.getCreatorId(), null, null, null, List.of(
                 new CreatorSimilarityResultCommand.Candidate(
                         source.getCreatorId(), candidate.getCreatorId(), new BigDecimal(score), 1,
                         "M4", "model-v1", hash)));

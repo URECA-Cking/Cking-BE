@@ -22,11 +22,14 @@ public final class CreatorSimilarityRequest {
 
     public record Replace(
             @NotNull @Positive Long creatorId,
-            @NotNull @Size(min = 1, max = 100) List<@Valid Candidate> candidates
+            @Size(max = 20) String method,
+            @Size(max = 255) String modelVersion,
+            @Pattern(regexp = "[0-9a-f]{64}") String inputHash,
+            @NotNull @Size(max = 100) List<@Valid Candidate> candidates
     ) {
         public CreatorSimilarityResultCommand toCommand() {
             return new CreatorSimilarityResultCommand(
-                    creatorId,
+                    creatorId, method, modelVersion, inputHash,
                     candidates.stream().map(Candidate::toCommand).toList());
         }
     }

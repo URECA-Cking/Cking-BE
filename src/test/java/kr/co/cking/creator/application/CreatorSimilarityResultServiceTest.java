@@ -154,11 +154,88 @@ class CreatorSimilarityResultServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(CreatorErrorCode.INVALID_RECOMMENDATION_RESULT));
     }
 
+    @Test
+    void 생성_메타데이터가_있는_빈_묶음은_새_세대로_저장하고_활성화한다() {
+        CreatorSimilarityState state = new CreatorSimilarityState(10L, 99L);
+        given(stateRepository.findByCreatorIdForUpdate(10L)).willReturn(Optional.of(state));
+        given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
+                .willReturn(Optional.empty());
+        given(generationRepository.saveAndFlush(any())).willAnswer(invocation -> {
+            CreatorSimilarityGeneration generation = invocation.getArgument(0);
+            ReflectionTestUtils.setField(generation, "generationId", 100L);
+            return generation;
+        });
+
+        CreatorSimilarityResultService.StoreResult result = service.replace(
+                1L,
+                10L,
+                new CreatorSimilarityResultCommand(10L, "M4", "model-v1", FIRST_HASH, List.of()));
+
+        assertThat(result.applied()).isTrue();
+        assertThat(result.candidateCount()).isZero();
+        assertThat(state.getCurrentGenerationId()).isEqualTo(100L);
+        then(creatorRepository).should(never()).findByCreatorIdIn(any());
+    }
+
+    @Test
+    void 빈_묶음에_생성_메타데이터가_없으면_거부한다() {
+        assertThatThrownBy(() -> service.replace(
+                1L, 10L, new CreatorSimilarityResultCommand(10L, null, null, null, List.of())))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(
+                                CreatorErrorCode.INVALID_RECOMMENDATION_RESULT));
+
+        then(generationRepository).should(never()).saveAndFlush(any());
+    }
+
+    @Test
+    void 최상위와_후보의_생성_메타데이터가_다르면_거부한다() {
+        CreatorSimilarityResultCommand command = new CreatorSimilarityResultCommand(
+                10L,
+                "M2",
+                "model-v1",
+                FIRST_HASH,
+                List.of(candidate(10L, 20L, "0.90000000", 1)));
+
+        assertThatThrownBy(() -> service.replace(1L, 10L, command))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(
+                                CreatorErrorCode.INVALID_RECOMMENDATION_RESULT));
+
+        then(generationRepository).should(never()).saveAndFlush(any());
+    }
+
+    @Test
+    void 최상위와_후보의_생성_메타데이터가_같으면_저장한다() {
+        given(creatorRepository.findByCreatorIdIn(Set.of(20L)))
+                .willReturn(List.of(creator(20L, "후보")));
+        given(stateRepository.findByCreatorIdForUpdate(10L)).willReturn(Optional.empty());
+        given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
+                .willReturn(Optional.empty());
+        given(generationRepository.saveAndFlush(any())).willAnswer(invocation -> {
+            CreatorSimilarityGeneration generation = invocation.getArgument(0);
+            ReflectionTestUtils.setField(generation, "generationId", 100L);
+            return generation;
+        });
+        CreatorSimilarityResultCommand command = new CreatorSimilarityResultCommand(
+                10L,
+                "M4",
+                "model-v1",
+                FIRST_HASH,
+                List.of(candidate(10L, 20L, "0.90000000", 1)));
+
+        CreatorSimilarityResultService.StoreResult result = service.replace(1L, 10L, command);
+
+        assertThat(result.applied()).isTrue();
+        assertThat(result.candidateCount()).isEqualTo(1);
+        then(generationRepository).should().saveAndFlush(any());
+    }
+
     private CreatorSimilarityResultCommand command(
             String inputHash,
             CreatorSimilarityResultCommand.Candidate... candidates
     ) {
-        return new CreatorSimilarityResultCommand(10L, List.of(candidates));
+        return new CreatorSimilarityResultCommand(10L, null, null, null, List.of(candidates));
     }
 
     private CreatorSimilarityResultCommand.Candidate candidate(
