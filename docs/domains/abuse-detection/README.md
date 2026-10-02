@@ -79,6 +79,10 @@ Redis는 실시간 feature와 cooldown만 보관하고 Observation이나 최종 
 
 Abuse 전용 Lua는 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 수행해 count를 반환한다. rotation은 `requestId`를 member로 쓰므로 같은 requestId 재시도는 distinct count를 늘리지 않고, 새 requestId는 해당 window에서만 집계된다. sequence 갱신과 cooldown은 필요한 key를 한 호출에서 원자적으로 처리한다. cooldown은 `SET NX EX`; 획득한 요청만 DB를 insert하며 insert 실패 시 key를 best-effort 삭제한다.
 
+### Scope Hash 공통 계약
+
+Redis Key에는 Business Key와 Cooldown Scope의 원문을 넣지 않는다. 각 canonical value를 UTF-8 바이트로 인코딩한 뒤 SHA-256 digest의 lowercase hex(64자)로 변환한다. `AbuseScopeHash.fromCanonicalValue()`가 이 변환과 null·blank 차단의 단일 구현이며, Mission Business Key Hash와 DetectionResult의 Cooldown Scope Hash는 모두 이 계약을 사용한다. 같은 canonical value는 항상 같은 hash를, 서로 다른 canonical value는 서로 다른 hash를 사용한다.
+
 `ticket-earn.lua`, `common-ticket-earn.lua`, `entry-spend.lua`는 수정하지 않는다. 이들은 멱등성·잔액·Stream의 기존 책임만 가지며 Abuse는 별도 script와 key 공간을 사용한다.
 
 ## 공통 Domain과 Port 계약
