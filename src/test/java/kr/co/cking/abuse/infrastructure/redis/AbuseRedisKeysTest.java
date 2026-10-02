@@ -22,8 +22,8 @@ class AbuseRedisKeysTest {
                 .isEqualTo("abuse:v1:failure:7");
         assertThat(AbuseRedisKeys.failureType(7L))
                 .isEqualTo("abuse:v1:failure-type:7");
-        assertThat(AbuseRedisKeys.sequenceState(7L))
-                .isEqualTo("abuse:v1:sequence:7");
+        assertThat(AbuseRedisKeys.failureSequence(7L))
+                .isEqualTo("abuse:v1:failure-sequence:7");
     }
 
     /** Mission Business Key 원문 대신 SHA-256 lowercase hex만 Redis key에 포함한다. */
@@ -52,6 +52,10 @@ class AbuseRedisKeysTest {
                 .isEqualTo("abuse:v1:last-earn:7:CREATOR:10");
         assertThat(AbuseRedisKeys.rapidEarnSpend(7L, BalanceScope.creator(10L)))
                 .isEqualTo("abuse:v1:rapid-earn-spend:7:CREATOR:10");
+        assertThat(AbuseRedisKeys.insufficientBalanceSequence(7L, BalanceScope.common()))
+                .isEqualTo("abuse:v1:insufficient-sequence:7:COMMON");
+        assertThat(AbuseRedisKeys.insufficientBalanceSequence(7L, BalanceScope.creator(10L)))
+                .isEqualTo("abuse:v1:insufficient-sequence:7:CREATOR:10");
     }
 
     /** cooldown key는 탐지 유형과 검증된 scope hash를 정해진 순서로 조합한다. */
@@ -72,6 +76,8 @@ class AbuseRedisKeysTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> AbuseRedisKeys.insufficientBalance(7L, null))
                 .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> AbuseRedisKeys.insufficientBalanceSequence(0L, BalanceScope.common()))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> AbuseRedisKeys.duplicateMission(" "))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> AbuseRedisKeys.cooldown(AbuseType.FAILURE_BURST, "not-a-hash"))

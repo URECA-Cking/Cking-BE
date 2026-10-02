@@ -62,9 +62,14 @@ public final class AbuseRedisKeys {
         return PREFIX + "failure-type:" + positiveId(userId, "userId");
     }
 
-    /** 사용자별 연속 성공·실패 판정 상태 key를 생성한다. */
-    public static String sequenceState(Long userId) {
-        return PREFIX + "sequence:" + positiveId(userId, "userId");
+    /** 사용자별 전체 업무 실패 연속 판정 상태 key를 생성한다. */
+    public static String failureSequence(Long userId) {
+        return PREFIX + "failure-sequence:" + positiveId(userId, "userId");
+    }
+
+    /** 사용자와 잔액 범위별 부족 잔액 연속 판정 상태 key를 생성한다. */
+    public static String insufficientBalanceSequence(Long userId, BalanceScope balanceScope) {
+        return balanceScopeKey("insufficient-sequence", userId, balanceScope);
     }
 
     /** 탐지 유형과 이미 hash 처리된 scope의 중복 생성 방지 cooldown key를 생성한다. */
