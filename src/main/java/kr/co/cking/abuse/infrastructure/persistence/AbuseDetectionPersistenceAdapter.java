@@ -1,5 +1,7 @@
 package kr.co.cking.abuse.infrastructure.persistence;
 
+import static kr.co.cking.common.validation.DomainValidator.requirePositive;
+
 import kr.co.cking.abuse.application.model.AbuseDetectionSearchCondition;
 import kr.co.cking.abuse.application.port.AbuseDetectionRepository;
 import kr.co.cking.abuse.domain.AbuseDetection;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 
 /** AbuseDetectionRepository Port를 MySQL과 Spring Data JPA로 구현한다. */
@@ -78,6 +81,10 @@ class AbuseDetectionPersistenceAdapter implements AbuseDetectionRepository {
             Long reviewedBy,
             Instant reviewedAt
     ) {
+        requirePositive(detectionId, "detectionId");
+        Objects.requireNonNull(decision, "decision은 필수입니다.");
+        requirePositive(reviewedBy, "reviewedBy");
+        Objects.requireNonNull(reviewedAt, "reviewedAt은 필수입니다.");
         return jpaRepository.reviewIfDetected(
                 detectionId,
                 decision.toStatus(),

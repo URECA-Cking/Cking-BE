@@ -1,6 +1,7 @@
 package kr.co.cking.abuse.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.Map;
@@ -112,6 +113,35 @@ class AbuseDetectionPersistenceAdapterIntegrationTest {
                     assertThat(found.status()).isEqualTo(AbuseDetectionStatus.CONFIRMED);
                     assertThat(found.reviewedBy()).isEqualTo(admin.getMemberId());
                     assertThat(found.reviewedAt()).isEqualTo(reviewedAt);
+                });
+    }
+
+    /** 유효하지 않은 검토 정보는 조건부 UPDATE 전에 거부해 Domain 불변식을 깨지 않는다. */
+    @Test
+    void 유효하지_않은_검토_정보는_DB에_반영하지_않는다() {
+        Member member = saveMember("검토 검증 회원");
+        AbuseDetection saved = adapter.save(detection(
+                member.getMemberId(), AbuseType.FAILURE_BURST,
+                Instant.parse("2026-10-01T00:00:00Z")));
+
+        assertThatThrownBy(() -> adapter.reviewIfDetected(
+                null, AbuseReviewDecision.CONFIRMED, member.getMemberId(), Instant.now()))
+                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> adapter.reviewIfDetected(
+                saved.detectionId(), null, member.getMemberId(), Instant.now()))
+                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> adapter.reviewIfDetected(
+                saved.detectionId(), AbuseReviewDecision.CONFIRMED, 0L, Instant.now()))
+                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> adapter.reviewIfDetected(
+                saved.detectionId(), AbuseReviewDecision.CONFIRMED, member.getMemberId(), null))
+                .isInstanceOf(RuntimeException.class);
+
+        assertThat(adapter.findById(saved.detectionId()))
+                .hasValueSatisfying(found -> {
+                    assertThat(found.status()).isEqualTo(AbuseDetectionStatus.DETECTED);
+                    assertThat(found.reviewedBy()).isNull();
+                    assertThat(found.reviewedAt()).isNull();
                 });
     }
 
