@@ -67,3 +67,9 @@
   "hasNext": false
 }
 ```
+
+## 팔로우 기반 Creator 추천
+
+`GET /api/me/creator-recommendations`는 이 도메인의 팔로우 목록을 seed로 사용하지만, 집계 정책과 응답
+계약은 [Creator API](../creator/api.md#get-apimecreator-recommendations)를 따른다. 팔로우 관계는 읽기만
+하며 추천 요청 중 추가·삭제하지 않는다.

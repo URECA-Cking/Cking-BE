@@ -277,3 +277,9 @@ FR-AI-003,AI,동일 입력 추천 결과 적재는 멱등해야 한다,성원,Cr
 FR-AI-004,AI,교체된 과거 입력 해시의 결과를 재활성화하지 않는다,성원,Creator 추천,저장 이력이 있으나 현재가 아닌 inputHash는 STALE_RECOMMENDATION_INPUT으로 거부,확정,완료,No
 FR-AI-005,AI,공개 API로 저장된 유사 크리에이터를 조회한다,성원,Creator 추천,"GET /api/creators/{creatorId}/similar?size=5, size 1~20, 결과 없음은 빈 목록",확정,완료,No
 FR-AI-006,AI,공개 조회는 모델 API 장애와 독립적으로 동작한다,성원,Creator 추천,조회 서비스는 DB Repository만 사용하고 BGE-M3·GPT 클라이언트를 의존하지 않음,확정,완료,No
+FR-AI-007,AI,팔로우한 Creator를 seed로 현재 활성 유사 추천 후보를 일괄 조회한다,성원,Creator 추천,팔로우 ID와 활성 세대 후보를 bulk query로 조회해 N+1 방지,확정,완료,No
+FR-AI-008,AI,M2와 M4 raw score를 직접 비교하지 않고 버전화된 rank 기반 정책으로 집계한다,성원,Creator 추천,"FOLLOW_PERSONALIZED_V1 RRF k=60, 기여도 소수점 8자리 HALF_UP",확정,완료,No
+FR-AI-009,AI,중복 후보를 합치고 본인과 이미 팔로우한 Creator를 제외해 결정적으로 정렬한다,성원,Creator 추천,"aggregateScore DESC, creatorId ASC, seedCreatorIds ASC",확정,완료,No
+FR-AI-010,AI,인증된 사용자가 개인화 Creator 추천 카드를 조회한다,성원,Creator 추천,"GET /api/me/creator-recommendations, size 1~20, Creator·Space·집계 점수·seed 근거 반환",확정,완료,No
+FR-AI-011,AI,팔로우 또는 사용 가능한 활성 추천이 없으면 빈 목록을 반환한다,성원,Creator 추천,인기순 fallback 없이 policyVersion과 빈 items 반환,확정,완료,No
+FR-AI-012,AI,개인화 추천 조회는 모델 API 장애와 독립적으로 동작한다,성원,Creator 추천,저장된 활성 세대 Repository만 사용하고 요청 중 BGE-M3·GPT 호출 없음,확정,완료,No

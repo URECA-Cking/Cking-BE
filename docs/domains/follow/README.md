@@ -6,6 +6,7 @@
 
 - 팔로우·언팔로우와 팔로우 여부·내 팔로우 목록 조회를 제공한다.
 - 다른 도메인은 `CreatorFollowQueryService.isFollowing(memberId, creatorId)`로 팔로우 여부를 확인한다. Creator Space 게시글의 팔로워 공개(FOLLOWERS) 권한 확인(#318)이 첫 사용처다.
+- 개인화 추천은 `findFollowedCreatorIds(memberId)`로 전체 seed Creator ID를 한 번에 읽는다. 추천 집계와 유사 후보 조회는 Creator 도메인이 담당한다.
 - Creator 정보는 읽기만 한다. 팔로우 대상 존재 확인과 목록의 크리에이터 이름은 `CreatorRepository` 조회로 얻는다.
 
 ## 소유 데이터
