@@ -9,11 +9,15 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface CreatorSpaceRepository extends JpaRepository<CreatorSpace, Long> {
 
     Optional<CreatorSpace> findByCreatorId(Long creatorId);
+
+    List<CreatorSpace> findByCreatorIdIn(Collection<Long> creatorIds);
 
     /** 공유 URL의 slug로 Creator Space를 조회한다. */
     Optional<CreatorSpace> findBySlug(String slug);

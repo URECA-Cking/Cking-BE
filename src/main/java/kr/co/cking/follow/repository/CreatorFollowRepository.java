@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 
 public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Long> {
 
@@ -37,4 +38,7 @@ public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Lo
 
     @Query("select f from CreatorFollow f where f.memberId = :memberId order by f.createdAt desc, f.followId desc")
     Page<CreatorFollow> findByMemberIdLatestFirst(@Param("memberId") Long memberId, Pageable pageable);
+
+    @Query("select f.creatorId from CreatorFollow f where f.memberId = :memberId order by f.creatorId asc")
+    List<Long> findCreatorIdsByMemberIdOrderByCreatorIdAsc(@Param("memberId") Long memberId);
 }

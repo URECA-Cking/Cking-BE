@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -53,5 +54,10 @@ public class CreatorFollowQueryService {
                 .collect(Collectors.toMap(Creator::getCreatorId, Creator::getName, (first, second) -> first));
         return follows.map(follow -> new FollowedCreatorView(
                 follow.getCreatorId(), creatorNames.get(follow.getCreatorId()), follow.getCreatedAt()));
+    }
+
+    /** 개인화 추천 등 다른 도메인의 일괄 조회용으로 팔로우한 Creator ID를 한 번에 반환한다. */
+    public List<Long> findFollowedCreatorIds(Long memberId) {
+        return followRepository.findCreatorIdsByMemberIdOrderByCreatorIdAsc(memberId);
     }
 }
