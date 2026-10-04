@@ -101,3 +101,83 @@ Request Body는 없다. 인증된 관리자만 PENDING 신청을 승인할 수 �
 - 신청은 `memberId`, 심사는 신청 ID를 키로 한 MySQL advisory lock을 트랜잭션 완료까지 보유한다. 대기하지 못한 동시 명령은 `CONCURRENT_COMMAND`다. 이 정책은 별도 DB 스키마 변경을 요구하지 않는다.
 - `creator.member_id`의 UNIQUE 제약이 Member당 Creator 하나를 최종 보장한다.
 - `creator_application.reject_reason`은 최대 500자 저장 컬럼이다.
+
+# Creator 유사 추천 결과 API(이슈 #393)
+
+Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 계약이다. 저장 모델·원자 교체·멱등성 정본은 [유사 추천 결과 저장 계약](similarity-recommendation.md)을 따른다.
+
+## PUT /api/admin/creators/{creatorId}/similar
+
+Bearer Access JWT와 ADMIN 역할이 필수다. Path와 body 최상위 및 각 후보의 `creatorId`는 모두 같아야 한다.
+
+```json
+{
+  "creatorId": 10,
+  "method": "M4",
+  "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
+  "inputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "candidates": [{
+    "creatorId": 10,
+    "similarCreatorId": 20,
+    "score": 1.08341234,
+    "rank": 1,
+    "method": "M4",
+    "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
+    "inputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }]
+}
+```
+
+- 후보는 0~100건이다. 원본·후보 Creator가 모두 존재해야 하고 자기 자신과 중복 후보는 허용하지 않는다.
+- `score`는 `-1.0~2.0`, 소수점 8자리 이하다.
+- `rank`는 1부터 연속이며 점수 내림차순, 동점 `similarCreatorId` 오름차순이다.
+- 최상위 `method`(최대 20자), `modelVersion`(최대 255자), lowercase SHA-256 `inputHash`는 생성 세대의 메타데이터다.
+- 후보가 있으면 기존 후보별 메타데이터만 보내는 계약도 허용한다. 최상위 메타데이터를 함께 보내면 모든 후보 값과 같아야 한다.
+- 후보가 비어 있으면 최상위 생성 메타데이터가 필수다. 빈 세대를 활성화해 기존 공개 추천을 비운다.
+- 전체 검증 뒤 새 세대와 후보를 저장하고 현재 포인터를 같은 Transaction에서 교체한다.
+
+빈 정상 결과는 다음처럼 전달한다.
+
+```json
+{
+  "creatorId": 10,
+  "method": "M4",
+  "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
+  "inputHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "candidates": []
+}
+```
+
+```json
+{
+  "creatorId": 10,
+  "generationId": 100,
+  "inputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "candidateCount": 1,
+  "applied": true
+}
+```
+
+신규 세대 적용은 `applied=true`다. 현재와 완전히 같은 payload 재전송은 기존 `generationId`와 `applied=false`를 반환한다. 같은 현재 hash에 다른 payload는 `RECOMMENDATION_INPUT_CONFLICT`, 이미 교체된 과거 hash는 `STALE_RECOMMENDATION_INPUT`이다. 묶음 형식·정렬 위반은 `INVALID_RECOMMENDATION_RESULT`, 없는 원본·후보·관리자는 `RESOURCE_NOT_FOUND`, 관리자가 아니면 `FORBIDDEN`이다.
+
+## GET /api/creators/{creatorId}/similar
+
+인증 없이 조회한다. Query `size` 기본값은 5, 범위는 1~20이다. 저장된 현재 세대만 읽으며 조회 중 BGE-M3·GPT API를 호출하지 않는다.
+
+```json
+{
+  "creatorId": 10,
+  "method": "M4",
+  "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
+  "inputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "generatedAt": "2026-10-02T00:00:00Z",
+  "candidates": [{
+    "similarCreatorId": 20,
+    "name": "추천 크리에이터",
+    "score": 1.08341234,
+    "rank": 1
+  }]
+}
+```
+
+활성 결과가 없으면 정상 200으로 `{ "creatorId": 10, "candidates": [] }`를 반환한다. 빈 결과 세대가 활성화된 경우에는 해당 세대의 `method`, `modelVersion`, `inputHash`, `generatedAt`과 빈 `candidates`를 반환한다. 존재하지 않는 Creator는 `RESOURCE_NOT_FOUND`, 범위를 벗어난 `size`는 `VALIDATION_FAILED`다. 관심사·인기순 대체 추천은 수행하지 않는다.
