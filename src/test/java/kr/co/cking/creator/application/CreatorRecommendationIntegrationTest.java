@@ -103,11 +103,11 @@ class CreatorRecommendationIntegrationTest {
     @Test
     void 일부_seed에_활성_결과가_없어도_다른_seed의_저장_결과를_반환한다() {
         Member fan = member("fan-partial");
-        Creator emptySeed = creator("empty-seed");
+        Creator missingSeed = creator("missing-seed");
         Creator activeSeed = creator("active-seed");
         Creator candidate = creator("candidate");
         createSpace(candidate, "후보 소개", "candidate-profile");
-        followService.follow(fan.getMemberId(), emptySeed.getCreatorId());
+        followService.follow(fan.getMemberId(), missingSeed.getCreatorId());
         followService.follow(fan.getMemberId(), activeSeed.getCreatorId());
         activate(activeSeed, "M4", List.of(candidate(candidate, "0.50000000", 1)));
 
@@ -116,6 +116,20 @@ class CreatorRecommendationIntegrationTest {
 
         assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::creatorId)
                 .containsExactly(candidate.getCreatorId());
+    }
+
+    @Test
+    void 후보가_없는_빈_세대가_활성화되어도_이전_후보_없이_빈_목록을_반환한다() {
+        Member fan = member("fan-empty-generation");
+        Creator seed = creator("empty-generation-seed");
+        followService.follow(fan.getMemberId(), seed.getCreatorId());
+        activate(seed, "M2", List.of());
+
+        PersonalizedCreatorRecommendationView result =
+                recommendationQueryService.findForMember(fan.getMemberId(), 10);
+
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V1");
+        assertThat(result.items()).isEmpty();
     }
 
     private void activate(Creator seed, String method, List<CandidateSpec> candidateSpecs) {
