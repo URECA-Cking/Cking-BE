@@ -74,8 +74,9 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`이다.
 활성 후보가 없는 seed는 기여하지 않는다. 팔로우가 없거나 모든 seed의 활성 후보가 비었거나 필터링 뒤
 후보가 없으면 인기순 fallback 없이 빈 목록을 반환한다.
 
-여러 seed의 후보는 하나의 bulk query로 읽고, 선택된 Creator와 Space도 각각 bulk query로 읽는다. 조회
-경로에는 BGE-M3, GPT 등 모델 클라이언트 의존성이 없다.
+Creator Space가 없어 추천 카드를 만들 수 없는 후보는 집계 전에 제외하며, `size`는 카드 반환이 가능한 후보를
+기준으로 적용한다. 여러 seed의 후보는 하나의 bulk query로 읽고, 선택된 Creator와 Space도 각각 bulk query로
+읽는다. 조회 경로에는 BGE-M3, GPT 등 모델 클라이언트 의존성이 없다.
 
 ## Issue #410 요구사항 추적
 
