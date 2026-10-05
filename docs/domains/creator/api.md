@@ -181,3 +181,31 @@ Bearer Access JWT와 ADMIN 역할이 필수다. Path와 body 최상위 및 각 �
 ```
 
 활성 결과가 없으면 정상 200으로 `{ "creatorId": 10, "candidates": [] }`를 반환한다. 빈 결과 세대가 활성화된 경우에는 해당 세대의 `method`, `modelVersion`, `inputHash`, `generatedAt`과 빈 `candidates`를 반환한다. 존재하지 않는 Creator는 `RESOURCE_NOT_FOUND`, 범위를 벗어난 `size`는 `VALIDATION_FAILED`다. 관심사·인기순 대체 추천은 수행하지 않는다.
+
+## GET /api/me/creator-recommendations
+
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query `size` 기본값은 10,
+범위는 1~20이다. 팔로우한 Creator들의 현재 활성 유사 추천 저장 결과를
+`FOLLOW_PERSONALIZED_V1` 정책으로 합쳐 반환한다. 집계식의 정본은
+[유사 추천 결과 저장 계약](similarity-recommendation.md#팔로우-기반-개인화-집계issue-410)을 따른다.
+
+```json
+{
+  "policyVersion": "FOLLOW_PERSONALIZED_V1",
+  "items": [{
+    "creatorId": 20,
+    "creatorName": "추천 크리에이터",
+    "introText": "Creator Space 소개",
+    "profileImageUrl": "https://example.com/profile.png",
+    "aggregateScore": 0.03252247,
+    "seedCreatorIds": [1, 2]
+  }]
+}
+```
+
+- `aggregateScore`는 M2/M4 raw score가 아니라 rank 기반 RRF 기여도의 합이다.
+- `seedCreatorIds`는 이 후보의 점수에 기여한 팔로우 seed이며 오름차순이다.
+- 이미 팔로우한 Creator와 호출자 본인의 Creator는 반환하지 않는다.
+- 팔로우가 없거나 사용 가능한 활성 후보가 없으면 같은 `policyVersion`과 `items: []`를 정상 200으로 반환한다.
+- 인기순 fallback과 요청 중 BGE-M3·GPT 호출은 수행하지 않는다.
+- 범위를 벗어난 `size`는 `VALIDATION_FAILED`, JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`다.

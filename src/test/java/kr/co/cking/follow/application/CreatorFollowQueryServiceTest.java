@@ -74,6 +74,14 @@ class CreatorFollowQueryServiceTest {
         assertThat(result.getTotalElements()).isEqualTo(2);
     }
 
+    @Test
+    void 다른_도메인용_팔로우_creatorId를_한번에_조회한다() {
+        given(followRepository.findCreatorIdsByMemberIdOrderByCreatorIdAsc(10L))
+                .willReturn(List.of(1L, 2L));
+
+        assertThat(service.findFollowedCreatorIds(10L)).containsExactly(1L, 2L);
+    }
+
     private CreatorFollow follow(Long creatorId, Instant createdAt) {
         CreatorFollow follow = instantiate();
         ReflectionTestUtils.setField(follow, "memberId", 10L);

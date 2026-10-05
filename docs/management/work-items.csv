@@ -28,3 +28,4 @@ T4-05,FR-P4-122~131,P1,RedrawRequest 생성·승인·실행 관리,4조,혁준,"
 T4-06,FR-P4-132~135,P2,인앱 알림 조회·읽음 처리,4조,혁준,T4-03,알림 조회/읽음 API·테스트,시작 전,,No,
 T4-07,FR-P4-136~138,P2,파트4 API 상세 계약 확정,4조,혁준,"T4-02, T4-03, T4-05",Request/Response·HTTP Status 명세,시작 전,,No,
 TAI-01,FR-AI-001~006,P1,단일 크리에이터 유사 추천 결과 저장·조회,AI,성원,Cking-LLM Issue #36,"세대·후보·현재 포인터 DB, 관리자 적재 API, 공개 조회 API, 검증·원자 교체·테스트",완료,Cking-BE Issue #393,Yes,
+TAI-02,FR-AI-007~012,P1,팔로우 기반 개인화 Creator 추천 조회,AI,성원,TAI-01,"FOLLOW_PERSONALIZED_V1 집계, JWT 조회 API, Creator·Space 카드, 제외·빈 결과·테스트",완료,Cking-BE Issue #410,Yes,

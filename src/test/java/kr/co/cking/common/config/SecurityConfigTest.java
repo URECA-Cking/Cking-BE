@@ -175,6 +175,14 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
+    /** 개인화 Creator 추천 API도 JWT 인증 없이는 호출할 수 없다. */
+    @Test
+    void 개인화_Creator_추천_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/me/creator-recommendations"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
     /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
     @Test
     void 만료된_Access_JWT와_LoginCode로_AccessToken을_발급한다() throws Exception {

@@ -55,3 +55,36 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`이다.
 | 자기 자신·중복·없는 Creator·오래된 hash·빈 정상 결과 | Service·Controller 단위 테스트와 통합 테스트 |
 | API 인덱스·Creator API·DB·RTM 갱신 | `docs/api-index.md`, `api.md`, V40, `management/rtm.csv` |
 | 모델 API 장애와 조회 분리 | 조회 서비스는 DB Repository만 의존하며 모델 클라이언트를 주입하지 않음 |
+
+## 팔로우 기반 개인화 집계(Issue #410)
+
+`FOLLOW_PERSONALIZED_V1`은 사용자가 팔로우한 모든 Creator를 seed로 삼아 각 seed의 현재 활성 후보를
+합친다. 요청 중 모델 API를 호출하지 않으며, `creator_similarity_state`가 가리키는 저장 결과만 읽는다.
+
+### 집계식과 정렬
+
+- M2와 M4의 raw score 범위는 직접 비교하지 않는다. 후보의 세대별 `rank`만 사용한다.
+- seed `s`에서 후보 `c`의 기여도는 `round(1 / (60 + rank(s, c)), 8)`이다.
+- 후보의 `aggregateScore`는 모든 seed 기여도의 합이다. 여러 seed에 나온 동일 후보는 하나로 합친다.
+- `aggregateScore DESC`, 동점이면 `creatorId ASC`로 정렬한다.
+- `seedCreatorIds`는 해당 후보에 기여한 seed ID를 중복 없이 오름차순으로 반환한다.
+- 이미 팔로우한 Creator와 호출자 본인의 Creator는 집계 전에 제외한다.
+
+정책 상수 60, 소수점 8자리 HALF_UP 반올림, 정렬 조건 중 하나라도 바꾸면 새 `policyVersion`을 사용한다.
+활성 후보가 없는 seed는 기여하지 않는다. 팔로우가 없거나 모든 seed의 활성 후보가 비었거나 필터링 뒤
+후보가 없으면 인기순 fallback 없이 빈 목록을 반환한다.
+
+Creator Space가 없어 추천 카드를 만들 수 없는 후보는 집계 전에 제외하며, `size`는 카드 반환이 가능한 후보를
+기준으로 적용한다. 여러 seed의 후보는 하나의 bulk query로 읽고, 선택된 Creator와 Space도 각각 bulk query로
+읽는다. 조회 경로에는 BGE-M3, GPT 등 모델 클라이언트 의존성이 없다.
+
+## Issue #410 요구사항 추적
+
+| 완료 조건 | 구현·검증 |
+| --- | --- |
+| 비교 가능한 집계식·tie-breaker·정책 버전 | `FollowBasedCreatorRecommendationPolicy`, 고정 fixture 테스트 |
+| 활성 추천 후보 N+1 없는 조회 | `findActiveCandidatesBySeedCreatorIds` bulk query |
+| 본인·기팔로우·중복 제외와 size 정렬 | 집계 정책·Query Service 단위 테스트 |
+| JWT API와 size 검증 | `CreatorRecommendationController`, MVC·Security 테스트 |
+| Creator·Space 카드와 seed 근거 | bulk profile 조회와 Response DTO |
+| 빈/부분 seed와 모델 장애 독립 | 저장 Repository만 사용하는 Query Service와 빈 결과 테스트 |
