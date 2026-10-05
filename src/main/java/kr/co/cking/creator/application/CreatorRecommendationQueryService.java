@@ -58,16 +58,19 @@ public class CreatorRecommendationQueryService {
                 .collect(Collectors.toMap(Creator::getCreatorId, Function.identity()));
         Map<Long, CreatorSpace> spaces = spaceRepository.findByCreatorIdIn(selectedCreatorIds).stream()
                 .collect(Collectors.toMap(CreatorSpace::getCreatorId, Function.identity()));
-        if (creators.size() != selectedCreatorIds.size() || spaces.size() != selectedCreatorIds.size()) {
+        if (creators.size() != selectedCreatorIds.size()) {
             throw new BusinessException(CommonErrorCode.SYSTEM_ERROR);
         }
 
         return new PersonalizedCreatorRecommendationView(
                 FollowBasedCreatorRecommendationPolicy.VERSION,
-                rankedCandidates.stream().map(candidate -> toItem(
-                        candidate,
-                        creators.get(candidate.creatorId()),
-                        spaces.get(candidate.creatorId()))).toList());
+                rankedCandidates.stream()
+                        .filter(candidate -> spaces.containsKey(candidate.creatorId()))
+                        .map(candidate -> toItem(
+                                candidate,
+                                creators.get(candidate.creatorId()),
+                                spaces.get(candidate.creatorId())))
+                        .toList());
     }
 
     private PersonalizedCreatorRecommendationView.Item toItem(

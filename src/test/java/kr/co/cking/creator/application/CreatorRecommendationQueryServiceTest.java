@@ -113,6 +113,22 @@ class CreatorRecommendationQueryServiceTest {
         then(candidateRepository).should().findActiveCandidatesBySeedCreatorIds(followedCreatorIds);
     }
 
+    @Test
+    void 선정된_후보의_Space가_없으면_전체_조회에_실패하지_않고_해당_후보를_제외한다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of(1L));
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
+        given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L)))
+                .willReturn(List.of(row(1L, 10L, 1)));
+        given(creatorRepository.findByCreatorIdIn(List.of(10L)))
+                .willReturn(List.of(creator(10L, "공간없음")));
+        given(spaceRepository.findByCreatorIdIn(List.of(10L))).willReturn(List.of());
+
+        PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
+
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V1");
+        assertThat(result.items()).isEmpty();
+    }
+
     private ActiveCreatorRecommendationCandidate row(Long seedCreatorId, Long candidateCreatorId, int rank) {
         return new ActiveCreatorRecommendationCandidate(
                 seedCreatorId, candidateCreatorId, "M4", new BigDecimal("1.00000000"), rank);

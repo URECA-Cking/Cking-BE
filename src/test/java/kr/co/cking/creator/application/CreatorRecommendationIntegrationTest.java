@@ -122,7 +122,10 @@ class CreatorRecommendationIntegrationTest {
     void 후보가_없는_빈_세대가_활성화되어도_이전_후보_없이_빈_목록을_반환한다() {
         Member fan = member("fan-empty-generation");
         Creator seed = creator("empty-generation-seed");
+        Creator previousCandidate = creator("previous-candidate");
+        createSpace(previousCandidate, "이전 후보 소개", "previous-profile");
         followService.follow(fan.getMemberId(), seed.getCreatorId());
+        activate(seed, "M4", List.of(candidate(previousCandidate, "0.90000000", 1)));
         activate(seed, "M2", List.of());
 
         PersonalizedCreatorRecommendationView result =
@@ -130,6 +133,30 @@ class CreatorRecommendationIntegrationTest {
 
         assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V1");
         assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void Space가_없는_상위_후보를_제외한_뒤_카드_반환이_가능한_후보에_size를_적용한다() {
+        Member fan = member("fan-missing-space");
+        Creator seed = creator("missing-space-seed");
+        Creator missingSpaceCandidate = creator("missing-space-candidate");
+        Creator availableCandidate = creator("available-candidate");
+        createSpace(availableCandidate, "정상 후보 소개", "available-profile");
+        followService.follow(fan.getMemberId(), seed.getCreatorId());
+        activate(seed, "M4", List.of(
+                candidate(missingSpaceCandidate, "0.90000000", 1),
+                candidate(availableCandidate, "0.80000000", 2)));
+
+        PersonalizedCreatorRecommendationView result =
+                recommendationQueryService.findForMember(fan.getMemberId(), 1);
+
+        assertThat(result.items()).containsExactly(new PersonalizedCreatorRecommendationView.Item(
+                availableCandidate.getCreatorId(),
+                availableCandidate.getName(),
+                "정상 후보 소개",
+                "available-profile",
+                new BigDecimal("0.01612903"),
+                List.of(seed.getCreatorId())));
     }
 
     private void activate(Creator seed, String method, List<CandidateSpec> candidateSpecs) {
@@ -140,8 +167,11 @@ class CreatorRecommendationIntegrationTest {
                 .map(spec -> new CreatorSimilarityCandidate(
                         generation.getGenerationId(), spec.creator().getCreatorId(), spec.score(), spec.rank()))
                 .toList());
-        stateRepository.saveAndFlush(new CreatorSimilarityState(
-                seed.getCreatorId(), generation.getGenerationId()));
+        CreatorSimilarityState state = stateRepository.findById(seed.getCreatorId())
+                .orElseGet(() -> new CreatorSimilarityState(
+                        seed.getCreatorId(), generation.getGenerationId()));
+        state.activate(generation.getGenerationId());
+        stateRepository.saveAndFlush(state);
     }
 
     private CandidateSpec candidate(Creator creator, String score, int rank) {
