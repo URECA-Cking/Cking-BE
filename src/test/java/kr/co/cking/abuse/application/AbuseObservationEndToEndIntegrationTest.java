@@ -11,6 +11,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import kr.co.cking.abuse.application.context.MissionBusinessKeyFactory;
 import kr.co.cking.abuse.application.model.AbuseDetectionSearchCondition;
 import kr.co.cking.abuse.application.port.AbuseDetectionRepository;
@@ -113,10 +118,12 @@ class AbuseObservationEndToEndIntegrationTest {
     private Mission likeMission;
     private Mission shareMission;
     private Long commonMissionId;
+    private Instant testStartedAt;
     private final Long eventId = 987654321L;
 
     @BeforeEach
     void setUp() {
+        testStartedAt = Instant.now();
         member = memberRepository.saveAndFlush(new Member("Abuse E2E 회원", null, null, MemberRole.USER));
         Member owner = memberRepository.saveAndFlush(new Member("Abuse E2E Creator", null, null, MemberRole.USER));
         creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "Abuse E2E Creator"));
@@ -162,12 +169,17 @@ class AbuseObservationEndToEndIntegrationTest {
                 command(UUID.randomUUID())).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
 
         var detection = only(AbuseType.MISSION_REQUEST_BURST);
+        assertThat(detection.evidence().scope().type().name()).isEqualTo("USER");
+        assertThat(detection.evidence().window().windowMs()).isEqualTo(60_000L);
         assertThat(detection.evidence().features().get(AbuseMetric.MISSION_REQUEST_COUNT)).isEqualTo(2L);
+        assertThat(detection.evidence().thresholds().get(AbuseMetric.MISSION_REQUEST_COUNT)).isEqualTo(2L);
         assertThat(detection.evidence().matchedRules()).contains(AbuseCompositeRule.RULE_02);
         assertThat(detection.evidence().supportingEvidence().get(AbuseCompositeRule.RULE_02))
                 .singleElement().satisfies(support -> {
                     assertThat(support.window().windowMs()).isEqualTo(60_000L);
                     assertThat(support.scope().missionId()).isEqualTo(likeMission.getMissionId());
+                    assertThat(support.features().get(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)).isEqualTo(2L);
+                    assertThat(support.thresholds().get(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)).isEqualTo(2L);
                 });
         assertThat(redisTemplate.opsForZSet().zCard(AbuseRedisKeys.missionRequest(member.getMemberId())))
                 .isEqualTo(2L);
@@ -190,7 +202,10 @@ class AbuseObservationEndToEndIntegrationTest {
 
         var duplicate = only(AbuseType.DUPLICATE_MISSION_BURST);
         assertThat(duplicate.evidence().scope().missionId()).isEqualTo(likeMission.getMissionId());
+        assertThat(duplicate.evidence().window().windowMs()).isEqualTo(60_000L);
         assertThat(duplicate.evidence().features().get(AbuseMetric.DUPLICATE_MISSION_FAILURE_COUNT))
+                .isEqualTo(2L);
+        assertThat(duplicate.evidence().thresholds().get(AbuseMetric.DUPLICATE_MISSION_FAILURE_COUNT))
                 .isEqualTo(2L);
         assertThat(duplicate.evidence().matchedRules()).contains(AbuseCompositeRule.RULE_01);
         assertThat(duplicate.evidence().supportingEvidence().get(AbuseCompositeRule.RULE_01))
@@ -198,6 +213,7 @@ class AbuseObservationEndToEndIntegrationTest {
                     assertThat(support.window().windowMs()).isEqualTo(60_000L);
                     assertThat(support.scope().missionId()).isEqualTo(likeMission.getMissionId());
                     assertThat(support.features().get(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)).isEqualTo(2L);
+                    assertThat(support.thresholds().get(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)).isEqualTo(2L);
                 });
     }
 
@@ -255,14 +271,58 @@ class AbuseObservationEndToEndIntegrationTest {
                 .isEqualTo("DUPLICATE_REPLAY");
 
         assertThat(only(AbuseType.ENTRY_REQUEST_BURST).evidence().scope().eventId()).isEqualTo(eventId);
+        assertThat(only(AbuseType.ENTRY_REQUEST_BURST).evidence().window().windowMs()).isEqualTo(60_000L);
+        assertThat(only(AbuseType.ENTRY_REQUEST_BURST).evidence().thresholds()
+                .get(AbuseMetric.ENTRY_REQUEST_COUNT)).isEqualTo(2L);
         assertThat(only(AbuseType.ENTRY_REQUEST_BURST).evidence().matchedRules())
                 .contains(AbuseCompositeRule.RULE_03);
         var insufficient = only(AbuseType.INSUFFICIENT_BALANCE_BURST);
         assertThat(insufficient.evidence().scope().balanceScope()).isEqualTo(BalanceScope.common());
         assertThat(insufficient.evidence().features().get(AbuseMetric.INSUFFICIENT_BALANCE_FAILURE_COUNT))
                 .isEqualTo(2L);
+        assertThat(insufficient.evidence().thresholds().get(AbuseMetric.INSUFFICIENT_BALANCE_FAILURE_COUNT))
+                .isEqualTo(2L);
         assertThat(redisTemplate.opsForZSet().zCard(AbuseRedisKeys.entryRequest(member.getMemberId(), eventId)))
                 .isEqualTo(2L);
+    }
+
+    @Test
+    void 동일_scope의_동시_Entry_탐지는_Cooldown으로_유형별_한_건만_저장한다() throws Exception {
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
+                .thenReturn(EntrySpendResult.ofBalance(EntrySpendResultCode.INSUFFICIENT_BALANCE, 0L));
+        assertThatThrownBy(() -> entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.COMMON)))
+                .isInstanceOf(BusinessException.class);
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<EntryErrorCode> first = executor.submit(() -> concurrentEntry(ready, start));
+            Future<EntryErrorCode> second = executor.submit(() -> concurrentEntry(ready, start));
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(first.get(20, TimeUnit.SECONDS)).isEqualTo(EntryErrorCode.INSUFFICIENT_BALANCE);
+            assertThat(second.get(20, TimeUnit.SECONDS)).isEqualTo(EntryErrorCode.INSUFFICIENT_BALANCE);
+        }
+
+        assertThat(detections().stream().filter(d -> d.abuseType() == AbuseType.ENTRY_REQUEST_BURST))
+                .hasSize(1);
+        assertThat(detections().stream().filter(d -> d.abuseType() == AbuseType.INSUFFICIENT_BALANCE_BURST))
+                .hasSize(1);
+        assertThat(redisTemplate.opsForZSet().zCard(AbuseRedisKeys.entryRequest(member.getMemberId(), eventId)))
+                .isEqualTo(3L);
+    }
+
+    private EntryErrorCode concurrentEntry(CountDownLatch ready, CountDownLatch start) throws InterruptedException {
+        ready.countDown();
+        if (!start.await(10, TimeUnit.SECONDS)) {
+            throw new AssertionError("동시 Entry 시작 신호를 받지 못했습니다.");
+        }
+        try {
+            entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.COMMON));
+            throw new AssertionError("부족 잔액 요청이 성공했습니다.");
+        } catch (BusinessException exception) {
+            return (EntryErrorCode) exception.getErrorCode();
+        }
     }
 
     @Test
@@ -287,6 +347,8 @@ class AbuseObservationEndToEndIntegrationTest {
         assertThat(rapid.evidence().scope().balanceScope())
                 .isEqualTo(BalanceScope.creator(creator.getCreatorId()));
         assertThat(rapid.evidence().features().get(AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT)).isEqualTo(2L);
+        assertThat(rapid.evidence().thresholds().get(AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT))
+                .isEqualTo(2L);
         assertThat(rapid.evidence().matchedRules()).contains(AbuseCompositeRule.RULE_04);
     }
 
@@ -327,17 +389,20 @@ class AbuseObservationEndToEndIntegrationTest {
             keys.add(AbuseRedisKeys.cooldown(AbuseType.INSUFFICIENT_BALANCE_BURST, scopeHash));
             keys.add(AbuseRedisKeys.cooldown(AbuseType.RAPID_EARN_AND_SPEND, scopeHash));
         }
-        String likeKey = businessKeyFactory.forCreator(MissionType.LIKE, userId, creator.getCreatorId(),
-                likeMission.getMissionId(), Instant.now()).value();
-        String shareKey = businessKeyFactory.forCreator(MissionType.SHARE, userId, creator.getCreatorId(),
-                shareMission.getMissionId(), Instant.now()).value();
-        String commonKey = businessKeyFactory.forCommon(CommonMissionType.ATTENDANCE, userId,
-                commonMissionId, Instant.now()).value();
-        for (String businessKey : List.of(likeKey, shareKey, commonKey)) {
-            keys.add(AbuseRedisKeys.duplicateMission(businessKey));
-            keys.add(AbuseRedisKeys.requestIdRotation(businessKey));
-            keys.add(AbuseRedisKeys.cooldown(AbuseType.DUPLICATE_MISSION_BURST,
-                    AbuseScopeHash.fromCanonicalValue("BUSINESS_KEY:" + businessKey)));
+        // UTC 자정을 가로지른 실행에서도 두 날짜의 DAILY key를 모두 정리한다.
+        for (Instant periodAt : List.of(testStartedAt, Instant.now())) {
+            String likeKey = businessKeyFactory.forCreator(MissionType.LIKE, userId, creator.getCreatorId(),
+                    likeMission.getMissionId(), periodAt).value();
+            String shareKey = businessKeyFactory.forCreator(MissionType.SHARE, userId, creator.getCreatorId(),
+                    shareMission.getMissionId(), periodAt).value();
+            String commonKey = businessKeyFactory.forCommon(CommonMissionType.ATTENDANCE, userId,
+                    commonMissionId, periodAt).value();
+            for (String businessKey : List.of(likeKey, shareKey, commonKey)) {
+                keys.add(AbuseRedisKeys.duplicateMission(businessKey));
+                keys.add(AbuseRedisKeys.requestIdRotation(businessKey));
+                keys.add(AbuseRedisKeys.cooldown(AbuseType.DUPLICATE_MISSION_BURST,
+                        AbuseScopeHash.fromCanonicalValue("BUSINESS_KEY:" + businessKey)));
+            }
         }
         String userHash = AbuseScopeHash.fromCanonicalValue("USER:" + userId);
         keys.add(AbuseRedisKeys.cooldown(AbuseType.MISSION_REQUEST_BURST, userHash));
