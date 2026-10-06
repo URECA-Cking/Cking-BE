@@ -24,7 +24,7 @@ echo "[2/4] Parameter Store 읽기: $PARAM_PATH"
 for name in DB_HOST DB_USERNAME DB_PASSWORD DOCS_USERNAME DOCS_PASSWORD \
             JWT_SECRET OAUTH_GOOGLE_CLIENT_ID OAUTH_GOOGLE_CLIENT_SECRET \
             OAUTH_KAKAO_CLIENT_ID OAUTH_KAKAO_CLIENT_SECRET \
-            SUBSCRIPTION_GEMINI_API_KEY; do
+            SUBSCRIPTION_GEMINI_API_KEY ADMIN_ACCOUNT_LOGIN_ID ADMIN_ACCOUNT_PASSWORD; do
   value=$(aws ssm get-parameter --region "$REGION" --name "${PARAM_PATH}${name}" \
     --with-decryption --query 'Parameter.Value' --output text)
   export "$name=$value"
