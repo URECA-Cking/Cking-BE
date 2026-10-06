@@ -230,7 +230,7 @@ Ticket 재동기화, Dead Stream 조회·replay, Creator 신청 목록·승인·
 `/api/admin/**`는 Spring Security가 `hasRole("ADMIN")`으로 먼저 제한하므로 토큰 없음은 `UNAUTHORIZED`(401),
 USER 토큰은 `FORBIDDEN`(403)이다.
 
-**예외 — 추천 결과 적재 API(이슈 #420)**: `PUT /api/admin/creators/{creatorId}/similar`만 `hasAnyAuthority("ROLE_ADMIN",
+**예외 — 추천 결과 적재 API(이슈 #420, #438)**: `PUT /api/admin/creators/{creatorId}/similar`와 `PUT /api/admin/interests/{interestCode}/recommendations`만 `hasAnyAuthority("ROLE_ADMIN",
 "RECOMMENDATION_WRITE")`로 인가한다. 배치는 `X-Cking-Recommendation-Key` 헤더로 인증하며(`RecommendationApiKeyAuthenticationFilter`),
 헤더가 있으면 JWT로 되돌아가지 않고 비었거나 틀린 키는 JWT가 유효해도 401이다. 키 주체는 회원이 아니라 `RECOMMENDATION_WRITE`
 권한만 가지므로 다른 `/api/admin/**`에서는 인정되지 않는다. 헤더가 없으면 위 ADMIN JWT 규칙을 따르고, Application의

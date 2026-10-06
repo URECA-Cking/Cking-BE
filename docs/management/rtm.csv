@@ -294,3 +294,7 @@ FR-AI-015,AI,선택 가능한 관심 분야 목록을 조회한다,성집,Creato
 FR-AI-016,AI,회원이 내 관심 분야를 조회한다,성집,Creator 추천,GET /api/me/interests 선택을 displayOrder 순으로 반환 / 선택 없으면 빈 배열과 활성 분류체계 버전,확정,완료,No
 FR-AI-017,AI,회원이 관심 분야 0~3개를 전체 교체 방식으로 저장한다,성집,Creator 추천,PUT /api/me/interests 멱등·빈 배열은 전체 해제·유지되는 선택의 selected_at 보존,확정,완료,No
 FR-AI-018,AI,같은 회원의 동시 저장에도 선택 수가 3개를 넘지 않는다,성집,Creator 추천,회원 행 SELECT FOR UPDATE로 직렬화(동시성 통합 테스트로 검증),확정,완료,No
+FR-AI-019,AI,관심 분야별 후보 묶음을 계약 검증 후 저장한다,성집,Creator 추천,PUT /api/admin/interests/{interestCode}/recommendations / 분류체계 버전·해시 일치·메타데이터 일치·정렬·rank·점수·중복 Creator 검증,확정,완료,No
+FR-AI-020,AI,새 관심 분야 후보 묶음은 부분 상태 없이 원자적으로 공개 전환한다,성집,Creator 추천,generation·candidate 저장 후 분야 state 포인터를 같은 Transaction에서 교체하고 과거 세대 보존 / 분야 행 FOR UPDATE 직렬화(동시성 테스트),확정,완료,No
+FR-AI-021,AI,동일 입력 적재는 멱등하고 교체된 과거 입력 해시는 재활성화하지 않는다,성집,Creator 추천,멱등 키 (taxonomyVersion interestCode inputHash) / 충돌 409 / 과거 해시 STALE 409,확정,완료,No
+FR-AI-022,AI,빈 후보 묶음도 정상 세대로 저장·활성화한다,성집,Creator 추천,최상위 메타데이터가 있으면 candidate 없는 세대로 포인터 교체해 이전 추천을 비움,확정,완료,No

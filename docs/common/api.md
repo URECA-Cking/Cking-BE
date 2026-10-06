@@ -41,9 +41,9 @@
   필수이며, Controller는 `@CurrentMemberId`를 기존 Service의 관리자 업무 식별자로 전달한다. Spring
   Security의 1차 인가 이후에도 Application의 `validateAdmin(memberId)` 등 기존 업무 권한 검증은 유지한다.
   각 상세 계약은 해당 도메인 API 문서를 따른다.
-- **예외: 추천 결과 적재 API**(`PUT /api/admin/creators/{creatorId}/similar`)는 ADMIN JWT 대신 배치용
+- **예외: 추천 결과 적재 API**(`PUT /api/admin/creators/{creatorId}/similar`, `PUT /api/admin/interests/{interestCode}/recommendations`)는 ADMIN JWT 대신 배치용
   추천 적재 API Key(`X-Cking-Recommendation-Key`)로도 호출할 수 있다. 이 키는 `RECOMMENDATION_WRITE` 권한만
-  가지며 이 엔드포인트에서만 인정한다(다른 `/api/admin/**`는 키로 접근할 수 없다). 키 헤더가 있으면 JWT로
+  가지며 이 두 엔드포인트에서만 인정한다(다른 `/api/admin/**`는 키로 접근할 수 없다). 키 헤더가 있으면 JWT로
   되돌아가지 않고 키만 판단하며, 헤더가 없으면 위 ADMIN JWT 규칙과 Application의 ADMIN 재검증을 그대로 따른다.
   상세는 [Creator API](../domains/creator/api.md#put-apiadmincreatorscreatoridsimilar)를 따른다.
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
