@@ -5,3 +5,5 @@
 src/test/resources/fixtures/taxonomy/* -text
 # 원본 CSV의 의도적인 CR·탭·양끝 공백은 텍스트 공백 오류 검사에서 제외한다.
 src/test/resources/fixtures/taxonomy/input.csv -diff
+# 개인화 정책 공용 fixture는 Cking-LLM-Benchmark와 같은 바이트로 유지한다(줄바꿈 변환 금지).
+src/test/resources/fixtures/hybrid/* -text

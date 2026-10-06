@@ -89,14 +89,17 @@ class CreatorRecommendationIntegrationTest {
                         repeatedCandidate.getName(),
                         "반복 소개",
                         "repeated-profile",
-                        new BigDecimal("0.03252247"),
+                        // 후보가 남는 seed 둘의 기여도 합 0.03252247을 2로 나눈 평균
+                        new BigDecimal("0.01626124"),
+                        List.of(),
                         List.of(firstSeed.getCreatorId(), secondSeed.getCreatorId())),
                 new PersonalizedCreatorRecommendationView.Item(
                         singleCandidate.getCreatorId(),
                         singleCandidate.getName(),
                         "단일 소개",
                         "single-profile",
-                        new BigDecimal("0.01639344"),
+                        new BigDecimal("0.00819672"),
+                        List.of(),
                         List.of(secondSeed.getCreatorId())));
     }
 
@@ -131,7 +134,7 @@ class CreatorRecommendationIntegrationTest {
         PersonalizedCreatorRecommendationView result =
                 recommendationQueryService.findForMember(fan.getMemberId(), 10);
 
-        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V1");
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
         assertThat(result.items()).isEmpty();
     }
 
@@ -156,6 +159,7 @@ class CreatorRecommendationIntegrationTest {
                 "정상 후보 소개",
                 "available-profile",
                 new BigDecimal("0.01612903"),
+                List.of(),
                 List.of(seed.getCreatorId())));
     }
 

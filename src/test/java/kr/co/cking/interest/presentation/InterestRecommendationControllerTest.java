@@ -1,5 +1,6 @@
 package kr.co.cking.interest.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -9,10 +10,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import kr.co.cking.common.security.RecommendationWriteAuthorizer;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.interest.application.InterestRecommendationResultService;
+import kr.co.cking.interest.application.dto.InterestRecommendationCommand;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -46,6 +50,26 @@ class InterestRecommendationControllerTest {
 
         then(writeAuthorizer).should().requireWriteAccess(any());
         then(resultService).should().replace(eq("SPORTS"), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void Python이_보내는_지수_표기_점수도_정확한_값으로_받는다() throws Exception {
+        given(resultService.replace(eq("SPORTS"), any())).willReturn(
+                new InterestRecommendationResultService.StoreResult("v0.2", "SPORTS", 100L, HASH, 1, true));
+        String[][] cases = {{"1e-05", "0.00001"}, {"1.235e-05", "0.00001235"}, {"1e-08", "0.00000001"},
+                {"-0.0", "0"}, {"1.1", "1.1"}};
+        for (String[] score : cases) {
+            mockMvc.perform(replace("SPORTS", payload(score[0], 1))).andExpect(status().isOk());
+        }
+
+        ArgumentCaptor<InterestRecommendationCommand> captor =
+                ArgumentCaptor.forClass(InterestRecommendationCommand.class);
+        then(resultService).should(org.mockito.Mockito.times(cases.length)).replace(eq("SPORTS"), captor.capture());
+        for (int index = 0; index < cases.length; index++) {
+            assertThat(captor.getAllValues().get(index).candidates().get(0).score())
+                    .isEqualByComparingTo(new BigDecimal(cases[index][1]));
+        }
     }
 
     @Test

@@ -27,6 +27,7 @@ public final class CreatorRecommendationResponse {
             String introText,
             String profileImageUrl,
             BigDecimal aggregateScore,
+            List<String> interestCodes,
             List<Long> seedCreatorIds
     ) {
         private static Item from(PersonalizedCreatorRecommendationView.Item item) {
@@ -36,6 +37,7 @@ public final class CreatorRecommendationResponse {
                     item.introText(),
                     item.profileImageUrl(),
                     item.aggregateScore(),
+                    item.interestCodes(),
                     item.seedCreatorIds());
         }
     }

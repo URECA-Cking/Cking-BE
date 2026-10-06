@@ -49,6 +49,13 @@ LLM은 분야별 후보 묶음만 적재하며(분야 조합은 만들지 않는
 - 분류체계는 **등록된 버전**이고 `taxonomyHash`가 등록된 해시와 같아야 한다. 활성 여부는 묻지 않아 신버전 후보를 활성화 전에 적재할 수 있다.
 - 분야별 공개 조회 API는 없다. 저장된 후보는 개인화 조회 내부에서만 읽는다.
 
+## 개인화 조회에서의 사용
+
+개인화 추천(`GET /api/me/creator-recommendations`)은 `InterestRecommendationQueryService`로 회원이 고른 분야의 현재 활성 후보를 읽는다.
+쿼리는 `member_interest`의 `(taxonomy_version, interest_code)`와 같은 버전의 `interest_recommendation_state`만 연결하므로 다른 분류체계
+버전의 후보로 대체하지 않는다. 활성 세대가 없거나 빈 세대인 분야, 선택하지 않은 분야의 후보는 행으로 나오지 않는다. Creator Space가 없는
+후보는 SQL에서 걸러내며, 점수·정책 분기는 [개인화 집계](../creator/similarity-recommendation.md#개인화-집계issue-410-442)를 따른다.
+
 ## taxonomyHash 규칙
 
 Cking-LLM(Python)과 같은 값이 나와야 하므로 아래 순서를 그대로 따른다. 구현은 `InterestTaxonomyHash`이며

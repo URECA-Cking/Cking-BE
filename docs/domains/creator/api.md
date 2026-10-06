@@ -194,27 +194,39 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
 ## GET /api/me/creator-recommendations
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query `size` 기본값은 10,
-범위는 1~20이다. 팔로우한 Creator들의 현재 활성 유사 추천 저장 결과를
-`FOLLOW_PERSONALIZED_V1` 정책으로 합쳐 반환한다. 집계식의 정본은
-[유사 추천 결과 저장 계약](similarity-recommendation.md#팔로우-기반-개인화-집계issue-410)을 따른다.
+범위는 1~20이다. 회원이 고른 관심 분야의 현재 활성 추천 후보와 팔로우한 Creator들의 현재 활성 유사 추천 저장 결과를
+입력 신호에 따라 `HYBRID_PERSONALIZED_V1`·`INTEREST_PERSONALIZED_V1`·`FOLLOW_PERSONALIZED_V2` 중 하나로 합쳐 반환한다.
+집계식과 정책 분기의 정본은 [개인화 집계](similarity-recommendation.md#개인화-집계issue-410-442)를 따른다.
 
 ```json
 {
-  "policyVersion": "FOLLOW_PERSONALIZED_V1",
+  "policyVersion": "HYBRID_PERSONALIZED_V1",
   "items": [{
     "creatorId": 20,
     "creatorName": "추천 크리에이터",
     "introText": "Creator Space 소개",
     "profileImageUrl": "https://example.com/profile.png",
-    "aggregateScore": 0.03252247,
-    "seedCreatorIds": [1, 2]
+    "aggregateScore": 0.01626124,
+    "interestCodes": ["FOOD"],
+    "seedCreatorIds": [2]
   }]
 }
 ```
 
-- `aggregateScore`는 M2/M4 raw score가 아니라 rank 기반 RRF 기여도의 합이다.
-- `seedCreatorIds`는 이 후보의 점수에 기여한 팔로우 seed이며 오름차순이다.
-- 이미 팔로우한 Creator와 호출자 본인의 Creator는 반환하지 않는다.
-- 팔로우가 없거나 사용 가능한 활성 후보가 없으면 같은 `policyVersion`과 `items: []`를 정상 200으로 반환한다.
-- 인기순 fallback과 요청 중 BGE-M3·GPT 호출은 수행하지 않는다.
+| 유효한 관심 분야 source | 유효한 팔로우 seed | `policyVersion` | 점수 |
+| --- | --- | --- | --- |
+| 1개 이상 | 1개 이상 | `HYBRID_PERSONALIZED_V1` | 0.5 × 관심 평균 + 0.5 × 팔로우 평균 |
+| 1개 이상 | 0개 | `INTEREST_PERSONALIZED_V1` | 관심 평균 |
+| 0개 | 1개 이상 | `FOLLOW_PERSONALIZED_V2` | 팔로우 평균 |
+| 0개 | 0개 | `FOLLOW_PERSONALIZED_V2` | `items: []` |
+
+- `interestCodes`는 이 후보의 점수에 기여한 관심 분야(ASCII 사전순), `seedCreatorIds`는 기여한 팔로우 seed(숫자 오름차순)이며
+  기여하지 않은 쪽은 빈 배열이다.
+- `aggregateScore`는 확률이나 절대 관련도가 아니라 해당 `policyVersion` 안에서만 의미 있는 정렬 점수다. 서로 다른
+  `policyVersion`의 점수는 비교할 수 없다. M2/M3/M4 raw score가 아니라 rank 기반 RRF 기여도로 만든다.
+- 이미 팔로우한 Creator와 호출자 본인의 Creator, Creator Space가 없는 Creator는 반환하지 않는다.
+- 관심 분야는 회원이 선택한 분류체계 버전의 후보만 쓰고 다른 버전의 후보로 대체하지 않는다.
+- 유효한 source가 없으면 같은 형식으로 `items: []`를 정상 200으로 반환한다. 인기순 fallback과 요청 중 BGE-M3·GPT 호출은 수행하지 않는다.
+- **변경 이력(#442)**: 팔로우만 있는 회원의 응답은 이전 `FOLLOW_PERSONALIZED_V1`(seed 기여도 합산)에서 `FOLLOW_PERSONALIZED_V2`(유효
+  seed 평균)로 바뀌었다. 추천 순서는 거의 같고 `policyVersion`과 점수 값이 달라진다. `FOLLOW_PERSONALIZED_V1`은 더 이상 반환하지 않는다.
 - 범위를 벗어난 `size`는 `VALIDATION_FAILED`, JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`다.
