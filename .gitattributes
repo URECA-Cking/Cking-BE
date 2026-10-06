@@ -1,3 +1,7 @@
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+# 분류체계 계약 fixture는 원본 CRLF/CR과 canonical JSON의 마지막 개행 부재까지 바이트로 검증한다(Cking-LLM-Benchmark와 동일).
+src/test/resources/fixtures/taxonomy/* -text
+# 원본 CSV의 의도적인 CR·탭·양끝 공백은 텍스트 공백 오류 검사에서 제외한다.
+src/test/resources/fixtures/taxonomy/input.csv -diff

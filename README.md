@@ -328,6 +328,7 @@ kr.co.cking
 ├── member/         가상 사용자
 ├── creator/        Creator, 권한 신청·승인, Creator Space
 ├── follow/         크리에이터 팔로우
+├── interest/       회원 관심 분야 분류체계·선택
 ├── post/           Creator Space 게시글·댓글
 ├── calendar/       크리에이터 일정, 개인 캘린더
 ├── mission/        출석·좋아요 미션

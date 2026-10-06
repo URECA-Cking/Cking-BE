@@ -52,6 +52,8 @@
 - [Calendar API](domains/calendar/api.md): 크리에이터 일정 CRUD·공개 조회 API 계약
 - [Follow](domains/follow/README.md): 크리에이터 팔로우 관계와 다른 도메인용 팔로우 여부 조회 경계
 - [Follow API](domains/follow/api.md): 팔로우·언팔로우·팔로우 여부·내 팔로우 목록 API 계약
+- [Interest](domains/interest/README.md): 관심 분야 분류체계(버전·해시) 저장과 canonical 해시 규칙
+- [Interest API](domains/interest/api.md): 선택 가능한 관심 분야 목록 조회 API 계약
 - [Post](domains/post/README.md): Creator Space 게시글 공개 범위, 이미지 업로드 기록 상태와 정리 규칙
 - [Post API](domains/post/api.md): 게시글 작성·수정·삭제, 이미지 업로드, 공개 조회 API 계약
 - [Post Comment API](domains/post/comment-api.md): 게시글 댓글 조회·작성·수정·삭제 API 계약
