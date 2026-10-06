@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.post.application.dto.CreatorPostCommentOriginalView;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
 import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.domain.PostErrorCode;
@@ -57,7 +58,31 @@ public class CreatorPostCommentService {
                 ? Map.of()
                 : memberRepository.findAllById(comments.map(CreatorPostComment::getMemberId).toSet()).stream()
                         .collect(Collectors.toMap(Member::getMemberId, Member::getName));
-        return comments.map(comment -> toView(comment, creator, authorNames.get(comment.getMemberId())));
+        return comments.map(comment ->
+                toView(comment, creator, authorNames.get(comment.getMemberId()), viewerMemberId));
+    }
+
+    /**
+     * 필터링(BLOCK)된 댓글의 원문. 게시글을 볼 수 있는 사람이면 누구나 요청할 수 있다. 개인정보 규칙으로 막힌 댓글은
+     * {@code COMMENT_NOT_REVEALABLE}(403)이다. 필터링되지 않았거나 조회자가 작성자 본인이면 필터링된 댓글로 보이지
+     * 않으므로 404다.
+     *
+     * @param viewerMemberId 비로그인이면 null
+     */
+    @Transactional(readOnly = true)
+    public CreatorPostCommentOriginalView findOriginal(
+            Long creatorId, Long postId, Long commentId, Long viewerMemberId) {
+        Creator creator = accessPolicy.requireCreator(creatorId);
+        accessPolicy.requireViewablePost(creator, postId, viewerMemberId);
+
+        CreatorPostComment comment = commentRepository.findById(commentId)
+                .filter(found -> found.belongsTo(postId))
+                .filter(found -> found.isBlocked() && !found.isWrittenBy(viewerMemberId))
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (comment.isBlockedForPrivacy()) {
+            throw new BusinessException(PostErrorCode.COMMENT_NOT_REVEALABLE);
+        }
+        return new CreatorPostCommentOriginalView(comment.getCommentId(), comment.getContent());
     }
 
     public CreatorPostCommentView create(Long memberId, Long creatorId, Long postId, String content) {
@@ -69,7 +94,7 @@ public class CreatorPostCommentService {
         CreatorPostComment comment = commentRepository.save(
                 new CreatorPostComment(postId, memberId, validate(content), clock.instant()));
         eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
-        return toView(comment, creator, author.getName());
+        return toView(comment, creator, author.getName(), memberId);
     }
 
     public CreatorPostCommentView update(
@@ -85,7 +110,7 @@ public class CreatorPostCommentService {
 
         comment.update(validate(content), clock.instant());
         eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
-        return toView(comment, creator, author.getName());
+        return toView(comment, creator, author.getName(), memberId);
     }
 
     /** 팔로우와 공개 범위를 보지 않는다. 팔로우를 끊은 작성자도 자기 댓글은 지울 수 있어야 하기 때문이다. */
@@ -127,14 +152,24 @@ public class CreatorPostCommentService {
         return content;
     }
 
-    private CreatorPostCommentView toView(CreatorPostComment comment, Creator creator, String authorName) {
+    /**
+     * 필터링(BLOCK)된 댓글은 작성자 본인이 아닌 조회자에게 원문을 빼고 내려준다. 작성자 본인에게는 필터링 여부를 알리지
+     * 않고 원문을 그대로 보여준다. 판정 사유는 응답에 담지 않는다.
+     *
+     * @param viewerMemberId 비로그인이면 null
+     */
+    private CreatorPostCommentView toView(
+            CreatorPostComment comment, Creator creator, String authorName, Long viewerMemberId) {
+        boolean filtered = comment.isBlocked() && !comment.isWrittenBy(viewerMemberId);
         return new CreatorPostCommentView(
                 comment.getCommentId(),
                 comment.getPostId(),
                 comment.getMemberId(),
                 authorName,
                 creator.getMemberId().equals(comment.getMemberId()),
-                comment.getContent(),
+                filtered ? null : comment.getContent(),
+                filtered,
+                filtered && !comment.isBlockedForPrivacy(),
                 comment.getCreatedAt(),
                 comment.getUpdatedAt());
     }

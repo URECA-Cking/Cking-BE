@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -25,6 +26,7 @@ public class CreatorPostComment {
 
     public static final int MAX_CONTENT_LENGTH = 500;
     public static final int MAX_FILTER_REASONS_LENGTH = 500;
+    private static final String PRIVACY_REASON_PREFIX = "privacy:";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -119,6 +121,17 @@ public class CreatorPostComment {
         this.filterRuleVersion = null;
         this.filterModelVersion = null;
         this.filteredAt = null;
+    }
+
+    /** 필터 판정을 마쳤고 BLOCK인 댓글이다. 판정 전·실패·PASS인 댓글은 false다. */
+    public boolean isBlocked() {
+        return filterStatus == CommentFilterStatus.DONE && filterAction == CommentFilterAction.BLOCK;
+    }
+
+    /** BLOCK 사유에 개인정보 규칙(privacy:*)이 있다. 이런 댓글은 누구에게도 원문을 보여주지 않는다. */
+    public boolean isBlockedForPrivacy() {
+        return isBlocked() && filterReasons != null
+                && Arrays.stream(filterReasons.split(",")).anyMatch(reason -> reason.startsWith(PRIVACY_REASON_PREFIX));
     }
 
     public boolean isWrittenBy(Long memberId) {

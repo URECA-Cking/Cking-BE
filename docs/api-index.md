@@ -131,5 +131,6 @@
 | 128 | 외부 | 관심 분야 | USER | PUT | `/api/me/interests` | 내 관심 분야 전체 교체 저장(0~3개) | 전체 교체(멱등) |
 | 129 | 외부 | 관심 분야 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/interests/{interestCode}/recommendations` | LLM 관심 분야별 추천 후보 묶음 검증·원자 교체 | `taxonomyVersion + interestCode + inputHash` |
 | 130 | 외부 | Auth | PUBLIC | POST | `/api/auth/admin/login` | 관리자 ID/PW를 기존 Access JWT·Refresh Cookie로 교환 | - |
+| 131 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original` | 필터링된 게시글 댓글 원문 조회(작성자 본인·개인정보 차단 댓글 제외) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

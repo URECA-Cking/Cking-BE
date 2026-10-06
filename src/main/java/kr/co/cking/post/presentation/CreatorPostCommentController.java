@@ -10,6 +10,7 @@ import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.post.application.CreatorPostCommentService;
+import kr.co.cking.post.presentation.dto.CreatorPostCommentOriginalResponse;
 import kr.co.cking.post.presentation.dto.CreatorPostCommentRequest;
 import kr.co.cking.post.presentation.dto.CreatorPostCommentResponse;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,23 @@ public class CreatorPostCommentController {
         return ApiResponse.success(PageResponse.from(
                 commentService.findByPost(creatorId, postId, memberId, PageRequest.of(page, size))
                         .map(CreatorPostCommentResponse::from)));
+    }
+
+    @Operation(
+            summary = "필터링된 게시글 댓글 원문 조회",
+            description = "필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려줍니다. 게시글을 볼 수 있는 사람이면 누구나 "
+                    + "조회할 수 있으며, 개인정보로 막힌 댓글은 403(COMMENT_NOT_REVEALABLE)입니다. 필터링되지 않은 댓글과 "
+                    + "작성자 본인의 댓글은 404입니다."
+    )
+    @GetMapping("/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original")
+    public ApiResponse<CreatorPostCommentOriginalResponse> findOriginal(
+            @CurrentMemberId(required = false) Long memberId,
+            @PathVariable @Positive Long creatorId,
+            @PathVariable @Positive Long postId,
+            @PathVariable @Positive Long commentId
+    ) {
+        return ApiResponse.success(CreatorPostCommentOriginalResponse.from(
+                commentService.findOriginal(creatorId, postId, commentId, memberId)));
     }
 
     @Operation(
