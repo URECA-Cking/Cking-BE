@@ -129,9 +129,19 @@ Evidence는 request body, token, authorization header, 개인정보를 담지 �
   "policyVersion":"ABUSE_V1",
   "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","balanceScope":{"type":"CREATOR","creatorId":10}},
   "window":{"windowMs":10000},
-  "features":{"duplicateMissionFailureCount":8,"distinctRequestIdCountPerBusinessKey":6},
-  "thresholds":{"duplicateMissionFailureCount":5,"distinctRequestIdCountPerBusinessKey":3},
-  "signals":["REQUEST_ID_ROTATION"], "matchedRules":["RULE-01"]
+  "features":{"duplicateMissionFailureCount":8},
+  "thresholds":{"duplicateMissionFailureCount":5},
+  "signals":["REQUEST_ID_ROTATION"],
+  "matchedRules":["RULE-01"],
+  "supportingEvidence":{
+    "RULE-01":[{
+      "signal":"REQUEST_ID_ROTATION",
+      "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","balanceScope":{"type":"CREATOR","creatorId":10}},
+      "window":{"windowMs":30000},
+      "features":{"distinctRequestIdCountPerBusinessKey":6},
+      "thresholds":{"distinctRequestIdCountPerBusinessKey":3}
+    }]
+  }
 }
 ```
 
