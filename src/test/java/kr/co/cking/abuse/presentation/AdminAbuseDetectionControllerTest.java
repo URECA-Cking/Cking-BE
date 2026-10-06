@@ -6,20 +6,24 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
 import java.util.List;
 import kr.co.cking.abuse.application.AdminAbuseDetectionQueryService;
+import kr.co.cking.abuse.application.AdminAbuseDetectionReviewService;
 import kr.co.cking.abuse.application.model.AbuseDetectionSearchCondition;
 import kr.co.cking.abuse.domain.AbuseDetection;
 import kr.co.cking.abuse.domain.AbuseDetectionStatus;
+import kr.co.cking.abuse.domain.AbuseDetectionErrorCode;
 import kr.co.cking.abuse.domain.AbuseTestFixtures;
 import kr.co.cking.abuse.domain.AbuseType;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.WithMockJwt;
+import org.springframework.http.MediaType;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +43,9 @@ class AdminAbuseDetectionControllerTest {
 
     @MockitoBean
     private AdminAbuseDetectionQueryService adminAbuseDetectionQueryService;
+
+    @MockitoBean
+    private AdminAbuseDetectionReviewService adminAbuseDetectionReviewService;
 
     /** 목록 조회는 조건을 Service에 전달하고 식별자와 Evidence 요약만 공통 응답에 담는다. */
     @Test
@@ -112,5 +119,92 @@ class AdminAbuseDetectionControllerTest {
         mockMvc.perform(get("/api/admin/abuse-detections"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    /** 상세 조회는 전체 Evidence와 현재 검토 정보를 공통 응답으로 반환한다. */
+    @Test
+    void Detection_상세를_전체_Evidence와_함께_조회한다() throws Exception {
+        AbuseDetection detection = AbuseDetection.restore(
+                21L, 7L, AbuseType.FAILURE_BURST, AbuseDetectionStatus.CONFIRMED,
+                Instant.parse("2026-10-02T00:30:00Z"), Instant.parse("2026-10-02T01:00:00Z"), 1L,
+                AbuseTestFixtures.userEvidence());
+        given(adminAbuseDetectionQueryService.get(1L, 21L)).willReturn(detection);
+
+        mockMvc.perform(get("/api/admin/abuse-detections/21"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.detectionId").value(21))
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.reviewedAt").value("2026-10-02T01:00:00Z"))
+                .andExpect(jsonPath("$.data.reviewedBy").value(1))
+                .andExpect(jsonPath("$.data.evidence.policyVersion").value("ABUSE_V1"));
+    }
+
+    /** 상세 조회의 양수가 아닌 Detection ID는 Service 호출 전에 검증 오류로 거절한다. */
+    @Test
+    void Detection_상세의_잘못된_ID는_검증_오류다() throws Exception {
+        mockMvc.perform(get("/api/admin/abuse-detections/0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAbuseDetectionQueryService);
+    }
+
+    /** 존재하지 않는 Detection 상세 조회의 업무 예외는 공통 404 응답으로 변환한다. */
+    @Test
+    void 존재하지_않는_Detection_상세는_404다() throws Exception {
+        given(adminAbuseDetectionQueryService.get(1L, 21L))
+                .willThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(get("/api/admin/abuse-detections/21"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    /** 검토 요청은 종결 판정만 전달하고 갱신된 상세를 반환한다. */
+    @Test
+    void Detection을_검토하고_갱신된_상세를_반환한다() throws Exception {
+        AbuseDetection reviewed = AbuseDetection.restore(
+                21L, 7L, AbuseType.FAILURE_BURST, AbuseDetectionStatus.FALSE_POSITIVE,
+                Instant.parse("2026-10-02T00:30:00Z"), Instant.parse("2026-10-02T01:00:00Z"), 1L,
+                AbuseTestFixtures.userEvidence());
+        given(adminAbuseDetectionReviewService.review(
+                1L, 21L, kr.co.cking.abuse.domain.AbuseReviewDecision.FALSE_POSITIVE)).willReturn(reviewed);
+
+        mockMvc.perform(patch("/api/admin/abuse-detections/21/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"FALSE_POSITIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FALSE_POSITIVE"))
+                .andExpect(jsonPath("$.data.reviewedBy").value(1));
+    }
+
+    /** 검토 대상이 아닌 상태 값과 잘못된 경로 ID는 Service 호출 전에 검증 오류로 거절한다. */
+    @Test
+    void 잘못된_Detection_검토_요청은_검증_오류다() throws Exception {
+        mockMvc.perform(patch("/api/admin/abuse-detections/21/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DETECTED\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(patch("/api/admin/abuse-detections/0/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CONFIRMED\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 상반된 검토 요청의 상태 충돌은 도메인 오류 응답으로 반환한다. */
+    @Test
+    void 상반된_Detection_검토_요청은_상태_충돌이다() throws Exception {
+        given(adminAbuseDetectionReviewService.review(
+                1L, 21L, kr.co.cking.abuse.domain.AbuseReviewDecision.CONFIRMED))
+                .willThrow(new BusinessException(AbuseDetectionErrorCode.INVALID_STATE));
+
+        mockMvc.perform(patch("/api/admin/abuse-detections/21/review")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CONFIRMED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
     }
 }
