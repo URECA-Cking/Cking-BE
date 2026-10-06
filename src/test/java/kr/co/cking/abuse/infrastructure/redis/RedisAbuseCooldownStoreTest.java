@@ -90,6 +90,29 @@ class RedisAbuseCooldownStoreTest {
         assertThat(released).isFalse();
     }
 
+    /** Lua가 null을 반환하면 점유 실패로 숨기지 않고 Redis 이상으로 전파한다. */
+    @Test
+    void Lua가_null을_반환하면_정상_점유_실패로_숨기지_않는다() {
+        when(redisTemplate.execute(eq(acquireLuaScript), eq(List.of(key())), any(), eq("20")))
+                .thenReturn((Long) null);
+
+        assertThatThrownBy(() -> cooldownStore.tryAcquire(ABUSE_TYPE, SCOPE_HASH, TTL))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Cooldown 획득 Lua가 유효하지 않은 결과를 반환했습니다.");
+    }
+
+    /** Lua가 0·1 이외 값을 반환하면 Token 불일치로 숨기지 않고 Redis 이상으로 전파한다. */
+    @Test
+    void Lua가_예상_밖_값을_반환하면_정상_해제_실패로_숨기지_않는다() {
+        CooldownLease lease = new CooldownLease(ABUSE_TYPE, SCOPE_HASH, java.util.UUID.randomUUID());
+        when(redisTemplate.execute(eq(releaseLuaScript), eq(List.of(key())), eq(lease.token().toString())))
+                .thenReturn(2L);
+
+        assertThatThrownBy(() -> cooldownStore.release(lease))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Cooldown 해제 Lua가 유효하지 않은 결과를 반환했습니다.");
+    }
+
     /** SET EX에 전달할 수 없는 0·음수·소수 초 TTL은 Redis 호출 전에 거부한다. */
     @Test
     void 양의_정수_초가_아닌_TTL을_거부한다() {

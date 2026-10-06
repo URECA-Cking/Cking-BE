@@ -46,7 +46,7 @@ public class RedisAbuseCooldownStore implements AbuseCooldownStore {
                 List.of(AbuseRedisKeys.cooldown(abuseType, scopeHash)),
                 lease.token().toString(),
                 String.valueOf(ttlSeconds));
-        return acquired != null && acquired == 1L ? Optional.of(lease) : Optional.empty();
+        return successOrFailure(acquired, "획득") ? Optional.of(lease) : Optional.empty();
     }
 
     /** Lease의 UUID Token이 현재 Redis 값과 같을 때만 Cooldown key를 삭제한다. */
@@ -57,7 +57,15 @@ public class RedisAbuseCooldownStore implements AbuseCooldownStore {
                 releaseLuaScript,
                 List.of(AbuseRedisKeys.cooldown(lease.abuseType(), lease.scopeHash())),
                 lease.token().toString());
-        return released != null && released == 1L;
+        return successOrFailure(released, "해제");
+    }
+
+    /** Lua의 0·1 응답만 각각 점유 실패 또는 성공으로 해석하고 나머지는 Redis 이상으로 전파한다. */
+    private boolean successOrFailure(Long result, String operation) {
+        if (result == null || (result != 0L && result != 1L)) {
+            throw new IllegalStateException("Cooldown " + operation + " Lua가 유효하지 않은 결과를 반환했습니다.");
+        }
+        return result == 1L;
     }
 
     /** SET EX가 요구하는 양의 정수 초 TTL로 변환하고 소수 초 입력은 거부한다. */

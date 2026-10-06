@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -26,9 +27,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 @SpringBootTest
 class RedisAbuseCooldownStoreIntegrationTest {
 
-    private static final String KEY_PREFIX = "abuse:v1:cooldown:";
     private static final AbuseType ABUSE_TYPE = AbuseType.MISSION_REQUEST_BURST;
     private static final Duration TTL = Duration.ofSeconds(2);
+
+    private final Set<String> createdKeys = ConcurrentHashMap.newKeySet();
 
     @Autowired
     private AbuseCooldownStore cooldownStore;
@@ -36,12 +38,11 @@ class RedisAbuseCooldownStoreIntegrationTest {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
-    /** 테스트가 만든 Cooldown key만 삭제해 다음 테스트 실행과 격리한다. */
+    /** 각 테스트가 기록한 정확한 Cooldown key만 삭제해 다른 Redis 사용자를 보존한다. */
     @AfterEach
     void cleanUp() {
-        Set<String> keys = redisTemplate.keys(KEY_PREFIX + "*");
-        if (keys != null && !keys.isEmpty()) {
-            redisTemplate.delete(keys);
+        if (!createdKeys.isEmpty()) {
+            redisTemplate.delete(createdKeys);
         }
     }
 
@@ -49,6 +50,7 @@ class RedisAbuseCooldownStoreIntegrationTest {
     @Test
     void 동시_Cooldown_획득에서_최초_한_요청만_Lease를_획득한다() throws Exception {
         String scopeHash = scopeHash("concurrent");
+        trackKey(scopeHash);
         int requestCount = 32;
         CountDownLatch ready = new CountDownLatch(requestCount);
         CountDownLatch start = new CountDownLatch(1);
@@ -70,6 +72,7 @@ class RedisAbuseCooldownStoreIntegrationTest {
     @Test
     void 다른_Token으로는_Cooldown을_해제할_수_없다() {
         String scopeHash = scopeHash("token-mismatch");
+        trackKey(scopeHash);
         CooldownLease owner = cooldownStore.tryAcquire(ABUSE_TYPE, scopeHash, TTL).orElseThrow();
         CooldownLease stranger = new CooldownLease(ABUSE_TYPE, scopeHash, java.util.UUID.randomUUID());
 
@@ -82,15 +85,18 @@ class RedisAbuseCooldownStoreIntegrationTest {
     @Test
     void TTL_만료_후에는_Cooldown을_다시_획득한다() throws InterruptedException {
         String scopeHash = scopeHash("expiration");
+        String key = trackKey(scopeHash);
         CooldownLease first = cooldownStore.tryAcquire(ABUSE_TYPE, scopeHash, Duration.ofSeconds(1)).orElseThrow();
 
-        assertThat(redisTemplate.opsForValue().get(AbuseRedisKeys.cooldown(ABUSE_TYPE, scopeHash)))
-                .isEqualTo(first.token().toString());
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo(first.token().toString());
         Thread.sleep(1_100L);
 
         Optional<CooldownLease> reacquired = cooldownStore.tryAcquire(ABUSE_TYPE, scopeHash, TTL);
         assertThat(reacquired).isPresent();
-        assertThat(reacquired.orElseThrow().token()).isNotEqualTo(first.token());
+        CooldownLease next = reacquired.orElseThrow();
+        assertThat(next.token()).isNotEqualTo(first.token());
+        assertThat(cooldownStore.release(first)).isFalse();
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo(next.token().toString());
     }
 
     /** 동시 시작 신호 뒤 같은 Cooldown key 획득을 시도한다. */
@@ -116,5 +122,12 @@ class RedisAbuseCooldownStoreIntegrationTest {
     /** 테스트별 독립 Redis key를 만들기 위해 canonical scope를 hash로 변환한다. */
     private String scopeHash(String suffix) {
         return AbuseScopeHash.fromCanonicalValue("USER:COOLDOWN-TEST:" + suffix);
+    }
+
+    /** 테스트에서 접근할 scope의 실제 Cooldown key를 기록하고 반환한다. */
+    private String trackKey(String scopeHash) {
+        String key = AbuseRedisKeys.cooldown(ABUSE_TYPE, scopeHash);
+        createdKeys.add(key);
+        return key;
     }
 }
