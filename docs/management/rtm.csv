@@ -288,6 +288,6 @@ FR-AI-024,AI,키 헤더가 있으면 키 인증만 수행하고 빈 값·무효 
 FR-AI-025,AI,JWT 적재는 Security 1차 인가 후 Application에서 ADMIN을 재검증한다,성집,Creator 추천,RecommendationWriteAuthorizer가 DB 역할 확인(팀 인증 규칙 유지),확정,완료,No
 FR-AI-026,AI,추천 결과 교체 서비스는 인증 방식과 회원 ID에 의존하지 않는다,성집,Creator 추천,CreatorSimilarityResultService.replace(creatorId 와 command),확정,완료,No
 FR-AI-027,AI,API Key는 해시로 설정하고 상수 시간으로 비교하며 복수 키로 교체할 수 있다,성집,Creator 추천,cking.recommendation.api-key-hashes(SHA-256 hex 목록),확정,완료,No
-FR-AI-013,AI,17개 관심 분야 분류체계(v0.2)를 버전·해시와 함께 등록한다,성집,Creator 추천,interest_taxonomy·interest_category(V41) 구조 완료 / 17개 시드는 LLM categories_v2.csv 병합 후 별도 마이그레이션,확정,진행 중,No
-FR-AI-014,AI,저장된 분류 행으로 계산한 taxonomyHash가 LLM fixture와 일치한다,성집,Creator 추천,InterestTaxonomyHash(Python 별도 구현으로 검증) 완료 / LLM fixture 대조는 병합 후,확정,진행 중,No
+FR-AI-013,AI,17개 관심 분야 분류체계(v0.2)를 버전·해시와 함께 등록한다,성집,Creator 추천,interest_taxonomy·interest_category(V41)와 v0.2 시드 17개(V42) 및 해시 일치 검증,확정,완료,No
+FR-AI-014,AI,저장된 분류 행으로 계산한 taxonomyHash가 LLM fixture와 일치한다,성집,Creator 추천,InterestTaxonomyHash가 LLM 공통 fixture(b6bef4f)의 canonical JSON 바이트·SHA-256과 일치,확정,완료,No
 FR-AI-015,AI,선택 가능한 관심 분야 목록을 조회한다,성집,Creator 추천,GET /api/interests 활성 분류체계의 활성 분야를 displayOrder 순으로 반환 / 응답 형식은 FE 협의 후 확정,확정,완료,No

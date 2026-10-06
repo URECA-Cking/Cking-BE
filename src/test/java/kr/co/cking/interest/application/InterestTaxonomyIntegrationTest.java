@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.UUID;
 import kr.co.cking.interest.application.dto.SelectableInterests;
@@ -122,6 +124,20 @@ class InterestTaxonomyIntegrationTest {
         // 같은 트랜잭션의 1차 캐시를 비워 DB 값을 다시 읽게 한다.
         entityManager.clear();
         assertThat(verifier.matchesRegisteredHash(version)).isFalse();
+    }
+
+    @Test
+    void v02_시드는_17개_분야이고_LLM_fixture_해시와_일치한다() throws Exception {
+        InterestTaxonomy seeded = taxonomyRepository.findById("v0.2").orElseThrow();
+
+        assertThat(seeded.isActive()).isTrue();
+        assertThat(seeded.getTaxonomyHash()).isEqualTo(
+                Files.readString(Path.of("src/test/resources/fixtures/taxonomy/v02.sha256.txt")).strip());
+        assertThat(categoryRepository.findAllByTaxonomyVersion("v0.2")).hasSize(17)
+                .extracting(InterestCategory::getDisplayOrder).containsExactly(
+                        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17);
+        // 시드 행에서 다시 계산한 해시가 등록된 해시와 같다(= Python 정본과 같은 canonical JSON).
+        assertThat(verifier.matchesRegisteredHash("v0.2")).isTrue();
     }
 
     @Test

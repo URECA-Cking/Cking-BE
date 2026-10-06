@@ -12,7 +12,7 @@
 
 ## 소유 데이터
 
-`interest_taxonomy`, `interest_category` (V41).
+`interest_taxonomy`, `interest_category` (V41), `v0.2` 시드 17개 분야 (V42).
 
 | 테이블 | 핵심 제약 |
 | --- | --- |
@@ -25,7 +25,7 @@
 - 등록한 버전의 해시와 분야 행(이름·설명·노출 순서)은 수정하지 않는다. 내용이 바뀌면 새 버전을 등록한다.
 - 활성 분류체계는 최대 1개다. 활성이 없으면 목록은 비어 있고 `taxonomyVersion`은 `null`이다.
 - 서버가 정하는 선택 상한은 3개(`InterestPolicy.MAX_SELECTION`)이며 0개도 허용한다.
-- 분류체계의 정본은 Cking-LLM의 분류 CSV(`categories_v2.csv`, 17개 상위 분야, `taxonomyVersion v0.2`)다. 17개 시드는 LLM 파일이 병합된 뒤 별도 마이그레이션으로 넣는다.
+- 분류체계의 정본은 Cking-LLM-Benchmark의 `data/categories_v2.csv`(17개 상위 분야, `taxonomyVersion v0.2`)다. V42가 그 행을 `display_order`(CSV 행 순서)와 함께 시드하고, 해시는 LLM 계약 fixture의 `f77df7a0…8b35`다. 분류 내용이 바뀌면 시드를 고치지 않고 새 버전을 등록한다.
 
 ## taxonomyHash 규칙
 
@@ -39,8 +39,10 @@ Cking-LLM(Python)과 같은 값이 나와야 하므로 아래 순서를 그대�
 5. JSON 문자열은 `"`·`\`·0x20 미만 제어문자만 이스케이프하고 한글은 이스케이프하지 않는다(Python `json.dumps(ensure_ascii=False, separators=(",", ":"))`와 같다).
 6. BOM·끝 줄바꿈 없는 UTF-8 바이트의 SHA-256을 소문자 hex로 낸다.
 
-`active`는 해시에 포함하지 않으며, 비활성 분야도 해시 대상이다. 단위 테스트의 기대 해시는 같은 규칙을 별도로 구현한 Python으로
-계산했다(한글·앞뒤 공백·탭·CRLF·NFC·이스케이프·NBSP 사례). Cking-LLM이 제공하는 fixture가 병합되면 같은 사례를 대조한다.
+`active`는 해시에 포함하지 않으며, 비활성 분야도 해시 대상이다. 두 언어의 일치는 Cking-LLM-Benchmark의 공통 fixture(`tests/fixtures/taxonomy/`, 커밋 `b6bef4f`)를
+`src/test/resources/fixtures/taxonomy/`에 그대로 복사해 canonical JSON 바이트와 SHA-256으로 검증한다
+(`InterestTaxonomyHashFixtureTest`). fixture는 CRLF·CR을 보존해야 하므로 `.gitattributes`에서 `-text`로 고정한다.
+그 밖의 단위 테스트 기대 해시는 같은 규칙을 별도로 구현한 Python으로 계산했다.
 
 기대 해시를 다시 만들려면 아래 Python을 쓴다(Cking-LLM의 해시 함수와 같은 규칙이다).
 
