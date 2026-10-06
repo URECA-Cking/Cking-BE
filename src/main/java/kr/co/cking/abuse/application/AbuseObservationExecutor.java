@@ -8,11 +8,9 @@ import kr.co.cking.abuse.config.AbuseProperties;
 import kr.co.cking.abuse.domain.AbuseObservationEvent;
 import kr.co.cking.abuse.domain.DetectionResult;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 /** 원 업무 결과가 확정된 뒤 Abuse 평가·저장 오류를 격리하는 Observation 경계다. */
 @Slf4j
-@Component
 public final class AbuseObservationExecutor {
 
     private final AbuseProperties properties;
