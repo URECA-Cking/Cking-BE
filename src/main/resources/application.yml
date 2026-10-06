@@ -27,10 +27,22 @@ spring:
       max-request-size: 6MB
 
 management:
+  server:
+    # 관리 포트는 호스트에 열지 않는다. 별도 웹 서버라 서비스 포트가 과부하여도 지표가 응답한다.
+    port: 8081
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
+      group:
+        # ALB 헬스체크가 쓰는 /readyz. 앱 상태와 함께 DB·Redis 연결까지 확인한다.
+        readiness:
+          include: readinessState,db,redis
   info:
     env:
       enabled: true
