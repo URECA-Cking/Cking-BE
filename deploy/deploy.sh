@@ -30,6 +30,12 @@ for name in DB_HOST DB_USERNAME DB_PASSWORD DOCS_USERNAME DOCS_PASSWORD \
   export "$name=$value"
 done
 
+# 선택 값: 추천 적재 배치 API Key 해시. 아직 등록 전이면 빈 값으로 두고 키 인증만 비활성화한 채 배포를 계속한다.
+# (네트워크·권한 오류도 빈 값이 되므로 키 인증이 전부 401이면 이 파라미터부터 확인한다.)
+export CKING_RECOMMENDATION_API_KEY_HASHES=$(aws ssm get-parameter --region "$REGION" \
+  --name "${PARAM_PATH}CKING_RECOMMENDATION_API_KEY_HASHES" \
+  --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || true)
+
 export IMAGE_TAG="$TAG"
 
 echo "[3/4] 이미지 pull 및 기동: $IMAGE_TAG"
