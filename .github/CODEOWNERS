@@ -1,0 +1,5 @@
+/.github/                @rmsckd1640
+/deploy/                 @rmsckd1640
+/docker-compose.dev.yml  @rmsckd1640
+/Dockerfile              @rmsckd1640
+/k6/smoke.js             @rmsckd1640
