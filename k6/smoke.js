@@ -15,7 +15,6 @@ export const options = {
 };
 
 export default function () {
-  health();
   version();
   eventList();
   authRequired();
@@ -26,20 +25,12 @@ export default function () {
   oauthLogin('kakao', 'kauth.kakao.com');
 }
 
-function health() {
-  const res = http.get(`${BASE_URL}/actuator/health`, { tags: { name: 'health' } });
-  check(res, {
-    'health 200': (r) => r.status === 200,
-    'health UP': (r) => r.json('status') === 'UP',
-  });
-}
-
 function version() {
-  const res = http.get(`${BASE_URL}/actuator/info`, { tags: { name: 'info' } });
-  check(res, { 'info 200': (r) => r.status === 200 });
-  if (EXPECTED_IMAGE_TAG) {
-    check(res, { '배포한 이미지 태그': (r) => r.json('image.tag') === EXPECTED_IMAGE_TAG });
+  if (!EXPECTED_IMAGE_TAG) {
+    return;
   }
+  const res = http.get(`${BASE_URL}/api/events?page=0&size=1`, { tags: { name: 'version' } });
+  check(res, { '배포한 이미지 태그': (r) => r.headers['X-Image-Tag'] === EXPECTED_IMAGE_TAG });
 }
 
 function eventList() {
