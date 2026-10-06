@@ -41,3 +41,19 @@ Cking-LLM(Python)과 같은 값이 나와야 하므로 아래 순서를 그대�
 
 `active`는 해시에 포함하지 않으며, 비활성 분야도 해시 대상이다. 단위 테스트의 기대 해시는 같은 규칙을 별도로 구현한 Python으로
 계산했다(한글·앞뒤 공백·탭·CRLF·NFC·이스케이프·NBSP 사례). Cking-LLM이 제공하는 fixture가 병합되면 같은 사례를 대조한다.
+
+기대 해시를 다시 만들려면 아래 Python을 쓴다(Cking-LLM의 해시 함수와 같은 규칙이다).
+
+```python
+import csv, hashlib, json, unicodedata
+
+def norm(v):
+    v = v.replace("\r\n", "\n").replace("\r", "\n").strip(" \t\n")
+    return unicodedata.normalize("NFC", v)
+
+def taxonomy_hash(path):  # code,name,description 헤더의 UTF-8 CSV
+    rows = csv.DictReader(open(path, encoding="utf-8-sig", newline=""))
+    payload = {"categories": [{k: norm(r[k]) for k in ("code", "name", "description")} for r in rows]}
+    text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+```
