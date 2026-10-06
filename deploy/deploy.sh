@@ -10,7 +10,7 @@ REGION="ap-northeast-2"
 BUCKET="dev-cking-deploy-551372961758"
 PARAM_PATH="/cking/dev/"
 APP_DIR="/opt/cking"
-HEALTH_URL="http://localhost:8080/actuator/health"
+HEALTH_URL="http://localhost:8080/readyz"
 HEALTH_TIMEOUT=90   # 초. 수동 배포 때 기동에 30초 안팎 걸렸고, RDS 연결 지연을 감안해 3배로 둔다.
 
 cd "$APP_DIR"

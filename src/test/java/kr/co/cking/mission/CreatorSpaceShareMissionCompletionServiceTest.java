@@ -30,7 +30,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+
+import kr.co.cking.abuse.application.MissionAbuseObserver;
+import kr.co.cking.abuse.application.MissionObservationContext;
 
 class CreatorSpaceShareMissionCompletionServiceTest {
 
@@ -42,11 +46,12 @@ class CreatorSpaceShareMissionCompletionServiceTest {
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final MissionRepository missionRepository = mock(MissionRepository.class);
     private final TicketOnceEarnService ticketOnceEarnService = mock(TicketOnceEarnService.class);
+    private final MissionAbuseObserver abuseObserver = mock(MissionAbuseObserver.class);
 
     /** 고정 시각을 적용한 공유 미션 완료 서비스를 만든다. */
     private CreatorSpaceShareMissionCompletionService serviceWith(Clock clock) {
         return new CreatorSpaceShareMissionCompletionService(
-                memberRepository, creatorRepository, missionRepository, ticketOnceEarnService, clock);
+                memberRepository, creatorRepository, missionRepository, ticketOnceEarnService, clock, abuseObserver);
     }
 
     /** 공유 대상 Creator에 속한 기본 SHARE 미션을 만든다. */
@@ -79,6 +84,11 @@ class CreatorSpaceShareMissionCompletionServiceTest {
                 .complete(CREATOR_ID, new MissionCompleteCommand(MEMBER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        var observation = org.mockito.ArgumentCaptor.forClass(MissionObservationContext.class);
+        verify(abuseObserver).observeSuccess(observation.capture(),
+                org.mockito.ArgumentMatchers.eq(EarnResultCode.EARN_ACCEPTED));
+        assertThat(observation.getValue().creatorType()).isEqualTo(MissionType.SHARE);
+        assertThat(observation.getValue().missionId()).isEqualTo(MISSION_ID);
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
         verify(ticketOnceEarnService).earn(captor.capture());
         assertThat(captor.getValue())
@@ -144,6 +154,7 @@ class CreatorSpaceShareMissionCompletionServiceTest {
 
         verify(ticketOnceEarnService, never()).findExisting(any());
         verify(ticketOnceEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
     }
 
     /** 대상 Creator에게 SHARE 미션이 없으면 보상을 지급하지 않는다. */
@@ -175,6 +186,8 @@ class CreatorSpaceShareMissionCompletionServiceTest {
                 .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
 
         verify(ticketOnceEarnService, never()).earn(any());
+        verify(abuseObserver).observeFailure(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(MissionErrorCode.MISSION_INACTIVE));
     }
 
     /** 같은 requestId에 다른 공유 요청이 감지되면 EARN 조회 결과를 충돌 오류로 변환한다. */

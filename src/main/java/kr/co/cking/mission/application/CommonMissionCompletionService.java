@@ -1,5 +1,7 @@
 package kr.co.cking.mission.application;
 
+import kr.co.cking.abuse.application.MissionAbuseObserver;
+import kr.co.cking.abuse.application.MissionObservationContext;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.repository.MemberRepository;
@@ -43,6 +45,7 @@ public class CommonMissionCompletionService {
     private final MissionCompletionRepository creatorCompletionRepository;
     private final CommonTicketEarnService commonTicketEarnService;
     private final Clock clock;
+    private final MissionAbuseObserver abuseObserver;
 
     public MissionCompleteOutcome complete(Long missionId, MissionCompleteCommand command) {
         memberRepository.findById(command.userId())
@@ -52,6 +55,26 @@ public class CommonMissionCompletionService {
                 .orElseThrow(() -> new BusinessException(MissionErrorCode.MISSION_NOT_FOUND));
 
         Instant now = clock.instant();
+        MissionObservationContext observation = MissionObservationContext.common(
+                command.userId(), missionId, command.requestId(), now, mission.getType());
+        MissionCompleteOutcome outcome;
+        try {
+            outcome = completeValidated(missionId, command, mission, now);
+        } catch (BusinessException exception) {
+            abuseObserver.observeFailure(observation, exception.getErrorCode());
+            throw exception;
+        } catch (RuntimeException exception) {
+            abuseObserver.observeUnexpectedFailure(observation);
+            throw exception;
+        }
+        abuseObserver.observeSuccess(observation, outcome.code());
+        return outcome;
+    }
+
+    /** 검증된 공용 미션의 기존 EARN·replay 계약을 수행한다. */
+    private MissionCompleteOutcome completeValidated(
+            Long missionId, MissionCompleteCommand command, CommonMission mission, Instant now
+    ) {
         String periodKey = periodKeyOf(now);
         CommonEarnCommand earnCommand = new CommonEarnCommand(
                 command.requestId(),

@@ -19,6 +19,10 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 
 일반 완료 API가 신규 완료를 지원하는 `LIKE`는, 미션 종료 전에 성공했던 `requestId`가 재전송되면 활성 검증보다 먼저 `TicketEarnService#findExisting()`으로 기존 요청을 조회한다. 기존 성공 기록이 있으면 `MISSION_INACTIVE`가 아니라 원래의 EARN 결과를 반환해야 한다(FR-P1-018 멱등 재요청 계약). 레거시 Creator `ATTENDANCE`도 기존 성공 `requestId` replay만 허용하며 신규 완료는 공용 출석 경로로 전환한다. `YOUTUBE_SUBSCRIPTION`은 EARN replay 조회보다 먼저 별도 인증 경계로 차단한다. 자세한 순서는 [api.md](api.md#종료-후-동일-requestid-재시도)를 참고한다.
 
+## Abuse Observation 경계
+
+Creator LIKE·Creator SHARE·공용 ATTENDANCE는 Member와 대상 Mission 등 리소스 확인 후 EARN 기간 기준 시각을 `requestedAt`으로 고정하고, 최종 EARN 결과 또는 업무 예외가 확정된 뒤 `observedAt`을 기록한다. 각 결과는 원 응답·예외를 유지한 채 Abuse 모듈에 관찰용 scalar context로 전달한다. LIKE·공용 ATTENDANCE의 Abuse DAILY Business Key는 EARN 기간 시각의 UTC 날짜를, SHARE ONCE Key는 날짜 없는 값을 사용한다. 레거시 Creator ATTENDANCE, 구독 인증 및 리소스 확인 이전 오류는 관찰하지 않는다. Abuse 설정은 기본 비활성이고, 활성화 시 Detection 저장 Port가 없으면 기동을 거부한다. 탐지·저장 정책은 [Abuse 정본](../abuse-detection/README.md)을 따른다.
+
 ## 중복 방지 키의 레이어(임의 통합 금지)
 
 이름이 비슷한 키가 서로 다른 목적으로 여러 개 존재한다. RTM이 각각을 별도 레이어로 명시하고 있어(FR-P1-015 비고), 임의로 하나로 합치지 않는다.

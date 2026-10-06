@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 실제 Redis Cooldown과 MySQL 저장을 조합한 Detection Recorder 동시성 검증이다. */
 @SpringBootTest(properties = {
@@ -50,10 +52,23 @@ class DefaultAbuseDetectionRecorderIntegrationTest {
     private AbuseDetectionRecorder recorder;
 
     @Autowired
+    private AbuseObservationExecutor observationExecutor;
+
+    @Autowired
     private MemberRepository memberRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    /** 설정 Bean이 기본 Recorder를 주입해 Observation 실행 경계를 조립한다. */
+    @Test
+    void 설정이_DefaultRecorder를_주입한_ObservationExecutor를_조립한다() {
+        assertThat(observationExecutor).isNotNull();
+        assertThat(recorder).isInstanceOf(DefaultAbuseDetectionRecorder.class);
+    }
 
     /** 같은 Detection을 동시에 기록해도 하나의 Lease 소유자만 INSERT한다. */
     @Test
@@ -80,6 +95,26 @@ class DefaultAbuseDetectionRecorderIntegrationTest {
                 future.get(10, TimeUnit.SECONDS);
             }
         }
+
+        Integer storedCount = jdbcTemplate.queryForObject(
+                "select count(*) from abuse_detection where member_id = ?", Integer.class, member.getMemberId());
+        assertThat(storedCount).isEqualTo(1);
+    }
+
+    /** 호출자 Transaction이 롤백돼도 Recorder의 독립 Transaction 저장은 유지된다. */
+    @Test
+    void 호출자_트랜잭션이_롤백돼도_Detection은_저장된다() {
+        Member member = memberRepository.saveAndFlush(new Member("독립 Transaction 검증 회원", null, null, MemberRole.USER));
+        DetectionResult result = new DetectionResult(
+                AbuseType.MISSION_REQUEST_BURST,
+                AbuseScopeHash.fromCanonicalValue("USER:RECORDER-REQUIRES-NEW:" + member.getMemberId()),
+                Instant.parse("2026-10-06T00:00:00Z"),
+                AbuseTestFixtures.userEvidence());
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            recorder.record(member.getMemberId(), result);
+            status.setRollbackOnly();
+        });
 
         Integer storedCount = jdbcTemplate.queryForObject(
                 "select count(*) from abuse_detection where member_id = ?", Integer.class, member.getMemberId());
