@@ -49,6 +49,12 @@ local function recordWindow(key, member, windowMs)
     return count
 end
 
+-- 현재 요청을 기록하지 않고 Redis 실행 시각 기준으로 기존 window의 count만 반환한다.
+local function currentWindowCount(key, windowMs)
+    redis.call('ZREMRANGEBYSCORE', key, '-inf', observedAtEpochMs - windowMs)
+    return redis.call('ZCARD', key)
+end
+
 -- 마지막 관찰 시각이 window 밖이면 연속 횟수를 1로 다시 시작한다.
 local function recordSequence(key, windowMs)
     local previousObservedAt = tonumber(redis.call('HGET', key, 'lastObservedAtEpochMs'))
@@ -76,7 +82,7 @@ local function recordFailureType()
 end
 
 if resultClassification == 'REPLAY' or resultClassification == 'SYSTEM_FAILURE' then
-    return {zero, zero, zero, zero, zero, zero, zero, zero, zero, zero}
+    return {zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero}
 end
 
 local missionRequestCount = zero
@@ -86,6 +92,7 @@ local insufficientBalanceFailureCount = zero
 local insufficientBalanceConsecutiveCount = zero
 local distinctRequestIdCount = zero
 local rapidEarnSpendPairCount = zero
+local rapidEarnSpendPairCreated = zero
 local failureCount = zero
 local failureConsecutiveCount = zero
 local distinctFailureTypeCount = zero
@@ -95,6 +102,7 @@ if actionType == 'MISSION_COMPLETE' then
     distinctRequestIdCount = recordWindow(requestIdRotationKey, requestId, requestIdRotationWindowMs)
 else
     entryRequestCount = recordWindow(entryRequestKey, observationId, entryRequestWindowMs)
+    missionRequestCount = currentWindowCount(missionRequestKey, missionRequestWindowMs)
 end
 
 if resultClassification == 'NEW_SUCCESS' then
@@ -109,6 +117,7 @@ if resultClassification == 'NEW_SUCCESS' then
                 and observedAtEpochMs - lastEarnAt <= rapidEarnSpendMaxDelayMs then
             rapidEarnSpendPairCount = recordWindow(
                     rapidEarnSpendKey, observationId, rapidEarnSpendWindowMs)
+            rapidEarnSpendPairCreated = 1
             redis.call('DEL', lastEarnKey)
         end
     end
@@ -138,6 +147,7 @@ return {
     insufficientBalanceConsecutiveCount,
     distinctRequestIdCount,
     rapidEarnSpendPairCount,
+    rapidEarnSpendPairCreated,
     failureCount,
     failureConsecutiveCount,
     distinctFailureTypeCount

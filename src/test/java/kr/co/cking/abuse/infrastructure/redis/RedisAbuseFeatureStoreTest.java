@@ -89,7 +89,7 @@ class RedisAbuseFeatureStoreTest {
     /** Lua가 음수 metric을 반환하면 Rule Engine에 전달하지 않고 실패시킨다. */
     @Test
     void Lua가_음수_Metric을_반환하면_실패한다() {
-        stubLuaResult(List.of(-1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L));
+        stubLuaResult(List.of(-1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L));
 
         assertThatThrownBy(() -> featureStore.record(mission(), WINDOW_POLICY))
                 .isInstanceOf(IllegalStateException.class)
@@ -120,9 +120,9 @@ class RedisAbuseFeatureStoreTest {
                 .thenReturn(result);
     }
 
-    /** Lua의 10개 metric 순서를 만족하는 정상 Snapshot 값을 반환한다. */
+    /** Lua의 11개 metric 순서를 만족하는 정상 Snapshot 값을 반환한다. */
     private List<Long> validSnapshotValues() {
-        return List.of(0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L);
+        return List.of(0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L);
     }
 
     /** Creator Mission의 유효한 관찰 이벤트를 생성한다. */

@@ -87,6 +87,21 @@ class RedisAbuseFeatureStoreIntegrationTest {
         assertThat(second.valueOf(AbuseMetric.ENTRY_REQUEST_COUNT)).isEqualTo(2L);
     }
 
+    /** Entry는 Mission 요청을 추가하지 않고 Redis 실행 시각의 기존 Mission window count만 Snapshot에 담는다. */
+    @Test
+    void Entry는_기존_Mission_Burst를_조회만_하고_요청_수를_늘리지_않는다() {
+        record(mission("EARN_ACCEPTED", ResultClassification.NEW_SUCCESS, BASE_TIME));
+        Long missionRequestCountBeforeEntry = redisTemplate.opsForZSet()
+                .zCard(AbuseRedisKeys.missionRequest(USER_ID));
+
+        AbuseFeatureSnapshot entry = record(entry(
+                "SUCCESS", ResultClassification.NEW_SUCCESS, BASE_TIME.plusSeconds(1)));
+
+        assertThat(entry.valueOf(AbuseMetric.MISSION_REQUEST_COUNT)).isEqualTo(1L);
+        assertThat(redisTemplate.opsForZSet().zCard(AbuseRedisKeys.missionRequest(USER_ID)))
+                .isEqualTo(missionRequestCountBeforeEntry);
+    }
+
     /** 부족 잔액 실패는 해당 balance scope의 Window·연속 횟수와 사용자 실패 Feature를 함께 갱신한다. */
     @Test
     void 부족_잔액_실패는_범위별_연속_횟수와_실패_유형을_누적한다() {
@@ -118,7 +133,9 @@ class RedisAbuseFeatureStoreIntegrationTest {
                 "INSUFFICIENT_BALANCE", ResultClassification.BUSINESS_FAILURE, BASE_TIME.plusSeconds(4)));
 
         assertThat(spend.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT)).isEqualTo(1L);
+        assertThat(spend.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_CREATED)).isEqualTo(1L);
         assertThat(nextSpend.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT)).isZero();
+        assertThat(nextSpend.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_CREATED)).isZero();
         assertThat(insufficientAfterSuccess.valueOf(AbuseMetric.INSUFFICIENT_BALANCE_CONSECUTIVE_COUNT))
                 .isEqualTo(1L);
         assertThat(insufficientAfterSuccess.valueOf(AbuseMetric.FAILURE_CONSECUTIVE_COUNT)).isEqualTo(1L);
@@ -146,6 +163,20 @@ class RedisAbuseFeatureStoreIntegrationTest {
                 .isEqualTo(1L);
     }
 
+    /** 두 번째 rapid pair도 누적 수와 이번 Entry의 pair 생성 여부를 함께 반환하는지 검증한다. */
+    @Test
+    void 두번째_Rapid_Earn_Spend_Pair의_누적과_생성_여부를_Snapshot으로_반환한다() {
+        record(mission("EARN_ACCEPTED", ResultClassification.NEW_SUCCESS, BASE_TIME));
+        record(entry("SUCCESS", ResultClassification.NEW_SUCCESS, BASE_TIME.plusSeconds(1)));
+        record(mission("EARN_ACCEPTED", ResultClassification.NEW_SUCCESS, BASE_TIME.plusSeconds(2)));
+
+        AbuseFeatureSnapshot secondPair = record(entry(
+                "SUCCESS", ResultClassification.NEW_SUCCESS, BASE_TIME.plusSeconds(3)));
+
+        assertThat(secondPair.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT)).isEqualTo(2L);
+        assertThat(secondPair.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_CREATED)).isEqualTo(1L);
+    }
+
     /** max delay가 지난 EARN은 이후 성공 Entry와 rapid pair를 만들지 않는지 검증한다. */
     @Test
     void Rapid_Earn_Spend_Max_Delay를_초과하면_Pair를_만들지_않는다() throws InterruptedException {
@@ -159,6 +190,7 @@ class RedisAbuseFeatureStoreIntegrationTest {
                 "SUCCESS", ResultClassification.NEW_SUCCESS, BASE_TIME.plusSeconds(1)), shortRapidDelayPolicy);
 
         assertThat(delayedSpend.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT)).isZero();
+        assertThat(delayedSpend.valueOf(AbuseMetric.RAPID_EARN_SPEND_PAIR_CREATED)).isZero();
     }
 
     /** Replay와 system failure는 기존 Feature를 바꾸지 않고 0으로 채운 Snapshot만 반환하는지 검증한다. */

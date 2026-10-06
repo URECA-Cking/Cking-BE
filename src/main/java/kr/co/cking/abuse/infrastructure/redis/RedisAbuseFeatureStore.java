@@ -27,6 +27,7 @@ public class RedisAbuseFeatureStore implements AbuseFeatureStore {
             AbuseMetric.INSUFFICIENT_BALANCE_CONSECUTIVE_COUNT,
             AbuseMetric.DISTINCT_REQUEST_ID_COUNT,
             AbuseMetric.RAPID_EARN_SPEND_PAIR_COUNT,
+            AbuseMetric.RAPID_EARN_SPEND_PAIR_CREATED,
             AbuseMetric.FAILURE_COUNT,
             AbuseMetric.FAILURE_CONSECUTIVE_COUNT,
             AbuseMetric.DISTINCT_FAILURE_TYPE_COUNT);

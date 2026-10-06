@@ -9,6 +9,7 @@ public enum AbuseMetric {
     INSUFFICIENT_BALANCE_CONSECUTIVE_COUNT("insufficientBalanceConsecutiveCount"),
     DISTINCT_REQUEST_ID_COUNT("distinctRequestIdCountPerBusinessKey"),
     RAPID_EARN_SPEND_PAIR_COUNT("rapidEarnSpendPairCount"),
+    RAPID_EARN_SPEND_PAIR_CREATED("rapidEarnSpendPairCreated"),
     FAILURE_COUNT("failureCount"),
     FAILURE_CONSECUTIVE_COUNT("failureConsecutiveCount"),
     DISTINCT_FAILURE_TYPE_COUNT("distinctFailureTypeCount");
