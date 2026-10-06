@@ -101,10 +101,7 @@ class RedisAbuseFeatureStoreTest {
     @Test
     void Redis_연결_오류를_빈_Snapshot으로_숨기지_않는다() {
         RedisConnectionFailureException failure = new RedisConnectionFailureException("Redis 연결 오류");
-        when(redisTemplate.execute(
-                ArgumentMatchers.<DefaultRedisScript<List>>any(), ArgumentMatchers.<String>anyList(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenThrow(failure);
+        stubLuaFailure(failure);
 
         assertThatThrownBy(() -> featureStore.record(mission(), WINDOW_POLICY))
                 .isSameAs(failure);
@@ -114,13 +111,18 @@ class RedisAbuseFeatureStoreTest {
     @Test
     void FeatureStore_오류를_정상_Snapshot으로_숨기지_않는다() {
         RuntimeException failure = new RuntimeException("Feature Store Lua 오류");
+        stubLuaFailure(failure);
+
+        assertThatThrownBy(() -> featureStore.record(mission(), WINDOW_POLICY))
+                .isSameAs(failure);
+    }
+
+    /** Feature Store Lua 호출이 지정된 RuntimeException을 그대로 던지도록 공통 mock 동작을 등록한다. */
+    private void stubLuaFailure(RuntimeException failure) {
         when(redisTemplate.execute(
                 ArgumentMatchers.<DefaultRedisScript<List>>any(), ArgumentMatchers.<String>anyList(),
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(failure);
-
-        assertThatThrownBy(() -> featureStore.record(mission(), WINDOW_POLICY))
-                .isSameAs(failure);
     }
 
     /** Event Entry는 사용하지 않는 Mission business key에 SHA-256 hash를 적용하지 않고 더미 key를 전달한다. */

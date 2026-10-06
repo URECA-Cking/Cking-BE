@@ -1,6 +1,7 @@
 package kr.co.cking.abuse.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -34,7 +35,7 @@ class AbuseDetectionPersistenceAdapterFailureTest {
     void Detection_DB_저장_오류를_저장_성공으로_숨기지_않는다() {
         AbuseDetection detection = detection();
         DataAccessResourceFailureException failure = new DataAccessResourceFailureException("Detection DB 저장 오류");
-        when(jpaRepository.saveAndFlush(org.mockito.ArgumentMatchers.any(AbuseDetectionJpaEntity.class)))
+        when(jpaRepository.saveAndFlush(any(AbuseDetectionJpaEntity.class)))
                 .thenThrow(failure);
 
         assertThatThrownBy(() -> adapter.save(detection))
@@ -47,12 +48,12 @@ class AbuseDetectionPersistenceAdapterFailureTest {
         AbuseDetectionSearchCondition condition = new AbuseDetectionSearchCondition(null, null, null, null, null);
         DataAccessResourceFailureException failure = new DataAccessResourceFailureException("관리자 Repository 오류");
         when(jpaRepository.search(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any()))
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()))
                 .thenThrow(failure);
 
         assertThatThrownBy(() -> adapter.search(condition, PageRequest.of(0, 20)))
