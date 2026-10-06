@@ -98,17 +98,47 @@ class AbuseDetectionPersistenceAdapterIntegrationTest {
                 Instant.parse("2026-10-01T00:02:00Z")));
 
         var result = adapter.search(
-                new AbuseDetectionSearchCondition(member.getMemberId(), null, AbuseDetectionStatus.DETECTED),
+                new AbuseDetectionSearchCondition(
+                        member.getMemberId(), null, AbuseDetectionStatus.DETECTED, null, null),
                 PageRequest.of(0, 10));
 
         assertThat(result.getContent())
                 .extracting(AbuseDetection::detectionId)
                 .containsExactly(newest.detectionId(), oldest.detectionId());
         assertThat(adapter.search(
-                new AbuseDetectionSearchCondition(member.getMemberId(), AbuseType.FAILURE_BURST, null),
+                new AbuseDetectionSearchCondition(
+                        member.getMemberId(), AbuseType.FAILURE_BURST, null, null, null),
                 PageRequest.of(0, 10)).getContent())
                 .extracting(AbuseDetection::detectionId)
                 .containsExactly(newest.detectionId());
+    }
+
+    /** 기간 양 끝을 포함해 회원·유형·상태 조건을 모두 만족하는 Detection만 최신순으로 반환한다. */
+    @Test
+    void 기간을_포함한_복합_조건으로_검색한다() {
+        Member member = saveMember("기간 검색 회원");
+        Member admin = saveMember("기간 검색 관리자");
+        Instant from = Instant.parse("2026-10-02T00:00:00Z");
+        Instant to = Instant.parse("2026-10-02T01:00:00Z");
+        adapter.save(detection(member.getMemberId(), AbuseType.FAILURE_BURST, from.minusSeconds(1)));
+        AbuseDetection firstAtBoundary = adapter.save(detection(
+                member.getMemberId(), AbuseType.FAILURE_BURST, from));
+        AbuseDetection secondAtBoundary = adapter.save(detection(
+                member.getMemberId(), AbuseType.FAILURE_BURST, from));
+        adapter.save(detection(member.getMemberId(), AbuseType.MISSION_REQUEST_BURST, to));
+        AbuseDetection reviewed = adapter.save(detection(member.getMemberId(), AbuseType.FAILURE_BURST, to));
+        adapter.reviewIfDetected(
+                reviewed.detectionId(), AbuseReviewDecision.CONFIRMED, admin.getMemberId(), to.plusSeconds(1));
+        adapter.save(detection(member.getMemberId(), AbuseType.FAILURE_BURST, to.plusSeconds(1)));
+        adapter.save(detection(saveMember("다른 기간 검색 회원").getMemberId(), AbuseType.FAILURE_BURST, from));
+
+        var result = adapter.search(new AbuseDetectionSearchCondition(
+                member.getMemberId(), AbuseType.FAILURE_BURST, AbuseDetectionStatus.DETECTED, from, to),
+                PageRequest.of(0, 10));
+
+        assertThat(result.getContent())
+                .extracting(AbuseDetection::detectionId)
+                .containsExactly(secondAtBoundary.detectionId(), firstAtBoundary.detectionId());
     }
 
     /** reviewIfDetected는 최초 전이만 성공시키고 같은·반대 판정의 재전이는 막는다. */

@@ -73,6 +73,8 @@ class AbuseDetectionPersistenceAdapter implements AbuseDetectionRepository {
                 condition.memberId(),
                 condition.abuseType(),
                 condition.status(),
+                condition.detectedAtFrom(),
+                condition.detectedAtTo(),
                 detectedAtDescending).map(this::toDomain);
     }
 
