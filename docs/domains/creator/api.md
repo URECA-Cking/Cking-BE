@@ -117,7 +117,7 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
 
 - 키는 추측할 수 없는 무작위 값(32바이트 이상)이어야 한다. 서버는 해시만 받으므로 강도를 검사할 수 없고, 키 인증 실패에 횟수 제한은 없다. 생성·해시 예: `KEY=$(openssl rand -hex 32)`, `printf %s "$KEY" | shasum -a 256`. 원문은 배치 Secret에만 두고 서버에는 해시만 등록한다.
 - 키 인증 실패는 키 값 없이 `메서드 경로 remote`만 WARN 로그로 남긴다.
-- 배포: dev 서버는 Parameter Store `/cking/dev/CKING_RECOMMENDATION_API_KEY_HASHES`를 `deploy.sh`가 읽어 컨테이너 환경변수로 전달한다(없으면 빈 값).
+- 배포: dev 서버는 Parameter Store `/cking/dev/CKING_RECOMMENDATION_API_KEY_HASHES`를 `deploy.sh`가 읽어 컨테이너 환경변수로 전달한다. 파라미터가 아직 없으면(`ParameterNotFound`) 빈 값으로 두고 키 인증만 비활성화한 채 배포하며, 권한·복호화·네트워크 오류 같은 다른 조회 실패는 배포를 실패시킨다.
 
 ```json
 {
