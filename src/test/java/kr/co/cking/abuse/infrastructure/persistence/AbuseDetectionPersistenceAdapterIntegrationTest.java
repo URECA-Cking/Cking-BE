@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import kr.co.cking.abuse.application.model.AbuseDetectionSearchCondition;
 import kr.co.cking.abuse.domain.AbuseCompositeRule;
 import kr.co.cking.abuse.domain.AbuseDetection;
@@ -196,6 +200,53 @@ class AbuseDetectionPersistenceAdapterIntegrationTest {
                     assertThat(found.reviewedBy()).isNull();
                     assertThat(found.reviewedAt()).isNull();
                 });
+    }
+
+    /** 두 관리자가 동시에 상반된 판정을 요청해도 조건부 UPDATE는 정확히 하나만 성공시킨다. */
+    @Test
+    void 동시_상반된_검토에서_정확히_하나의_종결_판정만_반영한다() throws Exception {
+        Member detectedMember = saveMember("동시 검토 탐지 대상");
+        Member firstAdmin = saveMember("동시 검토 관리자 하나");
+        Member secondAdmin = saveMember("동시 검토 관리자 둘");
+        AbuseDetection saved = adapter.save(detection(
+                detectedMember.getMemberId(), AbuseType.FAILURE_BURST,
+                Instant.parse("2026-10-01T00:00:00Z")));
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<Integer> confirmed = executor.submit(() -> reviewAfterStart(
+                    ready, start, saved.detectionId(), AbuseReviewDecision.CONFIRMED, firstAdmin.getMemberId()));
+            Future<Integer> falsePositive = executor.submit(() -> reviewAfterStart(
+                    ready, start, saved.detectionId(), AbuseReviewDecision.FALSE_POSITIVE, secondAdmin.getMemberId()));
+            ready.await();
+            start.countDown();
+
+            assertThat(confirmed.get() + falsePositive.get()).isOne();
+            assertThat(adapter.findById(saved.detectionId()))
+                    .hasValueSatisfying(found -> {
+                        assertThat(found.status()).isIn(
+                                AbuseDetectionStatus.CONFIRMED, AbuseDetectionStatus.FALSE_POSITIVE);
+                        assertThat(found.reviewedAt()).isNotNull();
+                        assertThat(found.reviewedBy()).isIn(firstAdmin.getMemberId(), secondAdmin.getMemberId());
+                    });
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    /** 두 테스트 작업이 같은 시점에 조건부 UPDATE를 시도하도록 시작 신호를 기다린다. */
+    private int reviewAfterStart(
+            CountDownLatch ready,
+            CountDownLatch start,
+            Long detectionId,
+            AbuseReviewDecision decision,
+            Long adminId
+    ) throws InterruptedException {
+        ready.countDown();
+        start.await();
+        return adapter.reviewIfDetected(detectionId, decision, adminId, Instant.parse("2026-10-01T00:02:00Z"));
     }
 
     /** FK를 만족하는 테스트 회원을 flush해 생성한다. */

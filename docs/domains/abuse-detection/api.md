@@ -47,6 +47,8 @@ Query는 선택 `memberId`(양수 Long), `abuseType`, `status`, `detectedAtFrom`
 
 Composite Rule을 충족한 상세 Evidence에는 `matchedRules` 외에 선택 필드 `supportingEvidence`가 포함된다. Rule 이름별 배열의 각 원소는 보조 `abuseType` 또는 `signal` 하나, 독립적인 `scope`, `window`, `features`, `thresholds`를 담는다. 예를 들어 `RULE-02`의 Rotation 근거는 Mission burst의 USER scope/window에 합치지 않고 Rotation의 BUSINESS_KEY scope/window로 반환한다. 기존 Detection처럼 보조 근거가 없는 JSON에는 이 필드가 없을 수 있다. 목록의 `evidenceSummary`에는 이 배열을 포함하지 않는다.
 
+존재하지 않는 Detection은 `RESOURCE_NOT_FOUND`다. `detectionId`가 0 이하이거나 형식이 올바르지 않으면 `VALIDATION_FAILED`다.
+
 ## PATCH /api/admin/abuse-detections/{detectionId}/review
 
 ```json
@@ -64,3 +66,5 @@ WHERE id = :detectionId AND status = 'DETECTED'
 ```
 
 영향 행이 1이면 변경된 상세를 반환한다. 0이면 현재 row를 다시 읽어 없는 경우 `RESOURCE_NOT_FOUND`, 이미 같은 결과인 경우 상태·검토자를 바꾸지 않는 멱등 반환, 반대 결과인 경우 `INVALID_STATE`로 처리한다. 따라서 동시에 서로 다른 판정을 요청하면 하나만 성공하고, 같은 판정의 동시 재요청은 하나가 전이한 뒤 나머지가 같은 결과를 반환한다. 관리자 업무 권한 부족은 `FORBIDDEN`이다.
+
+성공 응답은 상세 조회와 같은 전체 Evidence 구조를 반환하며, 최초 전이 때만 `reviewedAt`과 `reviewedBy`가 현재 UTC 시각과 인증된 ADMIN memberId로 기록된다. 이미 같은 판정이면 기존 두 값을 그대로 반환한다. `status` 누락·`DETECTED`·알 수 없는 값, 또는 `detectionId`가 0 이하인 요청은 `VALIDATION_FAILED`다.
