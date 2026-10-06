@@ -42,11 +42,12 @@ public final class AbuseDetection {
         this.reviewedBy = reviewedBy;
     }
 
-    public static AbuseDetection detected(Long memberId, DetectionResult result) {
+    /** Rule Engine이 확정한 결과에서 신규 DETECTED Aggregate를 생성한다. */
+    public static AbuseDetection detected(DetectionResult result) {
         Objects.requireNonNull(result, "result는 필수입니다.");
         return new AbuseDetection(
                 null,
-                memberId,
+                result.memberId(),
                 result.abuseType(),
                 AbuseDetectionStatus.DETECTED,
                 result.detectedAt(),

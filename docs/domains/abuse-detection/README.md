@@ -108,7 +108,7 @@ Redis Key에는 Business Key와 Cooldown Scope의 원문을 넣지 않는다. �
 
 `FailureBurstRuleEvaluator`는 현재 결과가 `BUSINESS_FAILURE`일 때만 판정한다. `INSUFFICIENT_BALANCE_BURST`는 Event Entry의 `INSUFFICIENT_BALANCE`에만 적용하며 `USER_BALANCE_SCOPE`별 count·연속 count를 비교한다. `FAILURE_BURST`는 Mission·Entry의 모든 업무 실패를 `USER` 범위에서 비교한다. 각 Evidence에는 충족 여부와 관계없이 두 count의 측정값·설정 임계치를 함께 보존하고, Failure Evidence에는 후속 `RULE-05`가 사용할 distinct failure type 측정값·임계치도 남긴다. Replay·시스템 실패·정상 성공은 이전 집계값이 높더라도 이 두 Rule의 새 후보를 만들지 않는다.
 
-`AbuseRuleEvaluator`는 활성 설정일 때 한 Observation에 `AbuseFeatureStore.record()`를 한 번 호출하고, 같은 Snapshot으로 요청 Burst → 업무 실패 Burst → 빠른 EARN-SPEND → Composite를 평가한다. Rotation은 Composite의 보조 Signal로만 사용한다. 각 기본 후보를 동일 `AbuseType` 중복 없이 `DetectionResult`로 변환하며 `detectedAt`은 Observation의 `observedAt`이다. `enabled=false`이면 Feature Store를 호출하지 않는다. Feature Store·Rule 오류를 빈 결과로 바꾸지 않으며, Cooldown·DB 저장과 원 업무 결과를 보호하는 Fail Open은 별도 호출 경계가 담당한다.
+`AbuseRuleEvaluator`는 활성 설정일 때 한 Observation에 `AbuseFeatureStore.record()`를 한 번 호출하고, 같은 Snapshot으로 요청 Burst → 업무 실패 Burst → 빠른 EARN-SPEND → Composite를 평가한다. Rotation은 Composite의 보조 Signal로만 사용한다. 각 기본 후보를 동일 `AbuseType` 중복 없이 `DetectionResult`로 변환하며 `memberId`와 `detectedAt`은 각각 Observation의 `userId`, `observedAt`이다. `enabled=false`이면 Feature Store를 호출하지 않는다. Feature Store·Rule 오류를 빈 결과로 바꾸지 않으며, Cooldown·DB 저장과 원 업무 결과를 보호하는 Fail Open은 별도 호출 경계가 담당한다.
 
 `AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `AbuseReviewDecision.CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. Repository Port도 상태 enum 대신 `AbuseReviewDecision`만 받아 `DETECTED → DETECTED`와 검토 정보 기록을 타입 수준에서 차단한다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
 
@@ -151,7 +151,9 @@ Evidence는 request body, token, authorization header, 개인정보를 담지 �
 
 Composite 보조 근거가 있는 경우에만 `supportingEvidence`를 추가한다. key는 `RULE-01`~`RULE-05`, 배열의 각 원소는 `abuseType` 또는 `signal` 하나와 독립적인 `scope`, `window`, `features`, `thresholds`를 가진다. primary Evidence와 다른 window의 값을 primary `features`에 합치지 않는다.
 
-Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. 독립 Transaction의 시작·flush·commit 오류까지 Observation 호출 경계에서 catch해 WARN/ERROR로 남기고, 원래 Mission/Entry 결과와 예외를 그대로 반환한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
+`AbuseDetectionRecorder.record(DetectionResult)`는 Rule Engine이 호출하는 저장 경계다. `DetectionResult`는 `memberId`, `abuseType`, `cooldownScopeHash`, `detectedAt`, 확정된 Evidence를 모두 가지며 Recorder는 Evidence를 새로 만들거나 수정하지 않는다. Recorder는 `AbuseProperties.cooldownTtl(abuseType)`으로 Lease 획득에 성공한 경우에만 `AbuseDetection`을 만들고 저장한다. 같은 Scope의 Lease가 있으면 INSERT를 생략하며, DB 저장 시작·flush·commit 실패 시에는 소유 Token 조건의 Cooldown 해제를 best-effort로 시도한다. 저장 성공 시 Lease는 TTL까지 유지한다.
+
+Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. 독립 Transaction의 시작·flush·commit 오류까지 Recorder가 catch해 ERROR로 남기고, 원래 Mission/Entry 결과와 예외를 그대로 반환한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
 
 ## 설정과 Calibration
 

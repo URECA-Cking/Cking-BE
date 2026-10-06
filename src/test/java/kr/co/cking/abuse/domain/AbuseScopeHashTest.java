@@ -50,6 +50,7 @@ class AbuseScopeHashTest {
         String scopeHash = AbuseScopeHash.fromCanonicalValue("USER:1");
 
         DetectionResult result = new DetectionResult(
+                1L,
                 AbuseType.MISSION_REQUEST_BURST,
                 scopeHash,
                 java.time.Instant.parse("2026-10-01T00:00:00Z"),

@@ -185,7 +185,8 @@ class AbuseDetectionPersistenceAdapterIntegrationTest {
                 Map.of(AbuseMetric.DUPLICATE_MISSION_FAILURE_COUNT, 5L),
                 Set.of(AbuseSignal.REQUEST_ID_ROTATION),
                 Set.of(AbuseCompositeRule.RULE_01));
-        return AbuseDetection.detected(memberId, new DetectionResult(
+        return AbuseDetection.detected(new DetectionResult(
+                memberId,
                 abuseType,
                 AbuseScopeHash.fromCanonicalValue("USER:" + memberId),
                 detectedAt,

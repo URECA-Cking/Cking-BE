@@ -54,11 +54,12 @@ public class AbuseRuleEvaluator {
         List<AbuseRuleMatch> failure = failureBurstRuleEvaluator.evaluate(observation, snapshot);
         List<AbuseRuleMatch> rapid = rapidEarnSpendRuleEvaluator.evaluate(observation, snapshot);
         return compositeRuleEvaluator.enrich(observation, snapshot, request, failure, rapid).stream()
-                .map(match -> new DetectionResult(match.abuseType(), cooldownScopeHash(observation, match.abuseType()),
-                        observation.observedAt(), match.evidence()))
+                .map(match -> new DetectionResult(observation.userId(), match.abuseType(),
+                        cooldownScopeHash(observation, match.abuseType()), observation.observedAt(), match.evidence()))
                 .toList();
     }
 
+    /** Detection 유형별 canonical scope를 해시해 Redis Cooldown key에 전달한다. */
     private String cooldownScopeHash(AbuseObservationEvent observation, AbuseType type) {
         String canonicalScope = switch (type) {
             case MISSION_REQUEST_BURST, FAILURE_BURST -> "USER:" + observation.userId();
