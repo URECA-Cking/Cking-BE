@@ -6,9 +6,6 @@ import kr.co.cking.creator.application.dto.CreatorSimilarityView;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.repository.CreatorRepository;
-import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
-import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
-import kr.co.cking.creator.repository.CreatorSimilarityStateRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -17,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -40,11 +38,9 @@ class CreatorSimilarityIntegrationTest {
 
     @Autowired CreatorSimilarityResultService resultService;
     @Autowired CreatorSimilarityQueryService queryService;
-    @Autowired CreatorSimilarityCandidateRepository candidateRepository;
-    @Autowired CreatorSimilarityStateRepository stateRepository;
-    @Autowired CreatorSimilarityGenerationRepository generationRepository;
     @Autowired CreatorRepository creatorRepository;
     @Autowired MemberRepository memberRepository;
+    @Autowired JdbcTemplate jdbcTemplate;
 
     private final List<Member> members = new ArrayList<>();
     private final List<Creator> creators = new ArrayList<>();
@@ -61,9 +57,7 @@ class CreatorSimilarityIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        stateRepository.deleteAll();
-        candidateRepository.deleteAll();
-        generationRepository.deleteAll();
+        new SimilarityTestCleaner(jdbcTemplate).delete(members, creators);
         creatorRepository.deleteAll(creators);
         memberRepository.deleteAll(members);
     }
@@ -81,7 +75,7 @@ class CreatorSimilarityIntegrationTest {
         assertThat(first.applied()).isTrue();
         assertThat(replay.applied()).isFalse();
         assertThat(replay.generationId()).isEqualTo(first.generationId());
-        assertThat(generationRepository.count()).isEqualTo(1);
+        assertThat(cleaner().generationCount(source.getCreatorId())).isEqualTo(1);
         assertThat(queryService.findSimilar(source.getCreatorId(), 5).candidates())
                 .extracting(CreatorSimilarityView.Candidate::similarCreatorId)
                 .containsExactly(firstCandidate.getCreatorId());
@@ -90,7 +84,7 @@ class CreatorSimilarityIntegrationTest {
                 source.getCreatorId(), command(SECOND_HASH, secondCandidate, "0.95000000"));
 
         assertThat(second.applied()).isTrue();
-        assertThat(generationRepository.count()).isEqualTo(2);
+        assertThat(cleaner().generationCount(source.getCreatorId())).isEqualTo(2);
         assertThat(queryService.findSimilar(source.getCreatorId(), 5).candidates())
                 .extracting(CreatorSimilarityView.Candidate::similarCreatorId)
                 .containsExactly(secondCandidate.getCreatorId());
@@ -127,8 +121,8 @@ class CreatorSimilarityIntegrationTest {
                     .containsExactlyInAnyOrder(true, false);
             assertThat(results).extracting(CreatorSimilarityResultService.StoreResult::generationId)
                     .containsOnly(results.getFirst().generationId());
-            assertThat(generationRepository.count()).isEqualTo(1);
-            assertThat(candidateRepository.count()).isEqualTo(1);
+            assertThat(cleaner().generationCount(source.getCreatorId())).isEqualTo(1);
+            assertThat(cleaner().candidateCount(source.getCreatorId())).isEqualTo(1);
         } finally {
             executor.shutdownNow();
         }
@@ -157,8 +151,12 @@ class CreatorSimilarityIntegrationTest {
         assertThat(view.modelVersion()).isEqualTo("model-v2");
         assertThat(view.inputHash()).isEqualTo(SECOND_HASH);
         assertThat(view.candidates()).isEmpty();
-        assertThat(generationRepository.count()).isEqualTo(2);
-        assertThat(candidateRepository.count()).isEqualTo(1);
+        assertThat(cleaner().generationCount(source.getCreatorId())).isEqualTo(2);
+        assertThat(cleaner().candidateCount(source.getCreatorId())).isEqualTo(1);
+    }
+
+    private SimilarityTestCleaner cleaner() {
+        return new SimilarityTestCleaner(jdbcTemplate);
     }
 
     private CreatorSimilarityResultCommand command(String hash, Creator candidate, String score) {

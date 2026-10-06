@@ -13,7 +13,6 @@ import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityStateRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.follow.application.CreatorFollowService;
-import kr.co.cking.follow.repository.CreatorFollowRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -21,6 +20,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,7 +36,7 @@ class CreatorRecommendationIntegrationTest {
 
     @Autowired CreatorRecommendationQueryService recommendationQueryService;
     @Autowired CreatorFollowService followService;
-    @Autowired CreatorFollowRepository followRepository;
+    @Autowired JdbcTemplate jdbcTemplate;
     @Autowired CreatorRepository creatorRepository;
     @Autowired CreatorSpaceRepository spaceRepository;
     @Autowired CreatorSimilarityGenerationRepository generationRepository;
@@ -50,10 +50,7 @@ class CreatorRecommendationIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        followRepository.deleteAll();
-        stateRepository.deleteAll();
-        candidateRepository.deleteAll();
-        generationRepository.deleteAll();
+        new SimilarityTestCleaner(jdbcTemplate).delete(members, creators);
         spaceRepository.deleteAll(spaces);
         creatorRepository.deleteAll(creators);
         memberRepository.deleteAll(members);
