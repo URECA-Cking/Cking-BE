@@ -8,8 +8,10 @@ import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
 import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.domain.PostErrorCode;
+import kr.co.cking.post.filter.CommentFilterRequestedEvent;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,7 @@ public class CreatorPostCommentService {
     private final CreatorPostCommentRepository commentRepository;
     private final MemberRepository memberRepository;
     private final Clock clock;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** @param viewerMemberId 비로그인이면 null */
     @Transactional(readOnly = true)
@@ -65,6 +68,7 @@ public class CreatorPostCommentService {
 
         CreatorPostComment comment = commentRepository.save(
                 new CreatorPostComment(postId, memberId, validate(content), clock.instant()));
+        eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
         return toView(comment, creator, author.getName());
     }
 
@@ -80,6 +84,7 @@ public class CreatorPostCommentService {
         requireCanComment(creator, memberId);
 
         comment.update(validate(content), clock.instant());
+        eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
         return toView(comment, creator, author.getName());
     }
 

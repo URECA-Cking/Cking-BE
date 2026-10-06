@@ -15,6 +15,7 @@ import kr.co.cking.post.repository.CreatorPostRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -58,7 +59,8 @@ class CreatorPostCommentServiceTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorPostCommentService service = new CreatorPostCommentService(
             new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
-            commentRepository, memberRepository, Clock.fixed(LATER, ZoneOffset.UTC));
+            commentRepository, memberRepository, Clock.fixed(LATER, ZoneOffset.UTC),
+            mock(ApplicationEventPublisher.class));
 
     @BeforeEach
     void setUp() {
