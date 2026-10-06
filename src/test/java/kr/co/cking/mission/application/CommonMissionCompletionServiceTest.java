@@ -28,10 +28,15 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+
+import kr.co.cking.abuse.application.MissionAbuseObserver;
+import kr.co.cking.abuse.application.MissionObservationContext;
 
 class CommonMissionCompletionServiceTest {
 
@@ -42,10 +47,12 @@ class CommonMissionCompletionServiceTest {
     private final CommonMissionRepository missionRepository = mock(CommonMissionRepository.class);
     private final MissionCompletionRepository creatorCompletionRepository = mock(MissionCompletionRepository.class);
     private final CommonTicketEarnService ticketEarnService = mock(CommonTicketEarnService.class);
+    private final MissionAbuseObserver abuseObserver = mock(MissionAbuseObserver.class);
 
     private CommonMissionCompletionService serviceWith(Clock clock) {
         return new CommonMissionCompletionService(
-                memberRepository, missionRepository, creatorCompletionRepository, ticketEarnService, clock);
+                memberRepository, missionRepository, creatorCompletionRepository, ticketEarnService, clock,
+                abuseObserver);
     }
 
     private CommonMission attendanceMission() {
@@ -73,6 +80,10 @@ class CommonMissionCompletionServiceTest {
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(outcome.rewardAmount()).isEqualTo(1);
+        var observation = org.mockito.ArgumentCaptor.forClass(MissionObservationContext.class);
+        verify(abuseObserver).observeSuccess(observation.capture(), eq(EarnResultCode.EARN_ACCEPTED));
+        assertThat(observation.getValue().commonType()).isEqualTo(CommonMissionType.ATTENDANCE);
+        assertThat(observation.getValue().creatorId()).isNull();
     }
 
     @Test
@@ -102,6 +113,7 @@ class CommonMissionCompletionServiceTest {
 
         verify(ticketEarnService, never()).findExisting(any());
         verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -115,6 +127,7 @@ class CommonMissionCompletionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -132,6 +145,7 @@ class CommonMissionCompletionServiceTest {
                 .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
 
         verify(ticketEarnService, never()).earn(any());
+        verify(abuseObserver).observeFailure(any(), eq(MissionErrorCode.MISSION_INACTIVE));
     }
 
     @Test
