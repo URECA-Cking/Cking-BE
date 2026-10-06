@@ -2,6 +2,8 @@ package kr.co.cking.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -47,14 +49,15 @@ class AdminAuthServiceTest {
         verify(adminPasswordHasher).matches("password", adminAccount.getPasswordHash());
     }
 
-    /** 존재하지 않는 로그인 ID도 자격 증명 오류로 통합하는지 검증한다. */
+    /** 존재하지 않는 로그인 ID도 더미 BCrypt 비교 뒤 자격 증명 오류로 통합하는지 검증한다. */
     @Test
     void 존재하지_않는_로그인ID는_자격증명_오류다() {
         when(adminAccountRepository.findByLoginId("missing")).thenReturn(Optional.empty());
 
         assertInvalidCredentials(() -> adminAuthService.authenticate("missing", "password"));
 
-        verifyNoInteractions(adminPasswordHasher, memberRepository);
+        verify(adminPasswordHasher).matches(eq("password"), anyString());
+        verifyNoInteractions(memberRepository);
     }
 
     /** 틀린 비밀번호도 자격 증명 오류로 통합하는지 검증한다. */
@@ -69,14 +72,16 @@ class AdminAuthServiceTest {
         verifyNoInteractions(memberRepository);
     }
 
-    /** 비활성 관리자 계정도 비밀번호 비교 없이 자격 증명 오류로 통합하는지 검증한다. */
+    /** 비활성 관리자 계정도 BCrypt 비교 뒤 자격 증명 오류로 통합하는지 검증한다. */
     @Test
     void 비활성_계정은_자격증명_오류다() {
-        when(adminAccountRepository.findByLoginId("admin")).thenReturn(Optional.of(adminAccount(17L, false)));
+        AdminAccount adminAccount = adminAccount(17L, false);
+        when(adminAccountRepository.findByLoginId("admin")).thenReturn(Optional.of(adminAccount));
 
         assertInvalidCredentials(() -> adminAuthService.authenticate("admin", "password"));
 
-        verifyNoInteractions(adminPasswordHasher, memberRepository);
+        verify(adminPasswordHasher).matches("password", adminAccount.getPasswordHash());
+        verifyNoInteractions(memberRepository);
     }
 
     /** 연결된 Member가 사라진 계정도 자격 증명 오류로 통합하는지 검증한다. */

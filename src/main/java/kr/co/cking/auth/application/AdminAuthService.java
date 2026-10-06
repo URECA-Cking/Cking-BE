@@ -16,16 +16,19 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AdminAuthService {
 
+    // 존재하지 않는 로그인 ID도 BCrypt 비용을 소모해 계정 존재 여부의 응답 시간 차이를 줄인다.
+    private static final String DUMMY_PASSWORD_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
     private final AdminAccountRepository adminAccountRepository;
     private final MemberRepository memberRepository;
     private final AdminPasswordHasher adminPasswordHasher;
 
     /** 로그인 ID와 비밀번호가 유효한 활성 관리자 계정의 Member ID를 반환한다. */
     public Long authenticate(String loginId, String password) {
-        AdminAccount adminAccount = adminAccountRepository.findByLoginId(loginId)
-                .orElseThrow(this::invalidCredentials);
-        if (!adminAccount.isActive()
-                || !adminPasswordHasher.matches(password, adminAccount.getPasswordHash())) {
+        AdminAccount adminAccount = adminAccountRepository.findByLoginId(loginId).orElse(null);
+        String passwordHash = adminAccount == null ? DUMMY_PASSWORD_HASH : adminAccount.getPasswordHash();
+        boolean passwordMatches = adminPasswordHasher.matches(password, passwordHash);
+        if (adminAccount == null || !adminAccount.isActive() || !passwordMatches) {
             throw invalidCredentials();
         }
 

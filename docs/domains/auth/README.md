@@ -84,6 +84,10 @@ Member(role=ADMIN) 1 : 1 AdminAccount(memberId, loginId, passwordHash)
 연결 Member 존재, `MemberRole.ADMIN` 순서로 확인한다. 존재하지 않는 ID, 틀린 비밀번호, 비활성 계정,
 연결 Member 부재와 USER Member 연결은 모두 `INVALID_ADMIN_CREDENTIALS`로 통합한다.
 
+존재하지 않는 ID도 고정 더미 BCrypt 해시를 비교하고, 비활성 계정도 저장된 BCrypt 해시를 비교한 뒤 같은
+오류를 반환한다. 이를 통해 계정 상태에 따른 비밀번호 해시 연산 비용 차이로 로그인 ID 존재 여부를 추정하기
+어렵게 한다.
+
 검증에 성공하면 연결된 `memberId`를 기존 `AccessTokenService`와 `RefreshTokenService`에 전달한다.
 따라서 별도의 관리자 JWT나 응답 형식을 만들지 않으며, Access JWT는 기존 형식의 `sub=memberId`,
 `role=ADMIN` Claim과 `TokenResponse`, Refresh Cookie를 그대로 사용한다. 이 경로도 만료된 Bearer 헤더를
