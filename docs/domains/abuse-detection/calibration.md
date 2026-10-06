@@ -3,7 +3,7 @@
 ## Calibration 입력과 판정
 
 - 정상군·비정상군 각 시나리오를 최소 3회, 매번 신규 격리 MySQL 스키마·Redis DB·fixture로 실행한다. 기존 측정 환경을 초기화하거나 재사용하지 않는다.
-- 각 실행은 k6 기대 응답을 모두 통과해야 한다. `analyze-normal-user.mjs` 및 `analyze-abnormal-user.mjs`의 JSON 결과와 고유 `runId`를 기록한다. 로그에 JWT나 실제 사용자 데이터를 남기지 않는다.
+- 각 실행은 k6 기대 응답을 모두 통과해야 한다. `analyze-normal-user.mjs` 및 `analyze-abnormal-user.mjs`의 JSON 결과와 고유 `runId`를 기록한다. 동일한 `logPath`를 다른 실행으로 중복 등록하지 않는다. 로그에 JWT나 실제 사용자 데이터를 남기지 않는다.
 - `k6/calibrate-abuse.mjs`는 여러 정상 실행의 Window별 최댓값 `normalMax`와 비정상 실행의 Window별 최솟값 `abuseMin`을 비교한다. `normalMax < abuseMin`인 가장 짧은 Window에 한해서 `normalMax + 1`을 후보로 출력한다. 모든 Window가 겹치면 후보는 `null`이다.
 - 이 출력은 `HTTP_ONLY_NOT_OPERATIONAL`이다. HTTP 완료 시각은 Redis Lua 실행 시각과 다르다. `rapidEarnSpendPair`는 `maxDelay`를 적용하지 않은 상한이다. 후보값을 곧바로 `cking.abuse.*` 운영 설정으로 사용하지 않는다.
 - 실제 적용 전에는 선택 Window에서 Redis Feature 및 저장된 Detection Evidence의 scope, window, count, threshold, matchedRules를 확인하고 정상군 오탐·비정상군 미탐 여부를 대조한다. `maxDelay`도 실제 Redis 시각 차이를 기준으로 별도 결정한다. 근거가 부족하거나 분리되지 않는 Rule은 비활성 상태를 유지하고 추가 측정한다.

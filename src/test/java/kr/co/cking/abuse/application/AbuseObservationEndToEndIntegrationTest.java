@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -172,6 +174,7 @@ class AbuseObservationEndToEndIntegrationTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(error -> ((BusinessException) error).getErrorCode())
                 .isEqualTo(EntryErrorCode.INSUFFICIENT_BALANCE);
+        verify(featureStore, atLeastOnce()).record(any(), any());
         assertThat(detections()).isEmpty();
     }
 
@@ -195,6 +198,7 @@ class AbuseObservationEndToEndIntegrationTest {
             assertThat(entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.COMMON)).code())
                     .isEqualTo(kr.co.cking.event.domain.EntryResultCode.SUCCESS);
         }
+        verify(detectionRepositorySpy, atLeastOnce()).save(any());
         assertThat(detections()).isEmpty();
     }
 

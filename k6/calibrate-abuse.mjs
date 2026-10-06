@@ -1,5 +1,6 @@
 // 정상·비정상 반복 실행의 HTTP 관찰값을 비교한다. 이 출력은 운영 설정이 아니다.
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { WINDOWS_MS, SCENARIOS, analyze as analyzeAbnormal,
   parseObservations as parseAbnormal } from './analyze-abnormal-user.mjs';
 import { analyze as analyzeNormal, latestCompleteRun,
@@ -61,6 +62,17 @@ export function calibrate(manifest) {
 }
 
 export function calibrateFromLogs(manifest) {
+  const allRuns = [...(manifest.normalRuns ?? []),
+    ...SCENARIOS.flatMap((scenario) => manifest.abnormalRuns?.[scenario] ?? [])];
+  const paths = allRuns.map((run) => {
+    if (typeof run.logPath !== 'string' || !run.logPath.trim()) {
+      throw new Error(`${run.runId ?? 'unknown'}: logPath가 필요합니다.`);
+    }
+    return resolve(run.logPath);
+  });
+  if (new Set(paths).size !== paths.length) {
+    throw new Error('동일한 logPath를 여러 독립 실행으로 등록할 수 없습니다.');
+  }
   const normalRuns = manifest.normalRuns?.map((run) => ({ runId: run.runId,
     result: analyzeNormal(latestCompleteRun(parseNormal(readFileSync(run.logPath, 'utf8')))) }));
   const abnormalRuns = Object.fromEntries(SCENARIOS.map((scenario) => [scenario,
