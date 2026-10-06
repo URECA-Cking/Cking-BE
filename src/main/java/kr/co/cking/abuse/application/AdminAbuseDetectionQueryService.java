@@ -3,6 +3,8 @@ package kr.co.cking.abuse.application;
 import kr.co.cking.abuse.application.model.AbuseDetectionSearchCondition;
 import kr.co.cking.abuse.application.port.AbuseDetectionRepository;
 import kr.co.cking.abuse.domain.AbuseDetection;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -28,5 +30,13 @@ public class AdminAbuseDetectionQueryService {
     ) {
         memberQueryService.validateAdmin(adminId);
         return abuseDetectionRepository.search(condition, PageRequest.of(page, size));
+    }
+
+    /** 관리자 업무 권한을 검증한 뒤 Detection 한 건의 전체 Evidence를 조회한다. */
+    @Transactional(readOnly = true)
+    public AbuseDetection get(Long adminId, Long detectionId) {
+        memberQueryService.validateAdmin(adminId);
+        return abuseDetectionRepository.findById(detectionId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 }
