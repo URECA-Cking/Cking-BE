@@ -45,6 +45,21 @@ class AccessTokenServiceTest {
         verify(accessTokenIssuer).issue(17L, MemberRole.USER);
     }
 
+    /** ADMIN Member도 역할을 바꾸지 않고 기존 JWT 발급 포트로 전달하는지 검증한다. */
+    @Test
+    void ADMIN_Member_정보로_AccessToken을_발급한다() {
+        Member member = new Member("관리자", null, "admin@example.com", MemberRole.ADMIN);
+        ReflectionTestUtils.setField(member, "memberId", 17L);
+        AccessTokenResult issuedToken = new AccessTokenResult("admin-signed-token", "Bearer", 1800);
+        when(memberRepository.findById(17L)).thenReturn(Optional.of(member));
+        when(accessTokenIssuer.issue(17L, MemberRole.ADMIN)).thenReturn(issuedToken);
+
+        AccessTokenResult response = accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS);
+
+        assertThat(response).isEqualTo(issuedToken);
+        verify(accessTokenIssuer).issue(17L, MemberRole.ADMIN);
+    }
+
     /** 소비된 Login Code의 Member가 없으면 유효하지 않은 Login Code로 처리하는지 검증한다. */
     @Test
     void 존재하지_않는_Member의_LoginCode는_유효하지_않다() {

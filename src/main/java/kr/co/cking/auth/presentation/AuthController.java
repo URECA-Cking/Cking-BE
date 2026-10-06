@@ -3,6 +3,7 @@ package kr.co.cking.auth.presentation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import kr.co.cking.auth.application.AdminAuthService;
 import kr.co.cking.auth.application.AccessTokenService;
 import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
@@ -23,9 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @Slf4j
 @RequiredArgsConstructor
-@Tag(name = "Auth", description = "OAuth Login Code 교환, Access JWT 갱신 및 Logout API")
+@Tag(name = "Auth", description = "OAuth Login Code 교환, 관리자 로그인, Access JWT 갱신 및 Logout API")
 public class AuthController {
 
+    private final AdminAuthService adminAuthService;
     private final LoginCodeService loginCodeService;
     private final AccessTokenService accessTokenService;
     private final RefreshTokenService refreshTokenService;
@@ -45,6 +47,26 @@ public class AuthController {
         String refreshToken = refreshTokenService.issue(memberId);
         try {
             return tokenResponse(memberId, refreshToken, AuthErrorCode.INVALID_LOGIN_CODE);
+        } catch (RuntimeException exception) {
+            // 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기해 고아 key를 남기지 않는다.
+            revokeUnsentRefreshToken(refreshToken, exception);
+            throw exception;
+        }
+    }
+
+    /** 관리자 ID/PW를 검증하고 기존 Access JWT와 Refresh Cookie를 함께 발급한다. */
+    @Operation(
+            summary = "관리자 로그인",
+            description = "활성 관리자 계정의 ID/PW를 검증해 기존 Bearer Access JWT와 14일 Refresh Cookie를 발급합니다."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "관리자 Access JWT와 Refresh Cookie 발급 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "관리자 ID/PW 또는 연결된 관리자 Member가 유효하지 않음")
+    @PostMapping("/api/auth/admin/login")
+    public ResponseEntity<ApiResponse<TokenResponse>> loginAdmin(@Valid @RequestBody AdminLoginRequest request) {
+        Long memberId = adminAuthService.authenticate(request.loginId(), request.password());
+        String refreshToken = refreshTokenService.issue(memberId);
+        try {
+            return tokenResponse(memberId, refreshToken, AuthErrorCode.INVALID_ADMIN_CREDENTIALS);
         } catch (RuntimeException exception) {
             // 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기해 고아 key를 남기지 않는다.
             revokeUnsentRefreshToken(refreshToken, exception);

@@ -2,6 +2,7 @@ package kr.co.cking.common.config;
 
 import java.time.Instant;
 import kr.co.cking.auth.application.AccessTokenService;
+import kr.co.cking.auth.application.AdminAuthService;
 import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
 import kr.co.cking.auth.application.dto.AccessTokenResult;
@@ -82,6 +83,9 @@ class SecurityConfigTest {
 
     @MockitoBean
     private CreatorQueryService creatorQueryService;
+
+    @MockitoBean
+    private AdminAuthService adminAuthService;
 
     @MockitoBean
     private LoginCodeService loginCodeService;
@@ -201,6 +205,26 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
 
         verify(loginCodeService).consume("one-time-code");
+    }
+
+    /** 만료된 Access JWT가 자동 첨부되어도 관리자 ID/PW 로그인을 차단하지 않는다. */
+    @Test
+    void 만료된_Access_JWT와_관리자_자격증명으로_로그인한다() throws Exception {
+        when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
+        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+                .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
+        when(refreshTokenCookieFactory.create("refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"admin\",\"password\":\"password\"}")
+                        .header(AUTHORIZATION, "Bearer " + expiredAccessToken()))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+
+        verify(adminAuthService).authenticate("admin", "password");
     }
 
     /** 만료된 Access JWT가 자동 첨부되어도 Refresh Cookie 인증 흐름을 차단하지 않는다. */
