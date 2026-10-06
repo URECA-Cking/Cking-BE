@@ -68,9 +68,9 @@ Member(role=ADMIN) 1 : 1 AdminAccount(memberId, loginId, passwordHash)
 - `admin_account.member_id`와 `login_id`는 각각 UNIQUE이며, `member_id`는 Member FK다.
 - `password_hash`에는 BCrypt 해시만 저장한다. 원문 비밀번호는 Java·Flyway SQL에 두지 않고, 개발·시연
   환경에서만 환경변수로 받는다.
-- `local`, `dev` 프로필은 `cking.auth.admin-seed.enabled=true`일 때 `loginId`가 없는 경우에만
-  ADMIN Member와 계정을 함께 만든다. `ADMIN_ACCOUNT_LOGIN_ID`의 기본값은 `admin`이며,
-  `ADMIN_ACCOUNT_PASSWORD` 누락 시 시딩을 실패시킨다.
+- `local`, `dev` 프로필은 기본적으로 시딩을 비활성화하며, `cking.auth.admin-seed.enabled=true`일 때
+  `loginId`가 없는 경우에만 ADMIN Member와 계정을 함께 만든다. `ADMIN_ACCOUNT_LOGIN_ID`의 기본값은
+  `admin`이며, 새 계정을 만들 때만 `ADMIN_ACCOUNT_PASSWORD` 누락 시 시딩을 실패시킨다.
 - 이 모델은 후속 관리자 로그인 API의 신원 확인용이다. 기존 OAuth와 `frontend-callback-url` 흐름은 바꾸지 않는다.
 
 ### OAuth 프로필 name 정규화

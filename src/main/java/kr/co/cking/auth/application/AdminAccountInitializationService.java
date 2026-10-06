@@ -22,10 +22,12 @@ public class AdminAccountInitializationService {
     /** 로그인 ID가 없을 때만 ADMIN Member와 BCrypt 자격 증명 계정을 함께 생성한다. */
     @Transactional
     public void initialize(String loginId, String rawPassword) {
-        validateSeedCredentials(loginId, rawPassword);
+        validateLoginId(loginId);
         if (adminAccountRepository.existsByLoginId(loginId)) {
             return;
         }
+
+        validateRawPassword(rawPassword);
 
         Member adminMember = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         adminAccountRepository.save(new AdminAccount(
@@ -35,11 +37,15 @@ public class AdminAccountInitializationService {
         ));
     }
 
-    /** 초기 계정 설정이 비어 있어 비밀번호 없는 관리자가 만들어지는 일을 막는다. */
-    private void validateSeedCredentials(String loginId, String rawPassword) {
+    /** 비어 있는 로그인 ID로 관리자 계정 존재 여부를 조회하거나 생성하지 않도록 막는다. */
+    private void validateLoginId(String loginId) {
         if (loginId == null || loginId.isBlank()) {
             throw new IllegalStateException("관리자 초기 로그인 ID를 설정해야 합니다.");
         }
+    }
+
+    /** 새 관리자 계정을 만들 때 비밀번호 없는 자격 증명이 저장되지 않도록 막는다. */
+    private void validateRawPassword(String rawPassword) {
         if (rawPassword == null || rawPassword.isBlank()) {
             throw new IllegalStateException("관리자 초기 비밀번호를 환경변수로 설정해야 합니다.");
         }

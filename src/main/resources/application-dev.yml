@@ -31,8 +31,8 @@ cking:
       secret: ${JWT_SECRET}
     refresh-cookie-secure: true
     admin-seed:
-      # 시연 관리자 비밀번호는 배포 환경변수로만 주입한다. 누락 시 기동을 실패시켜 계정 없는 시연을 막는다.
-      enabled: ${ADMIN_ACCOUNT_SEED_ENABLED:true}
+      # SSM·배포 파이프라인 준비 전에는 비활성화한다. 준비 후 환경변수로 명시적으로 켠다.
+      enabled: ${ADMIN_ACCOUNT_SEED_ENABLED:false}
       login-id: ${ADMIN_ACCOUNT_LOGIN_ID:admin}
       password: ${ADMIN_ACCOUNT_PASSWORD:}
   storage:
