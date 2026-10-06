@@ -35,7 +35,8 @@ public class RecommendationApiKeyAuthenticationFilter extends OncePerRequestFilt
 
     /** API Key로 적재할 수 있는 엔드포인트. 인가 규칙과 이 필터가 같은 객체를 쓴다. 새 적재 API는 여기에만 추가한다. */
     public static final RequestMatcher WRITE_ENDPOINTS = new OrRequestMatcher(
-            PathPatternRequestMatcher.pathPattern(HttpMethod.PUT, "/api/admin/creators/*/similar"));
+            PathPatternRequestMatcher.pathPattern(HttpMethod.PUT, "/api/admin/creators/*/similar"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.PUT, "/api/admin/interests/*/recommendations"));
 
     private static final Logger log = LoggerFactory.getLogger(RecommendationApiKeyAuthenticationFilter.class);
     private static final int SHA_256_BYTES = 32;

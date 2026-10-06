@@ -27,6 +27,8 @@ import kr.co.cking.creator.application.CreatorSimilarityQueryService;
 import kr.co.cking.creator.application.CreatorSimilarityResultService;
 import kr.co.cking.creator.application.dto.CreatorSimilarityView;
 import kr.co.cking.creator.presentation.CreatorSimilarityController;
+import kr.co.cking.interest.application.InterestRecommendationResultService;
+import kr.co.cking.interest.presentation.InterestRecommendationController;
 import kr.co.cking.ticket.presentation.TicketAdminController;
 import kr.co.cking.ticket.application.TicketAdminService;
 import org.junit.jupiter.api.Test;
@@ -44,7 +46,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** 추천 적재 전용 API Key 인증이 적재 엔드포인트에서만, 계약한 우선순위로 동작하는지 검증한다. */
-@WebMvcTest(controllers = {CreatorSimilarityController.class, TicketAdminController.class})
+@WebMvcTest(controllers = {
+        CreatorSimilarityController.class, InterestRecommendationController.class, TicketAdminController.class})
 @Import({
         SecurityConfig.class,
         JwtConfig.class,
@@ -73,6 +76,7 @@ class RecommendationApiKeySecurityTest {
     @Autowired JwtEncoder jwtEncoder;
     @MockitoBean CreatorSimilarityResultService resultService;
     @MockitoBean CreatorSimilarityQueryService queryService;
+    @MockitoBean InterestRecommendationResultService interestResultService;
     @MockitoBean MemberRepository memberRepository;
     @MockitoBean TicketAdminService ticketAdminService;
     @MockitoBean OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
@@ -235,5 +239,40 @@ class RecommendationApiKeySecurityTest {
                 .build();
         return jwtEncoder.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+    }
+
+    @Test
+    void 관심_분야_추천_적재도_같은_키_규칙을_따른다() throws Exception {
+        given(interestResultService.replace(eq("SPORTS"), any())).willReturn(
+                new InterestRecommendationResultService.StoreResult("v0.2", "SPORTS", 100L, "a".repeat(64), 0, true));
+
+        mockMvc.perform(putInterest().header(KEY_HEADER, "current-batch-key"))
+                .andExpect(status().isOk());
+        mockMvc.perform(putInterest().header(KEY_HEADER, "wrong-key"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(putInterest().header(KEY_HEADER, "wrong-key")
+                        .header(AUTHORIZATION, "Bearer " + accessToken("ADMIN")))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(putInterest().header(AUTHORIZATION, "Bearer " + accessToken("USER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(putInterest())
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 관심_분야_추천_적재_경로의_다른_메서드에서는_키를_인증으로_인정하지_않는다() throws Exception {
+        mockMvc.perform(get("/api/admin/interests/SPORTS/recommendations").header(KEY_HEADER, "current-batch-key"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/admin/interests/SPORTS/recommendations").header(KEY_HEADER, "current-batch-key"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder putInterest() {
+        String hash = "a".repeat(64);
+        return put("/api/admin/interests/SPORTS/recommendations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"taxonomyVersion\":\"v0.2\",\"taxonomyHash\":\"" + hash + "\",\"interestCode\":\"SPORTS\","
+                        + "\"method\":\"INTEREST_M3_V1\",\"modelVersion\":\"m\",\"inputHash\":\"" + hash + "\","
+                        + "\"candidates\":[]}");
     }
 }
