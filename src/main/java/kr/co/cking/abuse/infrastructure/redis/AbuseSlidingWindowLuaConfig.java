@@ -27,4 +27,24 @@ public class AbuseSlidingWindowLuaConfig {
         script.setResultType(List.class);
         return script;
     }
+
+    /** UUID Token과 TTL을 SET NX EX로 기록해 Cooldown 소유권을 획득하는 Lua 스크립트를 제공한다. */
+    @Bean
+    public DefaultRedisScript<Long> abuseCooldownAcquireLuaScript() {
+        return script("scripts/abuse-cooldown-acquire.lua");
+    }
+
+    /** 저장된 UUID Token이 일치할 때만 Cooldown key를 삭제하는 Lua 스크립트를 제공한다. */
+    @Bean
+    public DefaultRedisScript<Long> abuseCooldownReleaseLuaScript() {
+        return script("scripts/abuse-cooldown-release.lua");
+    }
+
+    /** 숫자 결과를 반환하는 단일 key Lua 스크립트를 같은 방식으로 구성한다. */
+    private DefaultRedisScript<Long> script(String path) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource(path));
+        script.setResultType(Long.class);
+        return script;
+    }
 }
