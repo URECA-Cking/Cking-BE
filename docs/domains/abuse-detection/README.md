@@ -94,6 +94,8 @@ Redis는 실시간 feature와 cooldown만 보관하고 Observation이나 최종 
 
 Redis Key에는 Business Key와 Cooldown Scope의 원문을 넣지 않는다. 각 canonical value를 UTF-8 바이트로 인코딩한 뒤 SHA-256 digest의 lowercase hex(64자)로 변환한다. `AbuseScopeHash.fromCanonicalValue()`가 이 변환과 null·blank 차단의 단일 구현이며, Mission Business Key Hash와 DetectionResult의 Cooldown Scope Hash는 모두 이 계약을 사용한다. 같은 canonical value는 항상 같은 hash를, 서로 다른 canonical value는 서로 다른 hash를 사용한다.
 
+`DetectionResult.cooldownScopeHash`의 canonical 입력은 `MISSION_REQUEST_BURST`·`FAILURE_BURST`에 `USER:{userId}`, `DUPLICATE_MISSION_BURST`에 `BUSINESS_KEY:{businessKey}`, `ENTRY_REQUEST_BURST`에 `USER_EVENT:{userId}:{eventId}`, `INSUFFICIENT_BALANCE_BURST`·`RAPID_EARN_AND_SPEND`에 `USER_BALANCE_SCOPE:{userId}:{balanceScope}`를 사용한다. `balanceScope`는 `COMMON` 또는 `CREATOR:{creatorId}`다. Cooldown Redis key는 이 hash에 `AbuseType`을 별도 포함하므로 사용자 범위가 같아도 서로 다른 탐지 유형은 별개다. 원문 Business Key는 Redis key·로그에 남기지 않는다.
+
 `ticket-earn.lua`, `common-ticket-earn.lua`, `entry-spend.lua`는 수정하지 않는다. 이들은 멱등성·잔액·Stream의 기존 책임만 가지며 Abuse는 별도 script와 key 공간을 사용한다.
 
 ## 공통 Domain과 Port 계약
@@ -105,6 +107,8 @@ Redis Key에는 Business Key와 Cooldown Scope의 원문을 넣지 않는다. �
 기본 요청 Rule은 `AbuseFeatureSnapshot`과 활성 정책 임계치를 비교해 `AbuseRuleMatch` 후보를 반환한다. 후보에는 탐지 유형과 구조화된 Evidence를 담되 Cooldown scope hash와 DB 저장은 후속 Evaluator/Processor가 맡는다. `REQUEST_ID_ROTATION`은 Mission에서만 별도 `signalEvidence`로 반환하며 단독 Detection 후보를 만들지 않는다. Rotation Evidence는 자신의 Business Key scope, rotation window, distinct requestId 측정값·임계치를 보존한다. Burst Evidence의 primary window·scope에 Rotation 값을 합치지 않으며, 후속 Composite Rule이 별도 Signal 근거를 전달받아 처리한다.
 
 `FailureBurstRuleEvaluator`는 현재 결과가 `BUSINESS_FAILURE`일 때만 판정한다. `INSUFFICIENT_BALANCE_BURST`는 Event Entry의 `INSUFFICIENT_BALANCE`에만 적용하며 `USER_BALANCE_SCOPE`별 count·연속 count를 비교한다. `FAILURE_BURST`는 Mission·Entry의 모든 업무 실패를 `USER` 범위에서 비교한다. 각 Evidence에는 충족 여부와 관계없이 두 count의 측정값·설정 임계치를 함께 보존하고, Failure Evidence에는 후속 `RULE-05`가 사용할 distinct failure type 측정값·임계치도 남긴다. Replay·시스템 실패·정상 성공은 이전 집계값이 높더라도 이 두 Rule의 새 후보를 만들지 않는다.
+
+`AbuseRuleEvaluator`는 활성 설정일 때 한 Observation에 `AbuseFeatureStore.record()`를 한 번 호출하고, 같은 Snapshot으로 요청 Burst → 업무 실패 Burst → 빠른 EARN-SPEND → Composite를 평가한다. Rotation은 Composite의 보조 Signal로만 사용한다. 각 기본 후보를 동일 `AbuseType` 중복 없이 `DetectionResult`로 변환하며 `detectedAt`은 Observation의 `observedAt`이다. `enabled=false`이면 Feature Store를 호출하지 않는다. Feature Store·Rule 오류를 빈 결과로 바꾸지 않으며, Cooldown·DB 저장과 원 업무 결과를 보호하는 Fail Open은 별도 호출 경계가 담당한다.
 
 `AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `AbuseReviewDecision.CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. Repository Port도 상태 enum 대신 `AbuseReviewDecision`만 받아 `DETECTED → DETECTED`와 검토 정보 기록을 타입 수준에서 차단한다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
 
