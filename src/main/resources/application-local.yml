@@ -18,6 +18,11 @@ cking:
     refresh-cookie-secure: false
     jwt:
       secret: ${JWT_SECRET}
+    admin-seed:
+      # 평문 비밀번호는 로컬 환경변수에서만 받고, 명시적으로 켠 경우에만 초기화한다.
+      enabled: ${ADMIN_ACCOUNT_SEED_ENABLED:false}
+      login-id: ${ADMIN_ACCOUNT_LOGIN_ID:admin}
+      password: ${ADMIN_ACCOUNT_PASSWORD:}
   storage:
     type: s3
     bucket: cking-local-uploads

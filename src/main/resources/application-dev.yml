@@ -30,6 +30,11 @@ cking:
     jwt:
       secret: ${JWT_SECRET}
     refresh-cookie-secure: true
+    admin-seed:
+      # 시연 관리자 비밀번호는 배포 환경변수로만 주입한다. 누락 시 기동을 실패시켜 계정 없는 시연을 막는다.
+      enabled: ${ADMIN_ACCOUNT_SEED_ENABLED:true}
+      login-id: ${ADMIN_ACCOUNT_LOGIN_ID:admin}
+      password: ${ADMIN_ACCOUNT_PASSWORD:}
   storage:
     type: s3
     bucket: dev-cking-uploads-551372961758-ap-northeast-2-an
