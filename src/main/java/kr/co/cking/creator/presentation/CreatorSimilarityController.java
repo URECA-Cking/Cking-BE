@@ -7,12 +7,13 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
-import kr.co.cking.common.security.CurrentMemberId;
+import kr.co.cking.common.security.RecommendationWriteAuthorizer;
 import kr.co.cking.creator.application.CreatorSimilarityQueryService;
 import kr.co.cking.creator.application.CreatorSimilarityResultService;
 import kr.co.cking.creator.presentation.dto.CreatorSimilarityRequest;
 import kr.co.cking.creator.presentation.dto.CreatorSimilarityResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,19 +30,21 @@ public class CreatorSimilarityController {
 
     private final CreatorSimilarityResultService resultService;
     private final CreatorSimilarityQueryService queryService;
+    private final RecommendationWriteAuthorizer writeAuthorizer;
 
     @PutMapping("/api/admin/creators/{creatorId}/similar")
     @Operation(
             summary = "유사 추천 결과 교체",
-            description = "ADMIN이 Cking-LLM의 완결된 후보 묶음을 검증해 새 세대로 원자 교체합니다."
+            description = "ADMIN 또는 추천 적재 API Key(X-Cking-Recommendation-Key)로 Cking-LLM의 완결된 후보 묶음을 검증해 새 세대로 원자 교체합니다."
     )
     public ApiResponse<CreatorSimilarityResponse.Stored> replace(
-            @CurrentMemberId Long adminId,
+            Authentication authentication,
             @PathVariable @Positive Long creatorId,
             @Valid @RequestBody CreatorSimilarityRequest.Replace request
     ) {
+        writeAuthorizer.requireWriteAccess(authentication);
         return ApiResponse.success(CreatorSimilarityResponse.Stored.from(
-                resultService.replace(adminId, creatorId, request.toCommand())));
+                resultService.replace(creatorId, request.toCommand())));
     }
 
     @GetMapping("/api/creators/{creatorId}/similar")

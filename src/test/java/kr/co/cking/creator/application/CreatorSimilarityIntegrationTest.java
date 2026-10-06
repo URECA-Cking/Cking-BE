@@ -48,14 +48,12 @@ class CreatorSimilarityIntegrationTest {
 
     private final List<Member> members = new ArrayList<>();
     private final List<Creator> creators = new ArrayList<>();
-    private Member admin;
     private Creator source;
     private Creator firstCandidate;
     private Creator secondCandidate;
 
     @BeforeEach
     void setUp() {
-        admin = member("admin", MemberRole.ADMIN);
         source = creator("source");
         firstCandidate = creator("first");
         secondCandidate = creator("second");
@@ -76,9 +74,9 @@ class CreatorSimilarityIntegrationTest {
         assertThat(empty.candidates()).isEmpty();
 
         CreatorSimilarityResultService.StoreResult first = resultService.replace(
-                admin.getMemberId(), source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000"));
+                source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000"));
         CreatorSimilarityResultService.StoreResult replay = resultService.replace(
-                admin.getMemberId(), source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000"));
+                source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000"));
 
         assertThat(first.applied()).isTrue();
         assertThat(replay.applied()).isFalse();
@@ -89,7 +87,7 @@ class CreatorSimilarityIntegrationTest {
                 .containsExactly(firstCandidate.getCreatorId());
 
         CreatorSimilarityResultService.StoreResult second = resultService.replace(
-                admin.getMemberId(), source.getCreatorId(), command(SECOND_HASH, secondCandidate, "0.95000000"));
+                source.getCreatorId(), command(SECOND_HASH, secondCandidate, "0.95000000"));
 
         assertThat(second.applied()).isTrue();
         assertThat(generationRepository.count()).isEqualTo(2);
@@ -98,7 +96,7 @@ class CreatorSimilarityIntegrationTest {
                 .containsExactly(secondCandidate.getCreatorId());
 
         assertThatThrownBy(() -> resultService.replace(
-                admin.getMemberId(), source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000")))
+                source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000")))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(CreatorErrorCode.STALE_RECOMMENDATION_INPUT));
         assertThat(queryService.findSimilar(source.getCreatorId(), 5).candidates())
@@ -114,11 +112,11 @@ class CreatorSimilarityIntegrationTest {
         try {
             Future<CreatorSimilarityResultService.StoreResult> first = executor.submit(() -> {
                 start.await();
-                return resultService.replace(admin.getMemberId(), source.getCreatorId(), command);
+                return resultService.replace(source.getCreatorId(), command);
             });
             Future<CreatorSimilarityResultService.StoreResult> second = executor.submit(() -> {
                 start.await();
-                return resultService.replace(admin.getMemberId(), source.getCreatorId(), command);
+                return resultService.replace(source.getCreatorId(), command);
             });
             start.countDown();
 
@@ -139,15 +137,13 @@ class CreatorSimilarityIntegrationTest {
     @Test
     void 기존_추천_뒤_빈_결과를_반영하면_공개_후보가_비워진다() {
         resultService.replace(
-                admin.getMemberId(), source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000"));
+                source.getCreatorId(), command(FIRST_HASH, firstCandidate, "0.90000000"));
 
         CreatorSimilarityResultService.StoreResult emptyResult = resultService.replace(
-                admin.getMemberId(),
                 source.getCreatorId(),
                 new CreatorSimilarityResultCommand(
                         source.getCreatorId(), "M4", "model-v2", SECOND_HASH, List.of()));
         CreatorSimilarityResultService.StoreResult replay = resultService.replace(
-                admin.getMemberId(),
                 source.getCreatorId(),
                 new CreatorSimilarityResultCommand(
                         source.getCreatorId(), "M4", "model-v2", SECOND_HASH, List.of()));

@@ -1,5 +1,6 @@
 package kr.co.cking.common.config;
 
+import kr.co.cking.common.security.RecommendationApiKeyAuthenticationFilter;
 import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
 import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
@@ -20,6 +21,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
@@ -27,6 +29,7 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.core.annotation.Order;
+import java.util.List;
 import org.springframework.util.StringUtils;
 
 /**
@@ -57,6 +60,10 @@ public class SecurityConfig {
     @Value("${cking.docs.password:}")
     private String docsPassword;
 
+    /** 추천 적재 API Key의 SHA-256 hex 목록. 비어 있으면 키 인증은 항상 실패한다. 교체 중에는 새 키·이전 키를 함께 둔다. */
+    @Value("${cking.recommendation.api-key-hashes:}")
+    private List<String> recommendationApiKeyHashes;
+
     /** Swagger UI와 OpenAPI JSON에만 적용할 Basic Auth 보안 체인을 구성한다. */
     @Bean
     @Order(1)
@@ -86,6 +93,8 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers(RecommendationApiKeyAuthenticationFilter.WRITE_ENDPOINTS)
+                        .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/winners/*/history").authenticated()
                         .requestMatchers(
@@ -140,6 +149,10 @@ public class SecurityConfig {
                         .bearerTokenResolver(applicationBearerTokenResolver())
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint(authenticationEntryPoint))
+                .addFilterBefore(
+                        new RecommendationApiKeyAuthenticationFilter(
+                                recommendationApiKeyHashes, authenticationEntryPoint),
+                        BearerTokenAuthenticationFilter.class)
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
@@ -153,6 +166,7 @@ public class SecurityConfig {
     private BearerTokenResolver applicationBearerTokenResolver() {
         DefaultBearerTokenResolver defaultResolver = new DefaultBearerTokenResolver();
         return request -> ACCESS_TOKEN_ISSUANCE_ENDPOINTS.matches(request)
+                || RecommendationApiKeyAuthenticationFilter.carriesApiKey(request)
                 ? null
                 : defaultResolver.resolve(request);
     }

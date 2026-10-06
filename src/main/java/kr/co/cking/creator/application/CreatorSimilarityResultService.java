@@ -11,9 +11,6 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityStateRepository;
-import kr.co.cking.member.domain.Member;
-import kr.co.cking.member.domain.MemberRole;
-import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,14 +33,12 @@ public class CreatorSimilarityResultService {
     private static final BigDecimal MIN_SCORE = new BigDecimal("-1.0");
     private static final BigDecimal MAX_SCORE = new BigDecimal("2.0");
 
-    private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;
     private final CreatorSimilarityGenerationRepository generationRepository;
     private final CreatorSimilarityCandidateRepository candidateRepository;
     private final CreatorSimilarityStateRepository stateRepository;
 
-    public StoreResult replace(Long adminId, Long creatorId, CreatorSimilarityResultCommand command) {
-        requireAdmin(adminId);
+    public StoreResult replace(Long creatorId, CreatorSimilarityResultCommand command) {
         creatorRepository.findByIdForUpdate(creatorId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
@@ -201,14 +196,6 @@ public class CreatorSimilarityResultService {
             }
         }
         return true;
-    }
-
-    private void requireAdmin(Long adminId) {
-        Member admin = memberRepository.findById(adminId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        if (admin.getRole() != MemberRole.ADMIN) {
-            throw new BusinessException(CommonErrorCode.FORBIDDEN);
-        }
     }
 
     private BusinessException invalidResult() {

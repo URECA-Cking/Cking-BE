@@ -12,9 +12,6 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityStateRepository;
-import kr.co.cking.member.domain.Member;
-import kr.co.cking.member.domain.MemberRole;
-import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,7 +38,6 @@ class CreatorSimilarityResultServiceTest {
 
     private static final String FIRST_HASH = "a".repeat(64);
 
-    @Mock MemberRepository memberRepository;
     @Mock CreatorRepository creatorRepository;
     @Mock CreatorSimilarityGenerationRepository generationRepository;
     @Mock CreatorSimilarityCandidateRepository candidateRepository;
@@ -51,8 +47,6 @@ class CreatorSimilarityResultServiceTest {
 
     @BeforeEach
     void setUp() {
-        given(memberRepository.findById(1L))
-                .willReturn(Optional.of(new Member("admin", null, null, MemberRole.ADMIN)));
         given(creatorRepository.findByIdForUpdate(10L))
                 .willReturn(Optional.of(creator(10L, "원본")));
     }
@@ -70,7 +64,7 @@ class CreatorSimilarityResultServiceTest {
             return generation;
         });
 
-        CreatorSimilarityResultService.StoreResult result = service.replace(1L, 10L, command(
+        CreatorSimilarityResultService.StoreResult result = service.replace(10L, command(
                 FIRST_HASH, candidate(10L, 20L, "0.90000000", 1)));
 
         assertThat(result.applied()).isTrue();
@@ -93,7 +87,7 @@ class CreatorSimilarityResultServiceTest {
                 .willReturn(List.of(new CreatorSimilarityCandidate(
                         100L, 20L, new BigDecimal("0.90000000"), 1)));
 
-        CreatorSimilarityResultService.StoreResult result = service.replace(1L, 10L, command(
+        CreatorSimilarityResultService.StoreResult result = service.replace(10L, command(
                 FIRST_HASH, candidate(10L, 20L, "0.90000000", 1)));
 
         assertThat(result.applied()).isFalse();
@@ -109,7 +103,7 @@ class CreatorSimilarityResultServiceTest {
         given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
                 .willReturn(Optional.of(generation(100L, FIRST_HASH)));
 
-        assertThatThrownBy(() -> service.replace(1L, 10L, command(
+        assertThatThrownBy(() -> service.replace(10L, command(
                 FIRST_HASH, candidate(10L, 20L, "0.90000000", 1))))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(CreatorErrorCode.STALE_RECOMMENDATION_INPUT));
@@ -117,12 +111,12 @@ class CreatorSimilarityResultServiceTest {
 
     @Test
     void 자기_자신이나_중복_후보는_묶음_전체를_거부한다() {
-        assertThatThrownBy(() -> service.replace(1L, 10L, command(
+        assertThatThrownBy(() -> service.replace(10L, command(
                 FIRST_HASH, candidate(10L, 10L, "0.90000000", 1))))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(CreatorErrorCode.INVALID_RECOMMENDATION_RESULT));
 
-        assertThatThrownBy(() -> service.replace(1L, 10L, command(
+        assertThatThrownBy(() -> service.replace(10L, command(
                 FIRST_HASH,
                 candidate(10L, 20L, "0.90000000", 1),
                 candidate(10L, 20L, "0.80000000", 2))))
@@ -136,7 +130,7 @@ class CreatorSimilarityResultServiceTest {
     void 없는_후보_크리에이터가_섞이면_전체를_거부한다() {
         given(creatorRepository.findByCreatorIdIn(Set.of(20L))).willReturn(List.of());
 
-        assertThatThrownBy(() -> service.replace(1L, 10L, command(
+        assertThatThrownBy(() -> service.replace(10L, command(
                 FIRST_HASH, candidate(10L, 20L, "0.90000000", 1))))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
@@ -146,7 +140,7 @@ class CreatorSimilarityResultServiceTest {
 
     @Test
     void 점수_내림차순과_동점_creatorId_오름차순이_아니면_거부한다() {
-        assertThatThrownBy(() -> service.replace(1L, 10L, command(
+        assertThatThrownBy(() -> service.replace(10L, command(
                 FIRST_HASH,
                 candidate(10L, 30L, "0.90000000", 1),
                 candidate(10L, 20L, "0.90000000", 2))))
@@ -166,9 +160,7 @@ class CreatorSimilarityResultServiceTest {
             return generation;
         });
 
-        CreatorSimilarityResultService.StoreResult result = service.replace(
-                1L,
-                10L,
+        CreatorSimilarityResultService.StoreResult result = service.replace(10L,
                 new CreatorSimilarityResultCommand(10L, "M4", "model-v1", FIRST_HASH, List.of()));
 
         assertThat(result.applied()).isTrue();
@@ -179,8 +171,7 @@ class CreatorSimilarityResultServiceTest {
 
     @Test
     void 빈_묶음에_생성_메타데이터가_없으면_거부한다() {
-        assertThatThrownBy(() -> service.replace(
-                1L, 10L, new CreatorSimilarityResultCommand(10L, null, null, null, List.of())))
+        assertThatThrownBy(() -> service.replace(10L, new CreatorSimilarityResultCommand(10L, null, null, null, List.of())))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(
                                 CreatorErrorCode.INVALID_RECOMMENDATION_RESULT));
@@ -197,7 +188,7 @@ class CreatorSimilarityResultServiceTest {
                 FIRST_HASH,
                 List.of(candidate(10L, 20L, "0.90000000", 1)));
 
-        assertThatThrownBy(() -> service.replace(1L, 10L, command))
+        assertThatThrownBy(() -> service.replace(10L, command))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(
                                 CreatorErrorCode.INVALID_RECOMMENDATION_RESULT));
@@ -224,7 +215,7 @@ class CreatorSimilarityResultServiceTest {
                 FIRST_HASH,
                 List.of(candidate(10L, 20L, "0.90000000", 1)));
 
-        CreatorSimilarityResultService.StoreResult result = service.replace(1L, 10L, command);
+        CreatorSimilarityResultService.StoreResult result = service.replace(10L, command);
 
         assertThat(result.applied()).isTrue();
         assertThat(result.candidateCount()).isEqualTo(1);
