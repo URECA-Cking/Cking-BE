@@ -63,6 +63,13 @@ class AbuseDetectionPersistenceAdapter implements AbuseDetectionRepository {
         return jpaRepository.findById(detectionId).map(this::toDomain);
     }
 
+    /** 동일 판정 재요청의 최신 상태를 확인하도록 공유 잠금 현재 읽기로 Domain 객체를 복원한다. */
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AbuseDetection> findByIdForShare(Long detectionId) {
+        return jpaRepository.findByIdForShare(detectionId).map(this::toDomain);
+    }
+
     /** 선택 조건으로 Detection을 조회하고 관리자 API 계약의 최신순 정렬을 강제한다. */
     @Override
     @Transactional(readOnly = true)

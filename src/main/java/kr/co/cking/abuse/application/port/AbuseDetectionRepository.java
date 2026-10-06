@@ -17,6 +17,9 @@ public interface AbuseDetectionRepository {
 
     Optional<AbuseDetection> findById(Long detectionId);
 
+    /** REPEATABLE READ 스냅샷을 피하고 최신 검토 상태를 확인하도록 공유 잠금으로 조회한다. */
+    Optional<AbuseDetection> findByIdForShare(Long detectionId);
+
     Page<AbuseDetection> search(AbuseDetectionSearchCondition condition, Pageable pageable);
 
     /** DETECTED 상태인 행만 조건부 전이하고 영향 행 수(0 또는 1)를 반환한다. */

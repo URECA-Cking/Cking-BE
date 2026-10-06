@@ -44,7 +44,7 @@ class AdminAbuseDetectionReviewServiceTest {
         AbuseDetection confirmed = reviewed(AbuseDetectionStatus.CONFIRMED);
         given(abuseDetectionRepository.reviewIfDetected(
                 21L, AbuseReviewDecision.CONFIRMED, 1L, NOW)).willReturn(0);
-        given(abuseDetectionRepository.findById(21L)).willReturn(Optional.of(confirmed));
+        given(abuseDetectionRepository.findByIdForShare(21L)).willReturn(Optional.of(confirmed));
 
         AbuseDetection result = service.review(1L, 21L, AbuseReviewDecision.CONFIRMED);
 
@@ -58,7 +58,8 @@ class AdminAbuseDetectionReviewServiceTest {
         AdminAbuseDetectionReviewService service = service();
         given(abuseDetectionRepository.reviewIfDetected(
                 21L, AbuseReviewDecision.FALSE_POSITIVE, 1L, NOW)).willReturn(0);
-        given(abuseDetectionRepository.findById(21L)).willReturn(Optional.of(reviewed(AbuseDetectionStatus.CONFIRMED)));
+        given(abuseDetectionRepository.findByIdForShare(21L))
+                .willReturn(Optional.of(reviewed(AbuseDetectionStatus.CONFIRMED)));
 
         assertThatThrownBy(() -> service.review(1L, 21L, AbuseReviewDecision.FALSE_POSITIVE))
                 .isInstanceOf(BusinessException.class)
@@ -85,7 +86,7 @@ class AdminAbuseDetectionReviewServiceTest {
     void 존재하지_않는_Detection은_404다() {
         AdminAbuseDetectionReviewService service = service();
         given(abuseDetectionRepository.reviewIfDetected(any(), any(), any(), any())).willReturn(0);
-        given(abuseDetectionRepository.findById(21L)).willReturn(Optional.empty());
+        given(abuseDetectionRepository.findByIdForShare(21L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.review(1L, 21L, AbuseReviewDecision.CONFIRMED))
                 .isInstanceOf(BusinessException.class)

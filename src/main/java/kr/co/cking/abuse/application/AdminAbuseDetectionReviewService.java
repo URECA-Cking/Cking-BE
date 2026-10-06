@@ -31,7 +31,7 @@ public class AdminAbuseDetectionReviewService {
             return findDetection(detectionId);
         }
 
-        AbuseDetection detection = findDetection(detectionId);
+        AbuseDetection detection = findDetectionForCurrentState(detectionId);
         if (detection.status() == decision.toStatus()) {
             return detection;
         }
@@ -41,6 +41,12 @@ public class AdminAbuseDetectionReviewService {
     /** 조건부 UPDATE 뒤 현재 상태를 판단할 Detection을 조회하고 없으면 404로 변환한다. */
     private AbuseDetection findDetection(Long detectionId) {
         return abuseDetectionRepository.findById(detectionId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    /** 조건부 UPDATE가 0건이면 공유 잠금 현재 읽기로 다른 Transaction의 종결 판정을 확인한다. */
+    private AbuseDetection findDetectionForCurrentState(Long detectionId) {
+        return abuseDetectionRepository.findByIdForShare(detectionId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 }
