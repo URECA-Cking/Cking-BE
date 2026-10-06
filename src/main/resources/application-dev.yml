@@ -30,6 +30,11 @@ cking:
     jwt:
       secret: ${JWT_SECRET}
     refresh-cookie-secure: true
+    admin-seed:
+      # SSM·배포 파이프라인 준비 전에는 비활성화한다. 준비 후 환경변수로 명시적으로 켠다.
+      enabled: ${ADMIN_ACCOUNT_SEED_ENABLED:false}
+      login-id: ${ADMIN_ACCOUNT_LOGIN_ID:admin}
+      password: ${ADMIN_ACCOUNT_PASSWORD:}
   storage:
     type: s3
     bucket: dev-cking-uploads-551372961758-ap-northeast-2-an
