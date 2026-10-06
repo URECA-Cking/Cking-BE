@@ -35,7 +35,7 @@ test('replay를 제외하고 scope/window별 count와 distinct requestId를 계�
   assert.equal(result.normalMaxByWindowMs[5000].entryRequest, 1);
   assert.equal(result.normalMaxByWindowMs[5000].failureDistinctType, 1);
   assert.equal(result.normalMaxByWindowMs[5000].rapidEarnSpendPair, 1);
-  assert.equal(result.failureConsecutiveMax, 2);
+  assert.equal(result.normalMaxByWindowMs[5000].failureConsecutive, 2);
   assert.deepEqual(result.earnSpendClientDelayMs, [1400]);
 });
 
@@ -58,7 +58,39 @@ test('서로 다른 사용자·잔액 Scope를 합치지 않고 Window 경계를
   const result = analyze(rows);
   assert.equal(result.normalMaxByWindowMs[1000].insufficient, 2);
   assert.equal(result.normalMaxByWindowMs[5000].insufficient, 3);
-  assert.equal(result.insufficientConsecutiveMax, 3);
+  assert.equal(result.normalMaxByWindowMs[5000].insufficientConsecutive, 3);
+});
+
+test('Lua와 같이 이전 실패가 Window 밖이면 연속 횟수를 1로 재시작한다', () => {
+  const start = Date.UTC(2026, 9, 6);
+  const rows = [
+    row(start, 'INSUFFICIENT_BALANCE', 'a', { action: 'EVENT_ENTRY', eventId: 30,
+      status: 409, expectedStatus: 409 }),
+    row(start + 20000, 'INSUFFICIENT_BALANCE', 'b', { action: 'EVENT_ENTRY', eventId: 30,
+      status: 409, expectedStatus: 409 }),
+  ];
+  const result = analyze(rows);
+  for (const window of [1000, 5000, 10000]) {
+    assert.equal(result.normalMaxByWindowMs[window].insufficientConsecutive, 1);
+    assert.equal(result.normalMaxByWindowMs[window].failureConsecutive, 1);
+  }
+  for (const window of [30000, 60000]) {
+    assert.equal(result.normalMaxByWindowMs[window].insufficientConsecutive, 2);
+    assert.equal(result.normalMaxByWindowMs[window].failureConsecutive, 2);
+  }
+});
+
+test('Window 경계와 성공 요청에서 연속 횟수를 초기화한다', () => {
+  const start = Date.UTC(2026, 9, 6);
+  const failure = (at, requestId) => row(at, 'INSUFFICIENT_BALANCE', requestId,
+    { action: 'EVENT_ENTRY', eventId: 30, status: 409, expectedStatus: 409 });
+  const rows = [failure(start, 'a'), failure(start + 1000, 'b'),
+    row(start + 1100, 'EARN_ACCEPTED', 'c'), failure(start + 1200, 'd')];
+  const result = analyze(rows);
+  assert.equal(result.normalMaxByWindowMs[1000].insufficientConsecutive, 1);
+  assert.equal(result.normalMaxByWindowMs[1000].failureConsecutive, 1);
+  assert.equal(result.normalMaxByWindowMs[5000].insufficientConsecutive, 2);
+  assert.equal(result.normalMaxByWindowMs[5000].failureConsecutive, 2);
 });
 
 test('추가 기록 파일에서는 마지막 완전 실행만 선택한다', () => {

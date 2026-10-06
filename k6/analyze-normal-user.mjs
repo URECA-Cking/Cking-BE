@@ -51,29 +51,13 @@ export function analyze(rows) {
       samples[window][rule] = max;
     }
   }
-  const insufficientSequence = new Map();
-  const failureSequence = new Map();
   const failureTypes = new Map();
   const pairs = [];
   const lastEarn = new Map();
-  let insufficientConsecutiveMax = 0;
-  let failureConsecutiveMax = 0;
   for (const row of observations) {
     const user = String(row.memberId);
     const scope = `${row.memberId}:${row.balanceScope}`;
-    if (row.code === 'INSUFFICIENT_BALANCE') {
-      const count = (insufficientSequence.get(scope) || 0) + 1;
-      insufficientSequence.set(scope, count);
-      insufficientConsecutiveMax = Math.max(insufficientConsecutiveMax, count);
-    }
-    if (row.code === 'EARN_ACCEPTED' || row.code === 'SUCCESS') {
-      insufficientSequence.delete(scope);
-      failureSequence.delete(user);
-    }
     if (['DUPLICATE_MISSION', 'INSUFFICIENT_BALANCE'].includes(row.code)) {
-      const count = (failureSequence.get(user) || 0) + 1;
-      failureSequence.set(user, count);
-      failureConsecutiveMax = Math.max(failureConsecutiveMax, count);
       const history = failureTypes.get(user) || [];
       history.push(row);
       failureTypes.set(user, history);
@@ -86,6 +70,26 @@ export function analyze(rows) {
     }
   }
   for (const window of WINDOWS_MS) {
+    const insufficientSequence = new Map();
+    const failureSequence = new Map();
+    let insufficientConsecutiveMax = 0;
+    let failureConsecutiveMax = 0;
+    for (const row of observations) {
+      const user = String(row.memberId);
+      const scope = `${row.memberId}:${row.balanceScope}`;
+      if (row.code === 'EARN_ACCEPTED' || row.code === 'SUCCESS') {
+        insufficientSequence.delete(scope);
+        failureSequence.delete(user);
+      }
+      if (row.code === 'INSUFFICIENT_BALANCE') {
+        insufficientConsecutiveMax = Math.max(insufficientConsecutiveMax,
+          recordConsecutive(insufficientSequence, scope, row.observedAtMs, window));
+      }
+      if (['DUPLICATE_MISSION', 'INSUFFICIENT_BALANCE'].includes(row.code)) {
+        failureConsecutiveMax = Math.max(failureConsecutiveMax,
+          recordConsecutive(failureSequence, user, row.observedAtMs, window));
+      }
+    }
     let rapidPairMax = 0;
     for (const pair of pairs) {
       const count = pairs.filter((item) => item.scope === pair.scope &&
@@ -102,12 +106,22 @@ export function analyze(rows) {
     }
     samples[window].rapidEarnSpendPair = rapidPairMax;
     samples[window].failureDistinctType = failureDistinctTypeMax;
+    samples[window].insufficientConsecutive = insufficientConsecutiveMax;
+    samples[window].failureConsecutive = failureConsecutiveMax;
   }
   // 실제 Feature Store는 Redis Lua 실행 시각으로 집계한다. 이것은 HTTP 완료 시각의 근사치다.
   return { observationCount: rows.length, nonReplayCount: observations.length,
-    normalMaxByWindowMs: samples, insufficientConsecutiveMax, failureConsecutiveMax,
+    normalMaxByWindowMs: samples,
     earnSpendClientDelayMs: latency,
     note: 'HTTP 완료 시각 근사치입니다. 최종 Calibration은 Redis Feature/Evidence와 대조해야 합니다.' };
+}
+
+function recordConsecutive(sequence, scope, observedAtMs, windowMs) {
+  const previous = sequence.get(scope);
+  // Lua recordSequence(): 이전 시각 <= 현재 시각 - window 이면 1로 재시작한다.
+  const count = previous && previous.at > observedAtMs - windowMs ? previous.count + 1 : 1;
+  sequence.set(scope, { at: observedAtMs, count });
+  return count;
 }
 
 export function latestCompleteRun(rows) {

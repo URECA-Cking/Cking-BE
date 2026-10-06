@@ -60,7 +60,7 @@ node k6/analyze-normal-user.mjs /tmp/cking-normal-user-k6.log
 
 `--console-output`에는 요청별 `requestedAtMs`/`observedAtMs`, 합성 memberId, action, Creator/Event/Mission ID, Balance Scope, requestId, 업무 code가 JSON 행으로 남는다. JWT·요청 본문·이름·이메일은 출력하지 않는다. 로그도 합성 ID를 포함하므로 공유 범위를 제한한다.
 
-분석 스크립트는 replay를 제외한 요청에 대해 1/5/10/30/60초 Window별 Mission 요청, 중복 Mission 실패, Event 응모, 잔액 부족, 업무 실패, distinct requestId rotation, 빠른 EARN-SPEND pair 및 실패 유형 수의 `normalMax`를 Scope별로 계산한다. 잔액 부족·전체 실패의 연속 횟수 상한과 EARN→SPEND 간 HTTP 완료 시각 차이도 기록한다. Pair 수는 아직 `maxDelay` 정책을 적용하지 않은 상한이므로 최종 설정값과 대조한다. 동일 requestId replay는 별도 Observation이지만 Redis Feature 집계에서는 제외된다. UTC 자정 근처에는 DAILY Business Key의 서버 period와 클라이언트 근사 날짜가 달라질 수 있으므로 실행하지 않는다.
+분석 스크립트는 replay를 제외한 요청에 대해 1/5/10/30/60초 Window별 Mission 요청, 중복 Mission 실패, Event 응모, 잔액 부족, 업무 실패, distinct requestId rotation, 빠른 EARN-SPEND pair 및 실패 유형 수의 `normalMax`를 Scope별로 계산한다. 잔액 부족·전체 실패의 연속 횟수도 **각 Window마다** Lua `recordSequence()`와 같이 이전 실패가 Window 밖이면 1로 재시작하고, 성공하면 해당 sequence를 초기화한다. EARN→SPEND 간 HTTP 완료 시각 차이도 기록한다. Pair 수는 아직 `maxDelay` 정책을 적용하지 않은 상한이므로 최종 설정값과 대조한다. 동일 requestId replay는 별도 Observation이지만 Redis Feature 집계에서는 제외된다. UTC 자정 근처에는 DAILY Business Key의 서버 period와 클라이언트 근사 날짜가 달라질 수 있으므로 실행하지 않는다.
 
 결과를 기록할 때는 실행 날짜·격리 환경·fixture 버전(비밀값 제외)·k6 성공 여부·Window별 `normalMax`·EARN→SPEND 지연·서버 Evidence와의 차이를 함께 남긴다. `abuseMin`과 비교해 `normalMax < abuseMin`인 최초 Window가 나오기 전에는 운영 Threshold를 정하지 않는다.
 
@@ -78,4 +78,12 @@ node k6/analyze-normal-user.mjs /tmp/cking-normal-user-k6.log
 | 30초 | 2 | 1 | 3 | 2 | 2 | 2 | 1 | 1 |
 | 60초 | 2 | 1 | 3 | 2 | 2 | 2 | 1 | 1 |
 
-잔액 부족·전체 업무 실패 연속 상한은 각각 2회였다. EARN→SPEND HTTP 완료 간격은 22ms(CREATOR), 7ms(COMMON)였다. pair 수는 아직 `maxDelay` 필터를 적용하지 않은 값이다. 이 1회 측정만으로 운영 Threshold를 채택하지 않으며, 향후 비정상군의 `abuseMin`과 서버 시각 기준 Feature를 함께 비교한다.
+| Window | 잔액 부족 연속 상한 | 전체 업무 실패 연속 상한 |
+| --- | ---: | ---: |
+| 1초 | 2 | 2 |
+| 5초 | 2 | 2 |
+| 10초 | 2 | 2 |
+| 30초 | 2 | 2 |
+| 60초 | 2 | 2 |
+
+EARN→SPEND HTTP 완료 간격은 22ms(CREATOR), 7ms(COMMON)였다. pair 수는 아직 `maxDelay` 필터를 적용하지 않은 값이다. 이 1회 측정만으로 운영 Threshold를 채택하지 않으며, 향후 비정상군의 `abuseMin`과 서버 시각 기준 Feature를 함께 비교한다.
