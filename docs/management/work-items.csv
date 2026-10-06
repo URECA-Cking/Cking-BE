@@ -29,3 +29,8 @@ T4-06,FR-P4-132~135,P2,인앱 알림 조회·읽음 처리,4조,혁준,T4-03,알
 T4-07,FR-P4-136~138,P2,파트4 API 상세 계약 확정,4조,혁준,"T4-02, T4-03, T4-05",Request/Response·HTTP Status 명세,시작 전,,No,
 TAI-01,FR-AI-001~006,P1,단일 크리에이터 유사 추천 결과 저장·조회,AI,성원,Cking-LLM Issue #36,"세대·후보·현재 포인터 DB, 관리자 적재 API, 공개 조회 API, 검증·원자 교체·테스트",완료,Cking-BE Issue #393,Yes,
 TAI-02,FR-AI-007~012,P1,팔로우 기반 개인화 Creator 추천 조회,AI,성원,TAI-01,"FOLLOW_PERSONALIZED_V1 집계, JWT 조회 API, Creator·Space 카드, 제외·빈 결과·테스트",완료,Cking-BE Issue #410,Yes,
+TAI-03,FR-AI-023~027,P1,추천 적재 API Key 인증,AI,성집,TAI-01,"X-Cking-Recommendation-Key 필터, SHA-256 해시 복수 키 설정, JWT ADMIN 재검증, 인증과 분리된 교체 서비스·테스트",완료,Cking-BE Issue #420,Yes,
+TAI-04,FR-AI-013~015,P1,관심 분야 분류체계 v0.2 등록·조회,AI,성집,,"interest_taxonomy·interest_category, 17개 시드, taxonomyHash 검증, GET /api/interests, 테스트",완료,Cking-BE Issue #429,Yes,
+TAI-05,FR-AI-016~018,P1,내 관심 분야 조회·저장,AI,성집,TAI-04,"member_interest, GET·PUT /api/me/interests 전체 교체, 회원 행 잠금 동시성 방어, 테스트",완료,Cking-BE Issue #430,Yes,
+TAI-06,FR-AI-019~022,P1,관심 분야 추천 후보 적재,AI,성집,"TAI-03, TAI-04","세대·후보·현재 포인터 DB, PUT /api/admin/interests/{interestCode}/recommendations, 검증·멱등·원자 교체·빈 세대 활성화·테스트",완료,Cking-BE Issue #438,Yes,
+TAI-07,FR-AI-028~036,P1,관심 분야·팔로우 혼합 개인화 Creator 추천 조회,AI,성집,"TAI-02, TAI-05, TAI-06","정책 분기(HYBRID·INTEREST·FOLLOW V2), LLM 공용 fixture 재현, interestCodes 응답, N+1 방지·통합 테스트",완료,Cking-BE Issue #442,Yes,
