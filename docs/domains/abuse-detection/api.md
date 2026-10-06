@@ -23,9 +23,9 @@
 
 ## GET /api/admin/abuse-detections
 
-Query는 선택 `memberId`(양수 Long), `abuseType`, `status`, `page`, `size`다. `page` 기본 0, `size` 기본 20·최대 100이다. `abuseType`은 `MISSION_REQUEST_BURST`, `DUPLICATE_MISSION_BURST`, `ENTRY_REQUEST_BURST`, `INSUFFICIENT_BALANCE_BURST`, `RAPID_EARN_AND_SPEND`, `FAILURE_BURST` 중 하나다. `REQUEST_ID_ROTATION`은 Signal이므로 filter 값이 될 수 없다.
+Query는 선택 `memberId`(양수 Long), `abuseType`, `status`, `detectedAtFrom`, `detectedAtTo`, `page`, `size`다. `detectedAtFrom`·`detectedAtTo`는 UTC RFC 3339 시각이며 각각 포함 범위의 시작·끝을 뜻한다. 둘 다 있으면 `detectedAtFrom`은 `detectedAtTo`보다 늦을 수 없다. `page` 기본 0, `size` 기본 20·최대 100이다. `abuseType`은 `MISSION_REQUEST_BURST`, `DUPLICATE_MISSION_BURST`, `ENTRY_REQUEST_BURST`, `INSUFFICIENT_BALANCE_BURST`, `RAPID_EARN_AND_SPEND`, `FAILURE_BURST` 중 하나다. `REQUEST_ID_ROTATION`은 Signal이므로 filter 값이 될 수 없다.
 
-`detectedAt DESC, detectionId DESC`로 정렬하고 공통 Page 형식(`items`, `page`, `size`, `totalElements`, `totalPages`, `hasNext`)을 반환한다. 범위를 벗어난 page/size, 알 수 없는 enum, 0 이하 memberId는 `VALIDATION_FAILED`다.
+`detectedAt DESC, detectionId DESC`로 정렬하고 공통 Page 형식(`items`, `page`, `size`, `totalElements`, `totalPages`, `hasNext`)을 반환한다. 범위를 벗어난 page/size, 알 수 없는 enum, 0 이하 memberId, 형식이 잘못된 기간 또는 역전된 기간은 `VALIDATION_FAILED`다.
 
 ## GET /api/admin/abuse-detections/{detectionId}
 
