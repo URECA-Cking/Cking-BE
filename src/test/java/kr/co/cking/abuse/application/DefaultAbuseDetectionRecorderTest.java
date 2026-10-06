@@ -1,6 +1,5 @@
 package kr.co.cking.abuse.application;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -85,6 +84,20 @@ class DefaultAbuseDetectionRecorderTest {
         when(persistenceService.save(1L, RESULT)).thenThrow(failure);
 
         assertThatThrownBy(() -> recorder.record(1L, RESULT)).isSameAs(failure);
+
+        verify(cooldownStore).release(lease);
+    }
+
+    /** Cooldown 해제까지 실패해도 원래 DB 저장 실패가 호출자에게 그대로 전파된다. */
+    @Test
+    void Cooldown_해제에_실패해도_원래_DB_저장_오류를_유지한다() {
+        when(cooldownStore.tryAcquire(RESULT.abuseType(), RESULT.cooldownScopeHash(), Duration.ofSeconds(20)))
+                .thenReturn(Optional.of(lease));
+        IllegalStateException persistenceFailure = new IllegalStateException("DB 저장 실패");
+        when(persistenceService.save(1L, RESULT)).thenThrow(persistenceFailure);
+        when(cooldownStore.release(lease)).thenThrow(new IllegalStateException("Redis 연결 실패"));
+
+        assertThatThrownBy(() -> recorder.record(1L, RESULT)).isSameAs(persistenceFailure);
 
         verify(cooldownStore).release(lease);
     }

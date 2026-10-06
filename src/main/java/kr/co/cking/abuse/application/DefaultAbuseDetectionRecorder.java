@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
-import java.util.Optional;
 
 /** Cooldown 소유권으로 동일 Detection 저장을 제한하고 독립 트랜잭션 저장을 조합한다. */
 @Slf4j
@@ -36,9 +35,10 @@ public class DefaultAbuseDetectionRecorder implements AbuseDetectionRecorder {
     @Override
     public void record(Long memberId, DetectionResult result) {
         Objects.requireNonNull(result, "result는 필수입니다.");
-        Optional<CooldownLease> lease = cooldownStore.tryAcquire(
-                result.abuseType(), result.cooldownScopeHash(), properties.cooldownTtl(result.abuseType()));
-        if (lease.isEmpty()) {
+        CooldownLease acquiredLease = cooldownStore.tryAcquire(
+                result.abuseType(), result.cooldownScopeHash(), properties.cooldownTtl(result.abuseType()))
+                .orElse(null);
+        if (acquiredLease == null) {
             return;
         }
 
@@ -48,7 +48,7 @@ public class DefaultAbuseDetectionRecorder implements AbuseDetectionRecorder {
                     saved.detectionId(), saved.memberId(), saved.abuseType(), saved.evidence().matchedRules(),
                     saved.detectedAt());
         } catch (RuntimeException exception) {
-            releaseAfterPersistenceFailure(lease.orElseThrow());
+            releaseAfterPersistenceFailure(acquiredLease);
             throw exception;
         }
     }

@@ -11,7 +11,7 @@ import java.util.Objects;
 
 /** Detection INSERT를 호출자의 업무 트랜잭션과 분리해 실행한다. */
 @Service
-public class AbuseDetectionPersistenceService {
+class AbuseDetectionPersistenceService {
 
     private final AbuseDetectionRepository detectionRepository;
 
