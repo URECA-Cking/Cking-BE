@@ -37,12 +37,16 @@ class InterestRecommendationConcurrencyIntegrationTest {
 
     private final List<Long> memberIds = new ArrayList<>();
     private final List<Long> creatorIds = new ArrayList<>();
+    private final List<Long> generationIds = new ArrayList<>();
 
+    /** 이 테스트가 만든 행만 지운다(공유 DB의 다른 적재 결과를 건드리지 않는다). */
     @AfterEach
     void cleanUp() {
-        jdbcTemplate.update("delete from interest_recommendation_state");
-        jdbcTemplate.update("delete from interest_recommendation_candidate");
-        jdbcTemplate.update("delete from interest_recommendation_generation");
+        generationIds.forEach(id -> {
+            jdbcTemplate.update("delete from interest_recommendation_state where current_generation_id = ?", id);
+            jdbcTemplate.update("delete from interest_recommendation_candidate where generation_id = ?", id);
+            jdbcTemplate.update("delete from interest_recommendation_generation where generation_id = ?", id);
+        });
         creatorIds.forEach(id -> jdbcTemplate.update("delete from creator where creator_id = ?", id));
         memberIds.forEach(id -> jdbcTemplate.update("delete from member where member_id = ?", id));
     }
@@ -75,12 +79,16 @@ class InterestRecommendationConcurrencyIntegrationTest {
             List<StoreResult> results = List.of(futures.get(0).get(10, TimeUnit.SECONDS),
                     futures.get(1).get(10, TimeUnit.SECONDS));
 
+            results.forEach(result -> generationIds.add(result.generationId()));
             assertThat(results).extracting(StoreResult::applied).containsExactlyInAnyOrder(true, false);
             assertThat(results).extracting(StoreResult::generationId).containsOnly(results.getFirst().generationId());
+            Long generationId = results.getFirst().generationId();
             assertThat(jdbcTemplate.queryForObject(
-                    "select count(*) from interest_recommendation_generation", Integer.class)).isEqualTo(1);
+                    "select count(*) from interest_recommendation_generation where input_hash = ?",
+                    Integer.class, hash)).isEqualTo(1);
             assertThat(jdbcTemplate.queryForObject(
-                    "select count(*) from interest_recommendation_candidate", Integer.class)).isEqualTo(1);
+                    "select count(*) from interest_recommendation_candidate where generation_id = ?",
+                    Integer.class, generationId)).isEqualTo(1);
         } finally {
             executor.shutdownNow();
         }
