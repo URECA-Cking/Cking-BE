@@ -72,8 +72,9 @@ Member(role=ADMIN) 1 : 1 AdminAccount(memberId, loginId, passwordHash)
   `loginId`가 없는 경우에만 ADMIN Member와 계정을 함께 만든다. `ADMIN_ACCOUNT_LOGIN_ID`의 기본값은
   `admin`이며, 새 계정을 만들 때만 `ADMIN_ACCOUNT_PASSWORD` 누락 시 시딩을 실패시킨다.
 - 개발 서버는 `docker-compose.dev.yml`에서 시딩을 켜고, 로그인 ID와 비밀번호를 Parameter Store
-  (`/cking/dev/ADMIN_ACCOUNT_LOGIN_ID`, `/cking/dev/ADMIN_ACCOUNT_PASSWORD`)에서 읽는다. 계정이 이미
-  있으면 Parameter Store 값을 바꿔도 비밀번호는 바뀌지 않는다.
+  (`/cking/dev/ADMIN_ACCOUNT_LOGIN_ID`, `/cking/dev/ADMIN_ACCOUNT_PASSWORD`)에서 읽는다. 시딩은 로그인
+  ID로 기존 계정을 찾으므로, 같은 로그인 ID에서 비밀번호만 바꾸면 기존 비밀번호가 유지되고, 로그인 ID를
+  바꾸면 기존 계정은 남은 채 새 관리자 계정이 만들어진다.
 - 여러 인스턴스가 동시에 최초 시딩하면 `login_id` UNIQUE 충돌이 날 수 있다. 생성은 별도
   `REQUIRES_NEW` 트랜잭션에서 Member와 AdminAccount를 함께 저장하므로 충돌 시 둘 다 롤백한다. 바깥
   초기화 흐름은 충돌 뒤 새 트랜잭션 경계에서 `loginId`를 재조회해 이미 생성됐다면 정상 종료하며, 없으면
