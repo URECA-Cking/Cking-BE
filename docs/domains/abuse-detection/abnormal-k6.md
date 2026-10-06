@@ -5,7 +5,7 @@
 ## 실행 전제
 
 - 운영 서버·실제 사용자·공유 DB에는 실행하지 않는다. 새 빈 MySQL 스키마 `cking_abuse_k6_441`, 빈 Redis DB(예: 12), 별도 앱/Actuator 포트를 사용한다. 해당 DB에 기존 키가 있으면 삭제하지 말고 다른 빈 DB를 찾는다.
-- `k6/abnormal-user.bootstrap.sql`은 대상 스키마를 `USE`로 고정했다. Flyway를 적용한 뒤 그 스키마에서 **한 번만** 실행한다. 합성 Member 7명·Creator 2명·Mission 3개(LIKE, SHARE, 비활성 LIKE)·OPEN Event 1개를 준비한다.
+- `k6/abnormal-user.bootstrap.sql`은 `USE`를 포함하지 않는다. MySQL 명령행에서 지정한 새 격리 스키마에 Flyway를 적용한 뒤 **한 번만** 실행한다. 합성 Member 7명·Creator 2명·Mission 3개(LIKE, SHARE, 비활성 LIKE)·OPEN Event 1개를 준비한다.
 - 같은 로컬 전용 `JWT_SECRET`으로 앱과 `k6/prepare-abnormal-user-fixtures.mjs`를 실행한다. 준비 스크립트는 비어 있는 Redis DB 또는 앱이 생성한 길이 0의 세 Stream만 허용하며, Gate·Balance와 합성 JWT를 별도 `*.local.json`에 저장한다. 이미 존재하는 키/파일을 덮어쓰지 않는다.
 - 일곱 시나리오는 서로 다른 Member를 쓴다. 한 번 실행한 시나리오는 Mission 완료·Balance·Entry 상태가 바뀌므로 같은 fixture로 재실행하지 않는다. 재측정에는 새 격리 스키마·Redis DB·fixture가 필요하다.
 - UTC 자정 전후에는 DAILY Mission Business Key의 서버 날짜와 클라이언트 추정 날짜가 달라질 수 있으므로 실행하지 않는다.
@@ -13,7 +13,7 @@
 
 ## 실행 절차
 
-아래 DB 생성·GRANT는 `docker-compose.yml`의 로컬 개발 계정을 전제로 한다. 대상 이름이 이미 있으면 실행하지 않는다.
+아래 DB 생성·GRANT는 `docker-compose.yml`의 로컬 개발 계정을 전제로 한다. 대상 이름이 이미 있으면 실행하지 않는다. 재측정 시에는 새 스키마 이름을 생성 명령·앱 datasource·fixture 적재 명령 모두에 동일하게 적용한다.
 
 ```bash
 docker compose up -d mysql redis
@@ -25,7 +25,8 @@ export JWT_SECRET=<로컬_전용_256비트_이상_Base64_값>
 앱이 Flyway를 완료한 뒤 다른 터미널에서 실행한다. `JWT_SECRET`은 앱과 동일한 **로컬 전용 값**을 사용하고 콘솔·문서·Git에 출력하지 않는다. 이미 사용 중인 Redis DB 12라면 다른 빈 번호를 선택하고 앱/준비 스크립트 양쪽에 같은 번호를 지정한다.
 
 ```bash
-mysql -h 127.0.0.1 -u cking -p cking_abuse_k6_441 < k6/abnormal-user.bootstrap.sql
+mysql -h 127.0.0.1 -u cking -p --database=cking_abuse_k6_441 -e 'SELECT DATABASE();'
+mysql -h 127.0.0.1 -u cking -p --database=cking_abuse_k6_441 < k6/abnormal-user.bootstrap.sql
 export ABNORMAL_K6_ISOLATED_REDIS_DB=12
 export ABNORMAL_K6_PREPARE=true
 node k6/prepare-abnormal-user-fixtures.mjs

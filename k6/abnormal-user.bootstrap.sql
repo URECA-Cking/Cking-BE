@@ -1,6 +1,6 @@
--- #441: 새로 만든 빈 cking_abuse_k6_441 스키마에 Flyway 적용 후 한 번만 실행한다.
+-- #441: 명령행에서 명시한 새 빈 격리 스키마에 Flyway 적용 후 한 번만 실행한다.
+-- 재측정 때 스키마 이름을 바꿀 수 있도록 이 SQL은 USE로 대상을 덮어쓰지 않는다.
 -- 기존 cking 스키마·정상군 #434 스키마에서 실행하면 안 된다.
-USE cking_abuse_k6_441;
 
 INSERT INTO member (member_id, name, role) VALUES
   (111, 'k6-abnormal-111', 'USER'), (112, 'k6-abnormal-112', 'USER'),
