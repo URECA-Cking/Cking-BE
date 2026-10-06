@@ -110,7 +110,7 @@ Redis Key에는 Business Key와 Cooldown Scope의 원문을 넣지 않는다. �
 
 `AbuseRuleEvaluator`는 활성 설정일 때 한 Observation에 `AbuseFeatureStore.record()`를 한 번 호출하고, 같은 Snapshot으로 요청 Burst → 업무 실패 Burst → 빠른 EARN-SPEND → Composite를 평가한다. Rotation은 Composite의 보조 Signal로만 사용한다. 각 기본 후보를 동일 `AbuseType` 중복 없이 `DetectionResult`로 변환하며 `detectedAt`은 Observation의 `observedAt`이다. `enabled=false`이면 Feature Store를 호출하지 않는다. Feature Store·Rule 오류를 빈 결과로 바꾸지 않으며, Cooldown·DB 저장과 원 업무 결과를 보호하는 Fail Open은 별도 호출 경계가 담당한다.
 
-`AbuseObservationExecutor.observe()`는 원 업무의 성공 결과 또는 `BusinessException`이 결정된 뒤 호출하는 공통 경계다. 비활성 상태에서는 평가·저장을 호출하지 않고, 활성 상태에서는 Rule 결과를 `AbuseDetectionRecorder` Port에 전달한다. 평가 또는 저장에서 발생한 `RuntimeException`은 Observation 경계에서만 격리하고 오류 종류·observationId·actionType만 로그로 남긴다. 저장 Port는 별도 Detection Transaction의 commit까지 완료하거나 실패를 전파해야 한다. 저장 구현과 Spring 조립은 Detection 저장 Service 작업에서, Mission·Entry 호출 연결은 각 Use Case 작업에서 수행한다.
+`AbuseObservationExecutor.observe()`는 원 업무의 성공 결과 또는 `BusinessException`이 결정된 뒤 호출하는 공통 경계다. 비활성 상태에서는 평가·저장을 호출하지 않고, 활성 상태에서는 Rule 결과를 `AbuseDetectionRecorder` Port에 전달한다. 평가 오류는 해당 Observation의 저장을 중단하지만, 개별 Detection 저장 오류는 다른 결과의 저장을 막지 않는다. 오류는 Observation 경계에서만 격리하고 stage·오류 종류·observationId·actionType 및 저장 오류의 abuseType만 로그로 남긴다. 저장 Port는 각 Detection의 독립 Transaction commit까지 완료하거나 실패를 전파해야 한다. 저장 구현과 Spring 조립은 Detection 저장 Service 작업에서, Mission·Entry 호출 연결은 각 Use Case 작업에서 수행한다.
 
 `AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `AbuseReviewDecision.CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. Repository Port도 상태 enum 대신 `AbuseReviewDecision`만 받아 `DETECTED → DETECTED`와 검토 정보 기록을 타입 수준에서 차단한다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
 

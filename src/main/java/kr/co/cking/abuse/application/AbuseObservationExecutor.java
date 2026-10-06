@@ -1,5 +1,6 @@
 package kr.co.cking.abuse.application;
 
+import java.util.List;
 import java.util.Objects;
 import kr.co.cking.abuse.application.port.AbuseDetectionRecorder;
 import kr.co.cking.abuse.application.rule.AbuseRuleEvaluator;
@@ -34,14 +35,24 @@ public final class AbuseObservationExecutor {
             return;
         }
 
+        List<DetectionResult> results;
         try {
-            for (DetectionResult result : ruleEvaluator.evaluate(observation)) {
-                detectionRecorder.record(observation.userId(), result);
-            }
+            results = List.copyOf(ruleEvaluator.evaluate(observation));
         } catch (RuntimeException exception) {
-            // 외부 저장소 예외 메시지·stack trace에는 업무 식별자나 요청 내용이 포함될 수 있다.
-            log.warn("[ABUSE_OBSERVATION_FAILED] observationId={} actionType={} failureType={}",
+            log.warn("[ABUSE_OBSERVATION_FAILED] stage=EVALUATION observationId={} actionType={} failureType={}",
                     observation.observationId(), observation.actionType(), exception.getClass().getName());
+            return;
+        }
+
+        for (DetectionResult result : results) {
+            try {
+                detectionRecorder.record(observation.userId(), result);
+            } catch (RuntimeException exception) {
+                // 다른 Detection의 독립 저장 시도는 유지한다. 예외 메시지·stack trace는 기록하지 않는다.
+                log.warn("[ABUSE_OBSERVATION_FAILED] stage=RECORD observationId={} actionType={} abuseType={} failureType={}",
+                        observation.observationId(), observation.actionType(), result.abuseType(),
+                        exception.getClass().getName());
+            }
         }
     }
 }

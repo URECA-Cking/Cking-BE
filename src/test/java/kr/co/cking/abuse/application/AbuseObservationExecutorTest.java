@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -82,6 +83,25 @@ class AbuseObservationExecutorTest {
                 .when(detectionRecorder).record(observation.userId(), result);
 
         assertThatCode(() -> executor.observe(observation)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 첫_Detection_저장이_실패해도_나머지_결과는_독립적으로_저장_시도한다() {
+        when(properties.enabled()).thenReturn(true);
+        AbuseObservationEvent observation = observation();
+        DetectionResult first = result(AbuseType.MISSION_REQUEST_BURST);
+        DetectionResult second = result(AbuseType.FAILURE_BURST);
+        when(ruleEvaluator.evaluate(observation)).thenReturn(List.of(first, second));
+        org.mockito.Mockito.doThrow(new IllegalStateException("DB commit failure"))
+                .when(detectionRecorder).record(observation.userId(), first);
+
+        assertThatCode(() -> executor.observe(observation)).doesNotThrowAnyException();
+
+        var order = inOrder(detectionRecorder);
+        order.verify(detectionRecorder).record(observation.userId(), first);
+        order.verify(detectionRecorder).record(observation.userId(), second);
+        order.verifyNoMoreInteractions();
+        verify(ruleEvaluator).evaluate(observation);
     }
 
     @Test
