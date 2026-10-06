@@ -54,6 +54,33 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 - 검증에 실패하면 기존 선택은 그대로다.
 - 유지되는 선택은 `selected_at`을 바꾸지 않는다. 같은 회원의 동시 저장은 직렬화된다.
 
+## FE 연동 가이드
+
+관심 분야 선택(`/api/interests`, `/api/me/interests`)과 개인화 추천([`/api/me/creator-recommendations`](../creator/api.md#get-apimecreator-recommendations))을
+화면에 붙일 때 오류가 나기 쉬운 지점이다.
+
+**관심 분야 선택**
+
+- 저장 요청의 `taxonomyVersion`은 **`GET /api/interests` 응답 값**을 보낸다. `GET /api/me/interests`의 버전은 과거에 저장한 선택의 버전이라
+  분류체계가 바뀌면 활성 버전과 달라 저장이 400이 된다. 활성 분류체계가 없으면(`taxonomyVersion: null`) 저장할 수 없다.
+- 400 `VALIDATION_FAILED`는 4개 이상, 중복, 없는 코드, 비활성 버전을 구분하지 않고 필드별 상세도 없다. 최대 선택 수는 응답의 `maxSelection`으로
+  FE가 미리 막는다. 선택 해제는 빈 배열 PUT이다.
+- `/api/interests`는 인증이 필요 없지만 유효하지 않거나 만료된 Access JWT를 붙여 보내면 401이 될 수 있다. 기존 401 → refresh → 재시도 흐름이 처리한다.
+
+**개인화 추천**
+
+- `items: []`는 오류가 아니라 정상이다. 관심 분야·팔로우가 모두 없거나, 유효한 후보가 없거나, LLM 배치가 아직 적재하지 않은 경우이며 인기순 fallback은
+  없다. 빈 화면 처리가 필요하다.
+- `policyVersion`은 선택·팔로우의 존재 여부가 아니라, 본인·기팔로우·Space 없는 Creator를 제외한 뒤에도 후보가 남는 **유효한 source**가 어디에 있는지로
+  정해진다. `HYBRID_PERSONALIZED_V1`은 관심 분야와 팔로우 양쪽에 유효한 source가 있을 때, `INTEREST_PERSONALIZED_V1`은 관심 분야에만 있을 때,
+  `FOLLOW_PERSONALIZED_V2`는 팔로우에만 있거나 양쪽 모두 없을 때다. 예를 들어 관심 분야와 팔로우가 모두 있어도 관심 분야 후보가 없으면
+  `FOLLOW_PERSONALIZED_V2`다. 화면 분기에는 쓰지 않아도 되고, 모르는 값이 와도 `items`를 그대로 그리면 된다.
+- `aggregateScore`는 정렬용이라 화면에 노출하지 않는다. 서로 다른 `policyVersion`의 점수는 비교할 수 없다. `interestCodes`·`seedCreatorIds`는 "추천 이유"
+  표시에 쓸 수 있으며 빈 배열일 수 있다.
+- 본인, 이미 팔로우한 Creator, Creator Space가 없는 Creator는 나오지 않는다. `size`는 1~20이고 범위를 벗어나면 400이다.
+- 반영 시점: 관심 분야 저장과 팔로우 변경은 다음 조회부터 바로 반영된다(조회 시 계산). 응답의 `introText`·`profileImageUrl`은 조회 때 Creator Space에서
+  읽으므로 저장 완료 후 다음 조회부터 바뀐다. 반면 소개글 변경에 따른 추천 후보와 순위의 변화는 LLM 배치가 새 결과를 적재한 뒤 반영된다.
+
 ## PUT /api/admin/interests/{interestCode}/recommendations
 
 Cking-LLM 배치가 한 관심 분야의 완결된 후보 묶음을 적재한다. 인증은 추천 적재 API Key 또는 ADMIN JWT이며 규칙은
