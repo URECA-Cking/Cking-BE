@@ -127,5 +127,7 @@
 | 124 | 외부 | Creator 추천 | PUBLIC | GET | `/api/creators/{creatorId}/similar` | 저장된 유사 크리에이터 후보 조회 | - |
 | 125 | 외부 | Creator 추천 | USER | GET | `/api/me/creator-recommendations` | 팔로우 seed 기반 개인화 Creator 추천 조회 | - |
 | 126 | 외부 | 관심 분야 | PUBLIC | GET | `/api/interests` | 선택 가능한 관심 분야 목록 조회(활성 분류체계) | - |
+| 127 | 외부 | 관심 분야 | USER | GET | `/api/me/interests` | 내 관심 분야 조회 | - |
+| 128 | 외부 | 관심 분야 | USER | PUT | `/api/me/interests` | 내 관심 분야 전체 교체 저장(0~3개) | 전체 교체(멱등) |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
