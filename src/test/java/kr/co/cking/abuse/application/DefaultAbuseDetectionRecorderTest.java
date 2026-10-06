@@ -62,6 +62,16 @@ class DefaultAbuseDetectionRecorderTest {
         verify(cooldownStore, never()).release(any());
     }
 
+    /** 유효하지 않은 회원 식별자는 Redis Cooldown 획득 전에 거부한다. */
+    @Test
+    void 유효하지_않은_memberId면_Cooldown을_획득하지_않는다() {
+        assertThatThrownBy(() -> recorder.record(0L, RESULT))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(cooldownStore, never()).tryAcquire(any(), any(), any());
+        verify(persistenceService, never()).save(any(), any());
+    }
+
     /** 저장 성공 후에는 TTL 동안 중복을 막도록 Lease를 유지한다. */
     @Test
     void 저장에_성공하면_Cooldown을_유지한다() {

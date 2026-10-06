@@ -153,9 +153,9 @@ Evidence는 request body, token, authorization header, 개인정보를 담지 �
 
 Composite 보조 근거가 있는 경우에만 `supportingEvidence`를 추가한다. key는 `RULE-01`~`RULE-05`, 배열의 각 원소는 `abuseType` 또는 `signal` 하나와 독립적인 `scope`, `window`, `features`, `thresholds`를 가진다. primary Evidence와 다른 window의 값을 primary `features`에 합치지 않는다.
 
-`AbuseDetectionRecorder.record(DetectionResult)`는 Rule Engine이 호출하는 저장 경계다. `DetectionResult`는 `memberId`, `abuseType`, `cooldownScopeHash`, `detectedAt`, 확정된 Evidence를 모두 가지며 Recorder는 Evidence를 새로 만들거나 수정하지 않는다. Recorder는 `AbuseProperties.cooldownTtl(abuseType)`으로 Lease 획득에 성공한 경우에만 `AbuseDetection`을 만들고 저장한다. 같은 Scope의 Lease가 있으면 INSERT를 생략하며, DB 저장 시작·flush·commit 실패 시에는 소유 Token 조건의 Cooldown 해제를 best-effort로 시도한다. 저장 성공 시 Lease는 TTL까지 유지한다.
+`AbuseDetectionRecorder.record(memberId, DetectionResult)`는 `AbuseObservationExecutor`가 호출하는 저장 경계다. `memberId`는 Observation의 `userId`이고, `DetectionResult`는 `abuseType`, `cooldownScopeHash`, `detectedAt`, 확정된 Evidence를 가진다. Recorder는 Evidence를 새로 만들거나 수정하지 않는다. Recorder는 `AbuseProperties.cooldownTtl(abuseType)`으로 Lease 획득에 성공한 경우에만 `AbuseDetection`을 만들고 저장한다. 같은 Scope의 Lease가 있으면 INSERT를 생략하며, DB 저장 시작·flush·commit 실패 시에는 소유 Token 조건의 Cooldown 해제를 best-effort로 시도한다. 저장 성공 시 Lease는 TTL까지 유지한다.
 
-Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. 독립 Transaction의 시작·flush·commit 오류까지 Recorder가 catch해 ERROR로 남기고, 원래 Mission/Entry 결과와 예외를 그대로 반환한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
+Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. Recorder는 독립 Transaction의 시작·flush·commit 오류에서 소유 Token 조건의 Cooldown 해제를 best-effort로 시도한 뒤 예외를 전파한다. `AbuseObservationExecutor`는 이를 catch해 `[ABUSE_OBSERVATION_FAILED]` WARN 로그로 격리하고, 다른 Detection 저장을 계속 시도한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
 
 ## 설정과 Calibration
 

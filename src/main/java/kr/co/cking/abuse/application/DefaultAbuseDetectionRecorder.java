@@ -6,6 +6,7 @@ import kr.co.cking.abuse.application.port.AbuseDetectionRecorder;
 import kr.co.cking.abuse.config.AbuseProperties;
 import kr.co.cking.abuse.domain.AbuseDetection;
 import kr.co.cking.abuse.domain.DetectionResult;
+import kr.co.cking.common.validation.DomainValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +35,7 @@ public class DefaultAbuseDetectionRecorder implements AbuseDetectionRecorder {
     /** Cooldown을 얻은 Detection만 저장하고 저장 실패 시 해당 Lease를 최선으로 해제한 뒤 실패를 전파한다. */
     @Override
     public void record(Long memberId, DetectionResult result) {
+        DomainValidator.requirePositive(memberId, "memberId");
         Objects.requireNonNull(result, "result는 필수입니다.");
         CooldownLease acquiredLease = cooldownStore.tryAcquire(
                 result.abuseType(), result.cooldownScopeHash(), properties.cooldownTtl(result.abuseType()))
