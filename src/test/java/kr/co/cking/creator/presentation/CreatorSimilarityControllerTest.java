@@ -1,10 +1,10 @@
 package kr.co.cking.creator.presentation;
 
+import kr.co.cking.common.security.RecommendationWriteAuthorizer;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.creator.application.CreatorSimilarityQueryService;
 import kr.co.cking.creator.application.CreatorSimilarityResultService;
 import kr.co.cking.creator.application.dto.CreatorSimilarityView;
-import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -36,12 +36,12 @@ class CreatorSimilarityControllerTest {
     @Autowired MockMvc mockMvc;
     @MockitoBean CreatorSimilarityResultService resultService;
     @MockitoBean CreatorSimilarityQueryService queryService;
-    @MockitoBean MemberRepository memberRepository;
+    @MockitoBean RecommendationWriteAuthorizer writeAuthorizer;
 
     @Test
     @WithMockJwt(memberId = "7")
     void 관리자는_LLM_후보_묶음을_그대로_적재한다() throws Exception {
-        given(resultService.replace(eq(7L), eq(10L), any()))
+        given(resultService.replace(eq(10L), any()))
                 .willReturn(new CreatorSimilarityResultService.StoreResult(10L, 100L, INPUT_HASH, 1, true));
 
         mockMvc.perform(put("/api/admin/creators/10/similar")
@@ -54,7 +54,8 @@ class CreatorSimilarityControllerTest {
                 .andExpect(jsonPath("$.data.candidateCount").value(1))
                 .andExpect(jsonPath("$.data.applied").value(true));
 
-        then(resultService).should().replace(eq(7L), eq(10L), any());
+        then(writeAuthorizer).should().requireWriteAccess(any());
+        then(resultService).should().replace(eq(10L), any());
     }
 
     @Test
@@ -66,13 +67,13 @@ class CreatorSimilarityControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-        then(resultService).should(never()).replace(any(), any(), any());
+        then(resultService).should(never()).replace(any(), any());
     }
 
     @Test
     @WithMockJwt(memberId = "7")
     void 생성_메타데이터가_있는_빈_후보_묶음을_적재한다() throws Exception {
-        given(resultService.replace(eq(7L), eq(10L), any()))
+        given(resultService.replace(eq(10L), any()))
                 .willReturn(new CreatorSimilarityResultService.StoreResult(10L, 101L, INPUT_HASH, 0, true));
 
         mockMvc.perform(put("/api/admin/creators/10/similar")
@@ -90,7 +91,7 @@ class CreatorSimilarityControllerTest {
                 .andExpect(jsonPath("$.data.candidateCount").value(0))
                 .andExpect(jsonPath("$.data.applied").value(true));
 
-        then(resultService).should().replace(eq(7L), eq(10L), argThat(command ->
+        then(resultService).should().replace(eq(10L), argThat(command ->
                 command.creatorId() == 10L
                         && command.method().equals("M4")
                         && command.modelVersion().equals("model-v1")
@@ -112,7 +113,7 @@ class CreatorSimilarityControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-        then(resultService).should(never()).replace(any(), any(), any());
+        then(resultService).should(never()).replace(any(), any());
     }
 
     @Test

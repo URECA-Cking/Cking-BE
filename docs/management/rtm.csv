@@ -283,3 +283,8 @@ FR-AI-009,AI,중복 후보를 합치고 본인과 이미 팔로우한 Creator를
 FR-AI-010,AI,인증된 사용자가 개인화 Creator 추천 카드를 조회한다,성원,Creator 추천,"GET /api/me/creator-recommendations, size 1~20, Creator·Space·집계 점수·seed 근거 반환",확정,완료,No
 FR-AI-011,AI,팔로우 또는 사용 가능한 활성 추천이 없으면 빈 목록을 반환한다,성원,Creator 추천,인기순 fallback 없이 policyVersion과 빈 items 반환,확정,완료,No
 FR-AI-012,AI,개인화 추천 조회는 모델 API 장애와 독립적으로 동작한다,성원,Creator 추천,저장된 활성 세대 Repository만 사용하고 요청 중 BGE-M3·GPT 호출 없음,확정,완료,No
+FR-AI-023,AI,추천 적재 전용 API Key로 유사 추천 결과를 적재할 수 있다,성집,Creator 추천,X-Cking-Recommendation-Key 헤더로 배치 인증하며 RECOMMENDATION_WRITE 권한은 추천 적재 엔드포인트에서만 인정,확정,완료,No
+FR-AI-024,AI,키 헤더가 있으면 키 인증만 수행하고 빈 값·무효 키는 401로 거부한다,성집,Creator 추천,유효한 JWT를 함께 보내도 JWT로 되돌아가지 않음,확정,완료,No
+FR-AI-025,AI,JWT 적재는 Security 1차 인가 후 Application에서 ADMIN을 재검증한다,성집,Creator 추천,RecommendationWriteAuthorizer가 DB 역할 확인(팀 인증 규칙 유지),확정,완료,No
+FR-AI-026,AI,추천 결과 교체 서비스는 인증 방식과 회원 ID에 의존하지 않는다,성집,Creator 추천,CreatorSimilarityResultService.replace(creatorId 와 command),확정,완료,No
+FR-AI-027,AI,API Key는 해시로 설정하고 상수 시간으로 비교하며 복수 키로 교체할 수 있다,성집,Creator 추천,cking.recommendation.api-key-hashes(SHA-256 hex 목록),확정,완료,No

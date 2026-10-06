@@ -48,6 +48,9 @@ management:
       enabled: true
 
 cking:
+  recommendation:
+    # 추천 적재 배치 API Key의 SHA-256 hex(쉼표 구분). 키 교체 중에는 새 키·이전 키를 함께 둔다. 비어 있으면 키 인증은 항상 401.
+    api-key-hashes: ${CKING_RECOMMENDATION_API_KEY_HASHES:}
   abuse:
     # Calibration이 완료되고 모든 window/threshold를 주입한 환경에서만 활성화한다.
     enabled: ${CKING_ABUSE_ENABLED:false}

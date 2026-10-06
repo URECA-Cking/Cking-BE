@@ -30,6 +30,25 @@ for name in DB_HOST DB_USERNAME DB_PASSWORD DOCS_USERNAME DOCS_PASSWORD \
   export "$name=$value"
 done
 
+# 선택 값: 추천 적재 배치 API Key 해시. 파라미터가 아직 등록되지 않은 경우(ParameterNotFound)에만 빈 값으로 두고
+# 키 인증만 비활성화한 채 배포를 계속한다. 권한 부족·KMS 복호화 실패·네트워크 오류 같은 다른 조회 실패는
+# 키 인증이 조용히 꺼진 채 배포가 성공으로 남지 않도록 배포를 실패시킨다.
+ssm_err=$(mktemp)
+trap 'rm -f "$ssm_err"' EXIT
+if recommendation_key_hashes=$(aws ssm get-parameter --region "$REGION" \
+    --name "${PARAM_PATH}CKING_RECOMMENDATION_API_KEY_HASHES" \
+    --with-decryption --query 'Parameter.Value' --output text 2>"$ssm_err"); then
+  :
+elif grep -q 'ParameterNotFound' "$ssm_err"; then
+  recommendation_key_hashes=""
+  echo "추천 적재 API Key 해시가 등록되지 않아 키 인증은 비활성화된 채 배포합니다."
+else
+  echo "추천 적재 API Key 해시 조회 실패(미등록이 아닌 오류):" >&2
+  cat "$ssm_err" >&2
+  exit 1
+fi
+export CKING_RECOMMENDATION_API_KEY_HASHES="$recommendation_key_hashes"
+
 export IMAGE_TAG="$TAG"
 
 echo "[3/4] 이미지 pull 및 기동: $IMAGE_TAG"
