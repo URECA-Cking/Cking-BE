@@ -3,8 +3,7 @@ package kr.co.cking.interest.application;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -17,6 +16,12 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.interest.application.InterestRecommendationResultService.StoreResult;
 import kr.co.cking.interest.application.dto.InterestRecommendationCommand;
+import kr.co.cking.interest.domain.InterestCategory;
+import kr.co.cking.interest.domain.InterestTaxonomy;
+import kr.co.cking.interest.domain.InterestTaxonomyHash;
+import kr.co.cking.interest.domain.InterestTaxonomyHash.Row;
+import kr.co.cking.interest.repository.InterestCategoryRepository;
+import kr.co.cking.interest.repository.InterestTaxonomyRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -30,41 +35,53 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @SpringBootTest
 class InterestRecommendationConcurrencyIntegrationTest {
 
+    private static final String CODE = "SPORTS";
+
     @Autowired InterestRecommendationResultService service;
+    @Autowired InterestTaxonomyRepository taxonomyRepository;
+    @Autowired InterestCategoryRepository categoryRepository;
     @Autowired MemberRepository memberRepository;
     @Autowired CreatorRepository creatorRepository;
     @Autowired JdbcTemplate jdbcTemplate;
 
-    private final List<Long> memberIds = new ArrayList<>();
-    private final List<Long> creatorIds = new ArrayList<>();
-    private final List<Long> generationIds = new ArrayList<>();
+    private String version;
+    private Long memberId;
+    private Long creatorId;
 
-    /** 이 테스트가 만든 행만 지운다(공유 DB의 다른 적재 결과를 건드리지 않는다). */
+    /** 테스트 전용 분류체계 버전의 행만 지운다. 공유 DB의 실제 v0.2 적재 결과는 건드리지 않는다. */
     @AfterEach
     void cleanUp() {
-        generationIds.forEach(id -> {
-            jdbcTemplate.update("delete from interest_recommendation_state where current_generation_id = ?", id);
-            jdbcTemplate.update("delete from interest_recommendation_candidate where generation_id = ?", id);
-            jdbcTemplate.update("delete from interest_recommendation_generation where generation_id = ?", id);
-        });
-        creatorIds.forEach(id -> jdbcTemplate.update("delete from creator where creator_id = ?", id));
-        memberIds.forEach(id -> jdbcTemplate.update("delete from member where member_id = ?", id));
+        if (version != null) {
+            jdbcTemplate.update("delete from interest_recommendation_state where taxonomy_version = ?", version);
+            jdbcTemplate.update("delete from interest_recommendation_candidate where generation_id in "
+                    + "(select generation_id from interest_recommendation_generation where taxonomy_version = ?)", version);
+            jdbcTemplate.update("delete from interest_recommendation_generation where taxonomy_version = ?", version);
+            jdbcTemplate.update("delete from interest_category where taxonomy_version = ?", version);
+            jdbcTemplate.update("delete from interest_taxonomy where taxonomy_version = ?", version);
+        }
+        if (creatorId != null) {
+            jdbcTemplate.update("delete from creator where creator_id = ?", creatorId);
+        }
+        if (memberId != null) {
+            jdbcTemplate.update("delete from member where member_id = ?", memberId);
+        }
     }
 
     @Test
     void 같은_분야의_같은_입력_동시_적재는_하나의_세대로_수렴한다() throws Exception {
-        String taxonomyHash = Files.readString(Path.of("src/test/resources/fixtures/taxonomy/v02.sha256.txt")).strip();
-        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        Member owner = memberRepository.saveAndFlush(new Member("owner-" + suffix, null, null, MemberRole.USER));
-        memberIds.add(owner.getMemberId());
-        Creator creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "c-" + suffix));
-        creatorIds.add(creator.getCreatorId());
-        String hash = "d".repeat(64);
+        String suffix = UUID.randomUUID().toString().replace("-", "");
+        version = "t" + suffix.substring(0, 12);
+        String taxonomyHash = InterestTaxonomyHash.compute(List.of(new Row(CODE, "스포츠", "설명")));
+        taxonomyRepository.saveAndFlush(new InterestTaxonomy(version, taxonomyHash, false, Instant.now()));
+        categoryRepository.saveAndFlush(new InterestCategory(version, CODE, "스포츠", "설명", 1, true));
+        Member owner = memberRepository.saveAndFlush(new Member("owner-" + suffix.substring(0, 12), null, null, MemberRole.USER));
+        memberId = owner.getMemberId();
+        creatorId = creatorRepository.saveAndFlush(new Creator(memberId, "c-" + suffix.substring(0, 12))).getCreatorId();
+        String hash = (suffix + suffix).substring(0, 64);
         InterestRecommendationCommand command = new InterestRecommendationCommand(
-                "v0.2", taxonomyHash, "SPORTS", "INTEREST_M3_V1", "model-v1", hash,
+                version, taxonomyHash, CODE, "INTEREST_M3_V1", "model-v1", hash,
                 List.of(new InterestRecommendationCommand.Candidate(
-                        "SPORTS", creator.getCreatorId(), new BigDecimal("0.90000000"), 1,
-                        "INTEREST_M3_V1", "model-v1", hash)));
+                        CODE, creatorId, new BigDecimal("0.90000000"), 1, "INTEREST_M3_V1", "model-v1", hash)));
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
         try {
@@ -72,23 +89,21 @@ class InterestRecommendationConcurrencyIntegrationTest {
             for (int index = 0; index < 2; index++) {
                 futures.add(executor.submit(() -> {
                     start.await();
-                    return service.replace("SPORTS", command);
+                    return service.replace(CODE, command);
                 }));
             }
             start.countDown();
             List<StoreResult> results = List.of(futures.get(0).get(10, TimeUnit.SECONDS),
                     futures.get(1).get(10, TimeUnit.SECONDS));
 
-            results.forEach(result -> generationIds.add(result.generationId()));
             assertThat(results).extracting(StoreResult::applied).containsExactlyInAnyOrder(true, false);
             assertThat(results).extracting(StoreResult::generationId).containsOnly(results.getFirst().generationId());
-            Long generationId = results.getFirst().generationId();
             assertThat(jdbcTemplate.queryForObject(
-                    "select count(*) from interest_recommendation_generation where input_hash = ?",
-                    Integer.class, hash)).isEqualTo(1);
+                    "select count(*) from interest_recommendation_generation where taxonomy_version = ?",
+                    Integer.class, version)).isEqualTo(1);
             assertThat(jdbcTemplate.queryForObject(
                     "select count(*) from interest_recommendation_candidate where generation_id = ?",
-                    Integer.class, generationId)).isEqualTo(1);
+                    Integer.class, results.getFirst().generationId())).isEqualTo(1);
         } finally {
             executor.shutdownNow();
         }

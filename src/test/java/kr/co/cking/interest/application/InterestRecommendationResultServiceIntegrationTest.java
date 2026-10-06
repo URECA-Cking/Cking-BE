@@ -4,8 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
@@ -16,11 +15,17 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.interest.application.InterestRecommendationResultService.StoreResult;
 import kr.co.cking.interest.application.dto.InterestRecommendationCommand;
 import kr.co.cking.interest.application.dto.InterestRecommendationCommand.Candidate;
+import kr.co.cking.interest.domain.InterestCategory;
 import kr.co.cking.interest.domain.InterestCategoryId;
 import kr.co.cking.interest.domain.InterestErrorCode;
+import kr.co.cking.interest.domain.InterestTaxonomy;
+import kr.co.cking.interest.domain.InterestTaxonomyHash;
+import kr.co.cking.interest.domain.InterestTaxonomyHash.Row;
+import kr.co.cking.interest.repository.InterestCategoryRepository;
 import kr.co.cking.interest.repository.InterestRecommendationCandidateRepository;
 import kr.co.cking.interest.repository.InterestRecommendationGenerationRepository;
 import kr.co.cking.interest.repository.InterestRecommendationStateRepository;
+import kr.co.cking.interest.repository.InterestTaxonomyRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -28,14 +33,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 시드된 v0.2 분류체계와 실제 MySQL로 적재 계약(원자 교체·멱등·거부 시 기존 결과 유지)을 확인한다. 테스트마다 롤백한다. */
+/**
+ * 테스트 전용 분류체계(롤백)와 실제 MySQL로 적재 계약(원자 교체·멱등·거부 시 기존 결과 유지)을 확인한다.
+ * 공유 DB의 실제 v0.2 적재 결과와 섞이지 않도록 매 테스트가 자기 분류체계 버전을 만들고 그 범위로만 센다.
+ */
 @SpringBootTest
 @Transactional
 class InterestRecommendationResultServiceIntegrationTest {
 
-    private static final String VERSION = "v0.2";
     private static final String CODE = "SPORTS";
     private static final String METHOD = "INTEREST_M3_V1";
     private static final String MODEL = "BAAI/bge-m3@deepinfra-v1";
@@ -43,19 +51,26 @@ class InterestRecommendationResultServiceIntegrationTest {
     private static final String SECOND_HASH = "b".repeat(64);
 
     @Autowired InterestRecommendationResultService service;
+    @Autowired InterestTaxonomyRepository taxonomyRepository;
+    @Autowired InterestCategoryRepository categoryRepository;
+    @Autowired JdbcTemplate jdbcTemplate;
     @Autowired InterestRecommendationGenerationRepository generationRepository;
     @Autowired InterestRecommendationCandidateRepository candidateRepository;
     @Autowired InterestRecommendationStateRepository stateRepository;
     @Autowired MemberRepository memberRepository;
     @Autowired CreatorRepository creatorRepository;
 
+    private String version;
     private String taxonomyHash;
     private Creator first;
     private Creator second;
 
     @BeforeEach
-    void setUp() throws Exception {
-        taxonomyHash = Files.readString(Path.of("src/test/resources/fixtures/taxonomy/v02.sha256.txt")).strip();
+    void setUp() {
+        version = "t" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        taxonomyHash = InterestTaxonomyHash.compute(List.of(new Row(CODE, "스포츠", "설명")));
+        taxonomyRepository.saveAndFlush(new InterestTaxonomy(version, taxonomyHash, false, Instant.now()));
+        categoryRepository.saveAndFlush(new InterestCategory(version, CODE, "스포츠", "설명", 1, true));
         first = creator("a");
         second = creator("b");
     }
@@ -67,9 +82,9 @@ class InterestRecommendationResultServiceIntegrationTest {
 
         assertThat(result.applied()).isTrue();
         assertThat(result.candidateCount()).isEqualTo(2);
-        assertThat(result.taxonomyVersion()).isEqualTo(VERSION);
+        assertThat(result.taxonomyVersion()).isEqualTo(version);
         assertThat(result.interestCode()).isEqualTo(CODE);
-        assertThat(stateRepository.findById(new InterestCategoryId(VERSION, CODE)).orElseThrow()
+        assertThat(stateRepository.findById(new InterestCategoryId(version, CODE)).orElseThrow()
                 .getCurrentGenerationId()).isEqualTo(result.generationId());
         assertThat(candidateRepository.findByGenerationIdOrderByRankAsc(result.generationId()))
                 .extracting(c -> c.getCreatorId(), c -> c.getRank())
@@ -87,8 +102,8 @@ class InterestRecommendationResultServiceIntegrationTest {
 
         assertThat(replay.applied()).isFalse();
         assertThat(replay.generationId()).isEqualTo(original.generationId());
-        assertThat(generationRepository.count()).isEqualTo(1);
-        assertThat(candidateRepository.count()).isEqualTo(1);
+        assertThat(generations()).isEqualTo(1);
+        assertThat(candidates()).isEqualTo(1);
     }
 
     @Test
@@ -101,7 +116,7 @@ class InterestRecommendationResultServiceIntegrationTest {
                 command(FIRST_HASH, candidate(first, "0.70000000", 1, FIRST_HASH))));
 
         assertThat(currentGenerationId()).isEqualTo(original.generationId());
-        assertThat(generationRepository.count()).isEqualTo(1);
+        assertThat(generations()).isEqualTo(1);
     }
 
     @Test
@@ -112,7 +127,7 @@ class InterestRecommendationResultServiceIntegrationTest {
 
         assertThat(replaced.applied()).isTrue();
         assertThat(currentGenerationId()).isEqualTo(replaced.generationId()).isNotEqualTo(original.generationId());
-        assertThat(generationRepository.count()).isEqualTo(2);
+        assertThat(generations()).isEqualTo(2);
         assertThat(candidateRepository.findByGenerationIdOrderByRankAsc(original.generationId())).hasSize(1);
     }
 
@@ -145,10 +160,10 @@ class InterestRecommendationResultServiceIntegrationTest {
     @Test
     void taxonomyHash가_등록된_해시와_다르면_거부한다() {
         InterestRecommendationCommand wrongHash = new InterestRecommendationCommand(
-                VERSION, "c".repeat(64), CODE, METHOD, MODEL, FIRST_HASH, List.of());
+                version, "c".repeat(64), CODE, METHOD, MODEL, FIRST_HASH, List.of());
 
         assertError(InterestErrorCode.INVALID_RECOMMENDATION_RESULT, () -> service.replace(CODE, wrongHash));
-        assertThat(generationRepository.count()).isZero();
+        assertThat(generations()).isZero();
     }
 
     @Test
@@ -162,7 +177,7 @@ class InterestRecommendationResultServiceIntegrationTest {
     @Test
     void 그_버전에_없는_분야는_RESOURCE_NOT_FOUND다() {
         InterestRecommendationCommand unknownCode = new InterestRecommendationCommand(
-                VERSION, taxonomyHash, "NOT_A_CATEGORY", METHOD, MODEL, FIRST_HASH, List.of());
+                version, taxonomyHash, "NOT_A_CATEGORY", METHOD, MODEL, FIRST_HASH, List.of());
 
         assertError(CommonErrorCode.RESOURCE_NOT_FOUND, () -> service.replace("NOT_A_CATEGORY", unknownCode));
     }
@@ -177,7 +192,7 @@ class InterestRecommendationResultServiceIntegrationTest {
                 command(SECOND_HASH, candidate(second, "0.90000000", 1, SECOND_HASH), missing)));
 
         assertThat(currentGenerationId()).isEqualTo(original.generationId());
-        assertThat(generationRepository.count()).isEqualTo(1);
+        assertThat(generations()).isEqualTo(1);
     }
 
     @Test
@@ -186,17 +201,33 @@ class InterestRecommendationResultServiceIntegrationTest {
                 command(FIRST_HASH, candidate(first, "0.10000000", 1, FIRST_HASH),
                         candidate(second, "0.90000000", 2, FIRST_HASH))));
 
-        assertThat(generationRepository.count()).isZero();
-        assertThat(stateRepository.count()).isZero();
+        assertThat(generations()).isZero();
+        assertThat(states()).isZero();
+    }
+
+    private int generations() {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from interest_recommendation_generation where taxonomy_version = ?", Integer.class, version);
+    }
+
+    private int candidates() {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from interest_recommendation_candidate c join interest_recommendation_generation g "
+                        + "on g.generation_id = c.generation_id where g.taxonomy_version = ?", Integer.class, version);
+    }
+
+    private int states() {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from interest_recommendation_state where taxonomy_version = ?", Integer.class, version);
     }
 
     private Long currentGenerationId() {
-        return stateRepository.findById(new InterestCategoryId(VERSION, CODE)).orElseThrow().getCurrentGenerationId();
+        return stateRepository.findById(new InterestCategoryId(version, CODE)).orElseThrow().getCurrentGenerationId();
     }
 
     private InterestRecommendationCommand command(String inputHash, Candidate... candidates) {
         return new InterestRecommendationCommand(
-                VERSION, taxonomyHash, CODE, METHOD, MODEL, inputHash, List.of(candidates));
+                version, taxonomyHash, CODE, METHOD, MODEL, inputHash, List.of(candidates));
     }
 
     private Candidate candidate(Creator creator, String score, int rank, String inputHash) {
