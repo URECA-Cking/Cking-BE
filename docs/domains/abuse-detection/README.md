@@ -191,6 +191,8 @@ k6는 `normal-user.js`, `mission-request-burst.js`, `duplicate-mission-burst.js`
 
 정상군 실행 전제·fixture·측정 방법은 [normal-k6.md](normal-k6.md)를 따른다. 정상군 k6의 HTTP 시각은 Redis Lua 집계 시각의 근사치이며 실제 수치 결과는 격리 환경 실행 후 기록한다.
 
+비정상군 7개 시나리오의 실행 전제·합성 fixture·HTTP 기준 관찰 결과는 [abnormal-k6.md](abnormal-k6.md)를 따른다. 단회 관찰 최댓값을 `abuseMin`이나 운영 threshold로 확정하지 않으며, 후속 Calibration에서 반복 실행·Redis Feature/Evidence와 비교한다.
+
 ## v1 완료 기준
 
 7개 행동 모델(그중 rotation은 signal), 4개 API 연결, Redis feature/Lua, 6개 Detection rule·5개 composite rule, scope cooldown, migration/Evidence, 관리자 API, 정상·비정상 k6와 calibration, 그리고 성공·업무 실패 각각에서 Redis/독립 Detection Transaction 장애에도 기존 처리 결과가 유지됨을 자동화 테스트로 검증하면 완료다. 관리자 동시 검토에서 같은 판정은 멱등 반환되고 상반된 판정은 정확히 하나만 성공하는 테스트도 포함한다. 구현 단계에서 위 범위, 분류, scope, key/TTL, Lua 분리, cooldown, 상태, Fail Open 정책은 다시 결정하지 않는다. 숫자 threshold만 Calibration 산출물이다.
