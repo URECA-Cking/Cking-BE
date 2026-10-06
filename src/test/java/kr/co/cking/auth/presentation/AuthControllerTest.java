@@ -145,6 +145,30 @@ class AuthControllerTest {
         verifyNoInteractions(accessTokenService, refreshTokenService);
     }
 
+    /** 비어 있는 관리자 로그인 ID와 비밀번호는 인증 전에 입력 오류로 거절하는지 검증한다. */
+    @Test
+    void 관리자_로그인_필수값이_비어_있으면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"\",\"password\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAuthService);
+    }
+
+    /** 최대 길이를 넘는 관리자 로그인 ID는 인증 전에 입력 오류로 거절하는지 검증한다. */
+    @Test
+    void 관리자_로그인ID가_최대길이를_넘으면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"" + "a".repeat(101) + "\",\"password\":\"password\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAuthService);
+    }
+
     /** Refresh Cookie가 회전되면 새 Access Token과 Set-Cookie 헤더를 반환하는지 검증한다. */
     @Test
     void RefreshToken을_회전해_AccessToken을_갱신한다() throws Exception {
