@@ -1,13 +1,10 @@
 package kr.co.cking.auth.application;
 
-import kr.co.cking.auth.application.port.AdminPasswordHasher;
-import kr.co.cking.auth.domain.AdminAccount;
 import kr.co.cking.auth.repository.AdminAccountRepository;
-import kr.co.cking.member.domain.Member;
-import kr.co.cking.member.domain.MemberRole;
-import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 개발·시연 환경의 관리자 계정과 연결 Member를 한 번만 준비한다. */
@@ -16,11 +13,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminAccountInitializationService {
 
     private final AdminAccountRepository adminAccountRepository;
-    private final MemberRepository memberRepository;
-    private final AdminPasswordHasher adminPasswordHasher;
+    private final AdminAccountCreationService adminAccountCreationService;
 
-    /** 로그인 ID가 없을 때만 ADMIN Member와 BCrypt 자격 증명 계정을 함께 생성한다. */
-    @Transactional
+    /**
+     * 로그인 ID가 없을 때만 ADMIN Member와 BCrypt 자격 증명 계정을 함께 생성한다.
+     *
+     * <p>이 메서드는 의도적으로 앰비언트 트랜잭션을 사용하지 않는다. 생성은
+     * {@link AdminAccountCreationService}의 별도 {@code REQUIRES_NEW} 트랜잭션에서 수행하고,
+     * UNIQUE 충돌 뒤 재조회는 실패한 생성 트랜잭션과 분리된 새 스냅샷에서 실행한다.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void initialize(String loginId, String rawPassword) {
         validateLoginId(loginId);
         if (adminAccountRepository.existsByLoginId(loginId)) {
@@ -29,12 +31,14 @@ public class AdminAccountInitializationService {
 
         validateRawPassword(rawPassword);
 
-        Member adminMember = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
-        adminAccountRepository.save(new AdminAccount(
-                adminMember.getMemberId(),
-                loginId,
-                adminPasswordHasher.hash(rawPassword)
-        ));
+        try {
+            adminAccountCreationService.create(loginId, rawPassword);
+        } catch (DataIntegrityViolationException exception) {
+            if (adminAccountRepository.existsByLoginId(loginId)) {
+                return;
+            }
+            throw exception;
+        }
     }
 
     /** 비어 있는 로그인 ID로 관리자 계정 존재 여부를 조회하거나 생성하지 않도록 막는다. */

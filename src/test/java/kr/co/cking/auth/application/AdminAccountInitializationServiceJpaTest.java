@@ -32,10 +32,14 @@ class AdminAccountInitializationServiceJpaTest {
     void setUp() {
         loginId = "admin-" + UUID.randomUUID();
         rawPassword = UUID.randomUUID().toString();
-        initializationService = new AdminAccountInitializationService(
+        AdminAccountCreationService creationService = new AdminAccountCreationService(
                 adminAccountRepository,
                 memberRepository,
                 new BCryptAdminPasswordHasher()
+        );
+        initializationService = new AdminAccountInitializationService(
+                adminAccountRepository,
+                creationService
         );
     }
 

@@ -71,6 +71,10 @@ Member(role=ADMIN) 1 : 1 AdminAccount(memberId, loginId, passwordHash)
 - `local`, `dev` 프로필은 기본적으로 시딩을 비활성화하며, `cking.auth.admin-seed.enabled=true`일 때
   `loginId`가 없는 경우에만 ADMIN Member와 계정을 함께 만든다. `ADMIN_ACCOUNT_LOGIN_ID`의 기본값은
   `admin`이며, 새 계정을 만들 때만 `ADMIN_ACCOUNT_PASSWORD` 누락 시 시딩을 실패시킨다.
+- 여러 인스턴스가 동시에 최초 시딩하면 `login_id` UNIQUE 충돌이 날 수 있다. 생성은 별도
+  `REQUIRES_NEW` 트랜잭션에서 Member와 AdminAccount를 함께 저장하므로 충돌 시 둘 다 롤백한다. 바깥
+  초기화 흐름은 충돌 뒤 새 트랜잭션 경계에서 `loginId`를 재조회해 이미 생성됐다면 정상 종료하며, 없으면
+  예상하지 못한 DB 오류로 예외를 다시 전파한다.
 - 이 모델은 후속 관리자 로그인 API의 신원 확인용이다. 기존 OAuth와 `frontend-callback-url` 흐름은 바꾸지 않는다.
 
 ### OAuth 프로필 name 정규화
