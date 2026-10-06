@@ -23,9 +23,32 @@ class JwtAccessTokenIssuerTest {
     private final JwtAccessTokenIssuer accessTokenIssuer = new JwtAccessTokenIssuer(
             jwtEncoder, "cking", Duration.ofMinutes(30));
 
+    /** USER Member ID·role·issuer·시간 Claim을 담은 30분 Bearer Token을 발급하는지 검증한다. */
+    @Test
+    void USER_Access_JWT에_인증_Claim과_30분_TTL을_담는다() {
+        when(jwtEncoder.encode(any())).thenReturn(Jwt.withTokenValue("signed-token")
+                .header("alg", "HS256")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(1800))
+                .build());
+
+        AccessTokenResult response = accessTokenIssuer.issue(17L, MemberRole.USER);
+
+        ArgumentCaptor<JwtEncoderParameters> parametersCaptor = ArgumentCaptor.forClass(JwtEncoderParameters.class);
+        verify(jwtEncoder).encode(parametersCaptor.capture());
+        assertThat(response).isEqualTo(new AccessTokenResult("signed-token", "Bearer", 1800));
+        Object issuer = parametersCaptor.getValue().getClaims().getClaim("iss");
+        assertThat(issuer).isEqualTo("cking");
+        assertThat(parametersCaptor.getValue().getClaims().getSubject()).isEqualTo("17");
+        assertThat(parametersCaptor.getValue().getClaims().getClaimAsString("role")).isEqualTo("USER");
+        assertThat(parametersCaptor.getValue().getClaims().getIssuedAt()).isNotNull();
+        assertThat(parametersCaptor.getValue().getClaims().getExpiresAt())
+                .isEqualTo(parametersCaptor.getValue().getClaims().getIssuedAt().plusSeconds(1800));
+    }
+
     /** ADMIN Member ID·role·issuer·시간 Claim을 담은 30분 Bearer Token을 발급하는지 검증한다. */
     @Test
-    void Access_JWT에_인증_Claim과_30분_TTL을_담는다() {
+    void ADMIN_Access_JWT에_인증_Claim과_30분_TTL을_담는다() {
         when(jwtEncoder.encode(any())).thenReturn(Jwt.withTokenValue("signed-token")
                 .header("alg", "HS256")
                 .issuedAt(Instant.now())
