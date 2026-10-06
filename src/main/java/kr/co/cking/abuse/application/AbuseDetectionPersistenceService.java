@@ -22,8 +22,8 @@ public class AbuseDetectionPersistenceService {
 
     /** Detection Aggregate를 만들고 flush·commit까지 새 트랜잭션에서 완료한다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public AbuseDetection save(DetectionResult result) {
+    public AbuseDetection save(Long memberId, DetectionResult result) {
         Objects.requireNonNull(result, "result는 필수입니다.");
-        return detectionRepository.save(AbuseDetection.detected(result));
+        return detectionRepository.save(AbuseDetection.detected(memberId, result));
     }
 }

@@ -173,13 +173,12 @@ class AbuseDomainContractTest {
     @Test
     void 새_Detection은_DETECTED로_생성되고_같은_검토는_멱등이다() {
         DetectionResult result = new DetectionResult(
-                1L,
                 AbuseType.MISSION_REQUEST_BURST,
                 HASH,
                 OBSERVED_AT,
                 evidence(Map.of(AbuseMetric.MISSION_REQUEST_COUNT, 5L), Set.of())
         );
-        AbuseDetection detection = AbuseDetection.detected(result);
+        AbuseDetection detection = AbuseDetection.detected(1L, result);
         Instant reviewedAt = OBSERVED_AT.plusSeconds(10);
 
         detection.review(AbuseReviewDecision.CONFIRMED, 99L, reviewedAt);

@@ -54,8 +54,8 @@ public class AbuseRuleEvaluator {
         List<AbuseRuleMatch> failure = failureBurstRuleEvaluator.evaluate(observation, snapshot);
         List<AbuseRuleMatch> rapid = rapidEarnSpendRuleEvaluator.evaluate(observation, snapshot);
         return compositeRuleEvaluator.enrich(observation, snapshot, request, failure, rapid).stream()
-                .map(match -> new DetectionResult(observation.userId(), match.abuseType(),
-                        cooldownScopeHash(observation, match.abuseType()), observation.observedAt(), match.evidence()))
+                .map(match -> new DetectionResult(match.abuseType(), cooldownScopeHash(observation, match.abuseType()),
+                        observation.observedAt(), match.evidence()))
                 .toList();
     }
 

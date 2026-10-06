@@ -32,9 +32,9 @@ public class DefaultAbuseDetectionRecorder implements AbuseDetectionRecorder {
         this.persistenceService = Objects.requireNonNull(persistenceService, "persistenceService는 필수입니다.");
     }
 
-    /** Cooldown을 얻은 Detection만 저장하고 저장 실패 시 해당 Lease를 최선으로 해제한다. */
+    /** Cooldown을 얻은 Detection만 저장하고 저장 실패 시 해당 Lease를 최선으로 해제한 뒤 실패를 전파한다. */
     @Override
-    public void record(DetectionResult result) {
+    public void record(Long memberId, DetectionResult result) {
         Objects.requireNonNull(result, "result는 필수입니다.");
         Optional<CooldownLease> lease = cooldownStore.tryAcquire(
                 result.abuseType(), result.cooldownScopeHash(), properties.cooldownTtl(result.abuseType()));
@@ -43,14 +43,13 @@ public class DefaultAbuseDetectionRecorder implements AbuseDetectionRecorder {
         }
 
         try {
-            AbuseDetection saved = persistenceService.save(result);
+            AbuseDetection saved = persistenceService.save(memberId, result);
             log.info("[ABUSE_DETECTED] detectionId={}, userId={}, abuseType={}, matchedRules={}, detectedAt={}",
                     saved.detectionId(), saved.memberId(), saved.abuseType(), saved.evidence().matchedRules(),
                     saved.detectedAt());
         } catch (RuntimeException exception) {
-            log.error("Abuse Detection 저장에 실패했습니다. userId={}, abuseType={}, detectedAt={}",
-                    result.memberId(), result.abuseType(), result.detectedAt(), exception);
             releaseAfterPersistenceFailure(lease.orElseThrow());
+            throw exception;
         }
     }
 

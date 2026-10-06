@@ -1,6 +1,7 @@
 package kr.co.cking.abuse.application;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,7 +30,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DefaultAbuseDetectionRecorderTest {
 
     private static final DetectionResult RESULT = new DetectionResult(
-            1L,
             AbuseType.MISSION_REQUEST_BURST,
             AbuseScopeHash.fromCanonicalValue("USER:1"),
             Instant.parse("2026-10-06T00:00:00Z"),
@@ -57,9 +57,9 @@ class DefaultAbuseDetectionRecorderTest {
         when(cooldownStore.tryAcquire(RESULT.abuseType(), RESULT.cooldownScopeHash(), Duration.ofSeconds(20)))
                 .thenReturn(Optional.empty());
 
-        recorder.record(RESULT);
+        recorder.record(1L, RESULT);
 
-        verify(persistenceService, never()).save(any());
+        verify(persistenceService, never()).save(any(), any());
         verify(cooldownStore, never()).release(any());
     }
 
@@ -68,22 +68,23 @@ class DefaultAbuseDetectionRecorderTest {
     void 저장에_성공하면_Cooldown을_유지한다() {
         when(cooldownStore.tryAcquire(RESULT.abuseType(), RESULT.cooldownScopeHash(), Duration.ofSeconds(20)))
                 .thenReturn(Optional.of(lease));
-        when(persistenceService.save(RESULT)).thenReturn(AbuseDetection.detected(RESULT));
+        when(persistenceService.save(1L, RESULT)).thenReturn(AbuseDetection.detected(1L, RESULT));
 
-        recorder.record(RESULT);
+        recorder.record(1L, RESULT);
 
-        verify(persistenceService).save(RESULT);
+        verify(persistenceService).save(1L, RESULT);
         verify(cooldownStore, never()).release(any());
     }
 
-    /** 독립 저장의 시작·flush·commit 오류가 발생하면 Lease를 best-effort로 해제한다. */
+    /** 독립 저장의 시작·flush·commit 오류가 발생하면 Lease를 best-effort로 해제하고 오류를 전파한다. */
     @Test
-    void DB_저장에_실패하면_Cooldown을_해제하고_오류를_전파하지_않는다() {
+    void DB_저장에_실패하면_Cooldown을_해제하고_오류를_전파한다() {
         when(cooldownStore.tryAcquire(RESULT.abuseType(), RESULT.cooldownScopeHash(), Duration.ofSeconds(20)))
                 .thenReturn(Optional.of(lease));
-        when(persistenceService.save(RESULT)).thenThrow(new IllegalStateException("DB 저장 실패"));
+        IllegalStateException failure = new IllegalStateException("DB 저장 실패");
+        when(persistenceService.save(1L, RESULT)).thenThrow(failure);
 
-        assertThatCode(() -> recorder.record(RESULT)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> recorder.record(1L, RESULT)).isSameAs(failure);
 
         verify(cooldownStore).release(lease);
     }

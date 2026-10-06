@@ -60,7 +60,6 @@ class DefaultAbuseDetectionRecorderIntegrationTest {
     void 동일_Detection_동시_저장에서_하나만_영속화한다() throws Exception {
         Member member = memberRepository.saveAndFlush(new Member("동시 Detection 저장 회원", null, null, MemberRole.USER));
         DetectionResult result = new DetectionResult(
-                member.getMemberId(),
                 AbuseType.MISSION_REQUEST_BURST,
                 AbuseScopeHash.fromCanonicalValue("USER:RECORDER-CONCURRENT:" + member.getMemberId()),
                 Instant.parse("2026-10-06T00:00:00Z"),
@@ -71,7 +70,8 @@ class DefaultAbuseDetectionRecorderIntegrationTest {
 
         try (ExecutorService executor = Executors.newFixedThreadPool(requestCount)) {
             var futures = IntStream.range(0, requestCount)
-                    .mapToObj(index -> executor.submit(() -> recordAfterStart(ready, start, result)))
+                    .mapToObj(index -> executor.submit(
+                            () -> recordAfterStart(ready, start, member.getMemberId(), result)))
                     .toList();
 
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
@@ -87,7 +87,12 @@ class DefaultAbuseDetectionRecorderIntegrationTest {
     }
 
     /** 모든 요청이 같은 시작 신호 뒤 Recorder를 호출하도록 대기한다. */
-    private void recordAfterStart(CountDownLatch ready, CountDownLatch start, DetectionResult result) {
+    private void recordAfterStart(
+            CountDownLatch ready,
+            CountDownLatch start,
+            Long memberId,
+            DetectionResult result
+    ) {
         ready.countDown();
         try {
             if (!start.await(5, TimeUnit.SECONDS)) {
@@ -97,6 +102,6 @@ class DefaultAbuseDetectionRecorderIntegrationTest {
             Thread.currentThread().interrupt();
             throw new AssertionError("동시 Detection 저장 대기 중 인터럽트됐습니다.", exception);
         }
-        recorder.record(result);
+        recorder.record(memberId, result);
     }
 }

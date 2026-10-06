@@ -2,9 +2,9 @@ package kr.co.cking.abuse.application.port;
 
 import kr.co.cking.abuse.domain.DetectionResult;
 
-/** Rule Engine이 확정한 Detection을 중복 제어 후 영속화하는 저장 경계다. */
+/** Rule 결과를 독립된 Detection 저장 흐름에 전달하는 application Port다. */
 public interface AbuseDetectionRecorder {
 
-    /** Cooldown Lease를 획득한 Detection만 독립 트랜잭션으로 저장한다. */
-    void record(DetectionResult result);
+    /** 저장 Transaction의 시작·flush·commit까지 완료하거나 실패를 호출자에게 전파한다. */
+    void record(Long memberId, DetectionResult result);
 }
