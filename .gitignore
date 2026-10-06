@@ -43,6 +43,7 @@ out/
 .env
 .env.*
 !.env.example
+k6/*.local.json
 
 # 로그와 JVM 오류 덤프
 *.log

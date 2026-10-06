@@ -189,6 +189,8 @@ Initial threshold는 k6로 산출한다. rotation을 포함한 각 count rule에
 
 k6는 `normal-user.js`, `mission-request-burst.js`, `duplicate-mission-burst.js`, `entry-request-burst.js`, `insufficient-balance-burst.js`, `request-id-rotation.js`, `rapid-earn-and-spend.js`, `failure-burst.js`로 분리한다. 정상군은 1회 완료, 2~3회 클릭, 같은 requestId 재시도, 정상 다중 응모, 부족 1~2회와 EARN 뒤 재응모, 즉시 EARN-SPEND, Creator 순차 수행을 포함한다. 비정상군은 각 rule을 넘기는 자동 반복을 만든다.
 
+정상군 실행 전제·fixture·측정 방법은 [normal-k6.md](normal-k6.md)를 따른다. 정상군 k6의 HTTP 시각은 Redis Lua 집계 시각의 근사치이며 실제 수치 결과는 격리 환경 실행 후 기록한다.
+
 ## v1 완료 기준
 
 7개 행동 모델(그중 rotation은 signal), 4개 API 연결, Redis feature/Lua, 6개 Detection rule·5개 composite rule, scope cooldown, migration/Evidence, 관리자 API, 정상·비정상 k6와 calibration, 그리고 성공·업무 실패 각각에서 Redis/독립 Detection Transaction 장애에도 기존 처리 결과가 유지됨을 자동화 테스트로 검증하면 완료다. 관리자 동시 검토에서 같은 판정은 멱등 반환되고 상반된 판정은 정확히 하나만 성공하는 테스트도 포함한다. 구현 단계에서 위 범위, 분류, scope, key/TTL, Lua 분리, cooldown, 상태, Fail Open 정책은 다시 결정하지 않는다. 숫자 threshold만 Calibration 산출물이다.

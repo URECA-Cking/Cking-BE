@@ -1,0 +1,35 @@
+{
+  "clickReplay": {
+    "memberId": 101,
+    "token": "REPLACE_WITH_ISOLATED_TEST_JWT",
+    "creatorId": 201,
+    "missionId": 301
+  },
+  "multiEntry": {
+    "memberId": 102,
+    "token": "REPLACE_WITH_ISOLATED_TEST_JWT",
+    "creatorId": 201,
+    "eventId": 401,
+    "couponType": "CREATOR"
+  },
+  "insufficientThenEarn": {
+    "memberId": 103,
+    "token": "REPLACE_WITH_ISOLATED_TEST_JWT",
+    "creatorId": 201,
+    "missionId": 301,
+    "eventId": 401
+  },
+  "creatorSequence": {
+    "memberId": 104,
+    "token": "REPLACE_WITH_ISOLATED_TEST_JWT",
+    "first": { "creatorId": 201, "missionId": 301 },
+    "second": { "creatorId": 202, "missionId": 302 }
+  },
+  "commonEarnSpend": {
+    "memberId": 105,
+    "token": "REPLACE_WITH_ISOLATED_TEST_JWT",
+    "missionId": 1,
+    "creatorId": 201,
+    "eventId": 401
+  }
+}
