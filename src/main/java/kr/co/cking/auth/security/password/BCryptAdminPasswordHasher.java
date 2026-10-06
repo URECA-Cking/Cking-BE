@@ -15,4 +15,10 @@ public class BCryptAdminPasswordHasher implements AdminPasswordHasher {
     public String hash(String rawPassword) {
         return passwordEncoder.encode(rawPassword);
     }
+
+    /** 입력한 관리자 비밀번호를 저장된 BCrypt 해시와 비교한다. */
+    @Override
+    public boolean matches(String rawPassword, String passwordHash) {
+        return passwordEncoder.matches(rawPassword, passwordHash);
+    }
 }

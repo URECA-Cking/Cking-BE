@@ -31,7 +31,8 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
 
 ## 지원 범위와 모델
 
-- Google OAuth2와 Kakao OAuth2를 지원한다. 네이버 OAuth와 로컬 ID/PW 회원가입·로그인은 지원하지 않는다.
+- Google OAuth2와 Kakao OAuth2를 지원하며, 별도 `AdminAccount`가 연결된 ADMIN Member는 ID/PW 로그인을 지원한다.
+  네이버 OAuth와 일반 사용자의 로컬 ID/PW 회원가입·로그인은 지원하지 않는다.
 - OAuth 최초 로그인 시 Cking `Member`를 자동 생성한다.
 - `Member.role`은 현재처럼 `USER`, `ADMIN`만 사용한다. Creator는 Member Role이 아니다.
   Creator 여부는 `creator.member_id` 존재로 판단하며, Creator 자격과 Event 소유권은 기존
@@ -76,6 +77,21 @@ Member(role=ADMIN) 1 : 1 AdminAccount(memberId, loginId, passwordHash)
   초기화 흐름은 충돌 뒤 새 트랜잭션 경계에서 `loginId`를 재조회해 이미 생성됐다면 정상 종료하며, 없으면
   예상하지 못한 DB 오류로 예외를 다시 전파한다.
 - 이 모델은 후속 관리자 로그인 API의 신원 확인용이다. 기존 OAuth와 `frontend-callback-url` 흐름은 바꾸지 않는다.
+
+### 관리자 ID/PW 인증 설계
+
+`POST /api/auth/admin/login`은 `loginId`로 `AdminAccount`를 조회한 뒤 활성 상태, BCrypt 비밀번호 일치,
+연결 Member 존재, `MemberRole.ADMIN` 순서로 확인한다. 존재하지 않는 ID, 틀린 비밀번호, 비활성 계정,
+연결 Member 부재와 USER Member 연결은 모두 `INVALID_ADMIN_CREDENTIALS`로 통합한다.
+
+존재하지 않는 ID도 고정 더미 BCrypt 해시를 비교하고, 비활성 계정도 저장된 BCrypt 해시를 비교한 뒤 같은
+오류를 반환한다. 이를 통해 계정 상태에 따른 비밀번호 해시 연산 비용 차이로 로그인 ID 존재 여부를 추정하기
+어렵게 한다.
+
+검증에 성공하면 연결된 `memberId`를 기존 `AccessTokenService`와 `RefreshTokenService`에 전달한다.
+따라서 별도의 관리자 JWT나 응답 형식을 만들지 않으며, Access JWT는 기존 형식의 `sub=memberId`,
+`role=ADMIN` Claim과 `TokenResponse`, Refresh Cookie를 그대로 사용한다. 이 경로도 만료된 Bearer 헤더를
+읽지 않아 ID/PW 인증을 독립적으로 처리한다.
 
 ### OAuth 프로필 name 정규화
 
@@ -126,9 +142,9 @@ OAuth 사용자 정보 정규화, `OAuthUserInfo` 생성, `(provider, providerUs
 
 ### 로그인 완료와 Cking 인증 수단 발급
 
-입력은 `memberId`다. OAuth 로그인 성공 처리, Login Code 생성·Redis 저장·1회 소비, Access JWT 발급·검증,
-인증된 Member ID의 Controller 제공을 담당한다.
-Google/Kakao 매핑이나 Member 연결 정책을 직접 처리하지 않는다.
+입력은 `memberId`다. OAuth 로그인 성공 처리, Login Code 생성·Redis 저장·1회 소비, 관리자 ID/PW 검증,
+Access JWT 발급·검증, 인증된 Member ID의 Controller 제공을 담당한다. Google/Kakao 매핑이나 Member 연결
+정책을 직접 처리하지 않는다.
 
 ## 토큰 정책
 

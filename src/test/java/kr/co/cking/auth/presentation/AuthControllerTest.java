@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import kr.co.cking.auth.application.AccessTokenService;
+import kr.co.cking.auth.application.AdminAuthService;
 import kr.co.cking.auth.application.LoginCodeService;
 import kr.co.cking.auth.application.RefreshTokenService;
 import kr.co.cking.auth.application.dto.AccessTokenResult;
@@ -31,6 +32,9 @@ class AuthControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private AdminAuthService adminAuthService;
 
     @MockitoBean
     private LoginCodeService loginCodeService;
@@ -100,6 +104,69 @@ class AuthControllerTest {
                         .content("{\"code\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 유효한 관리자 ID/PW가 기존 Token 응답과 Refresh Cookie를 발급하는지 검증한다. */
+    @Test
+    void 관리자_로그인은_기존_Token응답과_RefreshCookie를_발급한다() throws Exception {
+        when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+                .thenReturn(new AccessTokenResult("admin-access-token", "Bearer", 1800));
+        when(refreshTokenService.issue(17L)).thenReturn("admin-refresh-token");
+        when(refreshTokenCookieFactory.create("admin-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "admin-refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"admin\",\"password\":\"password\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.accessToken").value("admin-access-token"))
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Set-Cookie"))
+                        .contains("refresh_token=admin-refresh-token"));
+
+        verify(adminAuthService).authenticate("admin", "password");
+        verify(accessTokenService).issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS);
+        verify(refreshTokenService).issue(17L);
+    }
+
+    /** 관리자 자격 증명 오류를 401과 단일 오류 코드로 응답하는지 검증한다. */
+    @Test
+    void 관리자_자격증명_오류는_401로_응답한다() throws Exception {
+        when(adminAuthService.authenticate("admin", "wrong-password"))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_ADMIN_CREDENTIALS));
+
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"admin\",\"password\":\"wrong-password\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_ADMIN_CREDENTIALS"));
+
+        verifyNoInteractions(accessTokenService, refreshTokenService);
+    }
+
+    /** 비어 있는 관리자 로그인 ID와 비밀번호는 인증 전에 입력 오류로 거절하는지 검증한다. */
+    @Test
+    void 관리자_로그인_필수값이_비어_있으면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"\",\"password\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAuthService);
+    }
+
+    /** 최대 길이를 넘는 관리자 로그인 ID는 인증 전에 입력 오류로 거절하는지 검증한다. */
+    @Test
+    void 관리자_로그인ID가_최대길이를_넘으면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"" + "a".repeat(101) + "\",\"password\":\"password\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAuthService);
     }
 
     /** Refresh Cookie가 회전되면 새 Access Token과 Set-Cookie 헤더를 반환하는지 검증한다. */
@@ -175,6 +242,7 @@ class AuthControllerTest {
         when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN)).thenThrow(originalException);
         doThrow(cleanupException).when(refreshTokenService).revoke("next-refresh-token");
         AuthController controller = new AuthController(
+                adminAuthService,
                 loginCodeService,
                 accessTokenService,
                 refreshTokenService,

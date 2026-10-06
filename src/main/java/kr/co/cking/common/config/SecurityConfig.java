@@ -46,7 +46,8 @@ public class SecurityConfig {
     private static final RequestMatcher ACCESS_TOKEN_ISSUANCE_ENDPOINTS = new OrRequestMatcher(
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/token"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/refresh"),
-            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/logout"));
+            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/logout"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/admin/login"));
 
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
@@ -162,7 +163,7 @@ public class SecurityConfig {
     }
 
     /**
-     * Login Code·Refresh Cookie 인증 흐름은 기존 Access JWT와 독립적으로 동작해야 한다.
+     * Login Code·Refresh Cookie·관리자 ID/PW 인증 흐름은 기존 Access JWT와 독립적으로 동작해야 한다.
      * 만료된 Access JWT가 자동으로 첨부되어도 Auth Controller까지 도달하게 한다.
      */
     private BearerTokenResolver applicationBearerTokenResolver() {

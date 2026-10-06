@@ -1,7 +1,7 @@
 # Auth API
 
-이 문서는 구현된 Auth 외부 API 계약이다. OAuth2 로그인 완료 후 Login Code를 Access JWT로 교환·갱신하고
-Logout할 수 있으며,
+이 문서는 구현된 Auth 외부 API 계약이다. OAuth2 로그인 완료 후 Login Code를 Access JWT로 교환·갱신하고,
+관리자 ID/PW로 로그인하거나 Logout할 수 있으며,
 기존 업무 API의 `userId` 계약과 `/api/**` 공개 규칙은 [공통 API 규약](../../common/api.md)을 그대로 따른다.
 
 모든 구현 완료 후 응답은 공통 `ApiResponse` 봉투를 사용한다. 아래 JSON 예시는 `data` 값이다.
@@ -53,6 +53,35 @@ Redirect URL에는 성공 시 `code` 또는 실패 시 `error` 중 하나만 넣
 Login Code를 검증하고 원자적으로 한 번 소비한 뒤 `memberId`로 30분 유효한 Access JWT를 발급한다. 응답과
 함께 14일 유효한 `refresh_token` Cookie를 발급한다.
 JWT는 `iss=cking`, `sub=memberId`, `role=USER|ADMIN`, `iat`, `exp` Claim을 포함한다.
+
+```json
+{
+  "accessToken": "...",
+  "tokenType": "Bearer",
+  "expiresIn": 1800
+}
+```
+
+## 관리자 로그인
+
+### `POST /api/auth/admin/login`
+
+- 권한: `PUBLIC`
+- Request Body: `loginId`, `password`
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  관리자 ID/PW 인증을 수행한다.
+
+```json
+{
+  "loginId": "admin",
+  "password": "..."
+}
+```
+
+활성 `AdminAccount`의 BCrypt 비밀번호와 연결된 ADMIN Member를 확인한 뒤, 기존 `TokenResponse` 및
+14일 `refresh_token` Cookie를 발급한다. Access JWT는 `sub=ADMIN Member ID`, `role=ADMIN` Claim을
+포함한다. 존재하지 않는 ID, 틀린 비밀번호, 비활성 계정, 연결 Member 부재 및 USER Member 연결은
+구분하지 않고 같은 오류로 응답한다.
 
 ```json
 {
@@ -126,7 +155,7 @@ Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만
 
 구현 시 오류 응답은 공통 `ApiResponse`와 `ErrorCode` 규칙을 따른다. `VALIDATION_FAILED`,
 `UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`의 정본은 `CommonErrorCode`다. Auth 전용
-`AuthErrorCode`에는 `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`을 둔다.
+`AuthErrorCode`에는 `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`, `INVALID_ADMIN_CREDENTIALS`를 둔다.
 
 | 코드 | HTTP | 상황 | 클라이언트 처리 |
 | --- | --- | --- | --- |
@@ -134,6 +163,7 @@ Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만
 | `UNAUTHORIZED` | 401 | Access Token 없음·만료·변조·형식 오류 | OAuth 로그인을 다시 시작 |
 | `INVALID_LOGIN_CODE` | 401 | Login Code 만료·소비·잘못된 값 | OAuth 로그인을 처음부터 다시 시작 |
 | `INVALID_REFRESH_TOKEN` | 401 | Refresh Token 만료·폐기·재사용·잘못된 값 | OAuth 로그인을 처음부터 다시 시작 |
+| `INVALID_ADMIN_CREDENTIALS` | 401 | 관리자 ID/PW 불일치, 비활성 계정, 연결 Member 부재 또는 USER Member 연결 | 관리자 로그인 정보를 다시 확인 |
 | `FORBIDDEN` | 403 | 인증되었지만 endpoint 권한이 부족함 | 재인증하지 않고 권한 없음으로 처리 |
 | `SYSTEM_ERROR` | 500 | 예상하지 못한 인증 서버 오류 | 재시도 안내 또는 로그인 화면으로 이동 |
 
