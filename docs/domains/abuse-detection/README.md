@@ -161,6 +161,12 @@ Composite 보조 근거가 있는 경우에만 `supportingEvidence`를 추가한
 
 Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. Recorder는 독립 Transaction의 시작·flush·commit 오류에서 소유 Token 조건의 Cooldown 해제를 best-effort로 시도한 뒤 예외를 전파한다. `AbuseObservationExecutor`는 이를 catch해 `[ABUSE_OBSERVATION_FAILED]` WARN 로그로 격리하고, 다른 Detection 저장을 계속 시도한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
 
+### Mission·Entry 통합 검증 (#428)
+
+`AbuseObservationEndToEndIntegrationTest`는 실제 Mission/Entry 서비스 → Observer → Redis Feature/Rule/Cooldown → MySQL Detection을 연결한다. Ticket EARN·Entry SPEND는 기존 별도 통합 테스트가 검증하므로 이 테스트에서는 확정 결과만 Mock으로 주입한다. `cking.abuse.enabled=true`와 테스트 전용 Window/Threshold를 사용하며, 이 값은 운영 Calibration 결과가 아니다. 스케줄러는 비활성화하고 테스트별 Member·Detection·해당 Redis key를 정리한다.
+
+검증 범위는 LIKE·SHARE·공용 ATTENDANCE, Event 응모의 부족 잔액·정상 SPEND, replay·시스템 실패 제외, EARN→SPEND, Composite Rule의 primary/supporting Evidence(scope·window·측정값·threshold·matchedRules), 순차·동시 Cooldown이다. 실제 저장소에서 복원한 Evidence와 Detection row 수를 확인한다. 로컬은 MySQL·Redis를 실행하고 Flyway가 최신인 **격리된 테스트 스키마**에서 `./gradlew test --tests kr.co.cking.abuse.application.AbuseObservationEndToEndIntegrationTest`로 실행한다. 기존 업무용 `cking` 스키마를 repair·초기화하지 않는다. 2026-10-06에 별도 MySQL 8.4 스키마와 Redis 7.2에서 이 클래스의 7개 테스트가 모두 통과했다. 전체 테스트 스위트는 이 확인에 포함하지 않았다.
+
 ## 설정과 Calibration
 
 `cking.abuse.enabled=false`가 기본이다. false이면 하위 설정 없이 기동하고 Observation은 Port를 호출하지 않는 no-op이어야 한다. true이면 모든 rule의 window/threshold, insufficient·failure의 consecutive threshold, rotation의 window/distinct threshold, rapid의 maxDelay/window/threshold, failure distinct-type threshold가 필수다. 누락 값·0 이하 값은 시작 시 validation 실패하며 코드 default를 두지 않는다.
