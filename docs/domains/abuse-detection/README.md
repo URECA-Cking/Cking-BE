@@ -165,7 +165,7 @@ Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType
 
 `AbuseObservationEndToEndIntegrationTest`는 실제 Mission/Entry 서비스 → Observer → Redis Feature/Rule/Cooldown → MySQL Detection을 연결한다. Ticket EARN·Entry SPEND는 기존 별도 통합 테스트가 검증하므로 이 테스트에서는 확정 결과만 Mock으로 주입한다. `cking.abuse.enabled=true`와 테스트 전용 Window/Threshold를 사용하며, 이 값은 운영 Calibration 결과가 아니다. 스케줄러는 비활성화하고 테스트별 Member·Detection·해당 Redis key를 정리한다.
 
-검증 범위는 LIKE·SHARE·공용 ATTENDANCE, Event 응모의 부족 잔액·정상 SPEND, replay·시스템 실패 제외, EARN→SPEND, Composite Rule의 primary/supporting Evidence(scope·window·측정값·threshold·matchedRules), 순차·동시 Cooldown이다. 실제 저장소에서 복원한 Evidence와 Detection row 수를 확인한다. 로컬은 MySQL·Redis를 실행하고 Flyway가 최신인 **격리된 테스트 스키마**에서 `./gradlew test --tests kr.co.cking.abuse.application.AbuseObservationEndToEndIntegrationTest`로 실행한다. 기존 업무용 `cking` 스키마를 repair·초기화하지 않는다. 2026-10-06에 별도 MySQL 8.4 스키마와 Redis 7.2에서 이 클래스의 7개 테스트가 모두 통과했다. 전체 테스트 스위트는 이 확인에 포함하지 않았다.
+검증 범위는 LIKE·SHARE·공용 ATTENDANCE, Event 응모의 부족 잔액·정상 SPEND, replay·시스템 실패 제외, EARN→SPEND, Composite Rule의 primary/supporting Evidence(scope·window·측정값·threshold·matchedRules), 순차·동시 Cooldown이다. 실제 저장소에서 복원한 Evidence와 Detection row 수를 확인한다. 로컬은 MySQL·Redis를 실행하고 Flyway가 최신인 **격리된 테스트 스키마**에서 `./gradlew test --tests kr.co.cking.abuse.application.AbuseObservationEndToEndIntegrationTest`로 실행한다. 기존 업무용 `cking` 스키마를 repair·초기화하지 않는다. 2026-10-06에 별도 MySQL 8.4 스키마와 Redis 7.2에서 이 클래스의 9개 테스트가 모두 통과했다. Redis Feature·Detection 저장 장애가 Mission/Entry의 원 업무 결과를 바꾸지 않는 경우도 포함한다. 전체 테스트 스위트는 이 확인에 포함하지 않았다.
 
 ## 설정과 Calibration
 
@@ -192,6 +192,8 @@ k6는 `normal-user.js`, `mission-request-burst.js`, `duplicate-mission-burst.js`
 정상군 실행 전제·fixture·측정 방법은 [normal-k6.md](normal-k6.md)를 따른다. 정상군 k6의 HTTP 시각은 Redis Lua 집계 시각의 근사치이며 실제 수치 결과는 격리 환경 실행 후 기록한다.
 
 비정상군 7개 시나리오의 실행 전제·합성 fixture·HTTP 기준 관찰 결과는 [abnormal-k6.md](abnormal-k6.md)를 따른다. 단회 관찰 최댓값을 `abuseMin`이나 운영 threshold로 확정하지 않으며, 후속 Calibration에서 반복 실행·Redis Feature/Evidence와 비교한다.
+
+반복 측정의 비교·운영 적용 보류 기준과 Fail Open 최종 검증 범위는 [calibration.md](calibration.md)를 따른다.
 
 ## v1 완료 기준
 

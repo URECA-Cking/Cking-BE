@@ -1,6 +1,5 @@
--- #434 전용 빈 격리 스키마에만 실행한다. 기존 cking DB에는 절대 실행하지 않는다.
+-- 빈 격리 스키마에만 실행한다. mysql 명령에서 대상 DB를 명시한다.
 -- Flyway 적용 후 정확히 한 번 실행한다. 모든 ID는 이 시나리오 전용 합성 ID다.
-USE cking_abuse_k6_434;
 
 INSERT INTO member (member_id, name, role) VALUES
   (101, 'k6-user-101', 'USER'), (102, 'k6-user-102', 'USER'),

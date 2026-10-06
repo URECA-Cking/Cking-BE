@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -19,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import kr.co.cking.abuse.application.context.MissionBusinessKeyFactory;
 import kr.co.cking.abuse.application.model.AbuseDetectionSearchCondition;
 import kr.co.cking.abuse.application.port.AbuseDetectionRepository;
+import kr.co.cking.abuse.application.port.AbuseFeatureStore;
 import kr.co.cking.abuse.domain.AbuseMetric;
 import kr.co.cking.abuse.domain.AbuseCompositeRule;
 import kr.co.cking.abuse.domain.AbuseScopeHash;
@@ -66,6 +70,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 /** Mission/Entry 업무 결과부터 Redis Feature, Rule, Cooldown, MySQL Detection까지 연결한다. */
 @SpringBootTest(properties = {
@@ -104,6 +109,8 @@ class AbuseObservationEndToEndIntegrationTest {
     @Autowired private MissionBusinessKeyFactory businessKeyFactory;
     @Autowired private StringRedisTemplate redisTemplate;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @MockitoSpyBean private AbuseFeatureStore featureStore;
+    @MockitoSpyBean private AbuseDetectionRepository detectionRepositorySpy;
 
     // Ticket EARN/SPEND 자체의 Redis·Stream 계약은 기존 통합 테스트가 검증한다.
     // 여기서는 그 확정 결과만 통제하고 Abuse 경계부터 실제 Redis·MySQL을 사용한다.
@@ -149,6 +156,50 @@ class AbuseObservationEndToEndIntegrationTest {
         creatorRepository.deleteById(creator.getCreatorId());
         memberRepository.deleteById(userId);
         memberRepository.deleteById(creator.getMemberId());
+    }
+
+    @Test
+    void Redis_Feature_장애에도_Mission_성공과_Entry_업무_실패는_원래_결과를_유지한다() {
+        doThrow(new IllegalStateException("synthetic Redis failure"))
+                .when(featureStore).record(any(), any());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.NOT_FOUND));
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
+                .thenReturn(EntrySpendResult.ofBalance(EntrySpendResultCode.INSUFFICIENT_BALANCE, 0L));
+
+        assertThat(creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+                command(UUID.randomUUID())).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThatThrownBy(() -> entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.COMMON)))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(EntryErrorCode.INSUFFICIENT_BALANCE);
+        verify(featureStore, atLeastOnce()).record(any(), any());
+        assertThat(detections()).isEmpty();
+    }
+
+    @Test
+    void Detection_DB_장애에도_Mission_업무_실패와_Entry_성공은_원래_결과를_유지한다() {
+        doThrow(new IllegalStateException("synthetic Detection DB failure"))
+                .when(detectionRepositorySpy).save(any());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.NOT_FOUND));
+        when(ticketEarnService.earn(any()))
+                .thenThrow(new BusinessException(kr.co.cking.mission.domain.MissionErrorCode.DUPLICATE_MISSION));
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
+                .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.SUCCESS, "1-0", 0L));
+
+        for (int i = 0; i < 2; i++) {
+            assertThatThrownBy(() -> creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+                    command(UUID.randomUUID())))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(error -> ((BusinessException) error).getErrorCode())
+                    .isEqualTo(kr.co.cking.mission.domain.MissionErrorCode.DUPLICATE_MISSION);
+            assertThat(entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.COMMON)).code())
+                    .isEqualTo(kr.co.cking.event.domain.EntryResultCode.SUCCESS);
+        }
+        verify(detectionRepositorySpy, atLeastOnce()).save(any());
+        assertThat(detections()).isEmpty();
     }
 
     @Test

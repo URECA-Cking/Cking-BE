@@ -4,9 +4,9 @@
 
 ## 실행 전제
 
-- 실제 사용자 계정·운영 데이터에는 실행하지 않는다. 빈 `cking_abuse_k6_434` MySQL 스키마와 **비어 있는 Redis DB 13**을 사용한다. 다른 데이터가 있으면 중단하고 별도 환경을 준비한다.
-- 앱을 격리 MySQL 스키마·Redis DB 13·별도 포트로 기동해 Flyway를 적용한 뒤 `k6/normal-user.bootstrap.sql`을 격리 스키마에 한 번 실행한다. SQL은 `USE cking_abuse_k6_434`로 대상을 고정한다.
-- 동일한 로컬 전용 `JWT_SECRET`으로 앱과 `k6/prepare-normal-user-fixtures.mjs`를 실행한다. 준비 스크립트는 합성 Member 5명의 JWT와 Redis Gate·Balance를 만들고 Git에서 제외되는 `k6/normal-user.fixtures.local.json`을 생성한다. 이미 존재하는 Redis 키나 fixture 파일은 덮어쓰지 않는다. 실제 JWT를 콘솔·문서·Git에 넣지 않는다.
+- 실제 사용자 계정·운영 데이터에는 실행하지 않는다. 최초 측정에는 빈 `cking_abuse_k6_434` MySQL 스키마와 **비어 있는 Redis DB 13**을 사용했다. 반복 측정에는 매번 새로운 격리 스키마·Redis DB를 준비한다.
+- 앱을 격리 MySQL 스키마·Redis DB·별도 포트로 기동해 Flyway를 적용한 뒤 `k6/normal-user.bootstrap.sql`을 해당 격리 스키마에 한 번 실행한다. SQL 내부에는 `USE`가 없으며 `mysql` 명령의 DB 인자를 따른다.
+- 동일한 로컬 전용 `JWT_SECRET`으로 앱과 `k6/prepare-normal-user-fixtures.mjs`를 실행한다. `NORMAL_K6_ISOLATED_REDIS_DB`(1~15)와 실행마다 고유한 `NORMAL_K6_FIXTURE_TAG`가 필수다. 준비 스크립트는 합성 Member 5명의 JWT와 Redis Gate·Balance를 만들고 Git에서 제외되는 `k6/normal-user.<tag>.fixtures.local.json`을 생성한다. 이미 존재하는 Redis 키나 fixture 파일은 덮어쓰지 않는다. 실제 JWT를 콘솔·문서·Git에 넣지 않는다.
 - 다섯 Member는 서로 다르며, 테스트 전에 해당 날짜의 LIKE/공용 ATTENDANCE 완료 이력이 없어야 한다. 시나리오는 한 번 실행할 때 상태가 바뀌므로 재실행에는 새 격리 fixture가 필요하다. 기존 `cking` 스키마 또는 다른 Redis DB를 지우지 않는다.
 - LIKE는 활성 Creator Mission이고 보상이 Creator 응모권 1장 이상이어야 한다. 공용 ATTENDANCE는 공용 응모권 1장 이상을 지급해야 한다. SHARE/구독 미션은 이 정상군 스크립트의 완료 대상이 아니다.
 - `multiEntry`의 선택된 Balance Scope에는 최소 2장이 미리 있어야 한다. `insufficientThenEarn`의 Creator 잔액은 0이고 Redis Balance key는 로드돼 있어야 한다. 두 Event는 OPEN, Gate는 로드된 상태여야 한다. 각 Event의 Creator ID와 fixture의 `creatorId`가 일치해야 한다.
@@ -24,15 +24,16 @@ export JWT_SECRET=<로컬에서_생성한_256비트_이상_Base64_값>
 ./gradlew bootRun --args='--spring.profiles.active=local --spring.datasource.url=jdbc:mysql://localhost:3306/cking_abuse_k6_434?characterEncoding=UTF-8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true --spring.data.redis.database=13 --server.port=18080 --management.server.port=18081 --cking.scheduling.enabled=false'
 ```
 
-앱이 시작돼 Flyway를 적용한 뒤 **다른 터미널**에서 아래를 실행한다. DB 13이 비어 있지 않다면 준비 스크립트가 중단한다. 해당 DB의 기존 키를 임의로 삭제하지 않는다.
+앱이 시작돼 Flyway를 적용한 뒤 **다른 터미널**에서 아래를 실행한다. Redis DB에 앱 기동 시 생성한 빈 Stream 이외의 키가 있으면 준비 스크립트가 중단한다. 해당 DB의 기존 키를 임의로 삭제하지 않는다.
 
 ```bash
 mysql -h 127.0.0.1 -u cking -p cking_abuse_k6_434 < k6/normal-user.bootstrap.sql
 # JWT_SECRET은 앱 실행에 사용한 로컬 전용 값과 동일하게 설정한다.
 export NORMAL_K6_ISOLATED_REDIS_DB=13
+export NORMAL_K6_FIXTURE_TAG=first
 node k6/prepare-normal-user-fixtures.mjs
 export BASE_URL=http://127.0.0.1:18080
-export NORMAL_FIXTURES_FILE=./normal-user.fixtures.local.json
+export NORMAL_FIXTURES_FILE=./normal-user.first.fixtures.local.json
 export NORMAL_K6_ALLOW_MUTATION=true
 export NORMAL_K6_CONFIRM_TARGET="$BASE_URL"
 k6 run --console-output=/tmp/cking-normal-user-k6.log k6/normal-user.js
