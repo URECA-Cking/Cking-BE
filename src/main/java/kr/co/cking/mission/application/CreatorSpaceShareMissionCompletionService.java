@@ -1,5 +1,7 @@
 package kr.co.cking.mission.application;
 
+import kr.co.cking.abuse.application.MissionAbuseObserver;
+import kr.co.cking.abuse.application.MissionObservationContext;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.repository.CreatorRepository;
@@ -37,6 +39,7 @@ public class CreatorSpaceShareMissionCompletionService {
     private final MissionRepository missionRepository;
     private final TicketOnceEarnService ticketOnceEarnService;
     private final Clock clock;
+    private final MissionAbuseObserver abuseObserver;
 
     /** Creator Space 공유를 검증하고 SHARE 미션 보상을 멱등하게 요청한다. */
     public MissionCompleteOutcome complete(Long creatorId, MissionCompleteCommand command) {
@@ -47,6 +50,26 @@ public class CreatorSpaceShareMissionCompletionService {
         validateMissionOwner(mission, creatorId);
 
         Instant now = clock.instant();
+        MissionObservationContext observation = MissionObservationContext.creator(
+                command.userId(), creatorId, mission.getMissionId(), command.requestId(), now, MissionType.SHARE);
+        MissionCompleteOutcome outcome;
+        try {
+            outcome = completeValidated(creatorId, command, mission, now);
+        } catch (BusinessException exception) {
+            abuseObserver.observeFailure(observation, exception.getErrorCode());
+            throw exception;
+        } catch (RuntimeException exception) {
+            abuseObserver.observeUnexpectedFailure(observation);
+            throw exception;
+        }
+        abuseObserver.observeSuccess(observation, outcome.code());
+        return outcome;
+    }
+
+    /** 검증된 SHARE 미션의 기존 ONCE EARN·replay 계약을 수행한다. */
+    private MissionCompleteOutcome completeValidated(
+            Long creatorId, MissionCompleteCommand command, Mission mission, Instant now
+    ) {
         EarnCommand earnCommand = new EarnCommand(
                 command.requestId(),
                 command.userId(),
