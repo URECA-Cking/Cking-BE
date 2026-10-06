@@ -66,6 +66,53 @@ class AbuseDetectionEvidenceJsonMapperTest {
         assertThat(mapper.fromJson(json)).isEqualTo(evidence);
     }
 
+    @Test
+    void Composite_보조_근거의_별도_scope와_window를_JSON으로_보존한다() {
+        AbuseDetectionEvidenceJsonMapper mapper = new AbuseDetectionEvidenceJsonMapper(new ObjectMapper());
+        DetectionEvidence.Scope rotationScope = businessKeyEvidence().scope();
+        DetectionEvidence evidence = new DetectionEvidence(
+                DetectionEvidence.POLICY_VERSION,
+                new DetectionEvidence.Scope(DetectionEvidence.Scope.Type.USER, null, null, null, null, null),
+                new DetectionEvidence.Window(10_000L, null),
+                Map.of(AbuseMetric.MISSION_REQUEST_COUNT, 8L),
+                Map.of(AbuseMetric.MISSION_REQUEST_COUNT, 5L),
+                Set.of(AbuseSignal.REQUEST_ID_ROTATION),
+                Set.of(AbuseCompositeRule.RULE_02),
+                Map.of(AbuseCompositeRule.RULE_02, List.of(new DetectionEvidence.SupportingEvidence(
+                        null, AbuseSignal.REQUEST_ID_ROTATION, rotationScope,
+                        new DetectionEvidence.Window(30_000L, null),
+                        Map.of(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 6L),
+                        Map.of(AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 3L)))));
+
+        String json = mapper.toJson(evidence);
+
+        assertThat(json).contains("\"supportingEvidence\"", "\"RULE-02\"", "\"windowMs\":30000");
+        assertThat(mapper.fromJson(json)).isEqualTo(evidence);
+    }
+
+    @Test
+    void 기존_Evidence_JSON에_보조_근거가_없으면_빈_근거로_복원한다() {
+        AbuseDetectionEvidenceJsonMapper mapper = new AbuseDetectionEvidenceJsonMapper(new ObjectMapper());
+        String oldJson = mapper.toJson(businessKeyEvidence());
+
+        assertThat(oldJson).doesNotContain("supportingEvidence");
+        assertThat(mapper.fromJson(oldJson).supportingEvidence()).isEmpty();
+    }
+
+    @Test
+    void Composite_근거에_알_수_없는_유형이_있으면_복원을_거부한다() {
+        AbuseDetectionEvidenceJsonMapper mapper = new AbuseDetectionEvidenceJsonMapper(new ObjectMapper());
+        String validJson = mapper.toJson(businessKeyEvidence());
+        assertThat(validJson).contains("\"matchedRules\":[\"RULE-01\"]");
+        String invalidJson = validJson.replace(
+                "\"matchedRules\":[\"RULE-01\"]",
+                "\"matchedRules\":[\"RULE-01\"],\"supportingEvidence\":{\"RULE-99\":[]}");
+
+        assertThatThrownBy(() -> mapper.fromJson(invalidJson))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DetectionEvidence JSON을 복원할 수 없습니다.");
+    }
+
     /** Scope와 Window는 해당하지 않는 선택 필드를 JSON에 남기지 않는다. */
     @Test
     void 선택_Scope_식별자와_maxDelayMs는_null이면_JSON에서_생략한다() {

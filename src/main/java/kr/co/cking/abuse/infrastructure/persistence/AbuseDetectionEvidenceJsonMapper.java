@@ -2,13 +2,14 @@ package kr.co.cking.abuse.infrastructure.persistence;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-
 import kr.co.cking.abuse.domain.AbuseCompositeRule;
 import kr.co.cking.abuse.domain.AbuseMetric;
 import kr.co.cking.abuse.domain.AbuseSignal;
+import kr.co.cking.abuse.domain.AbuseType;
 import kr.co.cking.abuse.domain.BalanceScope;
 import kr.co.cking.abuse.domain.DetectionEvidence;
 import org.springframework.stereotype.Component;
@@ -50,20 +51,17 @@ class AbuseDetectionEvidenceJsonMapper {
         DetectionEvidence.Window window = evidence.window();
         return new EvidenceJson(
                 evidence.policyVersion(),
-                new ScopeJson(
-                        scope.type().name(),
-                        scope.creatorId(),
-                        scope.eventId(),
-                        scope.missionId(),
-                        scope.periodKey(),
-                        toBalanceScopeJson(scope.balanceScope())),
+                toScopeJson(scope),
                 new WindowJson(window.windowMs(), window.maxDelayMs()),
                 toPersistenceMetrics(evidence.features()),
                 toPersistenceMetrics(evidence.thresholds()),
                 evidence.signals().stream().map(AbuseSignal::name).collect(Collectors.toUnmodifiableSet()),
                 evidence.matchedRules().stream()
                         .map(AbuseCompositeRule::evidenceValue)
-                        .collect(Collectors.toUnmodifiableSet()));
+                        .collect(Collectors.toUnmodifiableSet()),
+                evidence.supportingEvidence().entrySet().stream().collect(Collectors.toUnmodifiableMap(
+                        entry -> entry.getKey().evidenceValue(),
+                        entry -> entry.getValue().stream().map(this::toSupportJson).toList())));
     }
 
     /** 문서화된 Evidence JSON 값 객체를 검증되는 순수 Domain Evidence로 복원한다. */
@@ -72,20 +70,49 @@ class AbuseDetectionEvidenceJsonMapper {
         WindowJson window = evidence.window();
         return new DetectionEvidence(
                 evidence.policyVersion(),
-                new DetectionEvidence.Scope(
-                        DetectionEvidence.Scope.Type.valueOf(scope.type()),
-                        scope.creatorId(),
-                        scope.eventId(),
-                        scope.missionId(),
-                        scope.periodKey(),
-                        toBalanceScope(scope.balanceScope())),
+                toScope(scope),
                 new DetectionEvidence.Window(window.windowMs(), window.maxDelayMs()),
                 toDomainMetrics(evidence.features()),
                 toDomainMetrics(evidence.thresholds()),
                 evidence.signals().stream().map(AbuseSignal::valueOf).collect(Collectors.toUnmodifiableSet()),
                 evidence.matchedRules().stream()
                         .map(AbuseCompositeRule::fromEvidenceValue)
-                        .collect(Collectors.toUnmodifiableSet()));
+                        .collect(Collectors.toUnmodifiableSet()),
+                evidence.supportingEvidence() == null ? Map.of()
+                        : evidence.supportingEvidence().entrySet().stream().collect(Collectors.toUnmodifiableMap(
+                                entry -> AbuseCompositeRule.fromEvidenceValue(entry.getKey()),
+                                entry -> entry.getValue().stream().map(this::toSupport).toList())));
+    }
+
+    private ScopeJson toScopeJson(DetectionEvidence.Scope scope) {
+        return new ScopeJson(scope.type().name(), scope.creatorId(), scope.eventId(),
+                scope.missionId(), scope.periodKey(), toBalanceScopeJson(scope.balanceScope()));
+    }
+
+    private DetectionEvidence.Scope toScope(ScopeJson scope) {
+        return new DetectionEvidence.Scope(DetectionEvidence.Scope.Type.valueOf(scope.type()),
+                scope.creatorId(), scope.eventId(), scope.missionId(), scope.periodKey(),
+                toBalanceScope(scope.balanceScope()));
+    }
+
+    private SupportJson toSupportJson(DetectionEvidence.SupportingEvidence support) {
+        return new SupportJson(
+                support.abuseType() == null ? null : support.abuseType().name(),
+                support.signal() == null ? null : support.signal().name(),
+                toScopeJson(support.scope()),
+                new WindowJson(support.window().windowMs(), support.window().maxDelayMs()),
+                toPersistenceMetrics(support.features()),
+                toPersistenceMetrics(support.thresholds()));
+    }
+
+    private DetectionEvidence.SupportingEvidence toSupport(SupportJson support) {
+        return new DetectionEvidence.SupportingEvidence(
+                support.abuseType() == null ? null : AbuseType.valueOf(support.abuseType()),
+                support.signal() == null ? null : AbuseSignal.valueOf(support.signal()),
+                toScope(support.scope()),
+                new DetectionEvidence.Window(support.window().windowMs(), support.window().maxDelayMs()),
+                toDomainMetrics(support.features()),
+                toDomainMetrics(support.thresholds()));
     }
 
     /** Domain Metric map을 문서화된 lowerCamelCase JSON key map으로 변환한다. */
@@ -126,7 +153,20 @@ class AbuseDetectionEvidenceJsonMapper {
             Map<String, Long> features,
             Map<String, Long> thresholds,
             Set<String> signals,
-            Set<String> matchedRules
+            Set<String> matchedRules,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, List<SupportJson>> supportingEvidence
+    ) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record SupportJson(
+            String abuseType,
+            String signal,
+            ScopeJson scope,
+            WindowJson window,
+            Map<String, Long> features,
+            Map<String, Long> thresholds
     ) {
     }
 

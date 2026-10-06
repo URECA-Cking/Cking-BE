@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -79,6 +80,35 @@ class AbuseDomainContractTest {
                 .containsOnlyKeys(AbuseMetric.MISSION_REQUEST_COUNT)
                 .isUnmodifiable();
         assertThat(evidence.signals()).containsExactly(AbuseSignal.REQUEST_ID_ROTATION).isUnmodifiable();
+    }
+
+    @Test
+    void Composite_보조_근거는_충족한_Rule에만_속하고_불변_복사된다() {
+        DetectionEvidence.Scope scope = new DetectionEvidence.Scope(
+                DetectionEvidence.Scope.Type.USER, null, null, null, null, null);
+        DetectionEvidence.SupportingEvidence support = new DetectionEvidence.SupportingEvidence(
+                AbuseType.MISSION_REQUEST_BURST, null, scope, new DetectionEvidence.Window(10_000L, null),
+                Map.of(AbuseMetric.MISSION_REQUEST_COUNT, 3L),
+                Map.of(AbuseMetric.MISSION_REQUEST_COUNT, 2L));
+        List<DetectionEvidence.SupportingEvidence> mutable = new java.util.ArrayList<>(List.of(support));
+        DetectionEvidence evidence = new DetectionEvidence(DetectionEvidence.POLICY_VERSION, scope,
+                new DetectionEvidence.Window(20_000L, null), Map.of(), Map.of(), Set.of(),
+                Set.of(AbuseCompositeRule.RULE_04), Map.of(AbuseCompositeRule.RULE_04, mutable));
+
+        mutable.clear();
+        assertThat(evidence.supportingEvidence().get(AbuseCompositeRule.RULE_04))
+                .containsExactly(support).isUnmodifiable();
+        assertThat(evidence.supportingEvidence()).isUnmodifiable();
+        assertThatThrownBy(() -> new DetectionEvidence(DetectionEvidence.POLICY_VERSION, scope,
+                new DetectionEvidence.Window(20_000L, null), Map.of(), Map.of(), Set.of(), Set.of(),
+                Map.of(AbuseCompositeRule.RULE_04, List.of(support))))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DetectionEvidence.SupportingEvidence(
+                AbuseType.MISSION_REQUEST_BURST, AbuseSignal.REQUEST_ID_ROTATION, scope,
+                new DetectionEvidence.Window(10_000L, null),
+                Map.of(AbuseMetric.MISSION_REQUEST_COUNT, 3L),
+                Map.of(AbuseMetric.MISSION_REQUEST_COUNT, 2L)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

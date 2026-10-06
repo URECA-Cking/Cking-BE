@@ -70,6 +70,10 @@ Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward po
 
 Composite rule은 별도 row가 아니라 기존 Detection Evidence를 강화한다: `RULE-01` duplicate+rotation, `RULE-02` mission burst+rotation, `RULE-03` entry burst+(insufficient 또는 failure), `RULE-04` rapid pair+(mission 또는 entry burst), `RULE-05` failure burst+distinct failure type ≥ M. 동시에 충족한 모든 rule을 기록한다.
 
+`CompositeRuleEvaluator`는 **같은 Observation**에서 계산된 기본 Detection 후보·Rotation Signal과 Feature Snapshot만 조합한다. `RULE-01/02`는 현재 Mission Business Key의 Rotation만 사용하며 Signal 단독으로 row를 만들지 않는다. `RULE-03`은 현재 Entry의 burst와 부족 잔액/업무 실패 후보를 양쪽 Detection에 기록한다. `RULE-04`는 현재 Entry의 rapid pair 후보가 필수이며, 현재 Entry burst 또는 같은 사용자의 이전 Mission burst 측정값이 threshold 이상일 때만 기록한다. 후자의 측정값은 Feature Store가 Entry 시점에 `MISSION_REQUEST_COUNT`를 **읽기 전용으로 조회**해 Snapshot에 제공해야 한다. 값이 없거나 임계치 미만이면 이전 Mission burst를 추측하지 않고, 이 조합만을 위해 새 Mission Detection row도 만들지 않는다. `RULE-05`는 현재 업무 실패의 `FAILURE_BURST` 후보와 distinct failure type 측정값으로 판정한다.
+
+Composite를 충족한 Detection의 primary Evidence(`scope`, `window`, `features`, `thresholds`)는 그대로 두고, 서로 다른 범위·기간의 근거는 `supportingEvidence`에 Rule별 배열로 보관한다. 예를 들어 Mission burst의 `RULE-02`에는 Rotation의 `BUSINESS_KEY` scope와 rotation window가 별도로 저장된다. Entry의 `RULE-04`에서 이전 Mission burst를 사용하면 그 USER scope, Mission window, 조회 시점 count·threshold를 보조 근거로 저장한다. `matchedRules`에는 동시에 충족한 Rule을 모두 기록한다. 과거 저장 JSON에 `supportingEvidence`가 없으면 빈 Map으로 읽는다.
+
 ## Redis와 Lua
 
 Redis는 실시간 feature와 cooldown만 보관하고 Observation이나 최종 Detection을 영속화하지 않는다. 모든 key prefix는 `abuse:v1:`이다.
@@ -125,11 +129,23 @@ Evidence는 request body, token, authorization header, 개인정보를 담지 �
   "policyVersion":"ABUSE_V1",
   "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","balanceScope":{"type":"CREATOR","creatorId":10}},
   "window":{"windowMs":10000},
-  "features":{"duplicateMissionFailureCount":8,"distinctRequestIdCountPerBusinessKey":6},
-  "thresholds":{"duplicateMissionFailureCount":5,"distinctRequestIdCountPerBusinessKey":3},
-  "signals":["REQUEST_ID_ROTATION"], "matchedRules":["RULE-01"]
+  "features":{"duplicateMissionFailureCount":8},
+  "thresholds":{"duplicateMissionFailureCount":5},
+  "signals":["REQUEST_ID_ROTATION"],
+  "matchedRules":["RULE-01"],
+  "supportingEvidence":{
+    "RULE-01":[{
+      "signal":"REQUEST_ID_ROTATION",
+      "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","balanceScope":{"type":"CREATOR","creatorId":10}},
+      "window":{"windowMs":30000},
+      "features":{"distinctRequestIdCountPerBusinessKey":6},
+      "thresholds":{"distinctRequestIdCountPerBusinessKey":3}
+    }]
+  }
 }
 ```
+
+Composite 보조 근거가 있는 경우에만 `supportingEvidence`를 추가한다. key는 `RULE-01`~`RULE-05`, 배열의 각 원소는 `abuseType` 또는 `signal` 하나와 독립적인 `scope`, `window`, `features`, `thresholds`를 가진다. primary Evidence와 다른 window의 값을 primary `features`에 합치지 않는다.
 
 Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. 독립 Transaction의 시작·flush·commit 오류까지 Observation 호출 경계에서 catch해 WARN/ERROR로 남기고, 원래 Mission/Entry 결과와 예외를 그대로 반환한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
 
