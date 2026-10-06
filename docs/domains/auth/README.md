@@ -15,7 +15,8 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
   Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification, Winner, Redraw), Ticket 관리자 재동기화,
   Dead Stream 조회·replay, Creator 신청 관리자 심사와 Event 관리자 심사, Winner 상태 이력 조회는
   `@CurrentMemberId`로 인증된 호출자를 받는다. 모든 `/api/admin/**` 경로는 Spring Security가 `ADMIN`을
-  먼저 인가하고, USER/ADMIN 공용 Winner 상태 이력 경로와 `GET /api/me`는 JWT 인증만 요구한다. 그 밖의
+  먼저 인가하고(추천 결과 적재 API는 예외로 추천 적재 API Key도 허용한다. 아래 AUTH-10 참고), USER/ADMIN 공용
+  Winner 상태 이력 경로와 `GET /api/me`는 JWT 인증만 요구한다. 그 밖의
   기존 업무 API는 호출자 `userId` 전환 전까지 현재 `permitAll` 규칙을 유지한다.
   업무 권한 검증을 Spring Security로 대체하지 않는다.
 - CSRF는 현재 세션 기반 인증을 사용하지 않는 기존 API 호환을 위해 비활성화한다. CORS는
@@ -225,6 +226,13 @@ AUTH-10은 관리자 API의 외부 호출자 `userId`만 Access JWT의 `@Current
 Ticket 재동기화, Dead Stream 조회·replay, Creator 신청 목록·승인·거절, Event 승인 대기 목록·승인·거절이다.
 `/api/admin/**`는 Spring Security가 `hasRole("ADMIN")`으로 먼저 제한하므로 토큰 없음은 `UNAUTHORIZED`(401),
 USER 토큰은 `FORBIDDEN`(403)이다.
+
+**예외 — 추천 결과 적재 API(이슈 #420)**: `PUT /api/admin/creators/{creatorId}/similar`만 `hasAnyAuthority("ROLE_ADMIN",
+"RECOMMENDATION_WRITE")`로 인가한다. 배치는 `X-Cking-Recommendation-Key` 헤더로 인증하며(`RecommendationApiKeyAuthenticationFilter`),
+헤더가 있으면 JWT로 되돌아가지 않고 비었거나 틀린 키는 JWT가 유효해도 401이다. 키 주체는 회원이 아니라 `RECOMMENDATION_WRITE`
+권한만 가지므로 다른 `/api/admin/**`에서는 인정되지 않는다. 헤더가 없으면 위 ADMIN JWT 규칙을 따르고, Application의
+`RecommendationWriteAuthorizer`가 JWT 호출자의 DB ADMIN 역할을 다시 확인한다. 이 Authorizer는 키 주체와 JWT 회원만 허용하고
+익명·알 수 없는 주체는 `UNAUTHORIZED`로 거부해, Security 설정이 잘못돼도 인증 없이 적재되지 않는다.
 
 Controller는 검증된 `memberId`를 기존 Application/Service의 `adminId` 파라미터에 전달한다. Ticket
 재동기화 요청의 대상 `memberId`와 `creatorId`, 거절 요청의 `rejectReason`처럼 업무 데이터는 유지한다.

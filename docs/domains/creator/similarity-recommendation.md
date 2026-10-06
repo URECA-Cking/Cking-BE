@@ -42,7 +42,7 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`이다.
 - 적재: `PUT /api/admin/creators/{creatorId}/similar`
 - 공개 조회: `GET /api/creators/{creatorId}/similar?size=5`
 
-적재는 Bearer Access JWT의 ADMIN 역할과 Application의 관리자 검증을 모두 통과해야 한다. 공개 조회의 기본 `size`는 5, 범위는 1~20이다. 활성 결과가 없으면 메타데이터 없이 `candidates: []`를 반환한다. 상세 Request·Response와 오류는 [Creator API](api.md#creator-유사-추천-결과-api이슈-393)를 따른다.
+적재는 배치용 추천 적재 API Key(`X-Cking-Recommendation-Key`) 또는 ADMIN JWT로 인증한다. JWT는 Security 인가와 Application의 DB ADMIN 재검증을 모두 통과해야 하고, 적재 서비스(`CreatorSimilarityResultService.replace`)는 인증 방식과 회원 ID에 의존하지 않는다. 공개 조회의 기본 `size`는 5, 범위는 1~20이다. 활성 결과가 없으면 메타데이터 없이 `candidates: []`를 반환한다. 상세 Request·Response와 오류는 [Creator API](api.md#creator-유사-추천-결과-api이슈-393)를 따른다.
 
 ## 요구사항 추적
 

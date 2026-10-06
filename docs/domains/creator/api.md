@@ -108,7 +108,16 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
 
 ## PUT /api/admin/creators/{creatorId}/similar
 
-Bearer Access JWT와 ADMIN 역할이 필수다. Path와 body 최상위 및 각 후보의 `creatorId`는 모두 같아야 한다.
+인증은 둘 중 하나다. Path와 body 최상위 및 각 후보의 `creatorId`는 모두 같아야 한다.
+
+- **배치(추천 적재 API Key)**: `X-Cking-Recommendation-Key` 헤더만 보낸다. 헤더가 있으면 JWT로 되돌아가지 않고 키만 판단한다. 키가 비었거나 틀리면 유효한 JWT를 같이 보내도 `UNAUTHORIZED`(401)다. 유효한 키는 `RECOMMENDATION_WRITE` 권한을 갖고, 이 권한은 추천 적재 엔드포인트에서만 인정한다(다른 `/api/admin/**`는 키로 접근할 수 없다).
+- **수동 운영(ADMIN JWT)**: 키 헤더 없이 Bearer Access JWT와 ADMIN 역할이 필요하다. Security 1차 인가 뒤에도 Application에서 DB의 ADMIN 역할을 다시 확인한다(`RecommendationWriteAuthorizer`). 인증이 없으면 401, ADMIN이 아니면 `FORBIDDEN`(403)이다.
+
+키는 서버 설정 `cking.recommendation.api-key-hashes`(환경변수 `CKING_RECOMMENDATION_API_KEY_HASHES`)에 SHA-256 hex 해시로만 둔다. 쉼표로 여러 개를 두어 키 교체 중 새 키와 이전 키를 함께 허용한다. 비어 있으면 키 인증은 항상 실패하며, 서버 시작 시 경고 로그를 남긴다.
+
+- 키는 추측할 수 없는 무작위 값(32바이트 이상)이어야 한다. 서버는 해시만 받으므로 강도를 검사할 수 없고, 키 인증 실패에 횟수 제한은 없다. 생성·해시 예: `KEY=$(openssl rand -hex 32)`, `printf %s "$KEY" | shasum -a 256`. 원문은 배치 Secret에만 두고 서버에는 해시만 등록한다.
+- 키 인증 실패는 키 값 없이 `메서드 경로 remote`만 WARN 로그로 남긴다.
+- 배포: dev 서버는 Parameter Store `/cking/dev/CKING_RECOMMENDATION_API_KEY_HASHES`를 `deploy.sh`가 읽어 컨테이너 환경변수로 전달한다(없으면 빈 값).
 
 ```json
 {
@@ -158,7 +167,7 @@ Bearer Access JWT와 ADMIN 역할이 필수다. Path와 body 최상위 및 각 �
 }
 ```
 
-신규 세대 적용은 `applied=true`다. 현재와 완전히 같은 payload 재전송은 기존 `generationId`와 `applied=false`를 반환한다. 같은 현재 hash에 다른 payload는 `RECOMMENDATION_INPUT_CONFLICT`, 이미 교체된 과거 hash는 `STALE_RECOMMENDATION_INPUT`이다. 묶음 형식·정렬 위반은 `INVALID_RECOMMENDATION_RESULT`, 없는 원본·후보·관리자는 `RESOURCE_NOT_FOUND`, 관리자가 아니면 `FORBIDDEN`이다.
+신규 세대 적용은 `applied=true`다. 현재와 완전히 같은 payload 재전송은 기존 `generationId`와 `applied=false`를 반환한다. 같은 현재 hash에 다른 payload는 `RECOMMENDATION_INPUT_CONFLICT`, 이미 교체된 과거 hash는 `STALE_RECOMMENDATION_INPUT`이다. 묶음 형식·정렬 위반은 `INVALID_RECOMMENDATION_RESULT`, 없는 원본·후보·관리자(JWT 호출자)는 `RESOURCE_NOT_FOUND`, 관리자가 아니면 `FORBIDDEN`이다.
 
 ## GET /api/creators/{creatorId}/similar
 
