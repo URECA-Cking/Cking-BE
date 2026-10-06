@@ -140,6 +140,27 @@ class AdminAbuseDetectionControllerTest {
                 .andExpect(jsonPath("$.data.evidence.policyVersion").value("ABUSE_V1"));
     }
 
+    /** 상세 조회의 양수가 아닌 Detection ID는 Service 호출 전에 검증 오류로 거절한다. */
+    @Test
+    void Detection_상세의_잘못된_ID는_검증_오류다() throws Exception {
+        mockMvc.perform(get("/api/admin/abuse-detections/0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAbuseDetectionQueryService);
+    }
+
+    /** 존재하지 않는 Detection 상세 조회의 업무 예외는 공통 404 응답으로 변환한다. */
+    @Test
+    void 존재하지_않는_Detection_상세는_404다() throws Exception {
+        given(adminAbuseDetectionQueryService.get(1L, 21L))
+                .willThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(get("/api/admin/abuse-detections/21"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
     /** 검토 요청은 종결 판정만 전달하고 갱신된 상세를 반환한다. */
     @Test
     void Detection을_검토하고_갱신된_상세를_반환한다() throws Exception {
