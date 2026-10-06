@@ -90,4 +90,15 @@ class AbuseSlidingWindowRedisCounterTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Sliding Window Lua가 count를 반환하지 않았습니다.");
     }
+
+    /** Sliding Window Lua 실행 자체가 실패하면 정상 count로 바꾸지 않고 원래 오류를 전파한다. */
+    @Test
+    void Sliding_Window_Lua_오류를_정상_Count로_숨기지_않는다() {
+        RuntimeException failure = new RuntimeException("Lua 실행 오류");
+        when(redisTemplate.execute(luaScript, List.of(KEY), MEMBER, "1000", "61"))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> counter.recordAndCount(KEY, MEMBER, WINDOW))
+                .isSameAs(failure);
+    }
 }

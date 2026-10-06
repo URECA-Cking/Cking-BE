@@ -113,6 +113,29 @@ class RedisAbuseCooldownStoreTest {
                 .hasMessage("Cooldown 해제 Lua가 유효하지 않은 결과를 반환했습니다.");
     }
 
+    /** Cooldown 획득 중 Redis 실행 오류가 나면 점유 실패로 바꾸지 않고 원래 오류를 전파한다. */
+    @Test
+    void Cooldown_획득_오류를_점유_실패로_숨기지_않는다() {
+        RuntimeException failure = new RuntimeException("Cooldown 획득 오류");
+        when(redisTemplate.execute(eq(acquireLuaScript), eq(List.of(key())), any(), eq("20")))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> cooldownStore.tryAcquire(ABUSE_TYPE, SCOPE_HASH, TTL))
+                .isSameAs(failure);
+    }
+
+    /** Cooldown 해제 중 Redis 실행 오류가 나면 Token 불일치로 바꾸지 않고 원래 오류를 전파한다. */
+    @Test
+    void Cooldown_해제_오류를_Token_불일치로_숨기지_않는다() {
+        CooldownLease lease = new CooldownLease(ABUSE_TYPE, SCOPE_HASH, java.util.UUID.randomUUID());
+        RuntimeException failure = new RuntimeException("Cooldown 해제 오류");
+        when(redisTemplate.execute(eq(releaseLuaScript), eq(List.of(key())), eq(lease.token().toString())))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> cooldownStore.release(lease))
+                .isSameAs(failure);
+    }
+
     /** SET EX에 전달할 수 없는 0·음수·소수 초 TTL은 Redis 호출 전에 거부한다. */
     @Test
     void 양의_정수_초가_아닌_TTL을_거부한다() {

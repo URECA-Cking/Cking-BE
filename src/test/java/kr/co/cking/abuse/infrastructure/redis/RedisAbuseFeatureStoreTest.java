@@ -25,6 +25,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.RedisConnectionFailureException;
 
 /** RedisAbuseFeatureStore의 입력 검증·Lua 비정상 응답·더미 key 처리를 단위 검증한다. */
 class RedisAbuseFeatureStoreTest {
@@ -94,6 +95,32 @@ class RedisAbuseFeatureStoreTest {
         assertThatThrownBy(() -> featureStore.record(mission(), WINDOW_POLICY))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Abuse Feature Lua가 유효하지 않은 metric 값을 반환했습니다.");
+    }
+
+    /** Redis 연결이 끊기면 빈 Snapshot으로 대체하지 않고 연결 오류를 그대로 전파한다. */
+    @Test
+    void Redis_연결_오류를_빈_Snapshot으로_숨기지_않는다() {
+        RedisConnectionFailureException failure = new RedisConnectionFailureException("Redis 연결 오류");
+        when(redisTemplate.execute(
+                ArgumentMatchers.<DefaultRedisScript<List>>any(), ArgumentMatchers.<String>anyList(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> featureStore.record(mission(), WINDOW_POLICY))
+                .isSameAs(failure);
+    }
+
+    /** Feature Store Lua 실행 오류는 정상 Snapshot으로 대체하지 않고 호출자에게 전파한다. */
+    @Test
+    void FeatureStore_오류를_정상_Snapshot으로_숨기지_않는다() {
+        RuntimeException failure = new RuntimeException("Feature Store Lua 오류");
+        when(redisTemplate.execute(
+                ArgumentMatchers.<DefaultRedisScript<List>>any(), ArgumentMatchers.<String>anyList(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> featureStore.record(mission(), WINDOW_POLICY))
+                .isSameAs(failure);
     }
 
     /** Event Entry는 사용하지 않는 Mission business key에 SHA-256 hash를 적용하지 않고 더미 key를 전달한다. */
