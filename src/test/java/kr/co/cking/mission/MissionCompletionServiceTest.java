@@ -32,20 +32,25 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+
+import kr.co.cking.abuse.application.MissionAbuseObserver;
+import kr.co.cking.abuse.application.MissionObservationContext;
 
 class MissionCompletionServiceTest {
 
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final MissionRepository missionRepository = mock(MissionRepository.class);
     private final TicketEarnService ticketEarnService = mock(TicketEarnService.class);
+    private final MissionAbuseObserver abuseObserver = mock(MissionAbuseObserver.class);
 
     private static final Long USER_ID = 1L;
     private static final Long CREATOR_ID = 10L;
     private static final Long MISSION_ID = 100L;
 
     private MissionCompletionService serviceWith(Clock clock) {
-        return new MissionCompletionService(memberRepository, missionRepository, ticketEarnService, clock);
+        return new MissionCompletionService(memberRepository, missionRepository, ticketEarnService, clock, abuseObserver);
     }
 
     private Mission attendanceMission() {
@@ -88,6 +93,23 @@ class MissionCompletionServiceTest {
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(outcome.rewardAmount()).isEqualTo(1);
+        var observation = org.mockito.ArgumentCaptor.forClass(MissionObservationContext.class);
+        verify(abuseObserver).observeSuccess(observation.capture(), eq(EarnResultCode.EARN_ACCEPTED));
+        assertThat(observation.getValue().creatorType()).isEqualTo(MissionType.LIKE);
+        assertThat(observation.getValue().requestedAt()).isEqualTo(Instant.parse("2026-09-16T01:00:00Z"));
+    }
+
+    @Test
+    void EARN_조회에서_예상치_못한_예외가_나면_원_예외를_유지하고_SYSTEM_FAILURE를_관찰한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        IllegalStateException original = new IllegalStateException("Ticket unavailable");
+        when(ticketEarnService.findExisting(any())).thenThrow(original);
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isSameAs(original);
+        verify(abuseObserver).observeUnexpectedFailure(any());
     }
 
     @Test
@@ -103,6 +125,7 @@ class MissionCompletionServiceTest {
 
         verify(ticketEarnService, never()).findExisting(any());
         verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -120,6 +143,7 @@ class MissionCompletionServiceTest {
 
         verify(ticketEarnService, never()).findExisting(any());
         verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -135,6 +159,7 @@ class MissionCompletionServiceTest {
                 .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
 
         verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -149,6 +174,7 @@ class MissionCompletionServiceTest {
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
         verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -262,6 +288,7 @@ class MissionCompletionServiceTest {
 
         verify(ticketEarnService, never()).findExisting(any());
         verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -275,6 +302,7 @@ class MissionCompletionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
+        verifyNoInteractions(abuseObserver);
     }
 
     @Test
@@ -292,6 +320,7 @@ class MissionCompletionServiceTest {
                 .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
 
         verify(ticketEarnService, never()).earn(any());
+        verify(abuseObserver).observeFailure(any(), eq(MissionErrorCode.MISSION_INACTIVE));
     }
 
     @Test

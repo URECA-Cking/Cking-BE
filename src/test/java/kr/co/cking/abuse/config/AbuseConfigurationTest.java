@@ -1,7 +1,11 @@
 package kr.co.cking.abuse.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
+import kr.co.cking.abuse.application.AbuseObservationExecutor;
+import kr.co.cking.abuse.application.port.AbuseDetectionRecorder;
+import kr.co.cking.abuse.application.rule.AbuseRuleEvaluator;
 import kr.co.cking.abuse.domain.AbuseType;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -9,12 +13,14 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 class AbuseConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(AbuseConfiguration.class);
+            .withUserConfiguration(AbuseConfiguration.class)
+            .withBean(AbuseRuleEvaluator.class, () -> mock(AbuseRuleEvaluator.class));
 
     @Test
     void 비활성화하면_Rule_설정이_없어도_기동한다() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed().hasSingleBean(AbuseProperties.class);
+            assertThat(context).hasSingleBean(AbuseObservationExecutor.class);
             assertThat(context.getBean(AbuseProperties.class).enabled()).isFalse();
         });
     }
@@ -22,6 +28,7 @@ class AbuseConfigurationTest {
     @Test
     void 활성화하면_모든_Rule_설정을_바인딩한다() {
         contextRunner
+                .withBean(AbuseDetectionRecorder.class, () -> mock(AbuseDetectionRecorder.class))
                 .withPropertyValues(enabledProperties())
                 .run(context -> {
                     assertThat(context).hasNotFailed().hasSingleBean(AbuseProperties.class);
@@ -30,6 +37,12 @@ class AbuseConfigurationTest {
                     assertThat(properties.windowPolicy().requestIdRotationWindow().toSeconds()).isEqualTo(10L);
                     assertThat(properties.cooldownTtl(AbuseType.FAILURE_BURST).toSeconds()).isEqualTo(20L);
                 });
+    }
+
+    @Test
+    void 활성화했지만_Detection_저장_구현이_없으면_기동에_실패한다() {
+        contextRunner.withPropertyValues(enabledProperties())
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test

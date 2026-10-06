@@ -1,5 +1,7 @@
 package kr.co.cking.mission.application;
 
+import kr.co.cking.abuse.application.MissionAbuseObserver;
+import kr.co.cking.abuse.application.MissionObservationContext;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.repository.MemberRepository;
@@ -51,6 +53,7 @@ public class MissionCompletionService {
     private final MissionRepository missionRepository;
     private final TicketEarnService ticketEarnService;
     private final Clock clock;
+    private final MissionAbuseObserver abuseObserver;
 
     /** Creator별 일반 미션을 일 단위 Business Key와 EARN 처리로 완료한다. */
     public MissionCompleteOutcome complete(Long creatorId, Long missionId, MissionCompleteCommand command) {
@@ -70,6 +73,35 @@ public class MissionCompletionService {
         }
 
         Instant now = clock.instant();
+        // 레거시 Creator ATTENDANCE는 신규 완료 대상이 아니므로 LIKE만 관찰한다.
+        MissionObservationContext observation = mission.getType() == MissionType.LIKE
+                ? MissionObservationContext.creator(
+                        command.userId(), creatorId, missionId, command.requestId(), now, mission.getType())
+                : null;
+        MissionCompleteOutcome outcome;
+        try {
+            outcome = completeValidated(creatorId, missionId, command, mission, now);
+        } catch (BusinessException exception) {
+            if (observation != null) {
+                abuseObserver.observeFailure(observation, exception.getErrorCode());
+            }
+            throw exception;
+        } catch (RuntimeException exception) {
+            if (observation != null) {
+                abuseObserver.observeUnexpectedFailure(observation);
+            }
+            throw exception;
+        }
+        if (observation != null) {
+            abuseObserver.observeSuccess(observation, outcome.code());
+        }
+        return outcome;
+    }
+
+    /** 리소스 검증 이후의 기존 EARN·replay 계약을 변경하지 않고 수행한다. */
+    private MissionCompleteOutcome completeValidated(
+            Long creatorId, Long missionId, MissionCompleteCommand command, Mission mission, Instant now
+    ) {
         String periodKey = periodKeyOf(now);
         EarnCommand earnCommand = new EarnCommand(
                 command.requestId(),
