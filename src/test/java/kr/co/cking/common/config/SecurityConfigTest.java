@@ -35,6 +35,8 @@ import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -57,6 +59,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Spring Security 기반 설정이 기존 API와 문서 인증 경로에 미치는 영향을 검증한다. */
 @WebMvcTest(controllers = {MemberController.class, AuthController.class})
 @Import({
+        SecurityConfigTest.AdminSecurityTestController.class,
         SecurityConfig.class,
         JwtConfig.class,
         JwtAuthenticationConverterConfig.class,
@@ -163,6 +166,15 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"FORBIDDEN\"}"));
     }
 
+    /** ADMIN JWT는 기존 관리자 경로의 Security 인가를 통과하는지 검증한다. */
+    @Test
+    void ADMIN_JWT는_ADMIN_API를_정상_호출한다() throws Exception {
+        mockMvc.perform(get("/api/admin/dead-streams")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(content().string("admin-api"));
+    }
+
     /** USER·ADMIN 공용 Winner 이력 API도 JWT 인증 없이는 호출할 수 없다. */
     @Test
     void Winner_상태_이력_API는_미인증_요청을_401로_거절한다() throws Exception {
@@ -221,6 +233,45 @@ class SecurityConfigTest {
                         .contentType("application/json")
                         .content("{\"loginId\":\"admin\",\"password\":\"password\"}")
                         .header(AUTHORIZATION, "Bearer " + expiredAccessToken()))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+
+        verify(adminAuthService).authenticate("admin", "password");
+    }
+
+    /** Authorization 헤더 없이도 관리자 로그인 Controller까지 도달하는지 검증한다. */
+    @Test
+    void 인증_없이_관리자_자격증명으로_로그인한다() throws Exception {
+        when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
+        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+                .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
+        when(refreshTokenCookieFactory.create("refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"admin\",\"password\":\"password\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
+
+        verify(adminAuthService).authenticate("admin", "password");
+    }
+
+    /** 형식이 잘못된 Bearer JWT가 있어도 관리자 로그인 Controller까지 도달하는지 검증한다. */
+    @Test
+    void 잘못된_Bearer_JWT와_관리자_자격증명으로_로그인한다() throws Exception {
+        when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
+        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+                .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
+        when(refreshTokenCookieFactory.create("refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"admin\",\"password\":\"password\"}")
+                        .header(AUTHORIZATION, "Bearer invalid-token"))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
 
@@ -329,6 +380,17 @@ class SecurityConfigTest {
                 .build();
         return jwtEncoder.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+    }
+
+    /** ADMIN 역할 JWT가 통과한 뒤 테스트에서 사용할 최소 관리자 API 응답을 제공한다. */
+    @RestController
+    static class AdminSecurityTestController {
+
+        /** 관리자 JWT가 인가된 요청에 성공 응답을 반환한다. */
+        @GetMapping("/api/admin/dead-streams")
+        String accessAdminApi() {
+            return "admin-api";
+        }
     }
 
 }
