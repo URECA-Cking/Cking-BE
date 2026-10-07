@@ -102,6 +102,18 @@ cking:
       connect-timeout: ${GEMINI_CONNECT_TIMEOUT:PT2S}
       read-timeout: ${GEMINI_READ_TIMEOUT:PT30S}
       max-attempts: ${GEMINI_MAX_ATTEMPTS:2}
+  comment-filter:
+    # 별도 필터 서비스가 준비될 때까지 꺼 둔다. 꺼져 있으면 댓글은 판정 없이 PENDING으로 남는다.
+    enabled: ${COMMENT_FILTER_ENABLED:false}
+    base-url: ${COMMENT_FILTER_BASE_URL:http://localhost:8000}
+    connect-timeout: ${COMMENT_FILTER_CONNECT_TIMEOUT:PT2S}
+    read-timeout: ${COMMENT_FILTER_READ_TIMEOUT:PT5S}
+    executor:
+      core-pool-size: ${COMMENT_FILTER_EXECUTOR_CORE_POOL_SIZE:2}
+      max-pool-size: ${COMMENT_FILTER_EXECUTOR_MAX_POOL_SIZE:2}
+      # 무제한 queue를 금지하고, 포화로 거절된 댓글은 PENDING으로 남겨 재필터링이 다시 처리한다.
+      queue-capacity: ${COMMENT_FILTER_EXECUTOR_QUEUE_CAPACITY:100}
+      await-termination-seconds: ${COMMENT_FILTER_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
   snapshot:
     recovery:
       interval-ms: 60000

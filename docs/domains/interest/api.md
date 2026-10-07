@@ -69,13 +69,14 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 **개인화 추천**
 
-- `items: []`는 오류가 아니라 정상이다. 관심 분야·팔로우가 모두 없거나, 유효한 후보가 없거나, LLM 배치가 아직 적재하지 않은 경우이며 인기순 fallback은
-  없다. 빈 화면 처리가 필요하다.
+- 개인화 결과가 비면(관심 분야·팔로우가 없거나, 유효한 후보가 없거나, LLM 배치가 아직 적재하지 않은 경우) 팔로워 수 순 인기 Creator로 대체되어
+  `policyVersion`이 `POPULAR_FALLBACK_V1`이다. 개인화 결과가 하나라도 있으면 인기순은 섞이지 않는다. 대체할 Creator도 없으면 `items: []`이므로 빈 화면 처리는
+  남겨 둔다.
 - `policyVersion`은 선택·팔로우의 존재 여부가 아니라, 본인·기팔로우·Space 없는 Creator를 제외한 뒤에도 후보가 남는 **유효한 source**가 어디에 있는지로
   정해진다. `HYBRID_PERSONALIZED_V1`은 관심 분야와 팔로우 양쪽에 유효한 source가 있을 때, `INTEREST_PERSONALIZED_V1`은 관심 분야에만 있을 때,
-  `FOLLOW_PERSONALIZED_V2`는 팔로우에만 있거나 양쪽 모두 없을 때다. 예를 들어 관심 분야와 팔로우가 모두 있어도 관심 분야 후보가 없으면
-  `FOLLOW_PERSONALIZED_V2`다. 화면 분기에는 쓰지 않아도 되고, 모르는 값이 와도 `items`를 그대로 그리면 된다.
-- `aggregateScore`는 정렬용이라 화면에 노출하지 않는다. 서로 다른 `policyVersion`의 점수는 비교할 수 없다. `interestCodes`·`seedCreatorIds`는 "추천 이유"
+  `FOLLOW_PERSONALIZED_V2`는 팔로우에만 있을 때다. 양쪽 모두 없으면 `POPULAR_FALLBACK_V1`이다. 예를 들어 관심 분야와 팔로우가 모두 있어도 관심 분야 후보가
+  없으면 `FOLLOW_PERSONALIZED_V2`다. 화면 분기에는 쓰지 않아도 되고, 모르는 값이 와도 `items`를 그대로 그리면 된다.
+- `aggregateScore`는 정렬용이라 화면에 노출하지 않는다(인기순 대체에서는 팔로워 수). 서로 다른 `policyVersion`의 점수는 비교할 수 없다. `interestCodes`·`seedCreatorIds`는 "추천 이유"
   표시에 쓸 수 있으며 빈 배열일 수 있다.
 - 본인, 이미 팔로우한 Creator, Creator Space가 없는 Creator는 나오지 않는다. `size`는 1~20이고 범위를 벗어나면 400이다.
 - 반영 시점: 관심 분야 저장과 팔로우 변경은 다음 조회부터 바로 반영된다(조회 시 계산). 응답의 `introText`·`profileImageUrl`은 조회 때 Creator Space에서

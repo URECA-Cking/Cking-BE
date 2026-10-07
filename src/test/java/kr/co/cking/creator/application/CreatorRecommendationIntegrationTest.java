@@ -12,6 +12,8 @@ import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityStateRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.creator.repository.PopularCreatorCandidate;
+import kr.co.cking.creator.repository.PopularCreatorQueryRepository;
 import kr.co.cking.follow.application.CreatorFollowService;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
@@ -37,6 +40,7 @@ class CreatorRecommendationIntegrationTest {
     @Autowired CreatorRecommendationQueryService recommendationQueryService;
     @Autowired CreatorFollowService followService;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired PopularCreatorQueryRepository popularRepository;
     @Autowired CreatorRepository creatorRepository;
     @Autowired CreatorSpaceRepository spaceRepository;
     @Autowired CreatorSimilarityGenerationRepository generationRepository;
@@ -119,7 +123,7 @@ class CreatorRecommendationIntegrationTest {
     }
 
     @Test
-    void 후보가_없는_빈_세대가_활성화되어도_이전_후보_없이_빈_목록을_반환한다() {
+    void 후보가_없는_빈_세대가_활성화되어도_이전_후보_없이_인기순으로_대체된다() {
         Member fan = member("fan-empty-generation");
         Creator seed = creator("empty-generation-seed");
         Creator previousCandidate = creator("previous-candidate");
@@ -131,8 +135,13 @@ class CreatorRecommendationIntegrationTest {
         PersonalizedCreatorRecommendationView result =
                 recommendationQueryService.findForMember(fan.getMemberId(), 10);
 
-        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
-        assertThat(result.items()).isEmpty();
+        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
+        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
+        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
+        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
+            assertThat(item.interestCodes()).isEmpty();
+            assertThat(item.seedCreatorIds()).isEmpty();
+        });
     }
 
     @Test
@@ -158,6 +167,34 @@ class CreatorRecommendationIntegrationTest {
                 new BigDecimal("0.01612903"),
                 List.of(),
                 List.of(seed.getCreatorId())));
+    }
+
+    @Test
+    void 인기순은_팔로워_수_내림차순이고_같으면_creatorId_오름차순이며_Space가_없는_Creator는_제외한다() {
+        Member firstFan = member("popular-fan-one");
+        Member secondFan = member("popular-fan-two");
+        Creator zero = creator("popular-zero");
+        Creator zeroLater = creator("popular-zero-later");
+        Creator one = creator("popular-one");
+        Creator two = creator("popular-two");
+        Creator noSpace = creator("popular-no-space");
+        for (Creator creator : List.of(zero, zeroLater, one, two)) {
+            createSpace(creator, "소개 " + creator.getName(), "profile");
+        }
+        followService.follow(firstFan.getMemberId(), two.getCreatorId());
+        followService.follow(secondFan.getMemberId(), two.getCreatorId());
+        followService.follow(firstFan.getMemberId(), one.getCreatorId());
+        followService.follow(firstFan.getMemberId(), noSpace.getCreatorId());
+
+        List<Long> ours = List.of(zero, zeroLater, one, two, noSpace).stream().map(Creator::getCreatorId).toList();
+        List<PopularCreatorCandidate> popular = popularRepository.findPopular(PageRequest.of(0, 10_000)).stream()
+                .filter(candidate -> ours.contains(candidate.creatorId()))
+                .toList();
+
+        assertThat(popular).extracting(PopularCreatorCandidate::creatorId)
+                .containsExactly(two.getCreatorId(), one.getCreatorId(), zero.getCreatorId(), zeroLater.getCreatorId());
+        assertThat(popular).extracting(PopularCreatorCandidate::followerCount).containsExactly(2L, 1L, 0L, 0L);
+        assertThat(popular.getFirst().introText()).isEqualTo("소개 " + two.getName());
     }
 
     private void activate(Creator seed, String method, List<CandidateSpec> candidateSpecs) {
