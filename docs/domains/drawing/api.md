@@ -1,4 +1,49 @@
-# Drawing API
+# Drawing 실행·재시도·공개 API
+
+관리자 Drawing 명령 API의 요청·응답·오류 계약을 정의한다. 조회와 재현 검증은 각각의 전용 문서에서
+관리한다.
+
+| 구분 | API | 문서 |
+| --- | --- | --- |
+| 실행 | `POST /api/admin/events/{eventId}/drawings` | 이 문서 |
+| 조회·결과 조회 | `GET /api/admin/events/{eventId}/drawings/initial`, `GET /api/admin/drawings/{drawingId}`, `GET /api/admin/drawings/{drawingId}/result` | [관리자 Drawing 조회 API](admin-query-api.md) |
+| 재현 검증 | `POST /api/admin/drawings/{drawingId}/verify`, `GET /api/admin/drawings/{drawingId}/verification-history` | [Drawing 재현 검증 API](verification-api.md) |
+| 재시도·공개 | `POST /api/admin/drawings/{drawingId}/retry`, `POST /api/admin/drawings/{drawingId}/publish` | 이 문서 |
+
+## 관리자 INITIAL Drawing 실행
+
+### `POST /api/admin/events/{eventId}/drawings`
+
+관리자 권한과 Event·Snapshot 조건을 검증한 뒤 INITIAL Drawing을 끝까지 실행한다. Seed 생성,
+엔진 호출, Winner·WinnerManagement 저장, Drawing 완료, Event 상태 전이를 하나의 Transaction으로
+처리한다.
+
+#### 요청
+
+- Path Variable: `eventId` (`Long`, 양수, 필수)
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); Request Body `userId`는 받지 않는다.
+
+#### 성공 응답
+
+`200 OK`와 공통 `ApiResponse`를 반환한다. `data`에는 `drawingId`, `eventId`, `status`,
+`winnerCount`를 포함한다.
+
+#### 처리 계약
+
+- 요청자는 존재하는 `ADMIN` Member여야 한다.
+- Event는 삭제되지 않은 `CLOSED` 상태여야 하며, 공식 Snapshot Hash 검증을 통과해야 한다.
+- 완료된 INITIAL Drawing 재요청은 기존 결과를 반환한다. `READY` 또는 `RUNNING`이면 동시 명령으로
+  거부하고, `FAILED`는 아래 Retry 계약을 사용한다.
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | eventId가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | 요청한 Member 또는 Event가 존재하지 않음 |
+| `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
+| `INVALID_STATE` | Event가 삭제됐거나 CLOSED 상태가 아님 |
+| `CONCURRENT_COMMAND` | 동일 Event의 INITIAL Drawing이 READY 또는 RUNNING임 |
+| `SNAPSHOT_NOT_FOUND` | 공식 Snapshot이 없음 |
+| `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot의 Hash 또는 집계값이 일치하지 않음 |
 
 ## 관리자 Drawing Retry
 
