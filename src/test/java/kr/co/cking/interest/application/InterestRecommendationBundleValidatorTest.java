@@ -124,13 +124,13 @@ class InterestRecommendationBundleValidatorTest {
     }
 
     private InterestRecommendationCommand command(List<Candidate> candidates) {
-        return new InterestRecommendationCommand(
+        return new InterestRecommendationCommand(1L,
                 "v0.2", TAXONOMY_HASH, "SPORTS", "INTEREST_M3_V1", "BAAI/bge-m3@deepinfra-v1", INPUT_HASH, candidates);
     }
 
     private InterestRecommendationCommand replace(
             InterestRecommendationCommand base, String taxonomyHash, String inputHash, String method, String code) {
-        return new InterestRecommendationCommand(
+        return new InterestRecommendationCommand(1L,
                 base.taxonomyVersion(), taxonomyHash, code, method, base.modelVersion(), inputHash, base.candidates());
     }
 

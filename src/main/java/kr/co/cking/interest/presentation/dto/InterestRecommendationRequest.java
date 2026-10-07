@@ -21,6 +21,7 @@ public final class InterestRecommendationRequest {
 
     /** 한 분야의 완결된 후보 묶음이다. 의미 검증(메타데이터 일치·정렬·분류체계 해시)은 서비스가 한다. */
     public record Replace(
+            @NotNull @Positive Long applicationSequence,
             @NotBlank @Size(max = 20) String taxonomyVersion,
             @NotBlank @Pattern(regexp = "[0-9a-f]{64}") String taxonomyHash,
             @NotBlank @Size(max = 30) String interestCode,
@@ -30,7 +31,7 @@ public final class InterestRecommendationRequest {
             @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates
     ) {
         public InterestRecommendationCommand toCommand() {
-            return new InterestRecommendationCommand(
+            return new InterestRecommendationCommand(applicationSequence,
                     taxonomyVersion, taxonomyHash, interestCode, method, modelVersion, inputHash,
                     candidates.stream().map(Candidate::toCommand).toList());
         }

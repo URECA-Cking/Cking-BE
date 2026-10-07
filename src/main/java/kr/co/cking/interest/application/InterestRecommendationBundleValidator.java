@@ -43,7 +43,7 @@ final class InterestRecommendationBundleValidator {
     }
 
     static Bundle validate(String pathInterestCode, InterestRecommendationCommand command) {
-        if (command == null
+        if (command == null || command.applicationSequence() == null || command.applicationSequence() <= 0
                 || isBlank(command.taxonomyVersion()) || command.taxonomyVersion().length() > 20
                 || !isSha256(command.taxonomyHash())
                 || !Objects.equals(pathInterestCode, command.interestCode())

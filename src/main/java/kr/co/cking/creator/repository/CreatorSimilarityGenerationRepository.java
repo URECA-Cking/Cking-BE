@@ -15,10 +15,10 @@ public interface CreatorSimilarityGenerationRepository
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select g from CreatorSimilarityGeneration g
-            where g.creatorId = :creatorId and g.inputHash = :inputHash
+            where g.creatorId = :creatorId and g.applicationSequence = :applicationSequence
             """)
-    Optional<CreatorSimilarityGeneration> findByCreatorIdAndInputHashForUpdate(
+    Optional<CreatorSimilarityGeneration> findByCreatorIdAndApplicationSequenceForUpdate(
             @Param("creatorId") Long creatorId,
-            @Param("inputHash") String inputHash
+            @Param("applicationSequence") Long applicationSequence
     );
 }

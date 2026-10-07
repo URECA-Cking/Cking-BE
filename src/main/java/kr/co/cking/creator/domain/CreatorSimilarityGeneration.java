@@ -19,6 +19,9 @@ import java.time.Instant;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CreatorSimilarityGeneration {
 
+    @Column(name = "application_sequence", nullable = false, updatable = false)
+    private long applicationSequence;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "generation_id")
@@ -40,12 +43,14 @@ public class CreatorSimilarityGeneration {
     private Instant createdAt;
 
     public CreatorSimilarityGeneration(
+            long applicationSequence,
             Long creatorId,
             String method,
             String modelVersion,
             String inputHash,
             Instant createdAt
     ) {
+        this.applicationSequence = applicationSequence;
         this.creatorId = creatorId;
         this.method = method;
         this.modelVersion = modelVersion;

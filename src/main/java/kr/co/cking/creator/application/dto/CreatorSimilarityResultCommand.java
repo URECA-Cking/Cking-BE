@@ -5,6 +5,7 @@ import java.util.List;
 
 /** Cking-LLM이 전달한 한 크리에이터의 완결된 유사 후보 묶음이다. */
 public record CreatorSimilarityResultCommand(
+        Long applicationSequence,
         Long creatorId,
         String method,
         String modelVersion,

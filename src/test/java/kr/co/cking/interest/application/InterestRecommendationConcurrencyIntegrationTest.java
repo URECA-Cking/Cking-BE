@@ -78,7 +78,7 @@ class InterestRecommendationConcurrencyIntegrationTest {
         memberId = owner.getMemberId();
         creatorId = creatorRepository.saveAndFlush(new Creator(memberId, "c-" + suffix.substring(0, 12))).getCreatorId();
         String hash = (suffix + suffix).substring(0, 64);
-        InterestRecommendationCommand command = new InterestRecommendationCommand(
+        InterestRecommendationCommand command = new InterestRecommendationCommand(1L,
                 version, taxonomyHash, CODE, "INTEREST_M3_V1", "model-v1", hash,
                 List.of(new InterestRecommendationCommand.Candidate(
                         CODE, creatorId, new BigDecimal("0.90000000"), 1, "INTEREST_M3_V1", "model-v1", hash)));

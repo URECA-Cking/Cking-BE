@@ -18,6 +18,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class InterestRecommendationGeneration {
 
+    @Column(name = "application_sequence", nullable = false, updatable = false)
+    private long applicationSequence;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "generation_id")
@@ -42,6 +45,7 @@ public class InterestRecommendationGeneration {
     private Instant createdAt;
 
     public InterestRecommendationGeneration(
+            long applicationSequence,
             String taxonomyVersion,
             String interestCode,
             String method,
@@ -49,6 +53,7 @@ public class InterestRecommendationGeneration {
             String inputHash,
             Instant createdAt
     ) {
+        this.applicationSequence = applicationSequence;
         this.taxonomyVersion = taxonomyVersion;
         this.interestCode = interestCode;
         this.method = method;

@@ -219,7 +219,7 @@ class RecommendationApiKeySecurityTest {
         return put(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"creatorId":10,"method":"M4","modelVersion":"m","inputHash":"%s","candidates":[]}
+                        {"creatorId":10,"method":"M4","modelVersion":"m","inputHash":"%s","applicationSequence": 1, "candidates":[]}
                         """.formatted("a".repeat(64)));
     }
 
@@ -273,6 +273,6 @@ class RecommendationApiKeySecurityTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"taxonomyVersion\":\"v0.2\",\"taxonomyHash\":\"" + hash + "\",\"interestCode\":\"SPORTS\","
                         + "\"method\":\"INTEREST_M3_V1\",\"modelVersion\":\"m\",\"inputHash\":\"" + hash + "\","
-                        + "\"candidates\":[]}");
+                        + "\"applicationSequence\":1,\"candidates\":[]}");
     }
 }
