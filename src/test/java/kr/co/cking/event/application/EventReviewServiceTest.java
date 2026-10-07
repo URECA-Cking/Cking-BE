@@ -66,6 +66,34 @@ class EventReviewServiceTest {
         verify(creatorRepository, never()).findById(org.mockito.ArgumentMatchers.anyLong());
     }
 
+    /** 관리자 운영 목록은 상태를 전달하고 Event 페이지의 Creator를 한 번에 결합하는지 검증한다. */
+    @Test
+    void managedEventListFiltersStatusAndBatchLoadsCreators() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        EventRepository eventRepository = mock(EventRepository.class);
+        EventApprovalRequestRepository approvalRequestRepository = mock(EventApprovalRequestRepository.class);
+        CreatorRepository creatorRepository = mock(CreatorRepository.class);
+        EventCommandService eventCommandService = mock(EventCommandService.class);
+        Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
+        Event openEvent = event(10L, 100L, "운영 이벤트");
+        ReflectionTestUtils.setField(openEvent, "status", kr.co.cking.event.domain.EventStatus.OPEN);
+        Creator creator = creator(100L, "크리에이터");
+        PageRequest pageable = PageRequest.of(0, 20);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
+        given(eventRepository.findManagedEvents(kr.co.cking.event.domain.EventStatus.OPEN, pageable))
+                .willReturn(new PageImpl<>(List.of(openEvent), pageable, 1));
+        given(creatorRepository.findByCreatorIdIn(List.of(100L))).willReturn(List.of(creator));
+        EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
+                eventCommandService, creatorRepository);
+
+        var result = service.findManagedEvents(1L, kr.co.cking.event.domain.EventStatus.OPEN, pageable);
+
+        assertThat(result.getContent()).extracting(EventReviewService.ManagedEvent::creatorName)
+                .containsExactly("크리에이터");
+        verify(eventRepository).findManagedEvents(kr.co.cking.event.domain.EventStatus.OPEN, pageable);
+        verify(creatorRepository).findByCreatorIdIn(List.of(100L));
+    }
+
     private Event event(Long eventId, Long creatorId, String title) {
         Event event = new Event(creatorId, title, null,
                 Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),

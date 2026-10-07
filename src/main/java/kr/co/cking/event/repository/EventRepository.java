@@ -31,6 +31,15 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     Page<Event> findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable);
 
+    /** 관리자가 삭제되지 않은 Event를 선택 상태와 생성일 역순으로 조회할 때 사용한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedEvents(@Param("status") EventStatus status, Pageable pageable);
+
     /** EventLifecycleScheduler가 자동 마감 대상(OPEN이고 endAt이 지난 이벤트)을 찾을 때 쓴다. */
     List<Event> findByStatusAndEndAtLessThanEqual(EventStatus status, Instant endAt);
 
