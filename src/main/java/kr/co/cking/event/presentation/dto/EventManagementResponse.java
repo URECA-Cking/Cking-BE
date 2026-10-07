@@ -22,13 +22,13 @@ public final class EventManagementResponse {
     }
 
     /** Creator Event 목록의 한 항목을 반환한다. */
-    public record Item(Long eventId, String title, java.time.Instant startAt, java.time.Instant endAt, int winnerCount,
+    public record Item(Long eventId, String title, String description, String rejectReason, java.time.Instant startAt, java.time.Instant endAt, int winnerCount,
                        kr.co.cking.event.domain.DrawMethod drawMethod, String prizeAlgorithmVersion,
                        EventStatus status, java.time.Instant createdAt,
                        List<kr.co.cking.event.application.dto.PrizeResult> prizes) {
         /** Event 엔티티를 목록 항목으로 변환한다. */
-        public static Item from(Event event) {
-            return new Item(event.getEventId(), event.getTitle(), event.getStartAt(),
+        public static Item from(Event event, String rejectReason) {
+            return new Item(event.getEventId(), event.getTitle(), event.getDescription(), rejectReason, event.getStartAt(),
                     event.getEndAt(), event.getWinnerCount(), kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()),
                     event.getPrizeAlgorithmVersion(), event.getStatus(), event.getCreatedAt(), event.getPrizeConfigs().stream()
                             .map(kr.co.cking.event.application.dto.PrizeResult::from).toList());
