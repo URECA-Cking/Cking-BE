@@ -153,7 +153,7 @@ class SecurityConfigTest {
     /** 모든 ADMIN API는 Access JWT 없이 호출할 수 없다. */
     @Test
     void ADMIN_API는_미인증_요청을_401로_거절한다() throws Exception {
-        mockMvc.perform(get("/api/admin/dead-streams"))
+        mockMvc.perform(get("/api/admin/events"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
@@ -423,12 +423,6 @@ class SecurityConfigTest {
     /** ADMIN 역할 JWT가 통과한 뒤 테스트에서 사용할 최소 관리자 API 응답을 제공한다. */
     @RestController
     static class AdminSecurityTestController {
-
-        /** 관리자 JWT가 인가된 요청에 성공 응답을 반환한다. */
-        @GetMapping("/api/admin/dead-streams")
-        String accessAdminApi() {
-            return "admin-api";
-        }
 
         /** 관리자 Event 운영 목록 경로가 인가된 요청에 성공 응답을 반환한다. */
         @GetMapping("/api/admin/events")

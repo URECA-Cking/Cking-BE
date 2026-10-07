@@ -145,24 +145,31 @@ class EventRepositoryTest {
                 .doesNotContain(deleted.getEventId(), draft.getEventId());
     }
 
-    /** 관리자 운영 목록은 삭제 Event를 제외하고 선택한 상태만 생성일 역순으로 조회하는지 검증한다. */
+    /** 관리자 운영 목록은 상태 필터, 삭제 제외와 생성일 역순 정렬을 검증한다. */
     @Test
-    void 관리자_운영_목록은_상태를_필터링하고_삭제_Event를_제외한다() {
+    void 관리자_운영_목록은_상태를_필터링하고_삭제_Event를_제외하며_생성일_역순으로_조회한다() {
         long memberId = insertMember();
         long creatorId = insertCreator(memberId);
-        Event firstOpen = persistEvent(creatorId, memberId, EventStatus.OPEN, END, null);
+        Event olderOpen = persistEvent(creatorId, memberId, EventStatus.OPEN, END, null);
+        Event newerOpen = persistEvent(creatorId, memberId, EventStatus.OPEN, END, null);
+        Event scheduled = persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, null);
         Event deletedOpen = persistEvent(creatorId, memberId, EventStatus.OPEN, END,
                 Instant.parse("2026-09-01T00:00:00Z"));
-        Event scheduled = persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, null);
         entityManager.flush();
+        updateCreatedAt(olderOpen, Instant.parse("2026-09-10T00:00:00Z"));
+        updateCreatedAt(scheduled, Instant.parse("2026-09-11T00:00:00Z"));
+        updateCreatedAt(newerOpen, Instant.parse("2026-09-12T00:00:00Z"));
         entityManager.clear();
 
-        var events = eventRepository.findManagedEvents(EventStatus.OPEN,
+        var openEvents = eventRepository.findManagedEvents(EventStatus.OPEN,
                 PageRequest.of(0, 20)).getContent();
+        var allEvents = eventRepository.findManagedEvents(null, PageRequest.of(0, 20)).getContent();
 
-        assertThat(events).extracting(Event::getEventId)
-                .contains(firstOpen.getEventId())
-                .doesNotContain(deletedOpen.getEventId(), scheduled.getEventId());
+        assertThat(openEvents).extracting(Event::getEventId)
+                .containsExactly(newerOpen.getEventId(), olderOpen.getEventId());
+        assertThat(allEvents).extracting(Event::getEventId)
+                .containsExactly(newerOpen.getEventId(), scheduled.getEventId(), olderOpen.getEventId())
+                .doesNotContain(deletedOpen.getEventId());
     }
 
     private Event persistEvent(long creatorId, long memberId, EventStatus status, Instant endAt, Instant deletedAt) {
@@ -195,6 +202,14 @@ class EventRepositoryTest {
                     .executeUpdate();
         }
         return event;
+    }
+
+    /** Event의 생성 시각을 고정해 목록 정렬 순서를 결정론적으로 검증한다. */
+    private void updateCreatedAt(Event event, Instant createdAt) {
+        entityManager.createNativeQuery("UPDATE event SET created_at = :createdAt WHERE event_id = :id")
+                .setParameter("createdAt", createdAt)
+                .setParameter("id", event.getEventId())
+                .executeUpdate();
     }
 
     private long insertMember() {
