@@ -20,6 +20,9 @@ public interface DrawingRepository extends JpaRepository<Drawing, Long> {
     /** 특정 RedrawRequest가 실제로 실행해 생성한 REDRAW Drawing을 조회한다. */
     Optional<Drawing> findByRedrawRequestId(Long redrawRequestId);
 
+    /** 목록 응답에 연결할 REDRAW Drawing을 요청 ID 묶음으로 한 번에 조회한다. */
+    List<Drawing> findByRedrawRequestIdIn(Collection<Long> redrawRequestIds);
+
     /** Event의 가장 최근 Drawing을 조회해 다음 REDRAW 회차를 정한다. */
     Optional<Drawing> findTopByEventIdOrderByDrawNoDesc(Long eventId);
 
