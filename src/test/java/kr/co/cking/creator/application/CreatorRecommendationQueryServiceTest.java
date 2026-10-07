@@ -9,10 +9,13 @@ import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.interest.application.InterestRecommendationQueryService;
 import kr.co.cking.interest.repository.ActiveInterestRecommendationCandidate;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.creator.repository.PopularCreatorCandidate;
+import kr.co.cking.creator.repository.PopularCreatorQueryRepository;
 import kr.co.cking.creator.repository.ActiveCreatorRecommendationCandidate;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -35,6 +38,7 @@ class CreatorRecommendationQueryServiceTest {
     private final CreatorSimilarityCandidateRepository candidateRepository =
             mock(CreatorSimilarityCandidateRepository.class);
     private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+    private final PopularCreatorQueryRepository popularRepository = mock(PopularCreatorQueryRepository.class);
     private CreatorRecommendationQueryService service;
 
     @BeforeEach
@@ -45,18 +49,19 @@ class CreatorRecommendationQueryServiceTest {
                 creatorRepository,
                 candidateRepository,
                 spaceRepository,
+                popularRepository,
                 new PersonalizedCreatorRecommendationPolicy());
     }
 
     @Test
-    void 팔로우도_관심_분야도_없으면_팔로우_후보를_조회하지_않고_빈_목록을_반환한다() {
+    void 팔로우도_관심_분야도_없으면_팔로우_후보를_조회하지_않고_인기순도_비어_있으면_빈_목록을_반환한다() {
         given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of());
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
         given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
 
         PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
 
-        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
+        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
         assertThat(result.items()).isEmpty();
         then(candidateRepository).should(never()).findActiveCandidatesBySeedCreatorIds(any());
     }
@@ -74,6 +79,45 @@ class CreatorRecommendationQueryServiceTest {
         assertThat(result.items()).isEmpty();
         then(candidateRepository).should().findActiveCandidatesBySeedCreatorIds(List.of(1L));
         then(creatorRepository).should(never()).findByCreatorIdIn(any());
+    }
+
+    @Test
+    void 개인화_결과가_없으면_팔로워_수_순_인기_Creator를_본인과_기팔로우를_제외하고_size만큼_채운다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of(1L));
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator(9L, "own")));
+        given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
+        given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L))).willReturn(List.of());
+        // 제외 대상(기팔로우 1, 본인 9)을 읽은 뒤에 거르므로 size + 제외 수만큼 읽는다.
+        given(popularRepository.findPopular(PageRequest.of(0, 4))).willReturn(List.of(
+                new PopularCreatorCandidate(9L, "own", "소개9", "p9", 12),
+                new PopularCreatorCandidate(1L, "followed", "소개1", "p1", 9),
+                new PopularCreatorCandidate(2L, "first", "소개2", "p2", 5),
+                new PopularCreatorCandidate(3L, "second", "소개3", "p3", 0)));
+
+        PersonalizedCreatorRecommendationView result = service.findForMember(7L, 2);
+
+        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
+        assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::creatorId)
+                .containsExactly(2L, 3L);
+        assertThat(result.items().getFirst().aggregateScore()).isEqualByComparingTo("5");
+        assertThat(result.items().getFirst().interestCodes()).isEmpty();
+        assertThat(result.items().getFirst().seedCreatorIds()).isEmpty();
+    }
+
+    @Test
+    void 개인화_결과가_있으면_인기순을_조회하지_않는다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of(1L));
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
+        given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
+        given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L)))
+                .willReturn(List.of(new ActiveCreatorRecommendationCandidate(1L, 20L, "M4", new BigDecimal("0.9"), 1)));
+        given(creatorRepository.findByCreatorIdIn(List.of(20L))).willReturn(List.of(creator(20L, "후보")));
+        given(spaceRepository.findByCreatorIdIn(List.of(20L))).willReturn(List.of(space(20L, "소개", "p")));
+
+        PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
+
+        assertThat(result.policyVersion()).isNotEqualTo("POPULAR_FALLBACK_V1");
+        then(popularRepository).shouldHaveNoInteractions();
     }
 
     @Test
