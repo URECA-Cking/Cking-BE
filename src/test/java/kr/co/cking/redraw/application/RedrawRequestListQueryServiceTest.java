@@ -3,6 +3,7 @@ package kr.co.cking.redraw.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Instant;
 import java.util.List;
@@ -64,6 +65,38 @@ class RedrawRequestListQueryServiceTest {
         verify(memberQueryService).validateAdmin(2L);
         verify(redrawRequestRepository).findForAdminList(
                 RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING, pageable);
+    }
+
+    /** 요청 페이지가 비어 있으면 Drawing 묶음 조회 없이 빈 페이지를 반환한다. */
+    @Test
+    void 빈_요청_페이지는_Drawing을_조회하지_않는다() {
+        PageRequest pageable = PageRequest.of(0, 20);
+        when(redrawRequestRepository.findForAdminList(null, null, pageable))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        var result = service.list(2L, null, null, pageable);
+
+        assertThat(result).isEmpty();
+        verify(memberQueryService).validateAdmin(2L);
+        verifyNoInteractions(drawingRepository);
+    }
+
+    /** REDRAW Drawing이 아직 없는 요청은 목록 응답의 redrawDrawingId를 null로 반환한다. */
+    @Test
+    void Drawing이_연결되지_않은_요청은_null_Drawing_ID를_반환한다() {
+        PageRequest pageable = PageRequest.of(0, 20);
+        RedrawRequest request = RedrawRequest.requested(10L, 20L, 1, "사유", "key", 1L);
+        setId(request, 30L);
+        setRequestedAt(request, Instant.parse("2026-10-07T00:00:00Z"));
+        when(redrawRequestRepository.findForAdminList(null, null, pageable))
+                .thenReturn(new PageImpl<>(List.of(request), pageable, 1));
+        when(drawingRepository.findByRedrawRequestIdIn(List.of(30L))).thenReturn(List.of());
+
+        var result = service.list(2L, null, null, pageable);
+
+        assertThat(result.getContent()).singleElement()
+                .extracting(item -> item.redrawDrawingId())
+                .isNull();
     }
 
     /** 리플렉션으로 영속화 뒤에만 채워지는 테스트용 식별자·생성 시각을 설정한다. */

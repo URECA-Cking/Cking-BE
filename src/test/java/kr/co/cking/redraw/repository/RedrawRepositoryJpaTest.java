@@ -84,6 +84,31 @@ class RedrawRepositoryJpaTest {
                 .containsExactly(approvedPendingId);
     }
 
+    /** 관리자 목록 조회는 선택한 상태만 필터링하고 같은 요청 시각이면 ID 내림차순으로 정렬한다. */
+    @Test
+    void 관리자_목록은_단일_상태_필터와_null_필터에_대해_요청시각_ID_내림차순으로_정렬한다() {
+        Fixture fixture = fixture();
+        long approvedPendingId = insertRedrawRequest(
+                fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING);
+        long requestedPendingId = insertRedrawRequest(
+                fixture, RedrawRequestStatus.REQUESTED, RedrawExecutionStatus.PENDING);
+        long approvedExecutedId = insertRedrawRequest(
+                fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.EXECUTED);
+
+        var approvedRequests = redrawRequestRepository.findForAdminList(
+                RedrawRequestStatus.APPROVED, null, PageRequest.of(0, 20));
+        var pendingRequests = redrawRequestRepository.findForAdminList(
+                null, RedrawExecutionStatus.PENDING, PageRequest.of(0, 20));
+        var allRequests = redrawRequestRepository.findForAdminList(null, null, PageRequest.of(0, 20));
+
+        assertThat(approvedRequests.getContent()).extracting(request -> request.getId())
+                .containsExactly(approvedExecutedId, approvedPendingId);
+        assertThat(pendingRequests.getContent()).extracting(request -> request.getId())
+                .containsExactly(requestedPendingId, approvedPendingId);
+        assertThat(allRequests.getContent()).extracting(request -> request.getId())
+                .containsExactly(approvedExecutedId, requestedPendingId, approvedPendingId);
+    }
+
     /** REDRAW 제외 명단 원본은 해당 Event의 기존 Winner를 Member ID순으로 읽는다. */
     @Test
     void REDRAW_제외_명단_원본을_Event의_Winner_순서대로_조회한다() {
