@@ -86,6 +86,22 @@ class AdminCommentReportQueryServiceTest {
     }
 
     @Test
+    void 전체_건수는_있지만_요청한_페이지가_비어_있으면_전체_건수와_페이지_수를_유지한다() {
+        PageRequest beyondLast = PageRequest.of(3, 2);
+        given(reportRepository.findSummaries(beyondLast)).willReturn(new PageImpl<>(List.of(), beyondLast, 5));
+
+        Page<AdminCommentReportView> result = service.findReportedComments(1L, beyondLast);
+
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.getTotalElements()).isEqualTo(5);
+        assertThat(result.getTotalPages()).isEqualTo(3);
+        assertThat(result.getNumber()).isEqualTo(3);
+        assertThat(result.hasNext()).isFalse();
+        verify(commentRepository, never()).findAllById(any());
+        verify(reportRepository, never()).countReasons(any());
+    }
+
+    @Test
     void 관리자가_아니면_조회하지_않는다() {
         willThrow(new BusinessException(CommonErrorCode.FORBIDDEN)).given(memberQueryService).validateAdmin(7L);
 

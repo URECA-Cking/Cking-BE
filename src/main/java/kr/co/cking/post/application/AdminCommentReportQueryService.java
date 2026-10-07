@@ -12,6 +12,7 @@ import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,7 +41,8 @@ public class AdminCommentReportQueryService {
         Page<CommentReportSummary> summaries = reportRepository.findSummaries(pageable);
         List<Long> commentIds = summaries.stream().map(CommentReportSummary::commentId).toList();
         if (commentIds.isEmpty()) {
-            return Page.empty(pageable);
+            // 신고된 댓글이 있어도 마지막 페이지를 넘겨 조회하면 요청한 페이지만 비어 있다. 전체 건수는 유지한다.
+            return new PageImpl<>(List.of(), pageable, summaries.getTotalElements());
         }
 
         Map<Long, CreatorPostComment> comments = commentRepository.findAllById(commentIds).stream()
