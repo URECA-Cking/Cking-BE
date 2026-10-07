@@ -137,6 +137,6 @@ class CreatorPostCommentControllerTest {
     }
 
     private CreatorPostCommentView view(Long authorMemberId, String content) {
-        return new CreatorPostCommentView(500L, 100L, authorMemberId, "팬", false, content, NOW, NOW);
+        return new CreatorPostCommentView(500L, 100L, authorMemberId, "팬", false, content, false, false, NOW, NOW);
     }
 }
