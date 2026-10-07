@@ -56,7 +56,7 @@ class RecommendationApiKeyDisabledSecurityTest {
                         .header("X-Cking-Recommendation-Key", "any-key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"creatorId\":10,\"method\":\"M4\",\"modelVersion\":\"m\","
-                                + "\"inputHash\":\"" + "a".repeat(64) + "\",\"candidates\":[]}"))
+                                + "\"inputHash\":\"" + "a".repeat(64) + "\",\"applicationSequence\":1,\"candidates\":[]}"))
                 .andExpect(status().isUnauthorized());
 
         then(resultService).should(never()).replace(any(), any());

@@ -160,9 +160,11 @@ class CreatorRecommendationIntegrationTest {
                 List.of(seed.getCreatorId())));
     }
 
+    private long applicationSequence;
+
     private void activate(Creator seed, String method, List<CandidateSpec> candidateSpecs) {
         CreatorSimilarityGeneration generation = generationRepository.saveAndFlush(
-                new CreatorSimilarityGeneration(
+                new CreatorSimilarityGeneration(++applicationSequence,
                         seed.getCreatorId(), method, "model-v1", hash(), Instant.now()));
         candidateRepository.saveAll(candidateSpecs.stream()
                 .map(spec -> new CreatorSimilarityCandidate(

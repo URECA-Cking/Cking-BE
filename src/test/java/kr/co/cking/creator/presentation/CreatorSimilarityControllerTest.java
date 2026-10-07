@@ -84,7 +84,7 @@ class CreatorSimilarityControllerTest {
                                   "method": "M4",
                                   "modelVersion": "model-v1",
                                   "inputHash": "%s",
-                                  "candidates": []
+                                  "applicationSequence": 1, "candidates": []
                                 }
                                 """.formatted(INPUT_HASH)))
                 .andExpect(status().isOk())
@@ -107,7 +107,7 @@ class CreatorSimilarityControllerTest {
                         .content("""
                                 {
                                   "creatorId": 10,
-                                  "candidates": [null]
+                                  "applicationSequence": 1, "candidates": [null]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -161,7 +161,7 @@ class CreatorSimilarityControllerTest {
         return """
                 {
                   "creatorId": 10,
-                  "candidates": [{
+                  "applicationSequence": 1, "candidates": [{
                     "creatorId": 10,
                     "similarCreatorId": 20,
                     "score": 1.08341234,

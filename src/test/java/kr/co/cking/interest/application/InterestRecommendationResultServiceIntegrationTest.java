@@ -159,7 +159,7 @@ class InterestRecommendationResultServiceIntegrationTest {
 
     @Test
     void taxonomyHash가_등록된_해시와_다르면_거부한다() {
-        InterestRecommendationCommand wrongHash = new InterestRecommendationCommand(
+        InterestRecommendationCommand wrongHash = new InterestRecommendationCommand(1L,
                 version, "c".repeat(64), CODE, METHOD, MODEL, FIRST_HASH, List.of());
 
         assertError(InterestErrorCode.INVALID_RECOMMENDATION_RESULT, () -> service.replace(CODE, wrongHash));
@@ -168,7 +168,7 @@ class InterestRecommendationResultServiceIntegrationTest {
 
     @Test
     void 등록되지_않은_분류체계_버전은_거부한다() {
-        InterestRecommendationCommand unknownVersion = new InterestRecommendationCommand(
+        InterestRecommendationCommand unknownVersion = new InterestRecommendationCommand(1L,
                 "v9.9", taxonomyHash, CODE, METHOD, MODEL, FIRST_HASH, List.of());
 
         assertError(InterestErrorCode.INVALID_RECOMMENDATION_RESULT, () -> service.replace(CODE, unknownVersion));
@@ -176,7 +176,7 @@ class InterestRecommendationResultServiceIntegrationTest {
 
     @Test
     void 그_버전에_없는_분야는_RESOURCE_NOT_FOUND다() {
-        InterestRecommendationCommand unknownCode = new InterestRecommendationCommand(
+        InterestRecommendationCommand unknownCode = new InterestRecommendationCommand(1L,
                 version, taxonomyHash, "NOT_A_CATEGORY", METHOD, MODEL, FIRST_HASH, List.of());
 
         assertError(CommonErrorCode.RESOURCE_NOT_FOUND, () -> service.replace("NOT_A_CATEGORY", unknownCode));
@@ -205,6 +205,28 @@ class InterestRecommendationResultServiceIntegrationTest {
         assertThat(states()).isZero();
     }
 
+    @Test
+    void 새_실행_A_복귀_후_지연_B와_미적용_과거_실행을_거부한다() {
+        var a = command(FIRST_HASH, candidate(first, "0.9", 1, FIRST_HASH));
+        var b = command(SECOND_HASH, candidate(second, "0.8", 1, SECOND_HASH));
+        service.replace(CODE, a);
+        service.replace(CODE, b);
+        var revert = new InterestRecommendationCommand(4L, version, taxonomyHash, CODE, METHOD, MODEL,
+                FIRST_HASH, a.candidates());
+        var result = service.replace(CODE, revert);
+        assertThat(result.applied()).isTrue();
+        assertThat(service.replace(CODE, revert).applied()).isFalse();
+        assertError(InterestErrorCode.STALE_RECOMMENDATION_INPUT, () -> service.replace(CODE, b));
+        assertError(InterestErrorCode.STALE_RECOMMENDATION_INPUT, () -> service.replace(CODE,
+                new InterestRecommendationCommand(3L, version, taxonomyHash, CODE, METHOD, MODEL,
+                        SECOND_HASH, b.candidates())));
+        assertError(InterestErrorCode.RECOMMENDATION_INPUT_CONFLICT, () -> service.replace(CODE,
+                new InterestRecommendationCommand(4L, version, taxonomyHash, CODE, METHOD, MODEL,
+                        SECOND_HASH, b.candidates())));
+        assertThat(currentGenerationId()).isEqualTo(result.generationId());
+        assertThat(generations()).isEqualTo(3);
+    }
+
     private int generations() {
         return jdbcTemplate.queryForObject(
                 "select count(*) from interest_recommendation_generation where taxonomy_version = ?", Integer.class, version);
@@ -226,7 +248,7 @@ class InterestRecommendationResultServiceIntegrationTest {
     }
 
     private InterestRecommendationCommand command(String inputHash, Candidate... candidates) {
-        return new InterestRecommendationCommand(
+        return new InterestRecommendationCommand(FIRST_HASH.equals(inputHash) ? 1L : 2L,
                 version, taxonomyHash, CODE, METHOD, MODEL, inputHash, List.of(candidates));
     }
 
