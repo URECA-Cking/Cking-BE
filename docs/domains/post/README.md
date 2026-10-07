@@ -32,6 +32,7 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 댓글을 작성·수정하면 같은 Transaction 안에서 `CommentFilterRequestedEvent`를 발행하고, Commit 뒤(`AFTER_COMMIT`)에 전용 Executor(`commentFilterExecutor`, bounded queue)로 필터 서비스에 `POST /moderate`를 요청한다. 필터 호출은 Transaction 밖에서 하고, 결과는 댓글 행을 쓰기 잠금으로 읽어 판정을 요청했을 때의 본문과 현재 본문이 같을 때만 저장한다(시각이 아니라 본문을 비교한다). 판정 중에 본문이 수정되면 이전 결과를 버린다. V46 주석은 "PENDING·FAILED에서 `filter_action`은 NULL"이라고 적혀 있지만, 수정한 댓글은 이전 판정을 새 판정이 덮어쓸 때까지 유지하므로 실제로는 NULL이 아닐 수 있다.
 
 - 판정 상태: `PENDING`(미판정) → `DONE`(완료) 또는 `FAILED`(필터 장애). 본문을 수정하면 `PENDING`으로 돌아가지만 이전 판정(action·사유)은 새 판정이 덮어쓸 때까지 남긴다. 그래서 `BLOCK`이던 댓글은 재판정 중이거나 재판정이 실패해도 계속 가려진다(수정으로 판정 전에 다시 노출시키는 우회를 막는다). 필터가 꺼져 있거나(`cking.comment-filter.enabled=false`, 기본값) Executor 큐가 가득 차면 댓글은 `PENDING`으로 남는다.
+- 필터 응답은 `reasons`가 없거나 null이면 잘못된 응답이고, `BLOCK`은 사유가 1개 이상이어야 한다(`PASS`는 빈 사유 허용). 잘못된 응답은 장애처럼 `FAILED`로 기록하며 이전 판정(개인정보 사유 포함)은 유지한다. 사유를 빈 값으로 받아들이면 `privacy:*` 사유가 지워져 원문 보기가 열릴 수 있기 때문이다.
 - 필터 장애·타임아웃은 댓글을 막지 않는다. 판정하지 못한 댓글은 통과 상태로 보이며 재필터링 대상이다(재필터링 작업은 아직 없다).
 - V46 이전의 댓글은 필터를 거치지 않았으므로 `DONE`/`PASS`로 채웠다.
 

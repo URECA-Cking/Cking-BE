@@ -13,6 +13,10 @@ import java.util.List;
  *
  * <p>요청 {@code {commentId, content}}, 응답 {@code {action, reasons, ruleVersion, modelVersion}}. 이 형식은 필터 서비스와
  * 아직 확정하지 않은 계약이므로 바뀌면 이 클래스의 내부 DTO만 고친다.
+ *
+ * <p>{@code reasons}가 없거나 null이면 잘못된 응답이다. 빈 배열로 바꿔 받으면 개인정보(privacy:*) 사유가 지워질 수
+ * 있다. BLOCK은 사유가 1개 이상이어야 하고({@link CommentFilterResult}), 잘못된 응답은 {@link CommentFilterException}으로
+ * 처리되어 댓글의 이전 판정을 유지한 채 FAILED로 기록된다.
  */
 public class RestCommentFilterClient implements CommentFilterClient {
 
@@ -58,7 +62,7 @@ public class RestCommentFilterClient implements CommentFilterClient {
 
         CommentFilterResult toResult() {
             return new CommentFilterResult(
-                    CommentFilterAction.valueOf(action), reasons == null ? List.of() : reasons, ruleVersion, modelVersion);
+                    CommentFilterAction.valueOf(action), reasons, ruleVersion, modelVersion);
         }
     }
 }
