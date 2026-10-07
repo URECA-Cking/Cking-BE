@@ -58,9 +58,15 @@ public class InterestRecommendationResultService {
         InterestCategoryId categoryId = new InterestCategoryId(bundle.taxonomyVersion(), bundle.interestCode());
         InterestRecommendationState state = stateRepository.findById(categoryId).orElse(null);
         InterestRecommendationGeneration existing = generationRepository
-                .findByTaxonomyVersionAndInterestCodeAndInputHash(
-                        bundle.taxonomyVersion(), bundle.interestCode(), bundle.inputHash())
+                .findByTaxonomyVersionAndInterestCodeAndApplicationSequence(
+                        bundle.taxonomyVersion(), bundle.interestCode(), command.applicationSequence())
                 .orElse(null);
+        // 해시는 내용만 식별한다. 미완료 과거 실행도 현재 적용 번호보다 작으면 포인터를 바꿀 수 없다.
+        InterestRecommendationGeneration current = state == null ? null
+                : generationRepository.findById(state.getCurrentGenerationId()).orElseThrow();
+        if (current != null && command.applicationSequence() < current.getApplicationSequence()) {
+            throw new BusinessException(InterestErrorCode.STALE_RECOMMENDATION_INPUT);
+        }
         if (existing != null) {
             if (state != null && state.getCurrentGenerationId().equals(existing.getGenerationId())) {
                 if (!samePayload(existing, bundle)) {
@@ -73,7 +79,7 @@ public class InterestRecommendationResultService {
 
         InterestRecommendationGeneration generation = generationRepository.saveAndFlush(
                 new InterestRecommendationGeneration(
-                        bundle.taxonomyVersion(), bundle.interestCode(), bundle.method(),
+                        command.applicationSequence(), bundle.taxonomyVersion(), bundle.interestCode(), bundle.method(),
                         bundle.modelVersion(), bundle.inputHash(), Instant.now()));
         candidateRepository.saveAll(bundle.candidates().stream()
                 .map(candidate -> new InterestRecommendationCandidate(
@@ -113,7 +119,8 @@ public class InterestRecommendationResultService {
     }
 
     private boolean samePayload(InterestRecommendationGeneration generation, Bundle bundle) {
-        if (!generation.getMethod().equals(bundle.method())
+        if (!generation.getInputHash().equals(bundle.inputHash())
+                || !generation.getMethod().equals(bundle.method())
                 || !generation.getModelVersion().equals(bundle.modelVersion())) {
             return false;
         }

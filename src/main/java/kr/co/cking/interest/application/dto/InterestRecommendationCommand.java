@@ -5,6 +5,7 @@ import java.util.List;
 
 /** Cking-LLM이 전달한 관심 분야별 추천 후보 묶음이다. 값 검증은 {@code InterestRecommendationBundleValidator}가 한다. */
 public record InterestRecommendationCommand(
+        Long applicationSequence,
         String taxonomyVersion,
         String taxonomyHash,
         String interestCode,

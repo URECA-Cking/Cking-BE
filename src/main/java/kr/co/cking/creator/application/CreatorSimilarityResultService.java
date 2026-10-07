@@ -47,8 +47,14 @@ public class CreatorSimilarityResultService {
 
         CreatorSimilarityState state = stateRepository.findByCreatorIdForUpdate(creatorId).orElse(null);
         CreatorSimilarityGeneration existing = generationRepository
-                .findByCreatorIdAndInputHashForUpdate(creatorId, bundle.inputHash())
+                .findByCreatorIdAndApplicationSequenceForUpdate(creatorId, command.applicationSequence())
                 .orElse(null);
+        // 내용이 A로 돌아와도 실행 번호는 증가한다. 저장 이력에 없는 지연 요청도 현재 번호로 차단한다.
+        CreatorSimilarityGeneration current = state == null ? null
+                : generationRepository.findById(state.getCurrentGenerationId()).orElseThrow();
+        if (current != null && command.applicationSequence() < current.getApplicationSequence()) {
+            throw new BusinessException(CreatorErrorCode.STALE_RECOMMENDATION_INPUT);
+        }
         if (existing != null) {
             if (state != null && Objects.equals(state.getCurrentGenerationId(), existing.getGenerationId())) {
                 if (!samePayload(existing, bundle)) {
@@ -61,7 +67,7 @@ public class CreatorSimilarityResultService {
 
         CreatorSimilarityGeneration generation = generationRepository.saveAndFlush(
                 new CreatorSimilarityGeneration(
-                        creatorId, bundle.method(), bundle.modelVersion(), bundle.inputHash(), Instant.now()));
+                        command.applicationSequence(), creatorId, bundle.method(), bundle.modelVersion(), bundle.inputHash(), Instant.now()));
         candidateRepository.saveAll(bundle.candidates().stream()
                 .map(candidate -> new CreatorSimilarityCandidate(
                         generation.getGenerationId(), candidate.similarCreatorId(), candidate.score(), candidate.rank()))
@@ -76,7 +82,8 @@ public class CreatorSimilarityResultService {
     }
 
     private NormalizedBundle normalize(Long creatorId, CreatorSimilarityResultCommand command) {
-        if (command == null || !Objects.equals(creatorId, command.creatorId())
+        if (command == null || command.applicationSequence() == null || command.applicationSequence() <= 0
+                || !Objects.equals(creatorId, command.creatorId())
                 || command.candidates() == null || command.candidates().size() > 100) {
             throw invalidResult();
         }
@@ -177,7 +184,8 @@ public class CreatorSimilarityResultService {
     }
 
     private boolean samePayload(CreatorSimilarityGeneration generation, NormalizedBundle bundle) {
-        if (!generation.getMethod().equals(bundle.method())
+        if (!generation.getInputHash().equals(bundle.inputHash())
+                || !generation.getMethod().equals(bundle.method())
                 || !generation.getModelVersion().equals(bundle.modelVersion())) {
             return false;
         }

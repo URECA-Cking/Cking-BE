@@ -8,8 +8,8 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum InterestErrorCode implements ErrorCode {
     INVALID_RECOMMENDATION_RESULT(HttpStatus.BAD_REQUEST, "관심 분야 추천 결과 묶음이 올바르지 않습니다."),
-    RECOMMENDATION_INPUT_CONFLICT(HttpStatus.CONFLICT, "같은 입력 해시에 다른 추천 결과가 전달되었습니다."),
-    STALE_RECOMMENDATION_INPUT(HttpStatus.CONFLICT, "이미 교체된 과거 추천 입력 결과입니다.");
+    RECOMMENDATION_INPUT_CONFLICT(HttpStatus.CONFLICT, "같은 적용 실행 번호에 다른 추천 결과가 전달되었습니다."),
+    STALE_RECOMMENDATION_INPUT(HttpStatus.CONFLICT, "현재보다 오래된 추천 적용 실행입니다.");
 
     private final HttpStatus status;
     private final String message;

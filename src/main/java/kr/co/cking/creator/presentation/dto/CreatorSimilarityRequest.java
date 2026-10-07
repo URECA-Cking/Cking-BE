@@ -21,6 +21,7 @@ public final class CreatorSimilarityRequest {
     }
 
     public record Replace(
+            @NotNull @Positive Long applicationSequence,
             @NotNull @Positive Long creatorId,
             @Size(max = 20) String method,
             @Size(max = 255) String modelVersion,
@@ -28,7 +29,7 @@ public final class CreatorSimilarityRequest {
             @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates
     ) {
         public CreatorSimilarityResultCommand toCommand() {
-            return new CreatorSimilarityResultCommand(
+            return new CreatorSimilarityResultCommand(applicationSequence,
                     creatorId, method, modelVersion, inputHash,
                     candidates.stream().map(Candidate::toCommand).toList());
         }
