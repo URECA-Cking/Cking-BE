@@ -27,6 +27,10 @@ public class EventCloseController {
             description = "관리자 또는 이벤트 소유 크리에이터가 마감을 요청합니다. "
                     + "처리는 비동기로 진행되며 202 Accepted와 현재 상태(CLOSING 또는 CLOSED)를 반환합니다."
     )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "202",
+            description = "수동 마감 요청을 접수했으며 현재 마감 상태를 반환합니다."
+    )
     @PostMapping("/api/events/{eventId}/close")
     public ResponseEntity<ApiResponse<EventCloseResponse>> close(
             @CurrentMemberId Long memberId,
