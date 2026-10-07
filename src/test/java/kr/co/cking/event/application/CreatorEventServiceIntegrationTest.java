@@ -129,7 +129,10 @@ class CreatorEventServiceIntegrationTest {
         EventApprovalRequest reviewed = approvalRequestRepository.findById(request.getId()).orElseThrow();
         assertThat(reviewed.getStatus()).isEqualTo(EventApprovalRequestStatus.REJECTED);
         assertThat(reviewed.getRejectReason()).isEqualTo("일정 확인이 필요합니다.");
-        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus()).isEqualTo(EventStatus.REJECTED);
+        Event rejected = eventRepository.findById(event.getEventId()).orElseThrow();
+        assertThat(rejected.getStatus()).isEqualTo(EventStatus.REJECTED);
+        assertThat(creatorEventService.findRejectReasons(List.of(rejected)))
+                .containsEntry(event.getEventId(), "일정 확인이 필요합니다.");
     }
 
     /** Creator가 자신의 초안 Event를 논리 삭제하면 이후 조회 대상에서 제외할 수 있는지 검증한다. */

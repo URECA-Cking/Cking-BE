@@ -17,6 +17,15 @@ public interface EventApprovalRequestRepository extends JpaRepository<EventAppro
     /** Event의 현재 대기 중인 승인 요청을 조회한다. */
     Optional<EventApprovalRequest> findByEventIdAndStatus(Long eventId, EventApprovalRequestStatus status);
 
+    /** 주어진 Event들의 가장 최근 차수가 REJECTED인 승인 요청을 조회한다. */
+    @org.springframework.data.jpa.repository.Query("""
+            select r from EventApprovalRequest r
+            where r.eventId in :eventIds and r.status = kr.co.cking.event.domain.EventApprovalRequestStatus.REJECTED
+              and r.approvalRound = (select max(r2.approvalRound) from EventApprovalRequest r2 where r2.eventId = r.eventId)
+            """)
+    java.util.List<EventApprovalRequest> findLatestRejected(
+            @org.springframework.data.repository.query.Param("eventIds") java.util.Collection<Long> eventIds);
+
     /** 상태별 승인 요청을 요청 시각과 식별자 오름차순으로 페이지 조회한다. */
     Page<EventApprovalRequest> findByStatusOrderByRequestedAtAscIdAsc(EventApprovalRequestStatus status, Pageable pageable);
 }
