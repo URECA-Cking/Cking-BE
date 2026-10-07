@@ -14,9 +14,11 @@
 
 ### `POST /api/admin/events/{eventId}/drawings`
 
-관리자 권한과 Event·Snapshot 조건을 검증한 뒤 INITIAL Drawing을 끝까지 실행한다. Seed 생성,
-엔진 호출, Winner·WinnerManagement 저장, Drawing 완료, Event 상태 전이를 하나의 Transaction으로
-처리한다.
+관리자 권한과 Event·Snapshot 조건을 검증한 뒤 INITIAL Drawing을 실행한다. Drawing을 `RUNNING`으로
+전이하고 Attempt 이력을 생성하는 시작 단계는 먼저 별도 Transaction으로 확정한다. 이후 엔진 호출,
+Winner·WinnerManagement 저장, Drawing 완료, Event 상태 전이는 결과 Transaction에서 함께 처리한다.
+결과 실행에 실패하면 부분 결과는 Rollback하고, 별도 Transaction에서 Drawing `FAILED`와 Attempt의 실패
+단계·코드·메시지·종료 시각을 보존한다.
 
 #### 요청
 
@@ -32,16 +34,18 @@
 
 - 요청자는 존재하는 `ADMIN` Member여야 한다.
 - Event는 삭제되지 않은 `CLOSED` 상태여야 하며, 공식 Snapshot Hash 검증을 통과해야 한다.
-- 완료된 INITIAL Drawing 재요청은 기존 결과를 반환한다. `READY` 또는 `RUNNING`이면 동시 명령으로
-  거부하고, `FAILED`는 아래 Retry 계약을 사용한다.
+- 완료된 INITIAL Drawing 재요청은 기존 결과를 반환한다.
+- `RUNNING` 재요청은 같은 Attempt의 결과 실행에 합류해 완료 결과를 반환한다. `READY`는
+  `CONCURRENT_COMMAND`로 거부하고, `FAILED`는 `INVALID_STATE`로 거부한다. 실패 Drawing의 재실행은
+  아래 Retry 계약을 사용한다.
 
 | 코드 | 조건 |
 | --- | --- |
 | `VALIDATION_FAILED` | eventId가 누락·0 이하이거나 형식이 올바르지 않음 |
 | `RESOURCE_NOT_FOUND` | 요청한 Member 또는 Event가 존재하지 않음 |
 | `FORBIDDEN` | 요청한 Member가 ADMIN이 아님 |
-| `INVALID_STATE` | Event가 삭제됐거나 CLOSED 상태가 아님 |
-| `CONCURRENT_COMMAND` | 동일 Event의 INITIAL Drawing이 READY 또는 RUNNING임 |
+| `INVALID_STATE` | Event가 삭제됐거나 CLOSED 상태가 아니거나, 기존 INITIAL Drawing이 FAILED임 |
+| `CONCURRENT_COMMAND` | 동일 Event의 INITIAL Drawing이 READY임 |
 | `SNAPSHOT_NOT_FOUND` | 공식 Snapshot이 없음 |
 | `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot의 Hash 또는 집계값이 일치하지 않음 |
 
