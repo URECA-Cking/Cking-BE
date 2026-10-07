@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 판정하지 못한 댓글(PENDING·FAILED)을 다시 필터에 제출한다(이슈 #477).
@@ -73,28 +74,56 @@ public class CommentFilterRetryScheduler {
         List<CommentFilterRetryCandidate> candidates = retryService.findCandidates(
                 now, now.minus(properties.getPendingGracePeriod()), properties.getMaxAttempts(), limit);
         for (CommentFilterRetryCandidate candidate : candidates) {
-            resubmit(candidate, now);
+            if (!resubmit(candidate, now)) {
+                break;
+            }
         }
     }
 
-    private void resubmit(CommentFilterRetryCandidate candidate, Instant now) {
+    /** @return 다음 후보도 이어서 처리하려면 true. 큐가 가득 차 거절되면 나머지도 거절되므로 false */
+    private boolean resubmit(CommentFilterRetryCandidate candidate, Instant now) {
         Long commentId = candidate.commentId();
+        Instant nextAttemptAt = now.plus(properties.backoff(candidate.attempts()));
         try {
-            Instant nextAttemptAt = now.plus(properties.backoff(candidate.attempts()));
-            if (!retryService.claim(commentId, candidate.attempts(), nextAttemptAt)) {
-                return;
+            if (!retryService.claim(candidate, nextAttemptAt)) {
+                return true;
             }
-            attemptedCounter.increment();
-            if (candidate.attempts() + 1 >= properties.getMaxAttempts()) {
-                exhaustedCounter.increment();
-                log.error("댓글 필터 재시도 상한에 닿았습니다. 마지막 재시도를 제출합니다. commentId={}, attempts={}",
-                        commentId, candidate.attempts() + 1);
-            }
-            dispatcher.dispatch(commentId);
         } catch (RuntimeException exception) {
             submitFailedCounter.increment();
-            log.warn("댓글 필터 재제출에 실패했습니다. 다음 시도 시각에 다시 처리합니다. commentId={}",
-                    commentId, exception);
+            log.warn("댓글 필터 재제출을 확보하지 못했습니다. 다음 주기에 다시 처리합니다. commentId={}", commentId, exception);
+            return true;
+        }
+
+        try {
+            dispatcher.dispatch(commentId);
+        } catch (RejectedExecutionException exception) {
+            // 큐의 남은 자리를 확인한 뒤 새 댓글 작업이 자리를 차지한 경우다. 필터가 실행되지 않았으므로 횟수를 돌려준다.
+            queueFullCounter.increment();
+            log.debug("댓글 필터 Executor 큐가 가득 차 재제출을 되돌렸습니다. commentId={}", commentId);
+            release(candidate);
+            return false;
+        } catch (RuntimeException exception) {
+            submitFailedCounter.increment();
+            log.warn("댓글 필터 재제출에 실패했습니다. 시도 횟수를 되돌립니다. commentId={}", commentId, exception);
+            release(candidate);
+            return true;
+        }
+
+        attemptedCounter.increment();
+        if (candidate.attempts() + 1 >= properties.getMaxAttempts()) {
+            exhaustedCounter.increment();
+            log.error("댓글 필터 재시도 상한에 닿았습니다. 마지막 재시도를 제출했습니다. commentId={}, attempts={}",
+                    commentId, candidate.attempts() + 1);
+        }
+        return true;
+    }
+
+    /** 되돌리기에 실패하면 이번 시도는 소진된 채 남는다. 필터 호출 자체가 막힌 것은 아니므로 다음 시도 시각에 다시 처리된다. */
+    private void release(CommentFilterRetryCandidate candidate) {
+        try {
+            retryService.release(candidate);
+        } catch (RuntimeException exception) {
+            log.warn("댓글 필터 재제출 확보를 되돌리지 못했습니다. commentId={}", candidate.commentId(), exception);
         }
     }
 

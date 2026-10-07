@@ -29,11 +29,22 @@ public class CommentFilterRetryService {
     }
 
     /**
-     * 시도 횟수를 하나 올리고 다음 시도 시각을 정해 재제출 권한을 확보한다. 그사이 판정이 끝났거나 본문이 수정되어
-     * 횟수가 바뀌었으면 false이며, 이때는 제출하지 않는다.
+     * 시도 횟수를 하나 올리고 다음 시도 시각을 정해 재제출 권한을 확보한다. 조회한 뒤 판정이 끝났거나 본문이 수정되었으면
+     * false이며, 이때는 제출하지 않는다.
      */
     @Transactional
-    public boolean claim(Long commentId, int expectedAttempts, Instant nextAttemptAt) {
-        return commentRepository.claimForRetry(commentId, RETRYABLE, expectedAttempts, nextAttemptAt) == 1;
+    public boolean claim(CommentFilterRetryCandidate candidate, Instant nextAttemptAt) {
+        return commentRepository.claimForRetry(
+                candidate.commentId(), RETRYABLE, candidate.attempts(), candidate.updatedAt(), nextAttemptAt) == 1;
+    }
+
+    /**
+     * 확보했지만 제출하지 못한 재시도를 되돌려, 필터가 실행되지 않은 시도가 횟수를 소진하지 않게 한다.
+     * 되돌린 뒤에는 다음 주기에 곧바로 다시 대상이 된다(확보 전 다음 시도 시각으로 복원).
+     */
+    @Transactional
+    public boolean release(CommentFilterRetryCandidate candidate) {
+        return commentRepository.releaseRetryClaim(
+                candidate.commentId(), RETRYABLE, candidate.attempts() + 1, candidate.nextAttemptAt()) == 1;
     }
 }

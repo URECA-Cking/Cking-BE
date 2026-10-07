@@ -39,7 +39,8 @@ public interface CreatorPostCommentRepository extends JpaRepository<CreatorPostC
      * 시도 횟수가 상한({@code maxAttempts})에 닿은 댓글은 뺀다. 오래 기다린 순으로 가져온다.
      */
     @Query("""
-            select new kr.co.cking.post.repository.CommentFilterRetryCandidate(c.commentId, c.filterAttempts)
+            select new kr.co.cking.post.repository.CommentFilterRetryCandidate(
+                       c.commentId, c.filterAttempts, c.updatedAt, c.filterNextAttemptAt)
               from CreatorPostComment c
              where c.filterStatus in :statuses
                and c.filterAttempts < :maxAttempts
@@ -55,8 +56,9 @@ public interface CreatorPostCommentRepository extends JpaRepository<CreatorPostC
             Pageable pageable);
 
     /**
-     * 재제출을 확보한다. 조회한 뒤 상태나 시도 횟수가 바뀌었으면(판정 완료, 본문 수정으로 횟수 초기화) 0행이 되어
-     * 제출하지 않는다.
+     * 재제출을 확보한다. 조회한 뒤 상태, 시도 횟수, 수정 시각이 바뀌었으면(판정 완료, 본문 수정) 0행이 되어
+     * 제출하지 않는다. 시도 횟수는 수정으로 0이 되므로 횟수만으로는 조회 때도 0이었던 댓글의 수정을 가리지 못해
+     * 수정 시각도 비교한다.
      *
      * @return 확보했으면 1
      */
@@ -68,12 +70,36 @@ public interface CreatorPostCommentRepository extends JpaRepository<CreatorPostC
              where c.commentId = :commentId
                and c.filterStatus in :statuses
                and c.filterAttempts = :expectedAttempts
+               and c.updatedAt = :expectedUpdatedAt
             """)
     int claimForRetry(
             @Param("commentId") Long commentId,
             @Param("statuses") Collection<CommentFilterStatus> statuses,
             @Param("expectedAttempts") int expectedAttempts,
+            @Param("expectedUpdatedAt") Instant expectedUpdatedAt,
             @Param("nextAttemptAt") Instant nextAttemptAt);
+
+    /**
+     * 확보한 재제출을 되돌린다. 확보한 뒤 필터 Executor 큐가 가득 차 제출하지 못했을 때, 필터가 한 번도 실행되지
+     * 않았는데 시도 횟수만 소진되지 않도록 횟수와 다음 시도 시각을 확보 전 값으로 복원한다. 그사이 판정이 끝났거나
+     * 본문이 수정되어 횟수가 바뀌었으면 0행이며 되돌리지 않는다.
+     *
+     * @return 되돌렸으면 1
+     */
+    @Modifying
+    @Query("""
+            update CreatorPostComment c
+               set c.filterAttempts = c.filterAttempts - 1,
+                   c.filterNextAttemptAt = :previousNextAttemptAt
+             where c.commentId = :commentId
+               and c.filterStatus in :statuses
+               and c.filterAttempts = :claimedAttempts
+            """)
+    int releaseRetryClaim(
+            @Param("commentId") Long commentId,
+            @Param("statuses") Collection<CommentFilterStatus> statuses,
+            @Param("claimedAttempts") int claimedAttempts,
+            @Param("previousNextAttemptAt") Instant previousNextAttemptAt);
 
     /** 게시글 삭제 전에 같은 Transaction에서 댓글을 지운다. */
     @Modifying

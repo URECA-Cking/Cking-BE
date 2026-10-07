@@ -41,7 +41,8 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 `CommentFilterRetryScheduler`(`post/scheduler`)가 `PENDING`·`FAILED`로 남은 댓글을 주기적으로 다시 제출한다. 필터 장애, Executor 큐 포화로 인한 제출 거절, 서버 재시작으로 놓친 댓글이 대상이다. 필터(`cking.comment-filter.enabled`)와 `cking.comment-filter.retry.enabled`가 모두 켜져 있을 때만 Bean이 만들어진다.
 
 - **대상**: 상태가 `PENDING`·`FAILED`이고 시도 횟수(`filter_attempts`)가 상한 미만인 댓글. 재시도한 적 없는 댓글(`filter_next_attempt_at`이 NULL)은 마지막 작성·수정 뒤 `pending-grace-period`(기본 1분)가 지났을 때부터, 재시도한 댓글은 `filter_next_attempt_at`이 되었을 때부터 대상이다. 그래서 필터를 켜기 전에 쌓인 `PENDING` 댓글도 별도 백필 없이 처리된다. 오래 기다린 순서로 가져온다.
-- **선점**: 제출하기 전에 `filter_attempts`를 올리고 `filter_next_attempt_at`을 정하는 조건부 UPDATE로 확보한다(조회 때의 횟수와 같을 때만 1행). 큐에서 처리 중인 댓글을 다음 주기에 또 고르지 않고, 필터가 응답하지 않아도 횟수가 쌓여 상한에서 멈추며, 그사이 판정이 끝났거나 본문이 수정되어 횟수가 초기화된 댓글은 제출하지 않는다.
+- **선점**: 제출하기 전에 `filter_attempts`를 올리고 `filter_next_attempt_at`을 정하는 조건부 UPDATE로 확보한다(조회 때의 상태·횟수·`updated_at`과 같을 때만 1행). 큐에서 처리 중인 댓글을 다음 주기에 또 고르지 않고, 필터가 응답하지 않아도 횟수가 쌓여 상한에서 멈추며, 그사이 판정이 끝났거나 본문이 수정된 댓글은 제출하지 않는다. 수정은 횟수를 0으로 되돌리므로 조회 때도 0이던 댓글은 횟수만으로 구별되지 않아 `updated_at`도 비교한다.
+- **선점 되돌리기**: 큐의 남은 자리를 확인한 직후 새 댓글 작업이 자리를 차지해 제출이 거절되면, 필터가 한 번도 실행되지 않았으므로 횟수와 다음 시도 시각을 확보 전 값으로 복원하고(그사이 판정·수정으로 횟수가 바뀌었으면 복원하지 않는다) 그 주기의 나머지 후보 처리를 멈춘다. 상한 소진 로그와 `attempted` 카운터는 제출이 성공한 뒤에만 남긴다.
 - **간격**: 이미 재제출한 횟수 n에 대해 `backoff-base × 2^n`, 최대 `backoff-max`(기본 1분 → 2 → 4 → 8 → 16분, 최대 1시간). 본문을 수정하면 횟수와 다음 시도 시각을 초기화한다.
 - **상한**: `max-attempts`(기본 5)에 닿은 댓글은 더 보내지 않는다. 상태는 바꾸지 않으므로 이전 판정(BLOCK 포함)과 노출 상태가 그대로이며, 마지막 시도를 제출할 때 `error` 로그와 `comment_filter.retry.exhausted` 카운터로 남긴다. 4xx 거절이나 잘못된 응답이 반복되는 댓글도 같은 상한에서 멈춘다.
 - **큐 보호**: 한 번에 제출하는 건수는 `min(batch-size, Executor 큐의 남은 자리)`다. 남은 자리가 없으면 그 주기는 건너뛰어(`comment_filter.retry.queue_full`) 새 댓글의 첫 판정 제출을 밀어내지 않는다.

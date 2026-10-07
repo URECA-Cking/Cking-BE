@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -219,56 +220,127 @@ class CreatorPostCommentIntegrationTest {
     }
 
     @Test
-    void 재필터링_선점은_시도_횟수와_다음_시각을_확보하고_같은_횟수로는_두_번_성공하지_않는다() {
+    void 재필터링_선점은_시도_횟수와_다음_시각을_확보하고_같은_조회_결과로는_두_번_성공하지_않는다() {
         Long commentId = commentOnPublicPost("재시도 대상");
         Instant farFuture = Instant.now().plus(Duration.ofDays(1));
-
-        assertThat(retryCandidates(farFuture, farFuture, 5, commentId)).containsExactly(0);
+        CommentFilterRetryCandidate candidate = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
+        assertThat(candidate.attempts()).isZero();
+        assertThat(candidate.nextAttemptAt()).isNull();
 
         Instant nextAttemptAt = Instant.now().plus(Duration.ofMinutes(1));
-        assertThat(retryService.claim(commentId, 0, nextAttemptAt)).isTrue();
-        assertThat(retryService.claim(commentId, 0, nextAttemptAt)).isFalse();
+        assertThat(retryService.claim(candidate, nextAttemptAt)).isTrue();
+        assertThat(retryService.claim(candidate, nextAttemptAt)).isFalse();
 
         // 다음 시도 시각 전에는 대상이 아니고, 시각이 지나면 횟수 1로 다시 대상이 된다.
-        assertThat(retryCandidates(Instant.now(), farFuture, 5, commentId)).isEmpty();
-        assertThat(retryCandidates(nextAttemptAt.plusSeconds(1), farFuture, 5, commentId)).containsExactly(1);
+        assertThat(retryCandidate(commentId, Instant.now(), farFuture, 5)).isEmpty();
+        assertThat(retryCandidate(commentId, nextAttemptAt.plusSeconds(1), farFuture, 5))
+                .hasValueSatisfying(again -> assertThat(again.attempts()).isEqualTo(1));
     }
 
     @Test
     void 재필터링은_작성_직후_대기_시간이_지나기_전과_시도_상한에_닿은_댓글을_제외한다() {
         Long commentId = commentOnPublicPost("대기 중");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
 
         // 방금 쓴 댓글은 대기 시간(pendingBefore)이 지나기 전에는 대상이 아니다.
-        assertThat(retryCandidates(Instant.now(), Instant.now().minus(Duration.ofHours(1)), 5, commentId)).isEmpty();
+        assertThat(retryCandidate(commentId, Instant.now(), Instant.now().minus(Duration.ofHours(1)), 5)).isEmpty();
 
-        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
-        assertThat(retryService.claim(commentId, 0, Instant.now().minusSeconds(1))).isTrue();
-        assertThat(retryCandidates(farFuture, farFuture, 1, commentId)).isEmpty();
-        assertThat(retryCandidates(farFuture, farFuture, 2, commentId)).containsExactly(1);
+        CommentFilterRetryCandidate candidate = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
+        assertThat(retryService.claim(candidate, Instant.now().minusSeconds(1))).isTrue();
+        assertThat(retryCandidate(commentId, farFuture, farFuture, 1)).isEmpty();
+        assertThat(retryCandidate(commentId, farFuture, farFuture, 2)).isPresent();
     }
 
     @Test
     void 판정을_마친_댓글은_재필터링_대상도_선점_대상도_아니다() {
         Long commentId = commentOnPublicPost("판정 완료");
         Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+        CommentFilterRetryCandidate candidate = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
 
         assertThat(resultService.saveResult(commentId, "판정 완료", new CommentFilterResult(
                 CommentFilterAction.PASS, List.of(), "rule-1", "model-1"))).isTrue();
 
-        assertThat(retryCandidates(farFuture, farFuture, 5, commentId)).isEmpty();
-        assertThat(retryService.claim(commentId, 0, farFuture)).isFalse();
+        assertThat(retryCandidate(commentId, farFuture, farFuture, 5)).isEmpty();
+        assertThat(retryService.claim(candidate, farFuture)).isFalse();
     }
 
     @Test
-    void 본문을_수정하면_재필터링_횟수가_초기화되어_이전_횟수로는_선점할_수_없다() {
+    void 후보를_조회한_뒤_본문이_수정되면_횟수가_같은_0이어도_선점하지_못한다() {
         Long commentId = commentOnPublicPost("고치기 전");
         Instant farFuture = Instant.now().plus(Duration.ofDays(1));
-        assertThat(retryService.claim(commentId, 0, Instant.now().minusSeconds(1))).isTrue();
+        CommentFilterRetryCandidate candidate = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
+        assertThat(candidate.attempts()).isZero();
 
         commentService.update(fan.getMemberId(), creator.getCreatorId(), publicPostId, commentId, "고친 뒤");
 
-        assertThat(retryService.claim(commentId, 1, farFuture)).isFalse();
-        assertThat(retryCandidates(farFuture, farFuture, 5, commentId)).containsExactly(0);
+        // 수정으로 횟수가 다시 0이 되어 횟수만 비교하면 새 본문을 대기 시간 없이 선점하게 된다.
+        assertThat(retryService.claim(candidate, farFuture)).isFalse();
+        assertThat(retryCandidate(commentId, farFuture, farFuture, 5))
+                .hasValueSatisfying(fresh -> assertThat(fresh.attempts()).isZero());
+    }
+
+    @Test
+    void 재제출을_선점한_뒤_본문이_수정되면_횟수가_초기화되어_이전_횟수로는_선점할_수_없다() {
+        Long commentId = commentOnPublicPost("고치기 전");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+        CommentFilterRetryCandidate candidate = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
+        assertThat(retryService.claim(candidate, Instant.now().minusSeconds(1))).isTrue();
+        CommentFilterRetryCandidate second = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
+        assertThat(second.attempts()).isEqualTo(1);
+
+        commentService.update(fan.getMemberId(), creator.getCreatorId(), publicPostId, commentId, "고친 뒤");
+
+        assertThat(retryService.claim(second, farFuture)).isFalse();
+    }
+
+    @Test
+    void 선점을_되돌리면_시도_횟수와_다음_시각이_확보_전으로_돌아가_곧바로_다시_대상이_된다() {
+        Long commentId = commentOnPublicPost("큐가 가득 참");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+        CommentFilterRetryCandidate candidate = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
+        assertThat(retryService.claim(candidate, Instant.now().plus(Duration.ofMinutes(30)))).isTrue();
+        assertThat(retryCandidate(commentId, Instant.now(), farFuture, 5)).isEmpty();
+
+        assertThat(retryService.release(candidate)).isTrue();
+
+        assertThat(retryCandidate(commentId, Instant.now(), farFuture, 5))
+                .hasValueSatisfying(restored -> {
+                    assertThat(restored.attempts()).isZero();
+                    assertThat(restored.nextAttemptAt()).isNull();
+                });
+        // 이미 되돌린 선점은 다시 되돌려지지 않는다(횟수가 음수가 되지 않는다).
+        assertThat(retryService.release(candidate)).isFalse();
+    }
+
+    @Test
+    void 재시도한_댓글의_선점을_되돌리면_이전_다음_시각으로_복원된다() {
+        Long commentId = commentOnPublicPost("두 번째 시도");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+        Instant firstNext = Instant.now().minusSeconds(1);
+        assertThat(retryService.claim(retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow(), firstNext))
+                .isTrue();
+        CommentFilterRetryCandidate second = retryCandidate(commentId, Instant.now(), farFuture, 5).orElseThrow();
+        assertThat(second.attempts()).isEqualTo(1);
+        assertThat(retryService.claim(second, Instant.now().plus(Duration.ofHours(1)))).isTrue();
+
+        assertThat(retryService.release(second)).isTrue();
+
+        assertThat(retryCandidate(commentId, Instant.now(), farFuture, 5))
+                .hasValueSatisfying(restored -> assertThat(restored.attempts()).isEqualTo(1));
+    }
+
+    @Test
+    void 선점을_되돌릴_때_본문이_수정되어_횟수가_초기화됐으면_되돌리지_않는다() {
+        Long commentId = commentOnPublicPost("고치기 전");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+        CommentFilterRetryCandidate candidate = retryCandidate(commentId, farFuture, farFuture, 5).orElseThrow();
+        assertThat(retryService.claim(candidate, Instant.now().plus(Duration.ofMinutes(30)))).isTrue();
+
+        commentService.update(fan.getMemberId(), creator.getCreatorId(), publicPostId, commentId, "고친 뒤");
+
+        assertThat(retryService.release(candidate)).isFalse();
+        assertThat(retryCandidate(commentId, farFuture, farFuture, 5))
+                .hasValueSatisfying(fresh -> assertThat(fresh.attempts()).isZero());
     }
 
     private Long commentOnPublicPost(String content) {
@@ -281,12 +353,12 @@ class CreatorPostCommentIntegrationTest {
         return commentService.create(fan.getMemberId(), creator.getCreatorId(), publicPostId, content).commentId();
     }
 
-    /** 공용 DB의 다른 댓글을 섞지 않도록 대상 댓글의 시도 횟수만 골라 돌려준다. */
-    private List<Integer> retryCandidates(Instant now, Instant pendingBefore, int maxAttempts, Long commentId) {
+    /** 공용 DB의 다른 댓글을 섞지 않도록 대상 댓글의 후보만 골라 돌려준다. */
+    private Optional<CommentFilterRetryCandidate> retryCandidate(
+            Long commentId, Instant now, Instant pendingBefore, int maxAttempts) {
         return retryService.findCandidates(now, pendingBefore, maxAttempts, 1000).stream()
                 .filter(candidate -> candidate.commentId().equals(commentId))
-                .map(CommentFilterRetryCandidate::attempts)
-                .toList();
+                .findFirst();
     }
 
     private Member member() {
