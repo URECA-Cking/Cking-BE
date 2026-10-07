@@ -60,6 +60,19 @@ class AccessTokenServiceTest {
         verify(accessTokenIssuer).issue(17L, MemberRole.ADMIN);
     }
 
+    /** 관리자 Refresh 세션은 USER Member의 Access Token 발급을 허용하지 않는지 검증한다. */
+    @Test
+    void 관리자_Refresh세션은_USER_Member를_거절한다() {
+        Member member = new Member("사용자", null, "user@example.com", MemberRole.USER);
+        ReflectionTestUtils.setField(member, "memberId", 17L);
+        when(memberRepository.findById(17L)).thenReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> accessTokenService.issueAdmin(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+        verifyNoInteractions(accessTokenIssuer);
+    }
+
     /** 소비된 Login Code의 Member가 없으면 유효하지 않은 Login Code로 처리하는지 검증한다. */
     @Test
     void 존재하지_않는_Member의_LoginCode는_유효하지_않다() {
