@@ -64,6 +64,8 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
   "items": [{
     "eventId": 1,
     "title": "팬미팅 이벤트",
+    "description": "팬미팅 응모 이벤트입니다.",
+    "rejectReason": null,
     "startAt": "2026-09-20T09:00:00Z",
     "endAt": "2026-09-21T09:00:00Z",
     "winnerCount": 3,
@@ -83,6 +85,9 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
   "hasNext": false
 }
 ```
+
+- `description`은 작성하지 않았으면 `null`이다.
+- `rejectReason`은 `status == REJECTED`일 때만 가장 최근 승인 요청 차수의 반려 사유다. 그 외 상태(수정으로 `DRAFT`로 돌아간 경우 포함)이거나 사유가 없으면 `null`이다.
 
 ## POST /api/creator/events
 

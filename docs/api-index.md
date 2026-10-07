@@ -14,7 +14,7 @@
 | 11 | 외부 | Event | USER | GET | `/api/events/{eventId}` | Event 상세 | - |
 | 12 | 외부 | Entry | USER | POST | `/api/events/{eventId}/entries` | 응모 | `requestId` |
 | 13 | 외부 | Entry | USER | GET | `/api/events/{eventId}/entries/me` | 내 응모 조회 | - |
-| 14 | 외부 | Creator 운영 | CREATOR | GET | `/api/creator/events` | 내 이벤트 목록 | - |
+| 14 | 외부 | Creator 운영 | CREATOR | GET | `/api/creator/events` | 내 이벤트 목록(`description`, REJECTED면 최근 반려 사유 `rejectReason` 포함) | - |
 | 15 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events` | Event 생성 | `requestId` |
 | 16 | 외부 | Creator 운영 | CREATOR | PATCH | `/api/creator/events/{eventId}` | Event 수정 | 상태 기반 |
 | 17 | 외부 | Creator 운영 | CREATOR | DELETE | `/api/creator/events/{eventId}` | Event 삭제 | 상태 기반 |
