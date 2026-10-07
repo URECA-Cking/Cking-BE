@@ -5,6 +5,7 @@ import kr.co.cking.post.domain.CommentFilterStatus;
 import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -110,6 +111,18 @@ class CommentFilterResultServiceTest {
 
         assertThat(comment.isBlocked()).isTrue();
         assertThat(comment.isBlockedForPrivacy()).isTrue();
+    }
+
+    @Test
+    void 본문을_수정하면_재필터링_횟수와_다음_시도_시각이_초기화된다() {
+        CreatorPostComment comment = new CreatorPostComment(10L, 20L, "본문", NOW);
+        ReflectionTestUtils.setField(comment, "filterAttempts", 3);
+        ReflectionTestUtils.setField(comment, "filterNextAttemptAt", NOW.plusSeconds(600));
+
+        comment.update("수정한 본문", NOW.plusSeconds(1));
+
+        assertThat(comment.getFilterAttempts()).isZero();
+        assertThat(comment.getFilterNextAttemptAt()).isNull();
     }
 
     @Test
