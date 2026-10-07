@@ -57,7 +57,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Spring Security 기반 설정이 기존 API와 문서 인증 경로에 미치는 영향을 검증한다. */
-@WebMvcTest(controllers = {MemberController.class, AuthController.class, SecurityConfigTest.AdminSecurityTestController.class})
+@WebMvcTest(controllers = {MemberController.class, AuthController.class})
 @Import({
         SecurityConfigTest.AdminSecurityTestController.class,
         SecurityConfig.class,
