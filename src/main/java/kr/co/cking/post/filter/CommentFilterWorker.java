@@ -3,7 +3,6 @@ package kr.co.cking.post.filter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -25,27 +24,27 @@ public class CommentFilterWorker {
             if (target.isEmpty()) {
                 return;
             }
-            Instant judgedUpdatedAt = target.get().updatedAt();
+            String judgedContent = target.get().content();
 
             CommentFilterResult result;
             try {
-                result = client.moderate(commentId, target.get().content());
+                result = client.moderate(commentId, judgedContent);
             } catch (CommentFilterRejectedException exception) {
                 log.error("필터 서비스가 요청을 거절했습니다. 요청 형식을 확인하세요. commentId={}", commentId, exception);
-                recordFailure(commentId, judgedUpdatedAt);
+                recordFailure(commentId, judgedContent);
                 return;
             } catch (RuntimeException exception) {
                 log.warn("필터 서비스 호출에 실패했습니다. 재필터링이 다시 처리합니다. commentId={}", commentId, exception);
-                recordFailure(commentId, judgedUpdatedAt);
+                recordFailure(commentId, judgedContent);
                 return;
             }
 
             boolean saved;
             try {
-                saved = resultService.saveResult(commentId, judgedUpdatedAt, result);
+                saved = resultService.saveResult(commentId, judgedContent, result);
             } catch (IllegalArgumentException exception) {
                 log.error("판정 결과를 저장할 수 없습니다. commentId={}", commentId, exception);
-                recordFailure(commentId, judgedUpdatedAt);
+                recordFailure(commentId, judgedContent);
                 return;
             }
             if (!saved) {
@@ -56,9 +55,9 @@ public class CommentFilterWorker {
         }
     }
 
-    private void recordFailure(Long commentId, Instant judgedUpdatedAt) {
+    private void recordFailure(Long commentId, String judgedContent) {
         try {
-            resultService.saveFailure(commentId, judgedUpdatedAt);
+            resultService.saveFailure(commentId, judgedContent);
         } catch (RuntimeException exception) {
             log.error("판정 실패를 기록하지 못했습니다. commentId={}", commentId, exception);
         }
