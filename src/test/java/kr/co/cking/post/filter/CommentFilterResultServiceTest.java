@@ -101,6 +101,18 @@ class CommentFilterResultServiceTest {
     }
 
     @Test
+    void 개인정보로_막힌_댓글은_수정_후_재판정이_실패해도_원문_보기가_열리지_않는다() {
+        CreatorPostComment comment = stubComment("본문");
+        comment.markFiltered(CommentFilterAction.BLOCK, List.of("privacy:phone"), "rule-0", "model-0", NOW);
+        comment.update("010-0000-0000", NOW.plusSeconds(1));
+
+        assertThat(service.saveFailure(COMMENT_ID, "010-0000-0000")).isTrue();
+
+        assertThat(comment.isBlocked()).isTrue();
+        assertThat(comment.isBlockedForPrivacy()).isTrue();
+    }
+
+    @Test
     void 판정을_마친_댓글은_판정_대상이_아니다() {
         CreatorPostComment comment = new CreatorPostComment(10L, 20L, "본문", NOW);
         given(repository.findById(COMMENT_ID)).willReturn(Optional.of(comment));
