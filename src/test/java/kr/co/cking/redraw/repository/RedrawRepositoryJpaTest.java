@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 
 /** Redraw 후보·점유·Drawing 전용 조회가 MySQL에서 의도한 결원만 읽는지 검증한다. */
 @DataJpaTest
@@ -30,6 +31,9 @@ class RedrawRepositoryJpaTest {
 
     @Autowired
     private RedrawRequestVacancyRepository redrawRequestVacancyRepository;
+
+    @Autowired
+    private RedrawRequestRepository redrawRequestRepository;
 
     @Autowired
     private RedrawDrawingQueryRepository redrawDrawingQueryRepository;
@@ -62,6 +66,22 @@ class RedrawRepositoryJpaTest {
         );
 
         assertThat(winnerIds).containsExactly(declinedWinnerId, disqualifiedWinnerId);
+    }
+
+    /** 관리자 목록 조회는 요청·실행 상태를 함께 만족하는 요청만 최신 요청순으로 반환한다. */
+    @Test
+    void 관리자_목록은_요청과_실행_상태를_함께_필터링한다() {
+        Fixture fixture = fixture();
+        long approvedPendingId = insertRedrawRequest(
+                fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING);
+        insertRedrawRequest(fixture, RedrawRequestStatus.REQUESTED, RedrawExecutionStatus.PENDING);
+        insertRedrawRequest(fixture, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.EXECUTED);
+
+        var result = redrawRequestRepository.findForAdminList(
+                RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING, PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).extracting(request -> request.getId())
+                .containsExactly(approvedPendingId);
     }
 
     /** REDRAW 제외 명단 원본은 해당 Event의 기존 Winner를 Member ID순으로 읽는다. */

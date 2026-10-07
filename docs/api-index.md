@@ -135,5 +135,6 @@
 | 131 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original` | 필터링된 게시글 댓글 원문 조회(작성자 본인·개인정보 차단 댓글 제외) | - |
 | 132 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/refresh` | 관리자 Refresh Cookie를 회전해 ADMIN Access JWT 갱신 | Refresh Token 1회 소비 |
 | 133 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/logout` | 관리자 Refresh Token 폐기 및 관리자 Cookie 만료 | - |
+| 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

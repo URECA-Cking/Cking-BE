@@ -53,6 +53,65 @@
 | `IDEMPOTENCY_CONFLICT` | 기존 idempotencyKey에 다른 요청 본문이 전달됨 |
 | `CONCURRENT_COMMAND` | 저장 충돌 후 동일 idempotencyKey의 기존 요청을 확인할 수 없음 |
 
+## 관리자 RedrawRequest 목록 조회
+
+### `GET /api/admin/redraw-requests`
+
+관리자가 재추첨 요청을 최신 요청순으로 페이지 조회한다. 상세의 `vacancyWinners`처럼 큰 데이터는
+목록에 포함하지 않으며, 목록의 `redrawRequestId`로 상세·승인·거절·실행 API를 이어서 호출한다.
+
+#### 요청
+
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); query parameter `userId`는 받지 않는다.
+- Query parameter: `status` (`REQUESTED`, `APPROVED`, `REJECTED`, 선택), `executionStatus`
+  (`PENDING`, `EXECUTED`, `INSUFFICIENT_CANDIDATES`, `FAILED`, 선택), `page` (기본 `0`),
+  `size` (기본 `20`, `1~100`).
+- 두 상태 필터를 함께 전달하면 두 조건을 모두 만족하는 요청만 반환한다. 정렬은 `requestedAt DESC`,
+  `redrawRequestId DESC`다.
+
+#### 성공 응답
+
+`200 OK`로 공통 페이지 응답을 반환한다. `redrawDrawingId`는 실제 REDRAW Drawing이 만들어진 요청에만
+있으며, 아직 실행 전·후보 부족 요청은 `null`이다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {
+    "items": [
+      {
+        "redrawRequestId": 10,
+        "eventId": 20,
+        "originalDrawingId": 30,
+        "redrawDrawingId": 40,
+        "vacancyCount": 1,
+        "status": "APPROVED",
+        "executionStatus": "PENDING",
+        "reason": "당첨자 포기에 따른 재추첨이 필요합니다.",
+        "requestedBy": 1,
+        "requestedAt": "2026-09-22T00:00:00Z",
+        "reviewedBy": 2,
+        "reviewedAt": "2026-09-22T01:00:00Z"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1,
+    "hasNext": false
+  },
+  "message": null
+}
+```
+
+#### 오류
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | 상태 enum, `page`, `size`가 유효하지 않음 |
+| `RESOURCE_NOT_FOUND` | JWT 호출 Member가 존재하지 않음 |
+| `FORBIDDEN` | 호출 Member가 ADMIN이 아님 |
+
 ## 관리자 RedrawRequest 상세 조회
 
 ### `GET /api/admin/redraw-requests/{redrawRequestId}`

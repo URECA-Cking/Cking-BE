@@ -3,14 +3,18 @@ package kr.co.cking.redraw.presentation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.redraw.application.RedrawRequestCreateCommand;
 import kr.co.cking.redraw.application.RedrawRequestCreateResult;
 import kr.co.cking.redraw.application.RedrawRequestCreateService;
 import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
 import kr.co.cking.redraw.application.RedrawRequestDetailResult;
+import kr.co.cking.redraw.application.RedrawRequestListQueryService;
 import kr.co.cking.redraw.application.RedrawRequestReviewResult;
 import kr.co.cking.redraw.application.RedrawRequestReviewService;
 import kr.co.cking.redraw.application.RedrawRequestExecutionResult;
@@ -23,6 +27,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 관리자의 RedrawRequest 생성 HTTP 요청을 처리한다. */
@@ -34,6 +39,7 @@ public class RedrawAdminController {
 
     private final RedrawRequestCreateService redrawRequestCreateService;
     private final RedrawRequestDetailQueryService redrawRequestDetailQueryService;
+    private final RedrawRequestListQueryService redrawRequestListQueryService;
     private final RedrawRequestReviewService redrawRequestReviewService;
     private final RedrawRequestExecutionService redrawRequestExecutionService;
 
@@ -68,6 +74,25 @@ public class RedrawAdminController {
             @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(redrawRequestDetailQueryService.getDetail(redrawRequestId, memberId));
+    }
+
+    /** 관리자가 요청·실행 상태를 선택적으로 조합해 RedrawRequest 목록을 페이지 조회한다. */
+    @Operation(
+            summary = "RedrawRequest 목록 조회",
+            description = "관리자가 재추첨 요청을 최신 요청순으로 조회합니다. status와 executionStatus는 각각 선택 사항이며 "
+                    + "함께 지정하면 두 조건을 모두 만족하는 요청만 반환합니다. 결원 Winner 상세는 포함하지 않습니다."
+    )
+    @GetMapping("/api/admin/redraw-requests")
+    public ApiResponse<PageResponse<RedrawRequestListResponse>> listRedrawRequests(
+            @CurrentMemberId Long memberId,
+            @RequestParam(required = false) kr.co.cking.redraw.domain.RedrawRequestStatus status,
+            @RequestParam(required = false) kr.co.cking.redraw.domain.RedrawExecutionStatus executionStatus,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+    ) {
+        return ApiResponse.success(PageResponse.from(redrawRequestListQueryService
+                .list(memberId, status, executionStatus, org.springframework.data.domain.PageRequest.of(page, size))
+                .map(RedrawRequestListResponse::from)));
     }
 
     /** 관리자가 검토 대기 RedrawRequest를 승인하고 실행 대기 상태를 유지한다. */

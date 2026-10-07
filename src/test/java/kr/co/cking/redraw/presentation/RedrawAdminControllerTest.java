@@ -14,6 +14,8 @@ import kr.co.cking.redraw.application.RedrawRequestCreateResult;
 import kr.co.cking.redraw.application.RedrawRequestCreateService;
 import kr.co.cking.redraw.application.RedrawRequestDetailQueryService;
 import kr.co.cking.redraw.application.RedrawRequestDetailResult;
+import kr.co.cking.redraw.application.RedrawRequestListQueryService;
+import kr.co.cking.redraw.application.RedrawRequestListResult;
 import kr.co.cking.redraw.application.RedrawRequestReviewResult;
 import kr.co.cking.redraw.application.RedrawRequestReviewService;
 import kr.co.cking.redraw.application.RedrawRequestExecutionService;
@@ -33,6 +35,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -55,6 +59,9 @@ class RedrawAdminControllerTest {
 
     @MockitoBean
     private RedrawRequestDetailQueryService redrawRequestDetailQueryService;
+
+    @MockitoBean
+    private RedrawRequestListQueryService redrawRequestListQueryService;
 
     @MockitoBean
     private RedrawRequestReviewService redrawRequestReviewService;
@@ -147,6 +154,85 @@ class RedrawAdminControllerTest {
                 .andExpect(jsonPath("$.data.requestedBy").value(1))
                 .andExpect(jsonPath("$.data.reviewedBy").value(2));
         verify(redrawRequestDetailQueryService).getDetail(30L, 1L);
+    }
+
+    /** 관리자는 상태 단일·복합 필터와 페이지 조건으로 RedrawRequest 목록을 조회한다. */
+    @Test
+    void 관리자는_상태_조건으로_RedrawRequest_목록을_조회한다() throws Exception {
+        when(redrawRequestListQueryService.list(
+                1L, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING, PageRequest.of(1, 10)))
+                .thenReturn(new PageImpl<>(List.of(listItem()), PageRequest.of(1, 10), 21));
+
+        mockMvc.perform(get("/api/admin/redraw-requests")
+                        .param("status", "APPROVED")
+                        .param("executionStatus", "PENDING")
+                        .param("page", "1")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[0].redrawRequestId").value(30))
+                .andExpect(jsonPath("$.data.items[0].redrawDrawingId").value(40))
+                .andExpect(jsonPath("$.data.items[0].vacancyWinners").doesNotExist())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(10))
+                .andExpect(jsonPath("$.data.totalElements").value(21))
+                .andExpect(jsonPath("$.data.totalPages").value(3))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+        verify(redrawRequestListQueryService).list(
+                1L, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING, PageRequest.of(1, 10));
+    }
+
+    /** 요청 상태만, 실행 상태만, 조건 없는 빈 페이지도 각각 목록 계약대로 조회한다. */
+    @Test
+    void RedrawRequest_목록은_단일_필터와_빈_결과를_지원한다() throws Exception {
+        when(redrawRequestListQueryService.list(
+                1L, RedrawRequestStatus.REQUESTED, null, PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(listItem()), PageRequest.of(0, 20), 1));
+        when(redrawRequestListQueryService.list(
+                1L, null, RedrawExecutionStatus.FAILED, PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(listItem()), PageRequest.of(0, 20), 1));
+        when(redrawRequestListQueryService.list(1L, null, null, PageRequest.of(2, 5)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(2, 5), 0));
+
+        mockMvc.perform(get("/api/admin/redraw-requests").param("status", "REQUESTED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].redrawRequestId").value(30));
+        mockMvc.perform(get("/api/admin/redraw-requests").param("executionStatus", "FAILED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].redrawRequestId").value(30));
+        mockMvc.perform(get("/api/admin/redraw-requests").param("page", "2").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(5));
+
+        verify(redrawRequestListQueryService).list(1L, RedrawRequestStatus.REQUESTED, null, PageRequest.of(0, 20));
+        verify(redrawRequestListQueryService).list(1L, null, RedrawExecutionStatus.FAILED, PageRequest.of(0, 20));
+        verify(redrawRequestListQueryService).list(1L, null, null, PageRequest.of(2, 5));
+    }
+
+    /** Application의 ADMIN 업무 권한 오류는 목록 API에서도 공통 FORBIDDEN 응답으로 변환한다. */
+    @Test
+    void USER는_RedrawRequest_목록을_업무_권한으로_조회할_수_없다() throws Exception {
+        when(redrawRequestListQueryService.list(1L, null, null, PageRequest.of(0, 20)))
+                .thenThrow(new kr.co.cking.common.exception.BusinessException(
+                        kr.co.cking.common.exception.CommonErrorCode.FORBIDDEN));
+
+        mockMvc.perform(get("/api/admin/redraw-requests"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    /** 목록 필터 값과 페이지 범위가 계약을 벗어나면 Service 호출 전에 입력 오류로 거절한다. */
+    @Test
+    void 유효하지_않은_RedrawRequest_목록_조건은_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/admin/redraw-requests").param("status", "UNKNOWN"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(get("/api/admin/redraw-requests").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(redrawRequestListQueryService);
     }
 
     /** 양수가 아닌 경로·관리자 식별자는 상세 조회 Service 호출 전에 차단한다. */
@@ -295,6 +381,15 @@ class RedrawAdminControllerTest {
                 RedrawRequestStatus.APPROVED, RedrawExecutionStatus.EXECUTED,
                 "당첨자 포기에 따른 재추첨", 1L, Instant.parse("2026-09-20T00:00:00Z"),
                 2L, Instant.parse("2026-09-20T01:00:00Z"), null
+        );
+    }
+
+    /** 테스트에서 목록 API가 반환할 요청·실행 요약 항목을 만든다. */
+    private RedrawRequestListResult listItem() {
+        return new RedrawRequestListResult(
+                30L, 10L, 20L, 40L, 1, RedrawRequestStatus.APPROVED, RedrawExecutionStatus.PENDING,
+                "당첨자 포기에 따른 재추첨", 1L, Instant.parse("2026-09-20T00:00:00Z"), 2L,
+                Instant.parse("2026-09-20T01:00:00Z")
         );
     }
 
