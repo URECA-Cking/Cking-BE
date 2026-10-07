@@ -67,22 +67,57 @@ class CommentFilterWorkerTest {
     }
 
     @Test
-    void 규칙_코드_모양이_아닌_사유는_로그에서_invalid로_가리고_저장하는_사유는_바꾸지_않는다(CapturedOutput output) {
+    void 허용한_유형이_아니면_사유를_invalid로_가리고_이름은_영문_소문자와_밑줄일_때만_남긴다(CapturedOutput output) {
         String sentenceLeak = "이 댓글의 원문은 로그에 남으면 안 된다";
-        CommentFilterResult leaking = new CommentFilterResult(CommentFilterAction.BLOCK,
+        CommentFilterResult unsafe = new CommentFilterResult(CommentFilterAction.BLOCK,
                 List.of("profanity:병신", "classifier", sentenceLeak, "spam:link http://x.y", "PRIVACY:phone",
-                        "spam:" + "a".repeat(31), "privacy:"), "local-1", "model-1");
+                        "privacy:01012345678", "spam:engagement_bait", "privacy:", "unknown:abc", "privacy:phone"),
+                "local-1", "model-1");
         givenTarget(CONTENT);
-        given(client.moderate(COMMENT_ID, CONTENT)).willReturn(leaking);
-        given(resultService.saveResult(COMMENT_ID, CONTENT, leaking)).willReturn(true);
+        given(client.moderate(COMMENT_ID, CONTENT)).willReturn(unsafe);
+        given(resultService.saveResult(COMMENT_ID, CONTENT, unsafe)).willReturn(true);
 
         worker.process(COMMENT_ID);
 
         assertThat(output.getAll())
-                .contains("reasons=[profanity:병신, classifier, invalid, invalid, invalid, invalid, invalid]")
+                .contains("reasons=[profanity, classifier, invalid, spam, invalid, privacy, "
+                        + "spam:engagement_bait, privacy, invalid, privacy:phone]")
+                .doesNotContain("01012345678")
+                .doesNotContain("병신")
                 .doesNotContain(sentenceLeak)
                 .doesNotContain("http://x.y");
-        verify(resultService).saveResult(COMMENT_ID, CONTENT, leaking);
+        // 저장하는 값은 바꾸지 않는다.
+        verify(resultService).saveResult(COMMENT_ID, CONTENT, unsafe);
+    }
+
+    @Test
+    void 규칙과_모델_버전은_ASCII_영숫자와_점_밑줄_하이픈일_때만_남긴다(CapturedOutput output) {
+        CommentFilterResult weirdVersions = new CommentFilterResult(CommentFilterAction.PASS, List.of(),
+                "규칙 버전 문장 010 1234", "model with spaces");
+        givenTarget(CONTENT);
+        given(client.moderate(COMMENT_ID, CONTENT)).willReturn(weirdVersions);
+        given(resultService.saveResult(COMMENT_ID, CONTENT, weirdVersions)).willReturn(true);
+
+        worker.process(COMMENT_ID);
+
+        assertThat(output.getAll())
+                .contains("ruleVersion=invalid")
+                .contains("modelVersion=invalid")
+                .doesNotContain("010 1234")
+                .doesNotContain("with spaces");
+    }
+
+    @Test
+    void 길이가_50자를_넘는_버전도_invalid로_가린다(CapturedOutput output) {
+        CommentFilterResult longVersion = new CommentFilterResult(CommentFilterAction.PASS, List.of(),
+                "a".repeat(51), "threat-ctx-v1-reviewed");
+        givenTarget(CONTENT);
+        given(client.moderate(COMMENT_ID, CONTENT)).willReturn(longVersion);
+        given(resultService.saveResult(COMMENT_ID, CONTENT, longVersion)).willReturn(true);
+
+        worker.process(COMMENT_ID);
+
+        assertThat(output.getAll()).contains("ruleVersion=invalid").contains("modelVersion=threat-ctx-v1-reviewed");
     }
 
     @Test

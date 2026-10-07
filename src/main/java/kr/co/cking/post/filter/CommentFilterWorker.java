@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -15,16 +16,26 @@ import java.util.regex.Pattern;
  * 열지 않는다. 읽기와 저장은 {@link CommentFilterResultService}가 각각 짧은 Transaction으로 처리한다.
  *
  * <p>판정을 저장하면 {@code info} 로그를 한 줄 남긴다(이슈 #488). 댓글 원문은 남기지 않고 {@code commentId}로 DB의 댓글과
- * 연결한다. {@code reasons}는 규칙 코드(예: {@code privacy:phone})일 때만 남기고, 규칙 코드 모양이 아니면(공백·구두점이
- * 있거나 긴 값) 필터 응답에 문장이 섞인 것으로 보고 {@value #INVALID_REASON}으로 바꿔 남긴다. 저장하는 사유는 바꾸지 않는다.
+ * 연결한다. 필터 서비스 응답은 외부 입력이라 그대로 기록하지 않는다.
+ * <ul>
+ *   <li>{@code reasons}: 유형이 {@link #REASON_TYPES}에 있을 때만 남기고, 아니면 {@value #INVALID_VALUE}다. 이름
+ *       ({@code 유형:이름})은 영문 소문자와 밑줄뿐일 때만 남기고 아니면 유형만 남긴다. 숫자·한글·공백이 든 이름에는 전화번호나
+ *       댓글 문장이 들어올 수 있어서다.</li>
+ *   <li>{@code ruleVersion}·{@code modelVersion}: ASCII 영숫자와 {@code . _ -}뿐인 50자 이하일 때만 남기고 아니면
+ *       {@value #INVALID_VALUE}다.</li>
+ * </ul>
+ * 저장하는 값은 바꾸지 않는다.
  */
 @Slf4j
 @RequiredArgsConstructor
 public class CommentFilterWorker {
 
-    static final String INVALID_REASON = "invalid";
-    /** 규칙 코드: 소문자 유형 하나({@code classifier}) 또는 {@code 유형:이름}(이름은 글자·숫자·밑줄 30자 이하). */
-    private static final Pattern REASON_CODE = Pattern.compile("^[a-z][a-z_]{0,19}(:[\\p{L}\\p{N}_]{1,30})?$");
+    static final String INVALID_VALUE = "invalid";
+    /** 로그에 남겨도 되는 사유 유형. 필터 서비스의 규칙 코드 유형이다. */
+    private static final Set<String> REASON_TYPES = Set.of("classifier", "model", "profanity", "privacy", "spam");
+    /** 사유 이름. 영문 소문자와 밑줄뿐이라 숫자·한글·공백이 든 개인정보나 댓글 문장은 걸러진다. */
+    private static final Pattern REASON_NAME = Pattern.compile("^[a-z_]{1,30}$");
+    private static final Pattern VERSION = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$");
 
     private final CommentFilterClient client;
     private final CommentFilterResultService resultService;
@@ -66,18 +77,32 @@ public class CommentFilterWorker {
                 return;
             }
             log.info("댓글 필터 판정을 저장했습니다. commentId={}, action={}, reasons={}, ruleVersion={}, modelVersion={}, elapsedMs={}",
-                    commentId, result.action(), loggableReasons(result.reasons()), result.ruleVersion(), result.modelVersion(),
-                    elapsedMillis);
+                    commentId, result.action(), loggableReasons(result.reasons()), loggableVersion(result.ruleVersion()),
+                    loggableVersion(result.modelVersion()), elapsedMillis);
         } catch (RuntimeException exception) {
             log.error("댓글 필터 처리 중 예기치 못한 오류가 났습니다. commentId={}", commentId, exception);
         }
     }
 
-    /** 규칙 코드 모양이 아닌 사유는 댓글 내용이 섞였을 수 있어 로그에서 가린다. */
     private static List<String> loggableReasons(List<String> reasons) {
-        return reasons.stream()
-                .map(reason -> REASON_CODE.matcher(reason).matches() ? reason : INVALID_REASON)
-                .toList();
+        return reasons.stream().map(CommentFilterWorker::loggableReason).toList();
+    }
+
+    private static String loggableReason(String reason) {
+        int colon = reason.indexOf(':');
+        String type = colon < 0 ? reason : reason.substring(0, colon);
+        if (!REASON_TYPES.contains(type)) {
+            return INVALID_VALUE;
+        }
+        if (colon < 0) {
+            return type;
+        }
+        String name = reason.substring(colon + 1);
+        return REASON_NAME.matcher(name).matches() ? type + ":" + name : type;
+    }
+
+    private static String loggableVersion(String version) {
+        return VERSION.matcher(version).matches() ? version : INVALID_VALUE;
     }
 
     private void recordFailure(Long commentId, String judgedContent) {
