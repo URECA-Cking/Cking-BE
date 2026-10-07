@@ -28,14 +28,6 @@ public class MemberQueryService {
         return MemberProfile.from(member);
     }
 
-    /** 온보딩 완료를 멱등하게 기록한다. 이미 완료된 회원도 성공으로 처리한다. */
-    @Transactional
-    public void completeOnboarding(Long memberId) {
-        memberRepository.findById(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
-                .completeOnboarding();
-    }
-
     /** 호출자 식별에 사용한 Member가 실제로 존재하는지 검증한다. */
     public void validateExists(Long userId) {
         if (!memberRepository.existsById(userId)) {

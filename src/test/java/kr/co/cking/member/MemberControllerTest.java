@@ -41,6 +41,9 @@ class MemberControllerTest {
     @MockitoBean
     private CreatorQueryService creatorQueryService;
 
+    @MockitoBean
+    private kr.co.cking.member.application.MemberOnboardingService memberOnboardingService;
+
     @BeforeEach
     void authenticatedMember() {
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
@@ -96,6 +99,6 @@ class MemberControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"));
 
-        org.mockito.Mockito.verify(memberQueryService).completeOnboarding(1L);
+        org.mockito.Mockito.verify(memberOnboardingService).complete(1L);
     }
 }

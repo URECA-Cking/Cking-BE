@@ -121,24 +121,4 @@ class MemberQueryServiceTest {
                 2L, new MemberInfo(2L, "김철수", "010-0000-0002", "two@example.com")
         ));
     }
-
-    @Test
-    void 온보딩_완료는_여러_번_호출해도_완료_상태다() {
-        Member member = new Member("홍길동", null, null, MemberRole.USER);
-        when(repository.findById(1L)).thenReturn(Optional.of(member));
-
-        assertThat(member.isOnboardingCompleted()).isFalse();
-        service.completeOnboarding(1L);
-        service.completeOnboarding(1L);
-
-        assertThat(member.isOnboardingCompleted()).isTrue();
-    }
-
-    @Test
-    void 존재하지_않는_사용자의_온보딩_완료는_RESOURCE_NOT_FOUND다() {
-        when(repository.findById(999L)).thenReturn(Optional.empty());
-
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.completeOnboarding(999L))
-                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class);
-    }
 }

@@ -89,6 +89,9 @@ class SecurityConfigTest {
     private MemberQueryService memberQueryService;
 
     @MockitoBean
+    private kr.co.cking.member.application.MemberOnboardingService memberOnboardingService;
+
+    @MockitoBean
     private CreatorQueryService creatorQueryService;
 
     @MockitoBean
