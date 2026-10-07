@@ -281,7 +281,7 @@ FR-AI-007,AI,팔로우한 Creator를 seed로 현재 활성 유사 추천 후보�
 FR-AI-008,AI,M2와 M4 raw score를 직접 비교하지 않고 버전화된 rank 기반 정책으로 집계한다,성원,Creator 추천,"FOLLOW_PERSONALIZED_V1 RRF k=60, 기여도 소수점 8자리 HALF_UP (2026-10-06 FOLLOW_PERSONALIZED_V2 평균으로 대체, FR-AI-031)",확정,완료,No
 FR-AI-009,AI,중복 후보를 합치고 본인과 이미 팔로우한 Creator를 제외해 결정적으로 정렬한다,성원,Creator 추천,"aggregateScore DESC, creatorId ASC, seedCreatorIds ASC",확정,완료,No
 FR-AI-010,AI,인증된 사용자가 개인화 Creator 추천 카드를 조회한다,성원,Creator 추천,"GET /api/me/creator-recommendations, size 1~20, Creator·Space·집계 점수·seed 근거 반환",확정,완료,No
-FR-AI-011,AI,팔로우 또는 사용 가능한 활성 추천이 없으면 빈 목록을 반환한다,성원,Creator 추천,인기순 fallback 없이 policyVersion과 빈 items 반환,확정,완료,No
+FR-AI-011,AI,팔로우 또는 사용 가능한 활성 추천이 없으면 빈 목록을 반환한다,성원,Creator 추천,"인기순 fallback 없이 policyVersion과 빈 items 반환 (이후 FR-AI-037로 개인화 결과가 비면 인기순 대체로 변경)",확정,완료,No
 FR-AI-012,AI,개인화 추천 조회는 모델 API 장애와 독립적으로 동작한다,성원,Creator 추천,저장된 활성 세대 Repository만 사용하고 요청 중 BGE-M3·GPT 호출 없음,확정,완료,No
 FR-AI-023,AI,추천 적재 전용 API Key로 유사 추천 결과를 적재할 수 있다,성집,Creator 추천,X-Cking-Recommendation-Key 헤더로 배치 인증하며 RECOMMENDATION_WRITE 권한은 추천 적재 엔드포인트에서만 인정,확정,완료,No
 FR-AI-024,AI,키 헤더가 있으면 키 인증만 수행하고 빈 값·무효 키는 401로 거부한다,성집,Creator 추천,유효한 JWT를 함께 보내도 JWT로 되돌아가지 않음,확정,완료,No
@@ -300,10 +300,12 @@ FR-AI-021,AI,동일 입력 적재는 멱등하고 교체된 과거 입력 해시
 FR-AI-022,AI,빈 후보 묶음도 정상 세대로 저장·활성화한다,성집,Creator 추천,최상위 메타데이터가 있으면 candidate 없는 세대로 포인터 교체해 이전 추천을 비움,확정,완료,No
 FR-AI-028,AI,회원 관심 분야의 활성 후보를 같은 분류체계 버전에서 일괄 조회한다,성집,Creator 추천,member_interest와 같은 버전의 interest_recommendation_state만 연결 / 다른 버전 후보로 대체하지 않음 / bulk query 1회,확정,완료,No
 FR-AI-029,AI,제외 정책 적용 후 후보가 남는 source만 유효 source로 본다,성집,Creator 추천,활성 세대 있음·비어있지 않음·본인 기팔로우 Space 없음 제외 후 후보 1명 이상 / 무효 source는 평균 분모에서 제외,확정,완료,No
-FR-AI-030,AI,유효 그룹에 따라 policyVersion을 분기한다,성집,Creator 추천,HYBRID_PERSONALIZED_V1 / INTEREST_PERSONALIZED_V1 / FOLLOW_PERSONALIZED_V2 (둘 다 무효는 V2와 빈 목록),확정,완료,No
+FR-AI-030,AI,유효 그룹에 따라 policyVersion을 분기한다,성집,Creator 추천,HYBRID_PERSONALIZED_V1 / INTEREST_PERSONALIZED_V1 / FOLLOW_PERSONALIZED_V2 (둘 다 무효는 FR-AI-037의 인기순 대체),확정,완료,No
 FR-AI-031,AI,INTEREST·HYBRID·FOLLOW 점수를 고정된 식과 반올림으로 계산한다,성집,Creator 추천,기여도·그룹 평균·최종 합 세 번 소수점 8자리 HALF_UP / 한 그룹만 유효하면 그 평균 그대로,확정,완료,No
 FR-AI-032,AI,본인·기팔로우·Space 없는 Creator를 제외하고 중복 후보를 합쳐 결정적으로 정렬한다,성집,Creator 추천,aggregateScore DESC / creatorId ASC / size는 정렬 뒤 적용,확정,완료,No
 FR-AI-033,AI,추천 근거 interestCodes와 seedCreatorIds를 반환한다,성집,Creator 추천,기여한 분야 ASCII 사전순 / 기여한 seed 숫자 오름차순 / 기여하지 않은 쪽은 빈 배열,확정,완료,No
 FR-AI-034,AI,팔로우만 있는 회원은 FOLLOW_PERSONALIZED_V2(유효 seed 평균)로 응답한다,성집,Creator 추천,성원 계약에 따라 기존 V1(합산)에서 변경 / policyVersion과 점수 값 변경을 API 문서에 명시,확정,완료,No
 FR-AI-035,AI,LLM 공용 fixture를 Java가 그대로 재현한다,성집,Creator 추천,fixtures/hybrid_personalized_v1.json 18개 case의 policyVersion·validSourceCounts·items 전체 일치(커밋 c23f4db),확정,완료,No
 FR-AI-036,AI,개인화 조회는 모델 API를 호출하지 않고 요청 수에 따른 N+1이 없다,성집,Creator 추천,저장된 활성 세대만 bulk query로 조회,확정,완료,No
+FR-AI-037,AI,개인화 결과가 비어 있으면 팔로워 수 순 인기 Creator로 대체한다,성집,Creator 추천,"개인화 정책의 items가 비면 POPULAR_FALLBACK_V1 반환, 개인화 결과가 하나라도 있으면 대체하지 않음",신설,완료,Yes
+FR-AI-038,AI,인기순은 팔로워 수 내림차순·creatorId 오름차순이며 본인·기팔로우·Space 없는 Creator를 제외한다,성집,Creator 추천,"aggregateScore에 팔로워 수, interestCodes·seedCreatorIds는 빈 배열, size 적용",신설,완료,Yes

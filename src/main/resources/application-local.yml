@@ -11,9 +11,12 @@ spring:
 
 cking:
   cors:
-    allowed-origins: http://localhost:5173
+    allowed-origins: http://localhost:5173,http://localhost:5174
     allow-credentials: true
   auth:
+    refresh:
+      user-allowed-origins: http://localhost:5173
+      admin-allowed-origins: http://localhost:5174
     frontend-callback-url: http://localhost:5173/oauth/callback
     refresh-cookie-secure: false
     jwt:

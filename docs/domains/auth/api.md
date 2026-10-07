@@ -79,7 +79,7 @@ JWT는 `iss=cking`, `sub=memberId`, `role=USER|ADMIN`, `iat`, `exp` Claim을 포
 ```
 
 활성 `AdminAccount`의 BCrypt 비밀번호와 연결된 ADMIN Member를 확인한 뒤, 기존 `TokenResponse` 및
-14일 `refresh_token` Cookie를 발급한다. Access JWT는 `sub=ADMIN Member ID`, `role=ADMIN` Claim을
+14일 `admin_refresh_token` Cookie를 발급한다. Access JWT는 `sub=ADMIN Member ID`, `role=ADMIN` Claim을
 포함한다. 존재하지 않는 ID, 틀린 비밀번호, 비활성 계정, 연결 Member 부재 및 USER Member 연결은
 구분하지 않고 같은 오류로 응답한다.
 
@@ -97,12 +97,12 @@ JWT는 `iss=cking`, `sub=memberId`, `role=USER|ADMIN`, `iat`, `exp` Claim을 포
 
 - 권한: `PUBLIC`
 - Request Body: 없음
-- Request Cookie: `refresh_token`
+- Request Cookie: `refresh_token` (사용자 Web 세션)
 - `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
   Refresh Cookie 흐름을 수행한다.
 
-Cookie의 opaque Refresh Token을 Redis Lua로 원자적으로 한 번 소비하고, 같은 Member의 새 Access JWT와
-새 Refresh Cookie를 발급한다. 기존 Refresh Token은 즉시 폐기되어 재사용할 수 없다.
+Cookie의 opaque Refresh Token을 Redis Lua로 원자적으로 한 번 소비하고, 같은 USER_WEB 세션의 새 Access JWT와
+새 Refresh Cookie를 발급한다. 사용자 Web Origin과 일치해야 하며 관리자 세션 Token은 사용할 수 없다.
 
 ```json
 {
@@ -118,12 +118,34 @@ Cookie의 opaque Refresh Token을 Redis Lua로 원자적으로 한 번 소비하
 
 - 권한: `PUBLIC`
 - Request Body: 없음
-- Request Cookie: `refresh_token` (선택)
+- Request Cookie: `refresh_token` (선택, 사용자 Web 세션)
 - `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
   Refresh Cookie를 폐기한다.
 
 Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만료된 `refresh_token` Cookie를 응답한다.
 이미 만료·폐기된 Cookie 또는 Cookie가 없는 Logout도 성공으로 처리한다.
+
+## 관리자 Access Token 갱신
+
+### `POST /api/admin/auth/refresh`
+
+- 권한: `PUBLIC` (관리자 Access JWT 없이 관리자 Refresh Cookie로 인증)
+- Request Cookie: `admin_refresh_token`
+- Request Origin: 관리자 Web 허용 Origin
+
+관리자 전용 opaque Refresh Token을 원자적으로 회전하고, 연결 Member가 현재도 `ADMIN` 역할일 때만 새 ADMIN Access JWT와
+`admin_refresh_token` Cookie를 발급한다. 사용자 세션 Token, 사용자 Web Origin 또는 역할이 변경된 Member는
+`INVALID_REFRESH_TOKEN` 또는 `FORBIDDEN`으로 거절한다.
+
+## 관리자 Logout
+
+### `POST /api/admin/auth/logout`
+
+- 권한: `PUBLIC` (관리자 Access JWT 없이 관리자 Refresh Cookie로 인증)
+- Request Cookie: `admin_refresh_token` (선택)
+- Request Origin: 관리자 Web 허용 Origin
+
+Cookie가 있으면 관리자 Redis Refresh Token을 삭제하고, 항상 만료된 `admin_refresh_token` Cookie를 응답한다.
 
 ## 현재 사용자 조회
 
@@ -147,10 +169,10 @@ Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만
 
 ## Refresh Cookie
 
-`refresh_token`은 `HttpOnly`, `Path=/api/auth`, host-only Domain, `SameSite=Lax`로 발급한다. 운영 HTTPS
-환경에서는 `Secure=true`다. Refresh·Logout은 `Origin` 헤더가 `cking.cors.allowed-origins`의 허용 origin과
-일치할 때만 수행한다. 개발 환경에서는 사용자 Web(`https://dev.cking.co.kr`)과 관리자 Web
-(`https://dev-admin.cking.co.kr`)을 같은 목록에 등록해 두 Origin 모두 이 흐름을 사용할 수 있다.
+사용자 `refresh_token`은 `HttpOnly`, `Path=/api/auth`, host-only Domain, `SameSite=Lax`로 발급한다.
+관리자 `admin_refresh_token`은 같은 속성에 `Path=/api/admin/auth`를 사용한다. 운영 HTTPS 환경에서는 둘 다
+`Secure=true`다. 사용자와 관리자 Refresh·Logout은 서로 다른 Cookie 이름·Path·endpoint·허용 Origin 및 Redis
+세션 유형을 사용하므로 같은 브라우저에서 동시에 로그인해도 서로의 Access JWT를 발급할 수 없다.
 
 ## 오류 계약
 
@@ -163,7 +185,7 @@ Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만
 | `VALIDATION_FAILED` | 400 | Login Code 요청 형식이 올바르지 않음 | 요청을 수정해 다시 시도 |
 | `UNAUTHORIZED` | 401 | Access Token 없음·만료·변조·형식 오류 | OAuth 로그인을 다시 시작 |
 | `INVALID_LOGIN_CODE` | 401 | Login Code 만료·소비·잘못된 값 | OAuth 로그인을 처음부터 다시 시작 |
-| `INVALID_REFRESH_TOKEN` | 401 | Refresh Token 만료·폐기·재사용·잘못된 값 | OAuth 로그인을 처음부터 다시 시작 |
+| `INVALID_REFRESH_TOKEN` | 401 | Refresh Token 만료·폐기·재사용·세션 유형/역할 불일치·잘못된 값 | 해당 Web 로그인부터 다시 시작 |
 | `INVALID_ADMIN_CREDENTIALS` | 401 | 관리자 ID/PW 불일치, 비활성 계정, 연결 Member 부재 또는 USER Member 연결 | 관리자 로그인 정보를 다시 확인 |
 | `FORBIDDEN` | 403 | 인증되었지만 endpoint 권한이 부족함 | 재인증하지 않고 권한 없음으로 처리 |
 | `SYSTEM_ERROR` | 500 | 예상하지 못한 인증 서버 오류 | 재시도 안내 또는 로그인 화면으로 이동 |

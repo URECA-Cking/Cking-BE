@@ -7,6 +7,8 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
+import kr.co.cking.post.domain.CommentFilterAction;
+import kr.co.cking.post.domain.CommentFilterStatus;
 import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
@@ -15,6 +17,7 @@ import kr.co.cking.post.repository.CreatorPostRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -58,7 +61,8 @@ class CreatorPostCommentServiceTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorPostCommentService service = new CreatorPostCommentService(
             new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
-            commentRepository, memberRepository, Clock.fixed(LATER, ZoneOffset.UTC));
+            commentRepository, memberRepository, Clock.fixed(LATER, ZoneOffset.UTC),
+            mock(ApplicationEventPublisher.class));
 
     @BeforeEach
     void setUp() {
@@ -270,6 +274,173 @@ class CreatorPostCommentServiceTest {
         assertError(() -> service.delete(STRANGER_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L),
                 CommonErrorCode.FORBIDDEN);
         verify(commentRepository, never()).delete(any());
+    }
+
+    @Test
+    void BLOCK된_댓글은_다른_사람에게_원문과_판정을_빼고_filtered로_내려준다() {
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "profanity:병신"), passed(2L, FAN_MEMBER_ID));
+
+        List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent();
+
+        assertThat(views.get(0).filtered()).isTrue();
+        assertThat(views.get(0).revealable()).isTrue();
+        assertThat(views.get(0).content()).isNull();
+        assertThat(views.get(1).filtered()).isFalse();
+        assertThat(views.get(1).content()).isEqualTo("댓글 2");
+    }
+
+    @Test
+    void BLOCK된_댓글을_수정하면_재판정_중에도_다른_사람에게_가려진_채_미판정으로_돌아간다() {
+        CreatorPostComment comment = blocked(1L, FAN_MEMBER_ID, "profanity:병신");
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment));
+
+        service.update(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L, "수정");
+
+        assertThat(comment.getFilterStatus()).isEqualTo(CommentFilterStatus.PENDING);
+        stubCommentPage(comment);
+        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0).filtered())
+                .isTrue();
+    }
+
+    @Test
+    void 재판정이_PASS면_수정된_BLOCK_댓글이_다시_보이고_BLOCK이면_계속_가려진다() {
+        CreatorPostComment comment = blocked(1L, FAN_MEMBER_ID, "profanity:병신");
+        comment.update("고침", LATER);
+
+        comment.markFiltered(CommentFilterAction.PASS, List.of(), "rule-2", "model-2", LATER);
+        assertThat(comment.isBlocked()).isFalse();
+        assertThat(comment.getFilterStatus()).isEqualTo(CommentFilterStatus.DONE);
+
+        comment.update("또 고침", LATER);
+        comment.markFiltered(CommentFilterAction.BLOCK, List.of("spam:link"), "rule-2", "model-2", LATER);
+        assertThat(comment.isBlocked()).isTrue();
+    }
+
+    @Test
+    void 수정한_BLOCK_댓글의_재판정이_실패해도_이전_BLOCK을_유지한다() {
+        CreatorPostComment comment = blocked(1L, FAN_MEMBER_ID, "profanity:병신");
+        comment.update("고침", LATER);
+
+        comment.markFilterFailed();
+
+        assertThat(comment.getFilterStatus()).isEqualTo(CommentFilterStatus.FAILED);
+        assertThat(comment.isBlocked()).isTrue();
+    }
+
+    @Test
+    void 판정받은_적_없는_댓글이나_PASS_댓글을_수정해도_가려지지_않는다() {
+        CreatorPostComment fresh = comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID);
+        CreatorPostComment pass = passed(2L, FAN_MEMBER_ID);
+
+        fresh.update("수정", LATER);
+        pass.update("수정", LATER);
+
+        assertThat(fresh.isBlocked()).isFalse();
+        assertThat(pass.isBlocked()).isFalse();
+        assertThat(pass.getFilterStatus()).isEqualTo(CommentFilterStatus.PENDING);
+    }
+
+    @Test
+    void BLOCK된_댓글도_비로그인과_게시글_Creator에게는_똑같이_가려진다() {
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "spam:link"));
+
+        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent().get(0).filtered()).isTrue();
+        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent().get(0).filtered()).isTrue();
+    }
+
+    @Test
+    void BLOCK된_댓글도_작성자_본인에게는_원문이_그대로_보이고_필터링_표시가_없다() {
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "profanity:병신"));
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, FAN_MEMBER_ID, PAGE).getContent().get(0);
+
+        assertThat(view.filtered()).isFalse();
+        assertThat(view.revealable()).isFalse();
+        assertThat(view.content()).isEqualTo("댓글 1");
+    }
+
+    @Test
+    void 개인정보로_막힌_댓글은_가려지고_원문_보기도_허용하지_않는다() {
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "classifier,privacy:phone"));
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0);
+
+        assertThat(view.filtered()).isTrue();
+        assertThat(view.revealable()).isFalse();
+        assertThat(view.content()).isNull();
+    }
+
+    @Test
+    void 판정_전이거나_실패한_댓글은_가리지_않는다() {
+        CreatorPostComment pending = comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID);
+        CreatorPostComment failed = comment(2L, PUBLIC_POST_ID, FAN_MEMBER_ID);
+        failed.markFilterFailed();
+        stubCommentPage(pending, failed);
+
+        List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent();
+
+        assertThat(views).allSatisfy(view -> assertThat(view.filtered()).isFalse());
+    }
+
+    @Test
+    void 필터링된_댓글의_원문은_게시글을_볼_수_있는_누구나_받는다() {
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
+
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, null).content()).isEqualTo("댓글 1");
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID).content()).isEqualTo("댓글 1");
+    }
+
+    @Test
+    void 개인정보로_막힌_댓글의_원문은_403이다() {
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "privacy:email")));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
+                PostErrorCode.COMMENT_NOT_REVEALABLE);
+    }
+
+    @Test
+    void 필터링되지_않은_댓글이나_작성자_본인의_원문_요청은_404다() {
+        given(commentRepository.findById(1L)).willReturn(Optional.of(passed(1L, FAN_MEMBER_ID)));
+        given(commentRepository.findById(2L)).willReturn(Optional.of(blocked(2L, FAN_MEMBER_ID, "profanity:병신")));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
+                CommonErrorCode.RESOURCE_NOT_FOUND);
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 2L, FAN_MEMBER_ID),
+                CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void 다른_게시글의_댓글이나_없는_댓글의_원문은_404다() {
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, FOLLOWERS_POST_ID, 1L, FAN_MEMBER_ID),
+                CommonErrorCode.RESOURCE_NOT_FOUND);
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 999L, FAN_MEMBER_ID),
+                CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void 팔로워_공개_게시글의_필터링된_댓글_원문은_볼_수_없는_사람에게_403이다() {
+        assertError(() -> service.findOriginal(CREATOR_ID, FOLLOWERS_POST_ID, 1L, STRANGER_MEMBER_ID),
+                PostErrorCode.POST_FOLLOWERS_ONLY);
+    }
+
+    private void stubCommentPage(CreatorPostComment... comments) {
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE))
+                .willReturn(new PageImpl<>(List.of(comments), PAGE, comments.length));
+        given(memberRepository.findAllById(any())).willReturn(List.of(member(FAN_MEMBER_ID)));
+    }
+
+    private CreatorPostComment passed(Long commentId, Long memberId) {
+        CreatorPostComment comment = comment(commentId, PUBLIC_POST_ID, memberId);
+        comment.markFiltered(CommentFilterAction.PASS, List.of(), "rule-1", "model-1", NOW);
+        return comment;
+    }
+
+    private CreatorPostComment blocked(Long commentId, Long memberId, String reasons) {
+        CreatorPostComment comment = comment(commentId, PUBLIC_POST_ID, memberId);
+        comment.markFiltered(CommentFilterAction.BLOCK, List.of(reasons.split(",")), "rule-1", "model-1", NOW);
+        return comment;
     }
 
     private CreatorPostComment comment(Long commentId, Long postId, Long memberId) {

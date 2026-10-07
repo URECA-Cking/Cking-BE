@@ -1,6 +1,6 @@
 # Post
 
-Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계약은 [Post API](api.md)와 [Post Comment API](comment-api.md)를 따른다. AI 댓글 필터링은 모델 비교 후 별도 이슈에서 다룬다.
+Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계약은 [Post API](api.md)와 [Post Comment API](comment-api.md)를 따른다. 댓글은 저장한 뒤 별도 필터 서비스가 비동기로 판정한다(이슈 #460).
 
 ## 책임
 
@@ -8,12 +8,13 @@ Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계�
 - 공개 범위(PUBLIC·FOLLOWERS)에 따른 게시글 공개 조회
 - 게시글 이미지 업로드 기록으로 소유자·연결 검증과 저장소 정리
 - 게시글 댓글 조회·작성·수정·삭제
+- 댓글 필터 판정 요청·결과 저장과 필터링된 댓글의 원문 가림·원문 보기
 
 Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `CreatorFollowQueryService.isFollowing`으로 확인한다. 게시글과 댓글의 조회·참여 권한 판단은 `PostAccessPolicy` 한 곳에 둔다.
 
 ## 소유 데이터
 
-V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다.
+V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. V46이 댓글에 필터 판정 컬럼(`filter_status`·`filter_action`·`filter_reasons`·`filter_rule_version`·`filter_model_version`·`filtered_at`)을 더했다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다.
 
 ## 댓글 권한
 
@@ -24,7 +25,16 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 | 수정 | 댓글 작성자 본인이면서 작성과 같은 조건 |
 | 삭제 | 댓글 작성자 본인, 게시글 작성 Creator 본인. 공개 범위·팔로우를 보지 않으므로 팔로우를 끊은 작성자도 자기 댓글을 지울 수 있다 |
 
-AI 필터링이 들어오기 전까지는 게시글 작성 Creator의 댓글 삭제가 댓글 관리 수단이다.
+필터링(BLOCK)된 댓글의 원문은 작성자 본인이 아닌 조회자에게 가려지고, 게시글을 볼 수 있는 사람이면 누구나 원문 보기를 요청할 수 있다. 개인정보 규칙으로 막힌 댓글은 누구에게도 원문을 보여주지 않는다. 자세한 응답 규칙은 [Post Comment API](comment-api.md#필터링)를 따른다. 필터 판정 결과는 어떤 응답에도 사유를 담지 않으며, 게시글 작성 Creator의 댓글 삭제도 댓글 관리 수단으로 남는다.
+
+### 필터 판정 흐름
+
+댓글을 작성·수정하면 같은 Transaction 안에서 `CommentFilterRequestedEvent`를 발행하고, Commit 뒤(`AFTER_COMMIT`)에 전용 Executor(`commentFilterExecutor`, bounded queue)로 필터 서비스에 `POST /moderate`를 요청한다. 필터 호출은 Transaction 밖에서 하고, 결과는 댓글 행을 쓰기 잠금으로 읽어 판정을 요청했을 때의 본문과 현재 본문이 같을 때만 저장한다(시각이 아니라 본문을 비교한다). 판정 중에 본문이 수정되면 이전 결과를 버린다. V46 주석은 "PENDING·FAILED에서 `filter_action`은 NULL"이라고 적혀 있지만, 수정한 댓글은 이전 판정을 새 판정이 덮어쓸 때까지 유지하므로 실제로는 NULL이 아닐 수 있다.
+
+- 판정 상태: `PENDING`(미판정) → `DONE`(완료) 또는 `FAILED`(필터 장애). 본문을 수정하면 `PENDING`으로 돌아가지만 이전 판정(action·사유)은 새 판정이 덮어쓸 때까지 남긴다. 그래서 `BLOCK`이던 댓글은 재판정 중이거나 재판정이 실패해도 계속 가려진다(수정으로 판정 전에 다시 노출시키는 우회를 막는다). 필터가 꺼져 있거나(`cking.comment-filter.enabled=false`, 기본값) Executor 큐가 가득 차면 댓글은 `PENDING`으로 남는다.
+- 필터 응답은 `reasons`가 없거나 null이면 잘못된 응답이고, `BLOCK`은 사유가 1개 이상이어야 한다(`PASS`는 빈 사유 허용). 잘못된 응답은 장애처럼 `FAILED`로 기록하며 이전 판정(개인정보 사유 포함)은 유지한다. 사유를 빈 값으로 받아들이면 `privacy:*` 사유가 지워져 원문 보기가 열릴 수 있기 때문이다.
+- 필터 장애·타임아웃은 댓글을 막지 않는다. 판정하지 못한 댓글은 통과 상태로 보이며 재필터링 대상이다(재필터링 작업은 아직 없다).
+- V46 이전의 댓글은 필터를 거치지 않았으므로 `DONE`/`PASS`로 채웠다.
 
 댓글 작성·수정·삭제는 게시글 행을 공유 잠금(`FOR SHARE`)으로 읽는다. 게시글 수정·삭제는 쓰기 잠금(`FOR UPDATE`)을 잡으므로, 동시에 진행 중인 게시글 삭제가 끝날 때까지 기다렸다가 사라진 게시글을 보고 404로 응답한다(잠금이 없으면 댓글 저장이 FK 오류로 500이 된다). 공유 잠금끼리는 충돌하지 않아 같은 게시글의 댓글 쓰기는 서로 기다리지 않는다. 댓글 수정·삭제는 이어서 댓글 행을 쓰기 잠금으로 읽어, 같은 댓글의 동시 수정·삭제도 직렬화한다(먼저 삭제되면 404). 잠금 순서는 항상 게시글 → 댓글이며 게시글 삭제도 같은 순서라 교착이 생기지 않는다. 댓글 목록 조회는 잠그지 않는다.
 

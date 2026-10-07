@@ -7,6 +7,7 @@ import kr.co.cking.auth.application.port.AccessTokenIssuer;
 import kr.co.cking.auth.domain.AuthErrorCode;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,10 +26,24 @@ public class AccessTokenService {
      * <p>Login Code와 Refresh Token은 Member 누락을 서로 다른 외부 오류 계약으로 취급한다.
      */
     public AccessTokenResult issue(Long memberId, AuthErrorCode invalidCredentialError) {
+        Member member = findMember(memberId, invalidCredentialError);
+        return accessTokenIssuer.issue(member.getMemberId(), member.getRole());
+    }
+
+    /** 관리자 Refresh 세션에서만 ADMIN Member의 Access JWT를 발급한다. */
+    public AccessTokenResult issueAdmin(Long memberId, AuthErrorCode invalidCredentialError) {
+        Member member = findMember(memberId, invalidCredentialError);
+        if (member.getRole() != MemberRole.ADMIN) {
+            throw new BusinessException(invalidCredentialError);
+        }
+        return accessTokenIssuer.issue(member.getMemberId(), member.getRole());
+    }
+
+    /** 인증 수단별 오류 계약으로 회원을 조회한다. */
+    private Member findMember(Long memberId, AuthErrorCode invalidCredentialError) {
         Objects.requireNonNull(memberId, "memberId는 필수입니다.");
         Objects.requireNonNull(invalidCredentialError, "invalidCredentialError는 필수입니다.");
-        Member member = memberRepository.findById(memberId)
+        return memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(invalidCredentialError));
-        return accessTokenIssuer.issue(member.getMemberId(), member.getRole());
     }
 }
