@@ -149,7 +149,8 @@ Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만
 
 `refresh_token`은 `HttpOnly`, `Path=/api/auth`, host-only Domain, `SameSite=Lax`로 발급한다. 운영 HTTPS
 환경에서는 `Secure=true`다. Refresh·Logout은 `Origin` 헤더가 `cking.cors.allowed-origins`의 허용 origin과
-일치할 때만 수행한다.
+일치할 때만 수행한다. 개발 환경에서는 사용자 Web(`https://dev.cking.co.kr`)과 관리자 Web
+(`https://dev-admin.cking.co.kr`)을 같은 목록에 등록해 두 Origin 모두 이 흐름을 사용할 수 있다.
 
 ## 오류 계약
 
