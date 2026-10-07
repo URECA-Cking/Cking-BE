@@ -68,6 +68,12 @@ public class CreatorPostComment {
     @Column(name = "filtered_at")
     private Instant filteredAt;
 
+    @Column(name = "filter_attempts", nullable = false)
+    private int filterAttempts;
+
+    @Column(name = "filter_next_attempt_at")
+    private Instant filterNextAttemptAt;
+
     public CreatorPostComment(Long postId, Long memberId, String content, Instant now) {
         this.postId = Objects.requireNonNull(postId, "postId");
         this.memberId = Objects.requireNonNull(memberId, "memberId");
@@ -79,12 +85,15 @@ public class CreatorPostComment {
 
     /**
      * 본문을 고치고 다시 판정받도록 미판정(PENDING)으로 되돌린다. 이전 판정(action·사유)은 새 판정이 덮어쓸 때까지
-     * 남겨 둔다. BLOCK이던 댓글을 고쳐 판정이 끝나기 전에 다시 노출시키는 우회를 막기 위해서다.
+     * 남겨 둔다. BLOCK이던 댓글을 고쳐 판정이 끝나기 전에 다시 노출시키는 우회를 막기 위해서다. 새 본문은 처음부터
+     * 다시 판정하므로 재시도 횟수와 다음 시도 시각도 초기화한다.
      */
     public void update(String content, Instant now) {
         this.content = Objects.requireNonNull(content, "content");
         this.updatedAt = Objects.requireNonNull(now, "now");
         this.filterStatus = CommentFilterStatus.PENDING;
+        this.filterAttempts = 0;
+        this.filterNextAttemptAt = null;
     }
 
     /**
@@ -106,6 +115,7 @@ public class CreatorPostComment {
         this.filterModelVersion = Objects.requireNonNull(modelVersion, "modelVersion");
         this.filteredAt = Objects.requireNonNull(now, "now");
         this.filterStatus = CommentFilterStatus.DONE;
+        this.filterNextAttemptAt = null;
     }
 
     /** 필터 서비스 장애로 판정하지 못했음을 기록한다. 댓글은 통과 상태로 보이고 나중에 다시 판정한다. */

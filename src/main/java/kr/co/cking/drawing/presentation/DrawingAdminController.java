@@ -100,8 +100,11 @@ public class DrawingAdminController {
         return ApiResponse.success(drawingAdminQueryService.getDrawingResult(drawingId, memberId));
     }
 
-    /** 관리자가 저장된 Drawing 입력과 결과를 재현해 검증 결과를 저장한다. */
-    @Operation(summary = "Drawing 재현 검증", description = "관리자가 Drawing의 결정론적 재현 검증을 실행합니다.")
+    /** 관리자가 저장된 입력을 기준으로 Drawing 결과를 재현 검증한다. */
+    @Operation(
+            summary = "Drawing 재현 검증",
+            description = "관리자가 완료된 Drawing의 Snapshot·Seed·알고리즘을 다시 실행해 저장된 결과와 일치하는지 검증합니다."
+    )
     @PostMapping("/api/admin/drawings/{drawingId}/verify")
     public ApiResponse<DrawingVerificationResult> verifyDrawing(
             @PathVariable @Positive Long drawingId,
@@ -110,8 +113,11 @@ public class DrawingAdminController {
         return ApiResponse.success(drawingVerificationService.verify(drawingId, memberId));
     }
 
-    /** 관리자가 Drawing 재현 검증 이력을 최신순 페이지로 조회한다. */
-    @Operation(summary = "Drawing 검증 이력 조회", description = "관리자가 Drawing 재현 검증 이력을 최신순으로 조회합니다.")
+    /** 관리자가 Drawing 재현 검증 실행 이력을 페이지로 조회한다. */
+    @Operation(
+            summary = "Drawing 검증 이력 조회",
+            description = "관리자가 Drawing의 재현 검증 결과를 최신 실행순으로 페이지 조회합니다."
+    )
     @GetMapping("/api/admin/drawings/{drawingId}/verification-history")
     public ApiResponse<PageResponse<DrawingVerificationResult>> getVerificationHistory(
             @PathVariable @Positive Long drawingId,
