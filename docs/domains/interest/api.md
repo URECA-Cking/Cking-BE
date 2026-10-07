@@ -89,6 +89,7 @@ Cking-LLM 배치가 한 관심 분야의 완결된 후보 묶음을 적재한다
 
 ```json
 {
+  "applicationSequence": 1,
   "taxonomyVersion": "v0.2",
   "taxonomyHash": "<64자리 lowercase SHA-256>",
   "interestCode": "SPORTS",
@@ -134,8 +135,10 @@ Cking-LLM 배치가 한 관심 분야의 완결된 후보 묶음을 적재한다
 | 필드 형식·길이 위반(해시 형식, 점수 범위·자릿수, `rank` 범위, 빈 값) | `VALIDATION_FAILED` | 400 |
 | 등록되지 않은 `taxonomyVersion`, `taxonomyHash` 불일치, 메타데이터 불일치, 정렬·`rank`·중복 위반 | `INVALID_RECOMMENDATION_RESULT` | 400 |
 | 그 버전에 없는 `interestCode`, 존재하지 않는 후보 Creator | `RESOURCE_NOT_FOUND` | 404 |
-| 현재 활성 세대와 같은 `inputHash`에 다른 payload | `RECOMMENDATION_INPUT_CONFLICT` | 409 |
-| 이미 교체된 과거 `inputHash` | `STALE_RECOMMENDATION_INPUT` | 409 |
+| 현재 활성 세대와 같은 `applicationSequence`에 다른 payload | `RECOMMENDATION_INPUT_CONFLICT` | 409 |
+| 현재 대상보다 작은 `applicationSequence` | `STALE_RECOMMENDATION_INPUT` | 409 |
 
-- 하나라도 위반하면 묶음 전체를 거부하고 기존 활성 결과는 유지한다. 한 번 교체된 과거 `inputHash`는 재활성화하지 않는다.
-- 멱등 키는 `(taxonomyVersion, interestCode, inputHash)`, 현재 포인터 기준은 `(taxonomyVersion, interestCode)`다.
+- 하나라도 위반하면 묶음 전체를 거부하고 기존 활성 결과는 유지한다. 더 큰 실행 번호로 과거 inputHash를 다시 적용할 수 있다.
+- 멱등 키는 `(taxonomyVersion, interestCode, applicationSequence)`, 현재 포인터 기준은 `(taxonomyVersion, interestCode)`다.
+
+두 적재 API의 필수 실행 번호, 순서 검증, 동시성, 부분 적용과 클라이언트 전환은 [적용 실행 순서 계약](../creator/similarity-recommendation.md#적용-실행-순서-계약-473-llm-52)을 따른다.

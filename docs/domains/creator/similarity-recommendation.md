@@ -18,9 +18,9 @@ Issue #393에서 Cking-LLM이 오프라인으로 만든 단일 크리에이터 �
 
 ## 저장 모델과 원자 교체
 
-DB 정본은 `V40__add_creator_similarity_recommendation.sql`이다.
+DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호를 도입한 `V46__add_recommendation_application_sequence.sql`이다.
 
-- `creator_similarity_generation`: 원본 Creator와 `method`, `modelVersion`, `inputHash`, 생성 시각을 보존한다.
+- `creator_similarity_generation`: 원본 Creator와 `applicationSequence`, `method`, `modelVersion`, `inputHash`, 생성 시각을 보존한다.
 - `creator_similarity_candidate`: 세대에 속한 후보와 점수·순위를 보존한다.
 - `creator_similarity_state`: 원본 Creator별 현재 공개 `generationId` 한 개를 가리킨다.
 
@@ -28,14 +28,26 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`이다.
 
 빈 정상 결과도 candidate 행이 없는 generation으로 저장하고 state 포인터를 그 세대로 교체한다. 공개 조회는 생성 메타데이터와 빈 `candidates`를 반환한다.
 
-## 멱등성과 오래된 결과
+## 적용 실행 순서 계약 (#473, LLM #52)
 
-멱등 키는 `(creatorId, inputHash)`다.
+- 두 적재 API는 최상위 `applicationSequence`를 필수 JSON 정수로 받는다. 허용 범위는 1~9223372036854775807이다. `inputHash`는 내용 지문이며 실행 번호를 섞지 않는다.
+- LLM 배치 조정자는 BE 대상 환경별로 하나의 증가 번호를 영속 발급하고, 한 실행의 모든 Creator·관심 분야 요청에 같은 번호를 쓴다. 동시 실행은 번호 발급을 직렬화해야 한다. 시각·임의 UUID로 순서를 추론하지 않는다.
+- 멱등 키는 유사 추천 `(creatorId, applicationSequence)`, 관심 분야 `(taxonomyVersion, interestCode, applicationSequence)`다. 현재 대상 번호와 같고 내용 지문·메타데이터·후보·점수·순위가 같으면 기존 generationId와 `applied=false`를 반환한다. 같은 번호의 다른 payload는 `RECOMMENDATION_INPUT_CONFLICT`(409)다.
+- 대상의 현재 번호보다 작으면, 한 번도 저장되지 않았던 실행도 `STALE_RECOMMENDATION_INPUT`(409)로 거부한다. 오래된 요청은 payload 충돌보다 순서 검증을 우선한다. 더 큰 번호는 같은 과거 inputHash라도 새 generation으로 원자 교체한다. A(1)→B(2)→A(3)가 가능하며 이후 B(2)는 거부된다.
+- 대상 Creator 또는 관심 분야 행 잠금으로 동시 요청을 직렬화하고 DB 유일 제약으로 같은 실행의 중복 generation을 막는다. 후보 저장·포인터 교체는 한 트랜잭션이다. 빈 후보도 같은 순서·멱등 규칙으로 적용한다. 실패 시 기존 포인터와 후보를 유지한다.
+- 순서 차단은 **대상별**이다. 전역 원자 전환이나 전역 실행 fence는 제공하지 않는다. A 복귀가 아직 적용되지 않은 대상에는 지연 B가 적용될 수 있으며, 복귀 A의 더 큰 번호가 그 대상을 최종 교체한다. 새 실행은 삭제·누락된 대상을 포함해 이전 대상에 빈 묶음까지 전달해야 한다.
+- 부분 실패 복구는 기존 실행 번호·payload를 유지하여 미완료 대상을 재전송한다. 더 최신 실행이 시작됐다면 과거 실행을 중단하고 최신 실행을 모든 대상에 완료한다. 409를 성공 처리하거나 무조건 재시도하지 않는다. 동일 번호 payload 충돌은 산출물 오류를 조사하고, 의도적인 새 적용은 더 큰 번호를 발급한다.
+- 전환 시 구형 배치를 먼저 중지하고 BE 마이그레이션과 필수 필드 클라이언트를 함께 배포한다. 필드 누락·0·음수는 `VALIDATION_FAILED`(400), 내부 Command 위반은 `INVALID_RECOMMENDATION_RESULT`다. V46은 기존 이력을 `-generation_id`로 예약하므로 첫 새 실행은 1부터 시작 가능하다. 기존 양수 번호를 사용한 환경에서는 재설치·체크포인트 초기화로 번호를 재사용하지 않는다. 환경 전환·DB 복원 후에는 대상 환경의 마지막 발급/적용 최대 번호보다 크게 발급한다.
+- ADMIN JWT 재검증, API Key 우선 판단과 401/403 계약은 유지한다. 이 계약은 사용자 승인으로 확정한 BE/LLM 연동 규격이며 LLM #52의 클라이언트 반영이 필요하다.
 
-- 현재 활성 세대와 같은 `inputHash`·동일 payload 재전송은 새 행을 만들지 않고 `applied=false`로 기존 generation을 반환한다.
-- 현재 `inputHash`는 같지만 메타데이터·후보·점수·순위가 다르면 `RECOMMENDATION_INPUT_CONFLICT`다.
-- 한 번 저장됐으나 새 세대로 교체된 과거 `inputHash`를 다시 보내면 `STALE_RECOMMENDATION_INPUT`이다. 과거 결과를 재활성화하지 않는다.
-- 처음 보는 `inputHash`는 새 세대로 저장한다. 전달 계약에 생성 시각·단조 증가 버전이 없으므로, 한 번도 저장되지 않은 두 해시 사이의 시간 순서는 BE가 추론하지 않는다.
+## #473 검증 기록 (2026-10-07)
+
+- 전용 MySQL 8.4(`cking_473`, 13306)와 Redis 7.2(16379)에서 검증했다. 테스트는 롤백 또는 고유 fixture만 사용하며 공용 테이블 전체를 삭제하지 않는다.
+- `compileJava`, `compileTestJava`, `bootJar` 성공. 추천·인증·추첨 관련 선택 테스트 222건 성공, 실패·오류·skip 0건.
+- 선택 범위: `*CreatorSimilarity*Test`, `*InterestRecommendation*Test`, `*RecommendationApplicationSequenceIntegrationTest`, `*RecommendationApiKey*Test`, `*CreatorRecommendationIntegrationTest`, `*PersonalizedRecommendationInterestIntegrationTest`, `kr.co.cking.drawing.domain.*`, `kr.co.cking.drawing.application.*ServiceTest`.
+- A→B→새 실행 A, 동일 실행 재시도·payload 충돌, 미적용 과거 실행 차단, B 일부 적용 후 A 복귀, 동일/서로 다른 실행 동시 적재, 빈 세대, 후보 저장 실패 후 포인터 보존·재개를 검증했다.
+- V46 신규 마이그레이션 성공. 별도 격리 스키마에서 각 추천 종류의 기존 이력 2건을 음수 번호로 보존하고, 같은 내용 지문을 새 양수 번호로 재적재해 3건이 유지됨을 확인했다.
+- ADMIN 권한 회수 재검증, API Key 우선 인증과 401/403 회귀 테스트 통과. 실제 Python HTTP 배치 E2E는 LLM #53 범위다.
 
 ## 외부 API와 조회 경계
 
