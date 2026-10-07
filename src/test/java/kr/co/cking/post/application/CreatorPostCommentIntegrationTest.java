@@ -10,7 +10,12 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostFields;
 import kr.co.cking.post.application.dto.CreatorPostView;
+import kr.co.cking.post.domain.CommentFilterAction;
 import kr.co.cking.post.domain.PostVisibility;
+import kr.co.cking.post.filter.CommentFilterResult;
+import kr.co.cking.post.filter.CommentFilterResultService;
+import kr.co.cking.post.filter.CommentFilterRetryService;
+import kr.co.cking.post.repository.CommentFilterRetryCandidate;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +26,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -43,6 +50,10 @@ class CreatorPostCommentIntegrationTest {
     @Autowired
     private CreatorFollowService followService;
     @Autowired
+    private CommentFilterRetryService retryService;
+    @Autowired
+    private CommentFilterResultService resultService;
+    @Autowired
     private CreatorPostCommentRepository commentRepository;
     @Autowired
     private CreatorPostRepository postRepository;
@@ -56,6 +67,7 @@ class CreatorPostCommentIntegrationTest {
     private final List<Member> members = new ArrayList<>();
     private Creator creator;
     private Member fan;
+    private Long publicPostId;
 
     @AfterEach
     void cleanUp() {
@@ -204,6 +216,77 @@ class CreatorPostCommentIntegrationTest {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Test
+    void 재필터링_선점은_시도_횟수와_다음_시각을_확보하고_같은_횟수로는_두_번_성공하지_않는다() {
+        Long commentId = commentOnPublicPost("재시도 대상");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+
+        assertThat(retryCandidates(farFuture, farFuture, 5, commentId)).containsExactly(0);
+
+        Instant nextAttemptAt = Instant.now().plus(Duration.ofMinutes(1));
+        assertThat(retryService.claim(commentId, 0, nextAttemptAt)).isTrue();
+        assertThat(retryService.claim(commentId, 0, nextAttemptAt)).isFalse();
+
+        // 다음 시도 시각 전에는 대상이 아니고, 시각이 지나면 횟수 1로 다시 대상이 된다.
+        assertThat(retryCandidates(Instant.now(), farFuture, 5, commentId)).isEmpty();
+        assertThat(retryCandidates(nextAttemptAt.plusSeconds(1), farFuture, 5, commentId)).containsExactly(1);
+    }
+
+    @Test
+    void 재필터링은_작성_직후_대기_시간이_지나기_전과_시도_상한에_닿은_댓글을_제외한다() {
+        Long commentId = commentOnPublicPost("대기 중");
+
+        // 방금 쓴 댓글은 대기 시간(pendingBefore)이 지나기 전에는 대상이 아니다.
+        assertThat(retryCandidates(Instant.now(), Instant.now().minus(Duration.ofHours(1)), 5, commentId)).isEmpty();
+
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+        assertThat(retryService.claim(commentId, 0, Instant.now().minusSeconds(1))).isTrue();
+        assertThat(retryCandidates(farFuture, farFuture, 1, commentId)).isEmpty();
+        assertThat(retryCandidates(farFuture, farFuture, 2, commentId)).containsExactly(1);
+    }
+
+    @Test
+    void 판정을_마친_댓글은_재필터링_대상도_선점_대상도_아니다() {
+        Long commentId = commentOnPublicPost("판정 완료");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+
+        assertThat(resultService.saveResult(commentId, "판정 완료", new CommentFilterResult(
+                CommentFilterAction.PASS, List.of(), "rule-1", "model-1"))).isTrue();
+
+        assertThat(retryCandidates(farFuture, farFuture, 5, commentId)).isEmpty();
+        assertThat(retryService.claim(commentId, 0, farFuture)).isFalse();
+    }
+
+    @Test
+    void 본문을_수정하면_재필터링_횟수가_초기화되어_이전_횟수로는_선점할_수_없다() {
+        Long commentId = commentOnPublicPost("고치기 전");
+        Instant farFuture = Instant.now().plus(Duration.ofDays(1));
+        assertThat(retryService.claim(commentId, 0, Instant.now().minusSeconds(1))).isTrue();
+
+        commentService.update(fan.getMemberId(), creator.getCreatorId(), publicPostId, commentId, "고친 뒤");
+
+        assertThat(retryService.claim(commentId, 1, farFuture)).isFalse();
+        assertThat(retryCandidates(farFuture, farFuture, 5, commentId)).containsExactly(0);
+    }
+
+    private Long commentOnPublicPost(String content) {
+        Member owner = member();
+        fan = member();
+        creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "creator-" + suffix()));
+        followService.follow(fan.getMemberId(), creator.getCreatorId());
+        publicPostId = postService.create(owner.getMemberId(),
+                new CreatorPostFields("본문", PostVisibility.PUBLIC, List.of())).postId();
+        return commentService.create(fan.getMemberId(), creator.getCreatorId(), publicPostId, content).commentId();
+    }
+
+    /** 공용 DB의 다른 댓글을 섞지 않도록 대상 댓글의 시도 횟수만 골라 돌려준다. */
+    private List<Integer> retryCandidates(Instant now, Instant pendingBefore, int maxAttempts, Long commentId) {
+        return retryService.findCandidates(now, pendingBefore, maxAttempts, 1000).stream()
+                .filter(candidate -> candidate.commentId().equals(commentId))
+                .map(CommentFilterRetryCandidate::attempts)
+                .toList();
     }
 
     private Member member() {
