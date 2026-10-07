@@ -122,13 +122,14 @@ class CreatorEventConcurrencyIntegrationTest {
     /** 병렬 Scheduler 호출에서도 Event 행 잠금으로 OPEN 전이는 한 번만 성공한다. */
     @Test
     void concurrentOpenTransitionsScheduledEventExactlyOnce() throws Exception {
+        // startAt을 미래로 둬 Scheduler tick이 먼저 OPEN으로 바꾸지 못하게 한다(open()은 시간을 보지 않는다).
         Member creator = saveMember("동시 시작 크리에이터", MemberRole.USER);
         Creator savedCreator = saveCreator(creator);
         Event event = eventRepository.saveAndFlush(Event.builder()
                 .creatorId(savedCreator.getCreatorId())
                 .requestId("550e8400-e29b-41d4-a716-446655440015")
                 .title("동시 시작 이벤트")
-                .startAt(Instant.now().minusSeconds(1))
+                .startAt(Instant.now().plus(java.time.Duration.ofHours(1)))
                 .endAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .winnerCount(1)
                 .drawMethod(DrawMethod.WEIGHTED.name())
@@ -298,6 +299,7 @@ class CreatorEventConcurrencyIntegrationTest {
         }
     }
 
+    /** startAt을 미래로 둬 테스트 컨텍스트의 EventLifecycleScheduler가 먼저 OPEN으로 바꾸지 못하게 한다. 수동 open()은 시간을 보지 않는다. */
     private Event persistScheduledEvent(String requestId) {
         Member creator = saveMember("캐시 시작 크리에이터", MemberRole.USER);
         Creator savedCreator = saveCreator(creator);
@@ -305,7 +307,7 @@ class CreatorEventConcurrencyIntegrationTest {
                 .creatorId(savedCreator.getCreatorId())
                 .requestId(requestId)
                 .title("캐시 시작 이벤트")
-                .startAt(Instant.now().minusSeconds(1))
+                .startAt(Instant.now().plus(java.time.Duration.ofHours(1)))
                 .endAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .winnerCount(1)
                 .drawMethod(DrawMethod.WEIGHTED.name())
