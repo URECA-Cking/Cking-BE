@@ -71,6 +71,23 @@ public class EventReviewService {
         return new org.springframework.data.domain.PageImpl<>(items, pageable, requests.getTotalElements());
     }
 
+    /** 관리자가 운영할 삭제되지 않은 Event를 선택 상태와 페이지 조건으로 조회한다. */
+    @Transactional(readOnly = true)
+    public Page<ManagedEvent> findManagedEvents(Long adminId, kr.co.cking.event.domain.EventStatus status,
+                                                  Pageable pageable) {
+        requireAdmin(adminId);
+        Page<Event> events = eventRepository.findManagedEvents(status, pageable);
+        if (events.isEmpty()) {
+            return new org.springframework.data.domain.PageImpl<>(List.of(), pageable, events.getTotalElements());
+        }
+        Map<Long, Creator> creatorsById = creatorRepository.findByCreatorIdIn(events.stream()
+                        .map(Event::getCreatorId).distinct().toList())
+                .stream().collect(Collectors.toMap(Creator::getCreatorId, Function.identity()));
+        List<ManagedEvent> items = events.stream()
+                .map(event -> toManagedEvent(event, creatorsById)).toList();
+        return new org.springframework.data.domain.PageImpl<>(items, pageable, events.getTotalElements());
+    }
+
     /** 승인 요청과 연결된 Event·Creator 정보를 관리자 목록 항목으로 결합한다. */
     private PendingEvent toPendingEvent(
             EventApprovalRequest request,
@@ -84,8 +101,19 @@ public class EventReviewService {
         return new PendingEvent(request, event, creator.getName());
     }
 
+    /** Event와 Creator 이름을 관리자 운영 목록 항목으로 결합한다. */
+    private ManagedEvent toManagedEvent(Event event, Map<Long, Creator> creatorsById) {
+        Creator creator = java.util.Optional.ofNullable(creatorsById.get(event.getCreatorId()))
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        return new ManagedEvent(event, creator.getName());
+    }
+
     /** 관리자 승인 대기 목록에 필요한 승인 요청·Event·Creator 정보를 전달한다. */
     public record PendingEvent(EventApprovalRequest request, Event event, String creatorName) {
+    }
+
+    /** 관리자 운영 목록에 필요한 Event와 Creator 이름을 전달한다. */
+    public record ManagedEvent(Event event, String creatorName) {
     }
 
     /** 승인 대기 Event를 거절하고 현재 승인 요청 이력에 사유를 기록한다. */

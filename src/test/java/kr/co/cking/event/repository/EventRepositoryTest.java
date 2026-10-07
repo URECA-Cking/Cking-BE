@@ -145,6 +145,26 @@ class EventRepositoryTest {
                 .doesNotContain(deleted.getEventId(), draft.getEventId());
     }
 
+    /** 관리자 운영 목록은 삭제 Event를 제외하고 선택한 상태만 생성일 역순으로 조회하는지 검증한다. */
+    @Test
+    void 관리자_운영_목록은_상태를_필터링하고_삭제_Event를_제외한다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        Event firstOpen = persistEvent(creatorId, memberId, EventStatus.OPEN, END, null);
+        Event deletedOpen = persistEvent(creatorId, memberId, EventStatus.OPEN, END,
+                Instant.parse("2026-09-01T00:00:00Z"));
+        Event scheduled = persistEvent(creatorId, memberId, EventStatus.SCHEDULED, END, null);
+        entityManager.flush();
+        entityManager.clear();
+
+        var events = eventRepository.findManagedEvents(EventStatus.OPEN,
+                PageRequest.of(0, 20)).getContent();
+
+        assertThat(events).extracting(Event::getEventId)
+                .contains(firstOpen.getEventId())
+                .doesNotContain(deletedOpen.getEventId(), scheduled.getEventId());
+    }
+
     private Event persistEvent(long creatorId, long memberId, EventStatus status, Instant endAt, Instant deletedAt) {
         return persistEventBetween(creatorId, memberId, status, START, endAt, deletedAt);
     }

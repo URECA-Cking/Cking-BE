@@ -53,6 +53,19 @@ public final class EventManagementResponse {
         }
     }
 
+    /** 관리자 운영 목록의 Event 항목을 반환한다. */
+    public record AdminItem(Long eventId, Long creatorId, String creatorName, String title, java.time.Instant startAt,
+                            java.time.Instant endAt, int winnerCount, kr.co.cking.event.domain.DrawMethod drawMethod,
+                            EventStatus status) {
+        /** Event와 Creator 정보를 관리자 운영 목록 응답으로 변환한다. */
+        public static AdminItem from(kr.co.cking.event.application.EventReviewService.ManagedEvent managedEvent) {
+            Event event = managedEvent.event();
+            return new AdminItem(event.getEventId(), event.getCreatorId(), managedEvent.creatorName(), event.getTitle(),
+                    event.getStartAt(), event.getEndAt(), event.getWinnerCount(),
+                    kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()), event.getStatus());
+        }
+    }
+
     /** 공통 목록 페이지 메타데이터를 반환한다. */
     public record PageResult<T>(List<T> items, int page, int size, long totalElements, int totalPages, boolean hasNext) {
         /** Spring Page를 API 페이지 응답으로 변환한다. */

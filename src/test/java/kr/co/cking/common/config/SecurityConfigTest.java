@@ -158,7 +158,7 @@ class SecurityConfigTest {
     /** USER JWT는 모든 ADMIN API의 1차 인가에서 거절한다. */
     @Test
     void USER_JWT는_ADMIN_API를_403으로_거절한다() throws Exception {
-        mockMvc.perform(get("/api/admin/dead-streams")
+        mockMvc.perform(get("/api/admin/events")
                         .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
                 .andExpect(status().isForbidden())
                 .andExpect(content().json("{\"code\":\"FORBIDDEN\"}"));
@@ -167,7 +167,7 @@ class SecurityConfigTest {
     /** ADMIN JWT는 기존 관리자 경로의 Security 인가를 통과하는지 검증한다. */
     @Test
     void ADMIN_JWT는_ADMIN_API를_정상_호출한다() throws Exception {
-        mockMvc.perform(get("/api/admin/dead-streams")
+        mockMvc.perform(get("/api/admin/events")
                         .header(AUTHORIZATION, "Bearer " + validAccessToken("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(content().string("admin-api"));
@@ -412,6 +412,12 @@ class SecurityConfigTest {
         /** 관리자 JWT가 인가된 요청에 성공 응답을 반환한다. */
         @GetMapping("/api/admin/dead-streams")
         String accessAdminApi() {
+            return "admin-api";
+        }
+
+        /** 관리자 Event 운영 목록 경로가 인가된 요청에 성공 응답을 반환한다. */
+        @GetMapping("/api/admin/events")
+        String accessManagedEventList() {
             return "admin-api";
         }
     }
