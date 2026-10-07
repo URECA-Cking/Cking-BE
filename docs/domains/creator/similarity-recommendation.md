@@ -85,9 +85,18 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`이다.
 | 있음 | 있음 | `HYBRID_PERSONALIZED_V1` |
 | 있음 | 없음 | `INTEREST_PERSONALIZED_V1` |
 | 없음 | 있음 | `FOLLOW_PERSONALIZED_V2` |
-| 없음 | 없음 | `FOLLOW_PERSONALIZED_V2`(빈 목록) |
+| 없음 | 없음 | 개인화 결과가 없어 인기순 대체(`POPULAR_FALLBACK_V1`) |
+
+개인화 정책이 만든 `items`가 비어 있을 때만 인기순으로 대체한다. 개인화 결과가 하나라도 있으면 인기순을 섞지 않는다.
 
 정책 상수(60, 8자리, HALF_UP, 가중치 0.5/0.5)나 정렬 조건을 바꾸면 새 `policyVersion`과 fixture를 정의한다.
+
+### 인기순 fallback
+
+개인화 결과가 비면 **팔로워 수 내림차순, 같으면 `creatorId` 오름차순**으로 Creator Space가 있는 Creator를 반환한다(`POPULAR_FALLBACK_V1`).
+팔로워가 0명인 Creator도 포함한다. 본인과 이미 팔로우한 Creator는 제외하며, 제외 대상은 조회 뒤에 걸러내므로 그만큼 더 읽어 `size`를 채운다.
+`aggregateScore`에는 팔로워 수가 들어가고 `interestCodes`·`seedCreatorIds`는 빈 배열이다. 팔로워 수는 `creator_follow`를 요청 시점에 집계하며
+집계 컬럼·캐시는 아직 없다(데이터가 늘면 별도 도입).
 
 ### 팔로우 단독 정책 변경(#410 → #442)
 
