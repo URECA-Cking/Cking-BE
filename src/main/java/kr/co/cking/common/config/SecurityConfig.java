@@ -116,6 +116,7 @@ public class SecurityConfig {
                                 "/api/me/follows",
                                 "/api/me/creator-recommendations",
                                 "/api/me/interests",
+                                "/api/me/onboarding/complete",
                                 "/api/tickets/common",
                                 "/api/tickets/common/history",
                                 "/api/events/*",

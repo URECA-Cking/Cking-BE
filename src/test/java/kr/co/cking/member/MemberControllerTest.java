@@ -55,7 +55,7 @@ class MemberControllerTest {
     @Test
     void 일반_사용자의_현재_프로필을_공통_응답으로_반환한다() throws Exception {
         when(memberQueryService.getProfile(1L))
-                .thenReturn(new MemberProfile(1L, "홍길동", "hong@example.com", MemberRole.USER));
+                .thenReturn(new MemberProfile(1L, "홍길동", "hong@example.com", MemberRole.USER, true));
         when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
 
         mockMvc.perform(get("/api/me"))
@@ -65,13 +65,14 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.data.name").value("홍길동"))
                 .andExpect(jsonPath("$.data.email").value("hong@example.com"))
                 .andExpect(jsonPath("$.data.role").value("USER"))
-                .andExpect(jsonPath("$.data.creator").value(false));
+                .andExpect(jsonPath("$.data.creator").value(false))
+                .andExpect(jsonPath("$.data.onboardingCompleted").value(true));
     }
 
     @Test
     void Creator의_현재_프로필은_creator_true를_반환한다() throws Exception {
         when(memberQueryService.getProfile(1L))
-                .thenReturn(new MemberProfile(1L, "크리에이터", "creator@example.com", MemberRole.USER));
+                .thenReturn(new MemberProfile(1L, "크리에이터", "creator@example.com", MemberRole.USER, true));
         when(creatorQueryService.isCreatorMember(1L)).thenReturn(true);
 
         mockMvc.perform(get("/api/me"))
@@ -87,5 +88,14 @@ class MemberControllerTest {
         mockMvc.perform(get("/api/me"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void 온보딩_완료_API는_JWT_회원으로_멱등_완료를_기록한다() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/me/onboarding/complete"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+
+        org.mockito.Mockito.verify(memberQueryService).completeOnboarding(1L);
     }
 }

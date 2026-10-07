@@ -43,12 +43,20 @@ public class Member {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "onboarding_completed", nullable = false)
+    private boolean onboardingCompleted;
+
     public Member(String name, String phone, String email, MemberRole role) {
         this.name = name;
         this.phone = phone;
         this.email = email;
         this.role = role;
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
+    }
+
+    /** 온보딩 완료를 기록한다. 이미 완료된 회원에게도 같은 결과다. */
+    public void completeOnboarding() {
+        this.onboardingCompleted = true;
     }
 
     @PrePersist

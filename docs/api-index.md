@@ -79,7 +79,7 @@
 | 75 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/{templateId}/activate` | 템플릿 활성화 | 상태 기반 |
 | 76 | 외부 | Auth | PUBLIC | POST | `/api/auth/refresh` | Refresh Cookie를 회전해 Access JWT 갱신 | Refresh Token 1회 소비 |
 | 77 | 외부 | Auth | PUBLIC | POST | `/api/auth/logout` | Refresh Token 폐기 및 Cookie 만료 | - |
-| 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보 조회 | - |
+| 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보 조회(`onboardingCompleted` 포함) | - |
 | 79 | 외부 | Ticket | ADMIN | POST | `/api/admin/tickets/common/resync` | 공용 응모권 잔액 수동 재동기화(Redis를 DB 기준으로) | 상태 기반 |
 | 80 | 외부 | Creator Space | PUBLIC | GET | `/api/creators/{creatorId}/space` | Creator Space 홈·프로필 조회 | - |
 | 81 | 외부 | Creator Space | CREATOR | GET | `/api/creator/space` | 내 Creator Space 조회 | - |
@@ -136,5 +136,6 @@
 | 132 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/refresh` | 관리자 Refresh Cookie를 회전해 ADMIN Access JWT 갱신 | Refresh Token 1회 소비 |
 | 133 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/logout` | 관리자 Refresh Token 폐기 및 관리자 Cookie 만료 | - |
 | 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |
+| 136 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V49, 기존 회원은 전원 true) | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

@@ -32,11 +32,12 @@ class MemberQueryServiceTest {
         when(member.getName()).thenReturn("홍길동");
         when(member.getEmail()).thenReturn("hong@example.com");
         when(member.getRole()).thenReturn(MemberRole.USER);
+        when(member.isOnboardingCompleted()).thenReturn(true);
         when(repository.findById(1L)).thenReturn(Optional.of(member));
 
         MemberProfile result = service.getProfile(1L);
 
-        assertThat(result).isEqualTo(new MemberProfile(1L, "홍길동", "hong@example.com", MemberRole.USER));
+        assertThat(result).isEqualTo(new MemberProfile(1L, "홍길동", "hong@example.com", MemberRole.USER, true));
     }
 
     @Test
@@ -119,5 +120,25 @@ class MemberQueryServiceTest {
                 1L, new MemberInfo(1L, "홍길동", "010-0000-0001", "one@example.com"),
                 2L, new MemberInfo(2L, "김철수", "010-0000-0002", "two@example.com")
         ));
+    }
+
+    @Test
+    void 온보딩_완료는_여러_번_호출해도_완료_상태다() {
+        Member member = new Member("홍길동", null, null, MemberRole.USER);
+        when(repository.findById(1L)).thenReturn(Optional.of(member));
+
+        assertThat(member.isOnboardingCompleted()).isFalse();
+        service.completeOnboarding(1L);
+        service.completeOnboarding(1L);
+
+        assertThat(member.isOnboardingCompleted()).isTrue();
+    }
+
+    @Test
+    void 존재하지_않는_사용자의_온보딩_완료는_RESOURCE_NOT_FOUND다() {
+        when(repository.findById(999L)).thenReturn(Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.completeOnboarding(999L))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class);
     }
 }
