@@ -47,6 +47,12 @@ class CreatorSimilarityResultServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(generationRepository.findById(any())).thenAnswer(invocation -> {
+            Long id = invocation.getArgument(0);
+            CreatorSimilarityGeneration value = generation(id, FIRST_HASH);
+            ReflectionTestUtils.setField(value, "applicationSequence", id == 200L ? 2L : (id == 99L ? 0L : 1L));
+            return Optional.of(value);
+        });
         given(creatorRepository.findByIdForUpdate(10L))
                 .willReturn(Optional.of(creator(10L, "원본")));
     }
@@ -56,7 +62,7 @@ class CreatorSimilarityResultServiceTest {
         Creator candidate = creator(20L, "후보");
         given(creatorRepository.findByCreatorIdIn(Set.of(20L))).willReturn(List.of(candidate));
         given(stateRepository.findByCreatorIdForUpdate(10L)).willReturn(Optional.empty());
-        given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
+        given(generationRepository.findByCreatorIdAndApplicationSequenceForUpdate(10L, 1L))
                 .willReturn(Optional.empty());
         given(generationRepository.saveAndFlush(any())).willAnswer(invocation -> {
             CreatorSimilarityGeneration generation = invocation.getArgument(0);
@@ -81,7 +87,7 @@ class CreatorSimilarityResultServiceTest {
         given(creatorRepository.findByCreatorIdIn(Set.of(20L))).willReturn(List.of(candidate));
         given(stateRepository.findByCreatorIdForUpdate(10L))
                 .willReturn(Optional.of(new CreatorSimilarityState(10L, 100L)));
-        given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
+        given(generationRepository.findByCreatorIdAndApplicationSequenceForUpdate(10L, 1L))
                 .willReturn(Optional.of(generation));
         given(candidateRepository.findByGenerationIdForUpdateOrderByRankAsc(100L))
                 .willReturn(List.of(new CreatorSimilarityCandidate(
@@ -97,10 +103,9 @@ class CreatorSimilarityResultServiceTest {
 
     @Test
     void 이미_교체된_과거_입력_해시는_거부한다() {
-        given(creatorRepository.findByCreatorIdIn(Set.of(20L))).willReturn(List.of(creator(20L, "후보")));
         given(stateRepository.findByCreatorIdForUpdate(10L))
                 .willReturn(Optional.of(new CreatorSimilarityState(10L, 200L)));
-        given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
+        given(generationRepository.findByCreatorIdAndApplicationSequenceForUpdate(10L, 1L))
                 .willReturn(Optional.of(generation(100L, FIRST_HASH)));
 
         assertThatThrownBy(() -> service.replace(10L, command(
@@ -152,7 +157,7 @@ class CreatorSimilarityResultServiceTest {
     void 생성_메타데이터가_있는_빈_묶음은_새_세대로_저장하고_활성화한다() {
         CreatorSimilarityState state = new CreatorSimilarityState(10L, 99L);
         given(stateRepository.findByCreatorIdForUpdate(10L)).willReturn(Optional.of(state));
-        given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
+        given(generationRepository.findByCreatorIdAndApplicationSequenceForUpdate(10L, 1L))
                 .willReturn(Optional.empty());
         given(generationRepository.saveAndFlush(any())).willAnswer(invocation -> {
             CreatorSimilarityGeneration generation = invocation.getArgument(0);
@@ -161,7 +166,7 @@ class CreatorSimilarityResultServiceTest {
         });
 
         CreatorSimilarityResultService.StoreResult result = service.replace(10L,
-                new CreatorSimilarityResultCommand(10L, "M4", "model-v1", FIRST_HASH, List.of()));
+                new CreatorSimilarityResultCommand(1L, 10L, "M4", "model-v1", FIRST_HASH, List.of()));
 
         assertThat(result.applied()).isTrue();
         assertThat(result.candidateCount()).isZero();
@@ -171,7 +176,7 @@ class CreatorSimilarityResultServiceTest {
 
     @Test
     void 빈_묶음에_생성_메타데이터가_없으면_거부한다() {
-        assertThatThrownBy(() -> service.replace(10L, new CreatorSimilarityResultCommand(10L, null, null, null, List.of())))
+        assertThatThrownBy(() -> service.replace(10L, new CreatorSimilarityResultCommand(1L, 10L, null, null, null, List.of())))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(
                                 CreatorErrorCode.INVALID_RECOMMENDATION_RESULT));
@@ -181,7 +186,7 @@ class CreatorSimilarityResultServiceTest {
 
     @Test
     void 최상위와_후보의_생성_메타데이터가_다르면_거부한다() {
-        CreatorSimilarityResultCommand command = new CreatorSimilarityResultCommand(
+        CreatorSimilarityResultCommand command = new CreatorSimilarityResultCommand(1L,
                 10L,
                 "M2",
                 "model-v1",
@@ -201,14 +206,14 @@ class CreatorSimilarityResultServiceTest {
         given(creatorRepository.findByCreatorIdIn(Set.of(20L)))
                 .willReturn(List.of(creator(20L, "후보")));
         given(stateRepository.findByCreatorIdForUpdate(10L)).willReturn(Optional.empty());
-        given(generationRepository.findByCreatorIdAndInputHashForUpdate(10L, FIRST_HASH))
+        given(generationRepository.findByCreatorIdAndApplicationSequenceForUpdate(10L, 1L))
                 .willReturn(Optional.empty());
         given(generationRepository.saveAndFlush(any())).willAnswer(invocation -> {
             CreatorSimilarityGeneration generation = invocation.getArgument(0);
             ReflectionTestUtils.setField(generation, "generationId", 100L);
             return generation;
         });
-        CreatorSimilarityResultCommand command = new CreatorSimilarityResultCommand(
+        CreatorSimilarityResultCommand command = new CreatorSimilarityResultCommand(1L,
                 10L,
                 "M4",
                 "model-v1",
@@ -222,11 +227,37 @@ class CreatorSimilarityResultServiceTest {
         then(generationRepository).should().saveAndFlush(any());
     }
 
+    @Test
+    void 과거와_동일한_내용도_새_실행이면_적용한다() {
+        var state = new CreatorSimilarityState(10L, 200L);
+        given(stateRepository.findByCreatorIdForUpdate(10L)).willReturn(Optional.of(state));
+        given(generationRepository.saveAndFlush(any())).willAnswer(invocation -> {
+            CreatorSimilarityGeneration value = invocation.getArgument(0);
+            ReflectionTestUtils.setField(value, "generationId", 300L);
+            return value;
+        });
+        var result = service.replace(10L,
+                new CreatorSimilarityResultCommand(3L, 10L, "M4", "model-v1", FIRST_HASH, List.of()));
+        assertThat(result.applied()).isTrue();
+        assertThat(state.getCurrentGenerationId()).isEqualTo(300L);
+    }
+
+    @Test
+    void 저장된_적_없는_과거_실행도_현재_번호보다_작으면_거부한다() {
+        given(stateRepository.findByCreatorIdForUpdate(10L))
+                .willReturn(Optional.of(new CreatorSimilarityState(10L, 200L)));
+        assertThatThrownBy(() -> service.replace(10L,
+                new CreatorSimilarityResultCommand(1L, 10L, "M4", "model-v1", FIRST_HASH, List.of())))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getErrorCode())
+                        .isEqualTo(CreatorErrorCode.STALE_RECOMMENDATION_INPUT));
+        then(generationRepository).should(never()).saveAndFlush(any());
+    }
+
     private CreatorSimilarityResultCommand command(
             String inputHash,
             CreatorSimilarityResultCommand.Candidate... candidates
     ) {
-        return new CreatorSimilarityResultCommand(10L, null, null, null, List.of(candidates));
+        return new CreatorSimilarityResultCommand(1L, 10L, null, null, null, List.of(candidates));
     }
 
     private CreatorSimilarityResultCommand.Candidate candidate(
@@ -247,7 +278,7 @@ class CreatorSimilarityResultServiceTest {
 
     private CreatorSimilarityGeneration generation(Long generationId, String inputHash) {
         CreatorSimilarityGeneration generation = new CreatorSimilarityGeneration(
-                10L, "M4", "model-v1", inputHash, Instant.parse("2026-10-02T00:00:00Z"));
+                1L, 10L, "M4", "model-v1", inputHash, Instant.parse("2026-10-02T00:00:00Z"));
         ReflectionTestUtils.setField(generation, "generationId", generationId);
         return generation;
     }

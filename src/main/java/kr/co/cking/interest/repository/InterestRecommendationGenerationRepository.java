@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface InterestRecommendationGenerationRepository
         extends JpaRepository<InterestRecommendationGeneration, Long> {
 
-    Optional<InterestRecommendationGeneration> findByTaxonomyVersionAndInterestCodeAndInputHash(
-            String taxonomyVersion, String interestCode, String inputHash);
+    Optional<InterestRecommendationGeneration> findByTaxonomyVersionAndInterestCodeAndApplicationSequence(
+            String taxonomyVersion, String interestCode, Long applicationSequence);
 }

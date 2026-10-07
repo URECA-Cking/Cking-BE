@@ -51,6 +51,7 @@ class CreatorRecommendationIntegrationTest {
     private final List<Member> members = new ArrayList<>();
     private final List<Creator> creators = new ArrayList<>();
     private final List<CreatorSpace> spaces = new ArrayList<>();
+    private long applicationSequence;
 
     @AfterEach
     void cleanUp() {
@@ -199,7 +200,7 @@ class CreatorRecommendationIntegrationTest {
 
     private void activate(Creator seed, String method, List<CandidateSpec> candidateSpecs) {
         CreatorSimilarityGeneration generation = generationRepository.saveAndFlush(
-                new CreatorSimilarityGeneration(
+                new CreatorSimilarityGeneration(++applicationSequence,
                         seed.getCreatorId(), method, "model-v1", hash(), Instant.now()));
         candidateRepository.saveAll(candidateSpecs.stream()
                 .map(spec -> new CreatorSimilarityCandidate(

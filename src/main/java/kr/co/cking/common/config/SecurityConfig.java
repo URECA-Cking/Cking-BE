@@ -47,6 +47,8 @@ public class SecurityConfig {
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/token"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/refresh"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/logout"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/admin/auth/refresh"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/admin/auth/logout"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/auth/admin/login"));
 
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
@@ -97,6 +99,7 @@ public class SecurityConfig {
                         .requestMatchers("/readyz", "/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers(RecommendationApiKeyAuthenticationFilter.WRITE_ENDPOINTS)
                         .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
+                        .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/winners/*/history").authenticated()
                         .requestMatchers(

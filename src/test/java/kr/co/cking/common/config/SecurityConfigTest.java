@@ -8,6 +8,7 @@ import kr.co.cking.auth.application.RefreshTokenService;
 import kr.co.cking.auth.application.dto.AccessTokenResult;
 import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
 import kr.co.cking.auth.domain.AuthErrorCode;
+import kr.co.cking.auth.domain.RefreshSessionType;
 import kr.co.cking.auth.presentation.AuthController;
 import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
 import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
@@ -64,13 +65,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         JwtConfig.class,
         JwtAuthenticationConverterConfig.class,
         CorsConfig.class,
+        RefreshRequestOriginValidator.class,
         AccessTokenJwtValidator.class,
         RestAuthenticationEntryPoint.class,
         RestAccessDeniedHandler.class
 })
 @TestPropertySource(properties = {
-        "cking.cors.allowed-origins=https://frontend.cking.co.kr",
-        "cking.cors.allow-credentials=false",
+        "cking.cors.allowed-origins=https://dev.cking.co.kr,https://dev-admin.cking.co.kr",
+        "cking.cors.allow-credentials=true",
+        "cking.auth.refresh.user-allowed-origins=https://dev.cking.co.kr",
+        "cking.auth.refresh.admin-allowed-origins=https://dev-admin.cking.co.kr",
         "cking.auth.jwt.secret=2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA="
 })
 class SecurityConfigTest {
@@ -101,9 +105,6 @@ class SecurityConfigTest {
 
     @MockitoBean
     private RefreshTokenCookieFactory refreshTokenCookieFactory;
-
-    @MockitoBean
-    private RefreshRequestOriginValidator refreshRequestOriginValidator;
 
     @MockitoBean
     private OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
@@ -152,7 +153,7 @@ class SecurityConfigTest {
     /** 모든 ADMIN API는 Access JWT 없이 호출할 수 없다. */
     @Test
     void ADMIN_API는_미인증_요청을_401로_거절한다() throws Exception {
-        mockMvc.perform(get("/api/admin/dead-streams"))
+        mockMvc.perform(get("/api/admin/events"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
@@ -160,7 +161,16 @@ class SecurityConfigTest {
     /** USER JWT는 모든 ADMIN API의 1차 인가에서 거절한다. */
     @Test
     void USER_JWT는_ADMIN_API를_403으로_거절한다() throws Exception {
-        mockMvc.perform(get("/api/admin/dead-streams")
+        mockMvc.perform(get("/api/admin/events")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json("{\"code\":\"FORBIDDEN\"}"));
+    }
+
+    /** USER JWT는 관리자 RedrawRequest 목록 경로의 1차 인가를 통과할 수 없다. */
+    @Test
+    void USER_JWT는_관리자_RedrawRequest_목록을_403으로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/admin/redraw-requests")
                         .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
                 .andExpect(status().isForbidden())
                 .andExpect(content().json("{\"code\":\"FORBIDDEN\"}"));
@@ -169,7 +179,7 @@ class SecurityConfigTest {
     /** ADMIN JWT는 기존 관리자 경로의 Security 인가를 통과하는지 검증한다. */
     @Test
     void ADMIN_JWT는_ADMIN_API를_정상_호출한다() throws Exception {
-        mockMvc.perform(get("/api/admin/dead-streams")
+        mockMvc.perform(get("/api/admin/events")
                         .header(AUTHORIZATION, "Bearer " + validAccessToken("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(content().string("admin-api"));
@@ -203,10 +213,10 @@ class SecurityConfigTest {
     @Test
     void 만료된_Access_JWT와_LoginCode로_AccessToken을_발급한다() throws Exception {
         when(loginCodeService.consume("one-time-code")).thenReturn(17L);
-        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
+        when(refreshTokenService.issue(17L, RefreshSessionType.USER_WEB)).thenReturn("refresh-token");
         when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
                 .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
-        when(refreshTokenCookieFactory.create("refresh-token"))
+        when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
 
         mockMvc.perform(post("/api/auth/token")
@@ -223,10 +233,10 @@ class SecurityConfigTest {
     @Test
     void 만료된_Access_JWT와_관리자_자격증명으로_로그인한다() throws Exception {
         when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
-        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
-        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+        when(refreshTokenService.issue(17L, RefreshSessionType.ADMIN_WEB)).thenReturn("refresh-token");
+        when(accessTokenService.issueAdmin(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
                 .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
-        when(refreshTokenCookieFactory.create("refresh-token"))
+        when(refreshTokenCookieFactory.create(RefreshSessionType.ADMIN_WEB, "refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
 
         mockMvc.perform(post("/api/auth/admin/login")
@@ -243,10 +253,10 @@ class SecurityConfigTest {
     @Test
     void 인증_없이_관리자_자격증명으로_로그인한다() throws Exception {
         when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
-        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
-        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+        when(refreshTokenService.issue(17L, RefreshSessionType.ADMIN_WEB)).thenReturn("refresh-token");
+        when(accessTokenService.issueAdmin(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
                 .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
-        when(refreshTokenCookieFactory.create("refresh-token"))
+        when(refreshTokenCookieFactory.create(RefreshSessionType.ADMIN_WEB, "refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
 
         mockMvc.perform(post("/api/auth/admin/login")
@@ -262,10 +272,10 @@ class SecurityConfigTest {
     @Test
     void 잘못된_Bearer_JWT와_관리자_자격증명으로_로그인한다() throws Exception {
         when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
-        when(refreshTokenService.issue(17L)).thenReturn("refresh-token");
-        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+        when(refreshTokenService.issue(17L, RefreshSessionType.ADMIN_WEB)).thenReturn("refresh-token");
+        when(accessTokenService.issueAdmin(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
                 .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
-        when(refreshTokenCookieFactory.create("refresh-token"))
+        when(refreshTokenCookieFactory.create(RefreshSessionType.ADMIN_WEB, "refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
 
         mockMvc.perform(post("/api/auth/admin/login")
@@ -278,68 +288,103 @@ class SecurityConfigTest {
         verify(adminAuthService).authenticate("admin", "password");
     }
 
-    /** 만료된 Access JWT가 자동 첨부되어도 Refresh Cookie 인증 흐름을 차단하지 않는다. */
+    /** 관리자 Web Origin에서도 만료된 Access JWT와 무관하게 관리자 Refresh Cookie 인증 흐름을 처리한다. */
     @Test
     void 만료된_Access_JWT와_RefreshCookie로_AccessToken을_갱신한다() throws Exception {
-        when(refreshTokenService.rotate("refresh-token"))
+        when(refreshTokenService.rotate("refresh-token", RefreshSessionType.ADMIN_WEB))
                 .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
-        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+        when(accessTokenService.issueAdmin(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
                 .thenReturn(new AccessTokenResult("next-access-token", "Bearer", 1800));
-        when(refreshTokenCookieFactory.create("next-refresh-token"))
+        when(refreshTokenCookieFactory.create(RefreshSessionType.ADMIN_WEB, "next-refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
 
-        mockMvc.perform(post("/api/auth/refresh")
+        mockMvc.perform(post("/api/admin/auth/refresh")
                         .header(AUTHORIZATION, "Bearer " + expiredAccessToken())
-                        .header(ORIGIN, "https://frontend.cking.co.kr")
-                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "refresh-token")))
+                        .header(ORIGIN, "https://dev-admin.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("admin_refresh_token", "refresh-token")))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
 
-        verify(refreshTokenService).rotate("refresh-token");
+        verify(refreshTokenService).rotate("refresh-token", RefreshSessionType.ADMIN_WEB);
     }
 
-    /** 만료된 Access JWT가 자동 첨부되어도 Logout의 Refresh Cookie 정리를 차단하지 않는다. */
+    /** 관리자 Web Origin에서도 만료된 Access JWT와 무관하게 관리자 Logout의 Refresh Cookie를 정리한다. */
     @Test
     void 만료된_Access_JWT와_RefreshCookie로_Logout한다() throws Exception {
-        when(refreshTokenCookieFactory.expire())
+        when(refreshTokenCookieFactory.expire(RefreshSessionType.ADMIN_WEB))
                 .thenReturn(ResponseCookie.from("refresh_token", "").maxAge(0).build());
 
-        mockMvc.perform(post("/api/auth/logout")
+        mockMvc.perform(post("/api/admin/auth/logout")
                         .header(AUTHORIZATION, "Bearer " + expiredAccessToken())
-                        .header(ORIGIN, "https://frontend.cking.co.kr")
-                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "refresh-token")))
+                        .header(ORIGIN, "https://dev-admin.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("admin_refresh_token", "refresh-token")))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
 
         verify(refreshTokenService).revoke("refresh-token");
     }
 
-    /** Authorization 헤더를 포함한 허용 origin의 사전 요청을 처리하는지 검증한다. */
+    /** 사용자 Web Origin의 credential 포함 일반 API 사전 요청을 처리하는지 검증한다. */
     @Test
-    void 허용된_origin의_CORS_사전_요청을_처리한다() throws Exception {
+    void 사용자_Web_Origin의_일반_API_CORS_사전_요청을_처리한다() throws Exception {
         mockMvc.perform(options("/api/me")
-                        .header(ORIGIN, "https://frontend.cking.co.kr")
+                        .header(ORIGIN, "https://dev.cking.co.kr")
                         .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
                         .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
                 .andExpect(status().isOk())
-                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, "https://frontend.cking.co.kr"))
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, "https://dev.cking.co.kr"))
                 .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_HEADERS))
                         .containsIgnoringCase("Authorization"))
-                .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_CREDENTIALS))
-                        .isNull());
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
     }
 
-    /** PUT을 쓰는 API(팔로우 등)의 사전 요청이 CORS에서 거부되지 않는지 검증한다(이슈 #357). */
+    /** 사용자 Web Origin의 PUT API 사전 요청이 허용 메서드 목록에서 누락되지 않는지 검증한다(이슈 #357). */
     @Test
-    void 허용된_origin의_PUT_CORS_사전_요청을_처리한다() throws Exception {
+    void 사용자_Web_Origin의_PUT_API_CORS_사전_요청을_처리한다() throws Exception {
         mockMvc.perform(options("/api/creators/1/follow")
-                        .header(ORIGIN, "https://frontend.cking.co.kr")
+                        .header(ORIGIN, "https://dev.cking.co.kr")
                         .header(ACCESS_CONTROL_REQUEST_METHOD, "PUT")
                         .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
                 .andExpect(status().isOk())
-                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, "https://frontend.cking.co.kr"))
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, "https://dev.cking.co.kr"))
                 .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_METHODS))
                         .contains("PUT"));
+    }
+
+    /** 관리자 Web Origin의 credential 포함 관리자 API 사전 요청을 처리하는지 검증한다. */
+    @Test
+    void 관리자_Web_Origin의_관리자_API_CORS_사전_요청을_처리한다() throws Exception {
+        mockMvc.perform(options("/api/admin/dead-streams")
+                        .header(ORIGIN, "https://dev-admin.cking.co.kr")
+                        .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, "https://dev-admin.cking.co.kr"))
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+    }
+
+    /** 사용자 Web Origin은 관리자 Refresh endpoint의 credential 포함 사전 요청을 처리할 수 없는지 검증한다. */
+    @Test
+    void 사용자_Web_Origin의_관리자_Refresh_CORS_사전_요청을_차단한다() throws Exception {
+        mockMvc.perform(options("/api/admin/auth/refresh")
+                        .header(ORIGIN, "https://dev.cking.co.kr")
+                        .header(ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                        .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
+                .andExpect(status().isForbidden())
+                .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_ORIGIN))
+                        .isNull());
+    }
+
+    /** 설정에 없는 Origin의 credential 포함 사전 요청을 CORS가 차단하는지 검증한다. */
+    @Test
+    void 알_수_없는_Origin의_CORS_사전_요청을_차단한다() throws Exception {
+        mockMvc.perform(options("/api/admin/dead-streams")
+                        .header(ORIGIN, "https://unknown.cking.co.kr")
+                        .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
+                .andExpect(status().isForbidden())
+                .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_ORIGIN))
+                        .isNull());
     }
 
     /** 문서 계정이 없는 로컬 환경에서는 Swagger 경로를 Basic Auth 없이 처리하는지 검증한다. */
@@ -356,6 +401,7 @@ class SecurityConfigTest {
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }
 
+    /** 만료된 Access JWT가 Auth 인증 예외 경로를 우회하는지 확인할 테스트 토큰을 만든다. */
     private String expiredAccessToken() {
         Instant expiresAt = Instant.now().minusSeconds(120);
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -369,6 +415,7 @@ class SecurityConfigTest {
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }
 
+    /** 지정 역할로 보호된 경로의 인가를 확인할 유효 Access JWT를 만든다. */
     private String validAccessToken(String role) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -386,9 +433,9 @@ class SecurityConfigTest {
     @RestController
     static class AdminSecurityTestController {
 
-        /** 관리자 JWT가 인가된 요청에 성공 응답을 반환한다. */
-        @GetMapping("/api/admin/dead-streams")
-        String accessAdminApi() {
+        /** 관리자 Event 운영 목록 경로가 인가된 요청에 성공 응답을 반환한다. */
+        @GetMapping("/api/admin/events")
+        String accessManagedEventList() {
             return "admin-api";
         }
     }

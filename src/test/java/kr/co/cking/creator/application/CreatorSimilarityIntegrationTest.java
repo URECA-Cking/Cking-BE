@@ -135,11 +135,11 @@ class CreatorSimilarityIntegrationTest {
 
         CreatorSimilarityResultService.StoreResult emptyResult = resultService.replace(
                 source.getCreatorId(),
-                new CreatorSimilarityResultCommand(
+                new CreatorSimilarityResultCommand(2L,
                         source.getCreatorId(), "M4", "model-v2", SECOND_HASH, List.of()));
         CreatorSimilarityResultService.StoreResult replay = resultService.replace(
                 source.getCreatorId(),
-                new CreatorSimilarityResultCommand(
+                new CreatorSimilarityResultCommand(2L,
                         source.getCreatorId(), "M4", "model-v2", SECOND_HASH, List.of()));
 
         CreatorSimilarityView view = queryService.findSimilar(source.getCreatorId(), 5);
@@ -155,12 +155,39 @@ class CreatorSimilarityIntegrationTest {
         assertThat(cleaner().candidateCount(source.getCreatorId())).isEqualTo(1);
     }
 
+    @Test
+    void 새_실행으로_A에_복귀하고_지연된_B와_미적용_과거_실행도_거부한다() {
+        var a = command(FIRST_HASH, firstCandidate, "0.9");
+        var b = command(SECOND_HASH, secondCandidate, "0.8");
+        resultService.replace(source.getCreatorId(), a);
+        resultService.replace(source.getCreatorId(), b);
+        var revert = new CreatorSimilarityResultCommand(4L, a.creatorId(), a.method(), a.modelVersion(),
+                a.inputHash(), a.candidates());
+        var applied = resultService.replace(source.getCreatorId(), revert);
+        assertThat(applied.applied()).isTrue();
+        assertThat(resultService.replace(source.getCreatorId(), revert).applied()).isFalse();
+        var neverApplied = new CreatorSimilarityResultCommand(3L, b.creatorId(), b.method(), b.modelVersion(),
+                b.inputHash(), b.candidates());
+        for (var delayed : List.of(b, neverApplied)) {
+            assertThatThrownBy(() -> resultService.replace(source.getCreatorId(), delayed))
+                    .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getErrorCode())
+                            .isEqualTo(CreatorErrorCode.STALE_RECOMMENDATION_INPUT));
+        }
+        var conflict = new CreatorSimilarityResultCommand(4L, b.creatorId(), b.method(), b.modelVersion(),
+                b.inputHash(), b.candidates());
+        assertThatThrownBy(() -> resultService.replace(source.getCreatorId(), conflict))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getErrorCode())
+                        .isEqualTo(CreatorErrorCode.RECOMMENDATION_INPUT_CONFLICT));
+        assertThat(queryService.findSimilar(source.getCreatorId(), 5).candidates())
+                .extracting(CreatorSimilarityView.Candidate::similarCreatorId).containsExactly(firstCandidate.getCreatorId());
+    }
+
     private SimilarityTestCleaner cleaner() {
         return new SimilarityTestCleaner(jdbcTemplate);
     }
 
     private CreatorSimilarityResultCommand command(String hash, Creator candidate, String score) {
-        return new CreatorSimilarityResultCommand(source.getCreatorId(), null, null, null, List.of(
+        return new CreatorSimilarityResultCommand(FIRST_HASH.equals(hash) ? 1L : 2L, source.getCreatorId(), null, null, null, List.of(
                 new CreatorSimilarityResultCommand.Candidate(
                         source.getCreatorId(), candidate.getCreatorId(), new BigDecimal(score), 1,
                         "M4", "model-v1", hash)));

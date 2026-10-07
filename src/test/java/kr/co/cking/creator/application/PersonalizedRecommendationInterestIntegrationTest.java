@@ -152,7 +152,7 @@ class PersonalizedRecommendationInterestIntegrationTest {
     void 빈_세대로_교체된_분야는_유효하지_않아_이전_후보가_남지_않는다() {
         select(version, "FOOD");
         ingest(version, taxonomyHash, "FOOD", candidate("FOOD", first, "0.9", 1));
-        interestResultService.replace("FOOD", new InterestRecommendationCommand(
+        interestResultService.replace("FOOD", new InterestRecommendationCommand(2L,
                 version, taxonomyHash, "FOOD", METHOD, "model-v1", hash(), List.of()));
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
@@ -210,7 +210,7 @@ class PersonalizedRecommendationInterestIntegrationTest {
                 .map(c -> new InterestRecommendationCommand.Candidate(
                         c.interestCode(), c.creatorId(), c.score(), c.rank(), METHOD, "model-v1", inputHash))
                 .toList();
-        interestResultService.replace(code, new InterestRecommendationCommand(
+        interestResultService.replace(code, new InterestRecommendationCommand(1L,
                 taxonomyVersion, hashOfTaxonomy, code, METHOD, "model-v1", inputHash, withHash));
     }
 
@@ -231,7 +231,7 @@ class PersonalizedRecommendationInterestIntegrationTest {
                 secondRank, "M4", "model-v1", inputHash));
         candidates.sort(java.util.Comparator.comparing(CreatorSimilarityResultCommand.Candidate::rank));
         similarityResultService.replace(seed.getCreatorId(),
-                new CreatorSimilarityResultCommand(seed.getCreatorId(), "M4", "model-v1", inputHash, candidates));
+                new CreatorSimilarityResultCommand(1L, seed.getCreatorId(), "M4", "model-v1", inputHash, candidates));
     }
 
     /** 버전마다 해시가 UNIQUE라 서로 다른 분류체계는 분류 기준문을 다르게 한다. */

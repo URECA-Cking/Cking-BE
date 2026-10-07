@@ -253,6 +253,30 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.items[0].approvalRound").value(1));
     }
 
+    /** 관리자 운영 목록 API가 상태 필터와 필수 Event 정보를 페이지 봉투로 반환하는지 검증한다. */
+    @Test
+    void managedEventListReturnsFilteredPageEnvelope() throws Exception {
+        Event event = event(7L, "운영 팬미팅");
+        ReflectionTestUtils.setField(event, "status", kr.co.cking.event.domain.EventStatus.OPEN);
+        given(eventReviewService.findManagedEvents(org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(kr.co.cking.event.domain.EventStatus.OPEN), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(
+                        new EventReviewService.ManagedEvent(event, "크리에이터"))));
+
+        mockMvc.perform(get("/api/admin/events").param("status", "OPEN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[0].eventId").value(7))
+                .andExpect(jsonPath("$.data.items[0].creatorId").value(1))
+                .andExpect(jsonPath("$.data.items[0].creatorName").value("크리에이터"))
+                .andExpect(jsonPath("$.data.items[0].title").value("운영 팬미팅"))
+                .andExpect(jsonPath("$.data.items[0].startAt").exists())
+                .andExpect(jsonPath("$.data.items[0].endAt").exists())
+                .andExpect(jsonPath("$.data.items[0].winnerCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].drawMethod").value("WEIGHTED"))
+                .andExpect(jsonPath("$.data.items[0].status").value("OPEN"));
+    }
+
     /** 관리자 승인 API가 예약 상태를 공통 응답 봉투로 반환하는지 검증한다. */
     @Test
     void approveEventReturnsScheduledResultEnvelope() throws Exception {
@@ -293,7 +317,10 @@ class EventManagementControllerTest {
                 Arguments.of("/api/creator/events", "size", "101"),
                 Arguments.of("/api/admin/events/pending", "page", "-1"),
                 Arguments.of("/api/admin/events/pending", "size", "0"),
-                Arguments.of("/api/admin/events/pending", "size", "101")
+                Arguments.of("/api/admin/events/pending", "size", "101"),
+                Arguments.of("/api/admin/events", "page", "-1"),
+                Arguments.of("/api/admin/events", "size", "0"),
+                Arguments.of("/api/admin/events", "size", "101")
         );
     }
 

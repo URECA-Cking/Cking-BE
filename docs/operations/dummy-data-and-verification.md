@@ -37,4 +37,4 @@
   --tests kr.co.cking.ticket.scheduler.TicketBalanceReconciliationSchedulerTest
 ```
 
-현재 저장소에는 DrawingEngine JMH 측정 문서는 있지만, Event·Ticket Stream 부하 시험의 실행 절차와 측정 결과는 별도 문서화돼 있지 않다. 위 테스트는 기능 계약 검증일 뿐 부하 증명은 아니다. 부하 검증을 추가할 때는 시나리오, 입력 규모, Redis·DB 최종 일치 여부, 미해결 PEL·Dead Stream 개수를 함께 기록한다.
+Event·Ticket Stream 부하 시험의 실행 절차와 측정 결과는 별도 문서화돼 있지 않다. 위 테스트는 기능 계약 검증일 뿐 부하 증명은 아니다. 부하 검증을 추가할 때는 시나리오, 입력 규모, Redis·DB 최종 일치 여부, 미해결 PEL·Dead Stream 개수를 함께 기록한다.

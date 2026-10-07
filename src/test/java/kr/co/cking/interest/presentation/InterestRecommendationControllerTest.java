@@ -84,8 +84,10 @@ class InterestRecommendationControllerTest {
                 valid.replace("\"rank\":1", "\"rank\":0"),
                 valid.replace("\"creatorId\":20", "\"creatorId\":-1"),
                 valid.replace("\"candidates\":[", "\"candidates\":[null,"),
-                valid.replace("\"modelVersion\":\"model-v1\",\"inputHash\":\"" + HASH + "\",\"candidates\"",
-                        "\"modelVersion\":\"\",\"inputHash\":\"" + HASH + "\",\"candidates\""),
+                valid.replace("\"modelVersion\":\"model-v1\"", "\"modelVersion\":\"\""),
+                valid.replace("\"applicationSequence\": 1,", ""),
+                valid.replace("\"applicationSequence\": 1", "\"applicationSequence\": 0"),
+                valid.replace("\"applicationSequence\": 1", "\"applicationSequence\": -1"),
         };
         for (String body : invalid) {
             mockMvc.perform(replace("SPORTS", body))
@@ -104,7 +106,7 @@ class InterestRecommendationControllerTest {
     private String payload(String score, int rank) {
         return """
                 {"taxonomyVersion":"v0.2","taxonomyHash":"%1$s","interestCode":"SPORTS","method":"INTEREST_M3_V1",
-                 "modelVersion":"model-v1","inputHash":"%1$s","candidates":[
+                 "modelVersion":"model-v1","inputHash":"%1$s","applicationSequence": 1, "candidates":[
                   {"interestCode":"SPORTS","creatorId":20,"score":%2$s,"rank":%3$d,"method":"INTEREST_M3_V1",
                    "modelVersion":"model-v1","inputHash":"%1$s"}]}
                 """.formatted(HASH, score, rank).replace("\n", "").replace("                 ", "");

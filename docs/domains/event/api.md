@@ -162,6 +162,37 @@ Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberI
 }
 ```
 
+## GET /api/admin/events
+
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다.
+Application은 Spring Security의 1차 인가와 별도로 관리자 업무 권한을 다시 검증한다.
+
+Query는 선택 `status`, 기본 `page=0`, `size=20`이다. `size`는 1~100이어야 하며, `status`를 생략하면
+전체 `EventStatus`를 조회한다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`, `SCHEDULED`, `OPEN`, `CLOSING`,
+`CLOSED`, `DRAW_COMPLETED`, `PUBLISHED` 중 하나로 필터링할 수 있다. 삭제 Event는 기존 Event 목록 정책과 같이
+제외하고 `createdAt DESC, eventId DESC`로 정렬한다.
+
+```json
+{
+  "items": [{
+    "eventId": 1,
+    "creatorId": 5,
+    "creatorName": "IVE",
+    "title": "팬미팅 이벤트",
+    "startAt": "2026-09-20T09:00:00Z",
+    "endAt": "2026-09-21T09:00:00Z",
+    "winnerCount": 3,
+    "drawMethod": "WEIGHTED",
+    "status": "OPEN"
+  }],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasNext": false
+}
+```
+
 ## POST /api/admin/events/{eventId}/approve
 
 Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `EventCommandService.approve(eventId)`로 SCHEDULED로 전이할 수 있다. `endAt <= now`면 `INVALID_STATE`다. 현재 PENDING 승인 요청을 APPROVED로 기록하고 심사자·심사 시각을 저장한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "SCHEDULED" }`다.

@@ -11,6 +11,7 @@ import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
 import kr.co.cking.event.application.dto.CreateEventCommand;
 import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.presentation.dto.EventManagementRequest;
 import kr.co.cking.event.presentation.dto.EventManagementResponse;
 import lombok.RequiredArgsConstructor;
@@ -61,6 +62,18 @@ public class EventManagementController {
         var requests = eventReviewService.findPending(memberId, PageRequest.of(page, size));
         var items = requests.stream().map(EventManagementResponse.ApprovalItem::from).toList();
         return ApiResponse.success(EventManagementResponse.PageResult.from(requests, items));
+    }
+
+    /** 관리자가 삭제되지 않은 전체 Event를 상태별로 페이지 조회한다. */
+    @GetMapping("/api/admin/events")
+    @Operation(summary = "관리자 Event 운영 목록", description = "ADMIN 권한의 인증된 관리자가 삭제되지 않은 Event를 상태별로 페이지 조회합니다.")
+    public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.AdminItem>> findManagedEvents(
+            @CurrentMemberId Long memberId, @RequestParam(required = false) EventStatus status,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        var events = eventReviewService.findManagedEvents(memberId, status, PageRequest.of(page, size));
+        var items = events.stream().map(EventManagementResponse.AdminItem::from).toList();
+        return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
     }
 
     /** Creator 소유 Event의 내용을 수정한다. */

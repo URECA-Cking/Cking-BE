@@ -20,6 +20,7 @@
 | 17 | 외부 | Creator 운영 | CREATOR | DELETE | `/api/creator/events/{eventId}` | Event 삭제 | 상태 기반 |
 | 18 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events/{eventId}/approval-request` | 승인 요청 | 상태 기반 |
 | 19 | 외부 | Admin | ADMIN | GET | `/api/admin/events/pending` | 승인 대기 | - |
+| 134 | 외부 | Admin | ADMIN | GET | `/api/admin/events` | Event 운영 목록 | - |
 | 20 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/approve` | Event 승인 | 상태 기반 |
 | 21 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/reject` | Event 거절 | 상태 기반 |
 | 22 | 외부 | Close | CREATOR/ADMIN | POST | `/api/events/{eventId}/close` | 수동 마감 요청 | 상태 기반 |
@@ -123,14 +124,17 @@
 | 120 | 외부 | 비정상 행동 탐지 | ADMIN | GET | `/api/admin/abuse-detections` | Detection 목록 조회 | - |
 | 121 | 외부 | 비정상 행동 탐지 | ADMIN | GET | `/api/admin/abuse-detections/{detectionId}` | Detection 상세·Evidence 조회 | - |
 | 122 | 외부 | 비정상 행동 탐지 | ADMIN | PATCH | `/api/admin/abuse-detections/{detectionId}/review` | Detection 검토 판정 | 상태 기반 |
-| 123 | 외부 | Creator 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/creators/{creatorId}/similar` | LLM 유사 추천 후보 묶음 검증·원자 교체 | `creatorId + inputHash` |
+| 123 | 외부 | Creator 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/creators/{creatorId}/similar` | LLM 유사 추천 후보 묶음 검증·원자 교체 | `creatorId + applicationSequence` |
 | 124 | 외부 | Creator 추천 | PUBLIC | GET | `/api/creators/{creatorId}/similar` | 저장된 유사 크리에이터 후보 조회 | - |
 | 125 | 외부 | Creator 추천 | USER | GET | `/api/me/creator-recommendations` | 관심 분야·팔로우 기반 개인화 Creator 추천 조회(`HYBRID`·`INTEREST`·`FOLLOW_PERSONALIZED_V2`, 결과가 비면 `POPULAR_FALLBACK_V1`) | - |
 | 126 | 외부 | 관심 분야 | PUBLIC | GET | `/api/interests` | 선택 가능한 관심 분야 목록 조회(활성 분류체계) | - |
 | 127 | 외부 | 관심 분야 | USER | GET | `/api/me/interests` | 내 관심 분야 조회 | - |
 | 128 | 외부 | 관심 분야 | USER | PUT | `/api/me/interests` | 내 관심 분야 전체 교체 저장(0~3개) | 전체 교체(멱등) |
-| 129 | 외부 | 관심 분야 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/interests/{interestCode}/recommendations` | LLM 관심 분야별 추천 후보 묶음 검증·원자 교체 | `taxonomyVersion + interestCode + inputHash` |
+| 129 | 외부 | 관심 분야 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/interests/{interestCode}/recommendations` | LLM 관심 분야별 추천 후보 묶음 검증·원자 교체 | `taxonomyVersion + interestCode + applicationSequence` |
 | 130 | 외부 | Auth | PUBLIC | POST | `/api/auth/admin/login` | 관리자 ID/PW를 기존 Access JWT·Refresh Cookie로 교환 | - |
 | 131 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original` | 필터링된 게시글 댓글 원문 조회(작성자 본인·개인정보 차단 댓글 제외) | - |
+| 132 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/refresh` | 관리자 Refresh Cookie를 회전해 ADMIN Access JWT 갱신 | Refresh Token 1회 소비 |
+| 133 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/logout` | 관리자 Refresh Token 폐기 및 관리자 Cookie 만료 | - |
+| 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

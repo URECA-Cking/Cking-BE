@@ -121,6 +121,7 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
 
 ```json
 {
+  "applicationSequence": 1,
   "creatorId": 10,
   "method": "M4",
   "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
@@ -149,6 +150,7 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
 
 ```json
 {
+  "applicationSequence": 1,
   "creatorId": 10,
   "method": "M4",
   "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
@@ -167,7 +169,7 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
 }
 ```
 
-신규 세대 적용은 `applied=true`다. 현재와 완전히 같은 payload 재전송은 기존 `generationId`와 `applied=false`를 반환한다. 같은 현재 hash에 다른 payload는 `RECOMMENDATION_INPUT_CONFLICT`, 이미 교체된 과거 hash는 `STALE_RECOMMENDATION_INPUT`이다. 묶음 형식·정렬 위반은 `INVALID_RECOMMENDATION_RESULT`, 없는 원본·후보·관리자(JWT 호출자)는 `RESOURCE_NOT_FOUND`, 관리자가 아니면 `FORBIDDEN`이다.
+신규 적용은 `applied=true`다. 필수 `applicationSequence`의 대상별 순서·멱등·부분 적용·클라이언트 전환 계약은 [적용 실행 순서 계약](similarity-recommendation.md#적용-실행-순서-계약-473-llm-52)을 따른다. 같은 현재 번호·동일 payload는 `applied=false`, 같은 번호·다른 payload는 `RECOMMENDATION_INPUT_CONFLICT`, 현재보다 작은 번호는 `STALE_RECOMMENDATION_INPUT`이다. 묶음 형식·정렬 위반은 `INVALID_RECOMMENDATION_RESULT`, 없는 원본·후보·관리자(JWT 호출자)는 `RESOURCE_NOT_FOUND`, 관리자가 아니면 `FORBIDDEN`이다.
 
 ## GET /api/creators/{creatorId}/similar
 
