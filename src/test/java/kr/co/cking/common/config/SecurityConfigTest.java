@@ -326,6 +326,19 @@ class SecurityConfigTest {
                 .andExpect(header().string(ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
     }
 
+    /** 사용자 Web Origin의 PUT API 사전 요청이 허용 메서드 목록에서 누락되지 않는지 검증한다(이슈 #357). */
+    @Test
+    void 사용자_Web_Origin의_PUT_API_CORS_사전_요청을_처리한다() throws Exception {
+        mockMvc.perform(options("/api/creators/1/follow")
+                        .header(ORIGIN, "https://dev.cking.co.kr")
+                        .header(ACCESS_CONTROL_REQUEST_METHOD, "PUT")
+                        .header(ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(ACCESS_CONTROL_ALLOW_ORIGIN, "https://dev.cking.co.kr"))
+                .andExpect(result -> assertThat(result.getResponse().getHeader(ACCESS_CONTROL_ALLOW_METHODS))
+                        .contains("PUT"));
+    }
+
     /** 관리자 Web Origin의 credential 포함 관리자 API 사전 요청을 처리하는지 검증한다. */
     @Test
     void 관리자_Web_Origin의_관리자_API_CORS_사전_요청을_처리한다() throws Exception {
