@@ -24,8 +24,8 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
   업무 권한 검증을 Spring Security로 대체하지 않는다.
 - CSRF는 현재 세션 기반 인증을 사용하지 않는 기존 API 호환을 위해 비활성화한다. CORS는
   `cking.cors.allowed-origins`와 `cking.cors.allow-credentials` 설정을 사용하며, credential 기본값은
-  `false`다. Refresh Cookie를 실제 도입하는 작업에서 배포 구조에 맞는 허용 origin과 credential을 함께
-  활성화한다.
+  `false`다. 개발 환경에서는 사용자 Web(`https://dev.cking.co.kr`)과 관리자 Web
+  (`https://dev-admin.cking.co.kr`)을 이 단일 목록에 함께 두고 credential을 활성화한다.
 - JWT 인증 실패는 `RestAuthenticationEntryPoint`가 공통 `UNAUTHORIZED`(401)로, 인증 후 인가 실패는
   `RestAccessDeniedHandler`가 `FORBIDDEN`(403)으로 응답한다.
 
@@ -198,7 +198,8 @@ Access JWT와 함께 Refresh Cookie를 발급한다. `POST /api/auth/refresh`와
   Refresh Cookie를 처리한다.
 - Cookie 기반 Refresh·Logout 요청은 설정된 허용 origin과 일치하는 `Origin`만 허용해 CSRF를 방어한다.
   허용 origin은 `cking.cors.allowed-origins`로 관리하며, Cookie를 받는 교차 origin 환경에서는
-  `cking.cors.allow-credentials=true`를 함께 설정한다.
+  `cking.cors.allow-credentials=true`를 함께 설정한다. 개발 환경의 사용자 Web과 관리자 Web은 같은
+  목록을 사용하므로 두 Origin 모두 Refresh·Logout을 요청할 수 있다.
 
 #### Redis rotation 설계
 
