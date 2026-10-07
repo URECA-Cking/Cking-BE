@@ -20,6 +20,9 @@ import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVisibility;
 import kr.co.cking.drawing.repository.DrawingRepository;
+import kr.co.cking.event.application.EventDrawingQueryService;
+import kr.co.cking.event.application.dto.EventDrawingSource;
+import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.winner.domain.Winner;
@@ -35,6 +38,7 @@ class DrawingAdminQueryServiceTest {
 
     private static final long ADMIN_ID = 1L;
     private static final long DRAWING_ID = 20L;
+    private static final long EVENT_ID = 10L;
 
     @Mock
     private MemberQueryService memberQueryService;
@@ -45,11 +49,15 @@ class DrawingAdminQueryServiceTest {
     @Mock
     private WinnerRepository winnerRepository;
 
+    @Mock
+    private EventDrawingQueryService eventDrawingQueryService;
+
     private DrawingAdminQueryService service;
 
     @BeforeEach
     void setUp() {
-        service = new DrawingAdminQueryService(memberQueryService, drawingRepository, winnerRepository);
+        service = new DrawingAdminQueryService(memberQueryService, drawingRepository, winnerRepository,
+                eventDrawingQueryService);
     }
 
     @Test
@@ -66,6 +74,61 @@ class DrawingAdminQueryServiceTest {
         assertThat(result.drawType()).isEqualTo(DrawingType.INITIAL);
         assertThat(result.status()).isEqualTo(DrawingStatus.COMPLETED);
         assertThat(result.visibility()).isEqualTo(DrawingVisibility.PRIVATE);
+    }
+
+    @Test
+    void 관리자는_Event로_INITIAL_Drawing_기본정보를_조회한다() {
+        Drawing drawing = drawing(DrawingStatus.FAILED);
+        when(eventDrawingQueryService.getDrawingSource(EVENT_ID))
+                .thenReturn(new EventDrawingSource(EVENT_ID, EventStatus.CLOSED, null));
+        when(drawingRepository.findByEventIdAndDrawNo(EVENT_ID, 0)).thenReturn(Optional.of(drawing));
+
+        DrawingQueryResult result = service.getInitialDrawing(EVENT_ID, ADMIN_ID);
+
+        verify(memberQueryService).validateAdmin(ADMIN_ID);
+        verify(eventDrawingQueryService).getDrawingSource(EVENT_ID);
+        assertThat(result.drawingId()).isEqualTo(DRAWING_ID);
+        assertThat(result.eventId()).isEqualTo(EVENT_ID);
+        assertThat(result.drawType()).isEqualTo(DrawingType.INITIAL);
+        assertThat(result.status()).isEqualTo(DrawingStatus.FAILED);
+    }
+
+    @Test
+    void INITIAL_Drawing이_없으면_DRAWING_NOT_FOUND다() {
+        when(eventDrawingQueryService.getDrawingSource(EVENT_ID))
+                .thenReturn(new EventDrawingSource(EVENT_ID, EventStatus.CLOSED, null));
+        when(drawingRepository.findByEventIdAndDrawNo(EVENT_ID, 0)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getInitialDrawing(EVENT_ID, ADMIN_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(DrawingErrorCode.DRAWING_NOT_FOUND);
+    }
+
+    @Test
+    void 없는_Event의_INITIAL_Drawing은_RESOURCE_NOT_FOUND다() {
+        doThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .when(eventDrawingQueryService).getDrawingSource(EVENT_ID);
+
+        assertThatThrownBy(() -> service.getInitialDrawing(EVENT_ID, ADMIN_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+        verifyNoInteractions(drawingRepository);
+    }
+
+    @Test
+    void 영회차_Drawing이_INITIAL이_아니면_DRAWING_NOT_FOUND다() {
+        Drawing drawing = mock(Drawing.class);
+        when(drawing.getDrawType()).thenReturn(DrawingType.REDRAW);
+        when(eventDrawingQueryService.getDrawingSource(EVENT_ID))
+                .thenReturn(new EventDrawingSource(EVENT_ID, EventStatus.CLOSED, null));
+        when(drawingRepository.findByEventIdAndDrawNo(EVENT_ID, 0)).thenReturn(Optional.of(drawing));
+
+        assertThatThrownBy(() -> service.getInitialDrawing(EVENT_ID, ADMIN_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(DrawingErrorCode.DRAWING_NOT_FOUND);
     }
 
     @Test

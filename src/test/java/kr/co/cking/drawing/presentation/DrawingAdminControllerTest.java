@@ -231,6 +231,35 @@ class DrawingAdminControllerTest {
     }
 
     @Test
+    void 관리자는_Event_ID로_FAILED_INITIAL_Drawing을_조회한다() throws Exception {
+        when(drawingAdminQueryService.getInitialDrawing(10L, 1L)).thenReturn(new DrawingQueryResult(
+                20L, 10L, 30L, 0, DrawingType.INITIAL, DrawingStatus.FAILED,
+                DrawingVisibility.PRIVATE, "WEIGHTED", "WEIGHTED_V1", 2, 1L,
+                Instant.parse("2026-09-17T00:00:00Z"),
+                Instant.parse("2026-09-17T00:01:00Z"),
+                null,
+                null
+        ));
+
+        mockMvc.perform(get("/api/admin/events/10/drawings/initial"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.drawingId").value(20))
+                .andExpect(jsonPath("$.data.eventId").value(10))
+                .andExpect(jsonPath("$.data.drawType").value("INITIAL"))
+                .andExpect(jsonPath("$.data.status").value("FAILED"));
+
+        verify(drawingAdminQueryService).getInitialDrawing(10L, 1L);
+    }
+
+    @Test
+    void INITIAL_Drawing_조회의_Event_ID는_양수여야_한다() throws Exception {
+        mockMvc.perform(get("/api/admin/events/0/drawings/initial"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     void 관리자는_순위순으로_Drawing_결과를_조회한다() throws Exception {
         when(drawingAdminQueryService.getDrawingResult(20L, 1L)).thenReturn(new DrawingResultQuery(20L, List.of(
                 new DrawingWinnerResult(100L, 10L, 20L, 2L, "둘", "010-0000-0002", "two@example.com", 1, 7L,

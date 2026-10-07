@@ -1,4 +1,19 @@
-+# 관리자 Drawing 조회 API
+# 관리자 Drawing 조회 API
+
+### `GET /api/admin/events/{eventId}/drawings/initial`
+
+- 권한: `ADMIN`
+- 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); query parameter `userId`는 받지 않는다.
+- 처리 순서: Spring Security가 `ADMIN`을 먼저 인가한 뒤 요청 Member의 존재와 업무 권한을 확인한다. 이어서 Event 존재를 확인하고, 해당 Event의 `drawNo = 0`, `drawType = INITIAL` Drawing을 조회한다.
+- 조회는 read-only이며 Event, Drawing, Winner 상태를 변경하지 않는다.
+- 응답 `data`는 아래 `GET /api/admin/drawings/{drawingId}`와 같은 `DrawingQueryResult`를 반환한다. FE는 `drawingId`와 `status`가 `FAILED`인지 확인한 뒤 [Drawing Retry API](api.md#관리자-drawing-retry)를 호출한다.
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | `eventId`가 누락·0 이하이거나 형식이 올바르지 않음 |
+| `RESOURCE_NOT_FOUND` | 요청한 Member 또는 Event가 존재하지 않음 |
+| `FORBIDDEN` | 요청한 Member가 `ADMIN`이 아님 |
+| `DRAWING_NOT_FOUND` | Event에 INITIAL Drawing이 없거나 0회차 Drawing의 유형이 INITIAL이 아님 |
 
 ### `GET /api/admin/drawings/{drawingId}`
 

@@ -77,6 +77,19 @@ public class DrawingAdminController {
         return ApiResponse.success(drawingAdminQueryService.getDrawing(drawingId, memberId));
     }
 
+    /** 관리자가 Event ID로 해당 Event의 INITIAL Drawing 실행 정보를 조회한다. */
+    @Operation(
+            summary = "INITIAL Drawing 조회",
+            description = "관리자가 Event의 최초 INITIAL Drawing 상태와 식별자를 조회해 실패 Drawing 재시도 대상을 확인합니다."
+    )
+    @GetMapping("/api/admin/events/{eventId}/drawings/initial")
+    public ApiResponse<DrawingQueryResult> getInitialDrawing(
+            @PathVariable @Positive Long eventId,
+            @CurrentMemberId Long memberId
+    ) {
+        return ApiResponse.success(drawingAdminQueryService.getInitialDrawing(eventId, memberId));
+    }
+
     /** 관리자가 완료된 Drawing의 당첨 결과를 순위대로 조회한다. */
     @Operation(summary = "Drawing 당첨 결과 조회", description = "관리자가 완료된 Drawing의 당첨자를 순위순으로 조회합니다.")
     @GetMapping("/api/admin/drawings/{drawingId}/result")
@@ -87,6 +100,8 @@ public class DrawingAdminController {
         return ApiResponse.success(drawingAdminQueryService.getDrawingResult(drawingId, memberId));
     }
 
+    /** 관리자가 저장된 Drawing 입력과 결과를 재현해 검증 결과를 저장한다. */
+    @Operation(summary = "Drawing 재현 검증", description = "관리자가 Drawing의 결정론적 재현 검증을 실행합니다.")
     @PostMapping("/api/admin/drawings/{drawingId}/verify")
     public ApiResponse<DrawingVerificationResult> verifyDrawing(
             @PathVariable @Positive Long drawingId,
@@ -95,6 +110,8 @@ public class DrawingAdminController {
         return ApiResponse.success(drawingVerificationService.verify(drawingId, memberId));
     }
 
+    /** 관리자가 Drawing 재현 검증 이력을 최신순 페이지로 조회한다. */
+    @Operation(summary = "Drawing 검증 이력 조회", description = "관리자가 Drawing 재현 검증 이력을 최신순으로 조회합니다.")
     @GetMapping("/api/admin/drawings/{drawingId}/verification-history")
     public ApiResponse<PageResponse<DrawingVerificationResult>> getVerificationHistory(
             @PathVariable @Positive Long drawingId,
