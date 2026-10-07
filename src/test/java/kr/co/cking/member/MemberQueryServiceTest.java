@@ -32,11 +32,12 @@ class MemberQueryServiceTest {
         when(member.getName()).thenReturn("홍길동");
         when(member.getEmail()).thenReturn("hong@example.com");
         when(member.getRole()).thenReturn(MemberRole.USER);
+        when(member.isOnboardingCompleted()).thenReturn(true);
         when(repository.findById(1L)).thenReturn(Optional.of(member));
 
         MemberProfile result = service.getProfile(1L);
 
-        assertThat(result).isEqualTo(new MemberProfile(1L, "홍길동", "hong@example.com", MemberRole.USER));
+        assertThat(result).isEqualTo(new MemberProfile(1L, "홍길동", "hong@example.com", MemberRole.USER, true));
     }
 
     @Test

@@ -21,7 +21,7 @@
 - `taxonomyVersion`은 관심 분야 저장 요청에 그대로 쓴다. `maxSelection`은 서버가 정한 선택 상한이다.
 - 분류 기준문(`description`)은 화면 노출용이 아니라 해시·추천 계산용이라 응답에 포함하지 않는다.
 - 활성 분류체계가 없으면 정상 200으로 `taxonomyVersion: null`, `items: []`를 반환한다.
-- **응답 형식은 FE 협의 후 확정한다.**
+- 응답 형식은 FE와 합의해 위 형태로 확정했다(2026-10-07).
 
 ## GET /api/me/interests
 

@@ -79,7 +79,7 @@
 | 75 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/{templateId}/activate` | 템플릿 활성화 | 상태 기반 |
 | 76 | 외부 | Auth | PUBLIC | POST | `/api/auth/refresh` | Refresh Cookie를 회전해 Access JWT 갱신 | Refresh Token 1회 소비 |
 | 77 | 외부 | Auth | PUBLIC | POST | `/api/auth/logout` | Refresh Token 폐기 및 Cookie 만료 | - |
-| 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보 조회 | - |
+| 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보 조회(`onboardingCompleted` 포함) | - |
 | 79 | 외부 | Ticket | ADMIN | POST | `/api/admin/tickets/common/resync` | 공용 응모권 잔액 수동 재동기화(Redis를 DB 기준으로) | 상태 기반 |
 | 80 | 외부 | Creator Space | PUBLIC | GET | `/api/creators/{creatorId}/space` | Creator Space 홈·프로필 조회 | - |
 | 81 | 외부 | Creator Space | CREATOR | GET | `/api/creator/space` | 내 Creator Space 조회 | - |
@@ -138,5 +138,6 @@
 | 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |
 | 136 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/reports` | 게시글 댓글 신고(게시글을 볼 수 있는 사용자, 본인 댓글 제외) | 신고자+댓글당 1건(재신고는 기존 신고 반환) |
 | 137 | 외부 | Post | ADMIN | GET | `/api/admin/comment-reports` | 신고된 게시글 댓글 목록(댓글별 신고 수·사유별 수, 최근 신고 순) | - |
+| 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V50, 기존 회원은 전원 true) | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
