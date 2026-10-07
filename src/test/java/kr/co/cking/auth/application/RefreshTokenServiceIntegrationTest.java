@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
+import kr.co.cking.auth.domain.RefreshSessionType;
 import kr.co.cking.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,16 +32,17 @@ class RefreshTokenServiceIntegrationTest {
     /** Redis에는 원문 Token 대신 SHA-256 hash key만 남는지 검증한다. */
     @Test
     void RefreshToken은_Hash_key로만_저장된다() throws Exception {
-        String refreshToken = refreshTokenService.issue(91L);
+        String refreshToken = refreshTokenService.issue(91L, RefreshSessionType.USER_WEB);
 
-        assertThat(redisTemplate.opsForValue().get("auth:refresh-token:" + sha256(refreshToken))).isEqualTo("91");
+        assertThat(redisTemplate.opsForValue().get("auth:refresh-token:" + sha256(refreshToken)))
+                .isEqualTo("USER_WEB:91");
         assertThat(redisTemplate.opsForValue().get("auth:refresh-token:" + refreshToken)).isNull();
     }
 
     /** Logout용 폐기가 Redis의 hash key를 삭제해 이후 사용을 막는지 검증한다. */
     @Test
     void RefreshToken을_폐기하면_Redis에서_삭제된다() throws Exception {
-        String refreshToken = refreshTokenService.issue(91L);
+        String refreshToken = refreshTokenService.issue(91L, RefreshSessionType.USER_WEB);
 
         refreshTokenService.revoke(refreshToken);
 
@@ -50,7 +52,7 @@ class RefreshTokenServiceIntegrationTest {
     /** 같은 Refresh Token을 동시에 갱신해도 하나의 요청만 다음 Token을 받는지 검증한다. */
     @Test
     void 동일_RefreshToken은_동시_회전해도_한번만_성공한다() throws Exception {
-        String refreshToken = refreshTokenService.issue(91L);
+        String refreshToken = refreshTokenService.issue(91L, RefreshSessionType.USER_WEB);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             List<RefreshTokenRotationResult> results = completedResults(executor.invokeAll(List.of(
@@ -59,16 +61,26 @@ class RefreshTokenServiceIntegrationTest {
             assertThat(results).hasSize(1);
             assertThat(results.getFirst().memberId()).isEqualTo(91L);
             assertThat(results.getFirst().refreshToken()).isNotEqualTo(refreshToken);
-            assertThatThrownBy(() -> refreshTokenService.rotate(refreshToken))
+            assertThatThrownBy(() -> refreshTokenService.rotate(refreshToken, RefreshSessionType.USER_WEB))
                     .isInstanceOf(BusinessException.class);
         }
+    }
+
+    /** 다른 Web 세션 유형으로 회전을 시도해도 관리자 Token을 소비하거나 사용자 세션으로 바꾸지 않는지 검증한다. */
+    @Test
+    void 관리자_RefreshToken은_사용자_세션에서_회전할_수_없다() {
+        String refreshToken = refreshTokenService.issue(91L, RefreshSessionType.ADMIN_WEB);
+
+        assertThatThrownBy(() -> refreshTokenService.rotate(refreshToken, RefreshSessionType.USER_WEB))
+                .isInstanceOf(BusinessException.class);
+        assertThat(refreshTokenService.rotate(refreshToken, RefreshSessionType.ADMIN_WEB).memberId()).isEqualTo(91L);
     }
 
     /** rotation 성공 결과 또는 유효하지 않은 Token의 실패를 병렬 작업으로 만든다. */
     private Callable<RefreshTokenRotationResult> rotate(String refreshToken) {
         return () -> {
             try {
-                return refreshTokenService.rotate(refreshToken);
+                return refreshTokenService.rotate(refreshToken, RefreshSessionType.USER_WEB);
             } catch (BusinessException exception) {
                 return null;
             }

@@ -125,5 +125,9 @@ cking:
       issuer: cking
       access-token-ttl: PT30M
     refresh-token-ttl: P14D
+    refresh:
+      # 비어 있으면 Cookie 기반 사용자·관리자 Refresh/Logout을 각각 허용하지 않는다.
+      user-allowed-origins: ""
+      admin-allowed-origins: ""
     # 운영 HTTPS 환경은 반드시 REFRESH_COOKIE_SECURE=true를 명시적으로 주입한다.
     refresh-cookie-secure: ${REFRESH_COOKIE_SECURE}

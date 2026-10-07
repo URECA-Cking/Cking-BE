@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import kr.co.cking.auth.domain.RefreshSessionType;
 
 /** Spring Context 없이 Refresh Token 저장 정책을 검증한다. */
 @ExtendWith(MockitoExtension.class)
@@ -40,10 +41,10 @@ class RefreshTokenServiceTest {
     void 생성자로_주입한_TTL로_RefreshToken을_저장한다() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        String refreshToken = refreshTokenService.issue(17L);
+        String refreshToken = refreshTokenService.issue(17L, RefreshSessionType.USER_WEB);
 
         ArgumentCaptor<String> redisKey = ArgumentCaptor.forClass(String.class);
-        verify(valueOperations).set(redisKey.capture(), eq("17"), eq(REFRESH_TOKEN_TTL));
+        verify(valueOperations).set(redisKey.capture(), eq("USER_WEB:17"), eq(REFRESH_TOKEN_TTL));
         assertThat(refreshToken).isNotBlank();
         assertThat(redisKey.getValue()).doesNotContain(refreshToken);
     }
@@ -52,11 +53,12 @@ class RefreshTokenServiceTest {
     @Test
     void 생성자로_주입한_TTL로_RefreshToken을_회전한다() {
         String ttlMillis = Long.toString(REFRESH_TOKEN_TTL.toMillis());
-        when(redisTemplate.execute(eq(refreshTokenRotateScript), anyList(), eq(ttlMillis))).thenReturn("17");
+        when(redisTemplate.execute(eq(refreshTokenRotateScript), anyList(), eq(ttlMillis), eq("USER_WEB")))
+                .thenReturn("USER_WEB:17");
 
-        var result = refreshTokenService.rotate("old-refresh-token");
+        var result = refreshTokenService.rotate("old-refresh-token", RefreshSessionType.USER_WEB);
 
-        verify(redisTemplate).execute(eq(refreshTokenRotateScript), anyList(), eq(ttlMillis));
+        verify(redisTemplate).execute(eq(refreshTokenRotateScript), anyList(), eq(ttlMillis), eq("USER_WEB"));
         assertThat(result.memberId()).isEqualTo(17L);
         assertThat(result.refreshToken()).isNotBlank();
     }
