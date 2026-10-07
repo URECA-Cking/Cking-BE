@@ -7,9 +7,11 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSimilarityResultCommand;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
@@ -138,6 +140,36 @@ class RecommendationApplicationSequenceIntegrationTest {
                 executor.shutdownNow();
             }
         }
+    }
+
+    @Test
+    void 삭제된_후보가_있어도_과거_실행은_409이고_새_실행은_404다() {
+        long similarityId = putSimilarity(5, "a").generationId();
+        long interestId = putInterest(5, "a").generationId();
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        Member owner = members.saveAndFlush(new Member("removed-" + suffix, null, null, MemberRole.USER));
+        Creator removed = creators.saveAndFlush(new Creator(owner.getMemberId(), "removed-" + suffix));
+        long removedId = removed.getCreatorId();
+        creators.delete(removed);
+        members.delete(owner);
+
+        for (long sequence : List.of(3L, 6L)) {
+            var similarCommand = new CreatorSimilarityResultCommand(sequence, creator.getCreatorId(), "M4", "model-v1",
+                    "b".repeat(64), List.of(new CreatorSimilarityResultCommand.Candidate(creator.getCreatorId(),
+                    removedId, new BigDecimal("0.9"), 1, "M4", "model-v1", "b".repeat(64))));
+            var interestCommand = new InterestRecommendationCommand(sequence, version, taxonomyHash, "SPORTS",
+                    "INTEREST_M3_V1", "model-v1", "b".repeat(64), List.of(new InterestRecommendationCommand.Candidate(
+                    "SPORTS", removedId, new BigDecimal("0.9"), 1, "INTEREST_M3_V1", "model-v1", "b".repeat(64))));
+            Runnable similarRequest = () -> similarity.replace(creator.getCreatorId(), similarCommand);
+            Runnable interestRequest = () -> interests.replace("SPORTS", interestCommand);
+            for (Runnable request : List.of(similarRequest, interestRequest)) {
+                if (sequence == 3L) assertStale(request);
+                else assertThatThrownBy(request::run).isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+            }
+        }
+        assertThat(putSimilarity(5, "a").generationId()).isEqualTo(similarityId);
+        assertThat(putInterest(5, "a").generationId()).isEqualTo(interestId);
     }
 
     private CreatorSimilarityResultService.StoreResult putSimilarity(long sequence, String hash) {

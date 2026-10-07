@@ -103,7 +103,6 @@ class CreatorSimilarityResultServiceTest {
 
     @Test
     void 이미_교체된_과거_입력_해시는_거부한다() {
-        given(creatorRepository.findByCreatorIdIn(Set.of(20L))).willReturn(List.of(creator(20L, "후보")));
         given(stateRepository.findByCreatorIdForUpdate(10L))
                 .willReturn(Optional.of(new CreatorSimilarityState(10L, 200L)));
         given(generationRepository.findByCreatorIdAndApplicationSequenceForUpdate(10L, 1L))

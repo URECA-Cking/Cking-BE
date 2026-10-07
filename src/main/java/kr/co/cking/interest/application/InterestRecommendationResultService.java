@@ -53,7 +53,6 @@ public class InterestRecommendationResultService {
         if (category == null) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
-        requireExistingCreators(bundle.candidates());
 
         InterestCategoryId categoryId = new InterestCategoryId(bundle.taxonomyVersion(), bundle.interestCode());
         InterestRecommendationState state = stateRepository.findById(categoryId).orElse(null);
@@ -67,6 +66,7 @@ public class InterestRecommendationResultService {
         if (current != null && command.applicationSequence() < current.getApplicationSequence()) {
             throw new BusinessException(InterestErrorCode.STALE_RECOMMENDATION_INPUT);
         }
+        requireExistingCreators(bundle.candidates());
         if (existing != null) {
             if (state != null && state.getCurrentGenerationId().equals(existing.getGenerationId())) {
                 if (!samePayload(existing, bundle)) {

@@ -43,7 +43,6 @@ public class CreatorSimilarityResultService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
         NormalizedBundle bundle = normalize(creatorId, command);
-        requireExistingCandidates(bundle.candidates());
 
         CreatorSimilarityState state = stateRepository.findByCreatorIdForUpdate(creatorId).orElse(null);
         CreatorSimilarityGeneration existing = generationRepository
@@ -55,6 +54,7 @@ public class CreatorSimilarityResultService {
         if (current != null && command.applicationSequence() < current.getApplicationSequence()) {
             throw new BusinessException(CreatorErrorCode.STALE_RECOMMENDATION_INPUT);
         }
+        requireExistingCandidates(bundle.candidates());
         if (existing != null) {
             if (state != null && Objects.equals(state.getCurrentGenerationId(), existing.getGenerationId())) {
                 if (!samePayload(existing, bundle)) {
