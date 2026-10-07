@@ -139,5 +139,6 @@
 | 136 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/reports` | 게시글 댓글 신고(게시글을 볼 수 있는 사용자, 본인 댓글 제외) | 신고자+댓글당 1건(재신고는 기존 신고 반환) |
 | 137 | 외부 | Post | ADMIN | GET | `/api/admin/comment-reports` | 신고된 게시글 댓글 목록(댓글별 신고 수·사유별 수, 최근 신고 순) | - |
 | 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V50, 기존 회원은 전원 true) | 상태 기반 |
+| 139 | 외부 | Drawing | ADMIN | GET | `/api/admin/events/{eventId}/drawings/initial` | Event의 INITIAL Drawing 조회 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

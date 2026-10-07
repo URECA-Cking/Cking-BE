@@ -34,6 +34,14 @@ Drawing 도메인은 Event, Snapshot, Member, Seed 등 다른 도메인의 Entit
 | `SNAPSHOT_NOT_FOUND` | 공식 Snapshot이 없음 |
 | `SNAPSHOT_HASH_MISMATCH` | 공식 Snapshot의 Hash 또는 집계값이 일치하지 않음 |
 
+## 관리자 INITIAL Drawing 조회 API
+
+### `GET /api/admin/events/{eventId}/drawings/initial`
+
+관리자가 Event ID로 0회차 INITIAL Drawing의 상태와 식별자를 조회한다. 실패 상태(`FAILED`)면 응답의
+`drawingId`를 [Drawing Retry API](api.md#관리자-drawing-retry)에 전달해 같은 확정 입력으로 재시도할 수 있다.
+상세 요청·응답과 오류 계약은 [관리자 Drawing 조회 API](admin-query-api.md)를 참고한다.
+
 ## Drawing 공개 Service 계약
 
 ### `DrawingPublicationService.publish(Long drawingId, Long adminId)`
