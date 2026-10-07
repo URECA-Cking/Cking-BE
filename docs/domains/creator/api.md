@@ -197,7 +197,7 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query `size` 기본값은 10,
 범위는 1~20이다. 회원이 고른 관심 분야의 현재 활성 추천 후보와 팔로우한 Creator들의 현재 활성 유사 추천 저장 결과를
-입력 신호에 따라 `HYBRID_PERSONALIZED_V1`·`INTEREST_PERSONALIZED_V1`·`FOLLOW_PERSONALIZED_V2` 중 하나로 합쳐 반환한다.
+입력 신호에 따라 `HYBRID_PERSONALIZED_V1`·`INTEREST_PERSONALIZED_V1`·`FOLLOW_PERSONALIZED_V2` 중 하나로 합쳐 반환하고, 합친 결과가 비면 팔로워 수 순 인기 Creator(`POPULAR_FALLBACK_V1`)로 대체한다.
 집계식과 정책 분기의 정본은 [개인화 집계](similarity-recommendation.md#개인화-집계issue-410-442)를 따른다.
 
 ```json
@@ -220,7 +220,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 | 1개 이상 | 1개 이상 | `HYBRID_PERSONALIZED_V1` | 0.5 × 관심 평균 + 0.5 × 팔로우 평균 |
 | 1개 이상 | 0개 | `INTEREST_PERSONALIZED_V1` | 관심 평균 |
 | 0개 | 1개 이상 | `FOLLOW_PERSONALIZED_V2` | 팔로우 평균 |
-| 0개 | 0개 | `FOLLOW_PERSONALIZED_V2` | `items: []` |
+| 0개 | 0개 | `POPULAR_FALLBACK_V1` | 팔로워 수(인기순 대체, 아래 참고) |
 
 - `interestCodes`는 이 후보의 점수에 기여한 관심 분야(ASCII 사전순), `seedCreatorIds`는 기여한 팔로우 seed(숫자 오름차순)이며
   기여하지 않은 쪽은 빈 배열이다.
@@ -228,7 +228,10 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
   `policyVersion`의 점수는 비교할 수 없다. M2/M3/M4 raw score가 아니라 rank 기반 RRF 기여도로 만든다.
 - 이미 팔로우한 Creator와 호출자 본인의 Creator, Creator Space가 없는 Creator는 반환하지 않는다.
 - 관심 분야는 회원이 선택한 분류체계 버전의 후보만 쓰고 다른 버전의 후보로 대체하지 않는다.
-- 유효한 source가 없으면 같은 형식으로 `items: []`를 정상 200으로 반환한다. 인기순 fallback과 요청 중 BGE-M3·GPT 호출은 수행하지 않는다.
+- 유효한 source가 없어 개인화 결과가 비면 `POPULAR_FALLBACK_V1`로 팔로워 수 내림차순(같으면 `creatorId` 오름차순) Creator를 같은 형식으로 반환한다.
+  Creator Space가 없는 Creator, 본인, 이미 팔로우한 Creator는 제외하고 `size`를 적용한다. `aggregateScore`는 팔로워 수이고 `interestCodes`·`seedCreatorIds`는
+  빈 배열이다. 개인화 결과가 하나라도 있으면 인기순을 섞지 않는다. 조회할 Creator가 없으면 `items: []`다. 요청 중 BGE-M3·GPT 호출은 수행하지 않는다.
 - **변경 이력(#442)**: 팔로우만 있는 회원의 응답은 이전 `FOLLOW_PERSONALIZED_V1`(seed 기여도 합산)에서 `FOLLOW_PERSONALIZED_V2`(유효
   seed 평균)로 바뀌었다. 추천 순서는 거의 같고 `policyVersion`과 점수 값이 달라진다. `FOLLOW_PERSONALIZED_V1`은 더 이상 반환하지 않는다.
+- **변경 이력(인기순 fallback)**: 개인화 결과가 비는 회원의 응답은 이전에는 `FOLLOW_PERSONALIZED_V2`와 `items: []`였으나 `POPULAR_FALLBACK_V1`과 인기 Creator 목록으로 바뀐다.
 - 범위를 벗어난 `size`는 `VALIDATION_FAILED`, JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`다.

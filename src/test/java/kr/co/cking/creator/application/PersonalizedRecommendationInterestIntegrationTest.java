@@ -117,8 +117,13 @@ class PersonalizedRecommendationInterestIntegrationTest {
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
-        assertThat(result.items()).isEmpty();
+        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
+        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
+        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
+        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
+            assertThat(item.interestCodes()).isEmpty();
+            assertThat(item.seedCreatorIds()).isEmpty();
+        });
     }
 
     @Test
@@ -152,8 +157,13 @@ class PersonalizedRecommendationInterestIntegrationTest {
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
-        assertThat(result.items()).isEmpty();
+        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
+        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
+        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
+        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
+            assertThat(item.interestCodes()).isEmpty();
+            assertThat(item.seedCreatorIds()).isEmpty();
+        });
     }
 
     @Test
@@ -165,16 +175,26 @@ class PersonalizedRecommendationInterestIntegrationTest {
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
-        assertThat(result.items()).isEmpty();
+        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
+        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
+        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
+        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
+            assertThat(item.interestCodes()).isEmpty();
+            assertThat(item.seedCreatorIds()).isEmpty();
+        });
     }
 
     @Test
-    void 팔로우도_관심_분야도_없으면_V2_정책의_빈_목록이다() {
+    void 팔로우도_관심_분야도_없으면_인기순으로_대체된다() {
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
-        assertThat(result.items()).isEmpty();
+        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
+        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
+        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
+        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
+            assertThat(item.interestCodes()).isEmpty();
+            assertThat(item.seedCreatorIds()).isEmpty();
+        });
     }
 
     private void select(String taxonomyVersion, String... codes) {

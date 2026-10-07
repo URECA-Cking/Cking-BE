@@ -18,7 +18,7 @@ Issue #393에서 Cking-LLM이 오프라인으로 만든 단일 크리에이터 �
 
 ## 저장 모델과 원자 교체
 
-DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호를 도입한 `V46__add_recommendation_application_sequence.sql`이다.
+DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호를 도입한 `V47__add_recommendation_application_sequence.sql`이다.
 
 - `creator_similarity_generation`: 원본 Creator와 `applicationSequence`, `method`, `modelVersion`, `inputHash`, 생성 시각을 보존한다.
 - `creator_similarity_candidate`: 세대에 속한 후보와 점수·순위를 보존한다.
@@ -37,7 +37,7 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호�
 - 대상 Creator 또는 관심 분야 행 잠금으로 동시 요청을 직렬화하고 DB 유일 제약으로 같은 실행의 중복 generation을 막는다. 후보 저장·포인터 교체는 한 트랜잭션이다. 빈 후보도 같은 순서·멱등 규칙으로 적용한다. 실패 시 기존 포인터와 후보를 유지한다.
 - 순서 차단은 **대상별**이다. 전역 원자 전환이나 전역 실행 fence는 제공하지 않는다. A 복귀가 아직 적용되지 않은 대상에는 지연 B가 적용될 수 있으며, 복귀 A의 더 큰 번호가 그 대상을 최종 교체한다. 새 실행은 삭제·누락된 대상을 포함해 이전 대상에 빈 묶음까지 전달해야 한다.
 - 부분 실패 복구는 기존 실행 번호·payload를 유지하여 미완료 대상을 재전송한다. 더 최신 실행이 시작됐다면 과거 실행을 중단하고 최신 실행을 모든 대상에 완료한다. 409를 성공 처리하거나 무조건 재시도하지 않는다. 동일 번호 payload 충돌은 산출물 오류를 조사하고, 의도적인 새 적용은 더 큰 번호를 발급한다.
-- 전환 시 구형 배치를 먼저 중지하고 BE 마이그레이션과 필수 필드 클라이언트를 함께 배포한다. 필드 누락·0·음수는 `VALIDATION_FAILED`(400), 내부 Command 위반은 `INVALID_RECOMMENDATION_RESULT`다. V46은 기존 이력을 `-generation_id`로 예약하므로 첫 새 실행은 1부터 시작 가능하다. 기존 양수 번호를 사용한 환경에서는 재설치·체크포인트 초기화로 번호를 재사용하지 않는다. 환경 전환·DB 복원 후에는 대상 환경의 마지막 발급/적용 최대 번호보다 크게 발급한다.
+- 전환 시 구형 배치를 먼저 중지하고 BE 마이그레이션과 필수 필드 클라이언트를 함께 배포한다. 필드 누락·0·음수는 `VALIDATION_FAILED`(400), 내부 Command 위반은 `INVALID_RECOMMENDATION_RESULT`다. V47은 기존 이력을 `-generation_id`로 예약하므로 첫 새 실행은 1부터 시작 가능하다. 기존 양수 번호를 사용한 환경에서는 재설치·체크포인트 초기화로 번호를 재사용하지 않는다. 환경 전환·DB 복원 후에는 대상 환경의 마지막 발급/적용 최대 번호보다 크게 발급한다.
 - ADMIN JWT 재검증, API Key 우선 판단과 401/403 계약은 유지한다. 이 계약은 사용자 승인으로 확정한 BE/LLM 연동 규격이며 LLM #52의 클라이언트 반영이 필요하다.
 
 ## #473 검증 기록 (2026-10-07)
@@ -46,8 +46,14 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호�
 - `compileJava`, `compileTestJava`, `bootJar` 성공. 추천·인증·추첨 관련 선택 테스트 222건 성공, 실패·오류·skip 0건.
 - 선택 범위: `*CreatorSimilarity*Test`, `*InterestRecommendation*Test`, `*RecommendationApplicationSequenceIntegrationTest`, `*RecommendationApiKey*Test`, `*CreatorRecommendationIntegrationTest`, `*PersonalizedRecommendationInterestIntegrationTest`, `kr.co.cking.drawing.domain.*`, `kr.co.cking.drawing.application.*ServiceTest`.
 - A→B→새 실행 A, 동일 실행 재시도·payload 충돌, 미적용 과거 실행 차단, B 일부 적용 후 A 복귀, 동일/서로 다른 실행 동시 적재, 빈 세대, 후보 저장 실패 후 포인터 보존·재개를 검증했다.
-- V46 신규 마이그레이션 성공. 별도 격리 스키마에서 각 추천 종류의 기존 이력 2건을 음수 번호로 보존하고, 같은 내용 지문을 새 양수 번호로 재적재해 3건이 유지됨을 확인했다.
+- V47 신규 마이그레이션 성공. 별도 격리 스키마에서 각 추천 종류의 기존 이력 2건을 음수 번호로 보존하고, 같은 내용 지문을 새 양수 번호로 재적재해 3건이 유지됨을 확인했다.
 - ADMIN 권한 회수 재검증, API Key 우선 인증과 401/403 회귀 테스트 통과. 실제 Python HTTP 배치 E2E는 LLM #53 범위다.
+
+### develop 통합 검증 (PR #478)
+
+- 인기순 추천 테스트와 실행 번호 fixture를 모두 유지해 충돌을 해결했다.
+- develop의 댓글 필터 V46과 번호가 겹치므로 추천 마이그레이션을 V47로 변경했다. 전용 신규 DB에서 V46·V47이 함께 적용됨을 확인했다.
+- 인기순·개인화·추천 적재·동시성·롤백 관련 선택 테스트 75건 통과(실패·오류·skip 0). `compileJava`, `compileTestJava`, `bootJar` 성공.
 
 ## 외부 API와 조회 경계
 
@@ -97,9 +103,18 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호�
 | 있음 | 있음 | `HYBRID_PERSONALIZED_V1` |
 | 있음 | 없음 | `INTEREST_PERSONALIZED_V1` |
 | 없음 | 있음 | `FOLLOW_PERSONALIZED_V2` |
-| 없음 | 없음 | `FOLLOW_PERSONALIZED_V2`(빈 목록) |
+| 없음 | 없음 | 개인화 결과가 없어 인기순 대체(`POPULAR_FALLBACK_V1`) |
+
+개인화 정책이 만든 `items`가 비어 있을 때만 인기순으로 대체한다. 개인화 결과가 하나라도 있으면 인기순을 섞지 않는다.
 
 정책 상수(60, 8자리, HALF_UP, 가중치 0.5/0.5)나 정렬 조건을 바꾸면 새 `policyVersion`과 fixture를 정의한다.
+
+### 인기순 fallback
+
+개인화 결과가 비면 **팔로워 수 내림차순, 같으면 `creatorId` 오름차순**으로 Creator Space가 있는 Creator를 반환한다(`POPULAR_FALLBACK_V1`).
+팔로워가 0명인 Creator도 포함한다. 본인과 이미 팔로우한 Creator는 제외하며, 제외 대상은 조회 뒤에 걸러내므로 그만큼 더 읽어 `size`를 채운다.
+`aggregateScore`에는 팔로워 수가 들어가고 `interestCodes`·`seedCreatorIds`는 빈 배열이다. 팔로워 수는 `creator_follow`를 요청 시점에 집계하며
+집계 컬럼·캐시는 아직 없다(데이터가 늘면 별도 도입).
 
 ### 팔로우 단독 정책 변경(#410 → #442)
 
