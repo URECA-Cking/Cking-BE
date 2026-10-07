@@ -77,16 +77,19 @@ public class CreatorPostComment {
         this.filterStatus = CommentFilterStatus.PENDING;
     }
 
-    /** 본문이 바뀌면 이전 판정은 더는 유효하지 않으므로 필터 판정을 지우고 미판정으로 되돌린다. */
+    /**
+     * 본문을 고치고 다시 판정받도록 미판정(PENDING)으로 되돌린다. 이전 판정(action·사유)은 새 판정이 덮어쓸 때까지
+     * 남겨 둔다. BLOCK이던 댓글을 고쳐 판정이 끝나기 전에 다시 노출시키는 우회를 막기 위해서다.
+     */
     public void update(String content, Instant now) {
         this.content = Objects.requireNonNull(content, "content");
         this.updatedAt = Objects.requireNonNull(now, "now");
-        resetFilter();
+        this.filterStatus = CommentFilterStatus.PENDING;
     }
 
     /**
      * 필터가 돌려준 판정을 기록한다. 미판정·실패 상태에서만 기록할 수 있다. 이미 판정을 마친 댓글은 본문을 고쳐
-     * {@link #resetFilter()}로 되돌린 뒤에만 다시 판정한다.
+     * {@link #update}로 미판정으로 되돌린 뒤에만 다시 판정한다.
      */
     public void markFiltered(CommentFilterAction action, List<String> reasons,
                              String ruleVersion, String modelVersion, Instant now) {
@@ -113,19 +116,12 @@ public class CreatorPostComment {
         this.filterStatus = CommentFilterStatus.FAILED;
     }
 
-    /** 본문이 바뀌어 이전 판정이 더는 유효하지 않을 때 판정 결과를 지우고 미판정으로 되돌린다. */
-    public void resetFilter() {
-        this.filterStatus = CommentFilterStatus.PENDING;
-        this.filterAction = null;
-        this.filterReasons = null;
-        this.filterRuleVersion = null;
-        this.filterModelVersion = null;
-        this.filteredAt = null;
-    }
-
-    /** 필터 판정을 마쳤고 BLOCK인 댓글이다. 판정 전·실패·PASS인 댓글은 false다. */
+    /**
+     * 가장 최근 판정이 BLOCK인 댓글이다. 본문을 고친 뒤 재판정 중(PENDING)이거나 재판정이 실패(FAILED)해도 이전 BLOCK을
+     * 유지한다. 한 번도 판정받지 못했거나 PASS인 댓글은 false다.
+     */
     public boolean isBlocked() {
-        return filterStatus == CommentFilterStatus.DONE && filterAction == CommentFilterAction.BLOCK;
+        return filterAction == CommentFilterAction.BLOCK;
     }
 
     /** BLOCK 사유에 개인정보 규칙(privacy:*)이 있다. 이런 댓글은 누구에게도 원문을 보여주지 않는다. */

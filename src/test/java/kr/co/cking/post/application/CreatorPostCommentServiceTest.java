@@ -8,6 +8,7 @@ import kr.co.cking.follow.application.CreatorFollowQueryService;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
 import kr.co.cking.post.domain.CommentFilterAction;
+import kr.co.cking.post.domain.CommentFilterStatus;
 import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
@@ -286,6 +287,57 @@ class CreatorPostCommentServiceTest {
         assertThat(views.get(0).content()).isNull();
         assertThat(views.get(1).filtered()).isFalse();
         assertThat(views.get(1).content()).isEqualTo("댓글 2");
+    }
+
+    @Test
+    void BLOCK된_댓글을_수정하면_재판정_중에도_다른_사람에게_가려진_채_미판정으로_돌아간다() {
+        CreatorPostComment comment = blocked(1L, FAN_MEMBER_ID, "profanity:병신");
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment));
+
+        service.update(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L, "수정");
+
+        assertThat(comment.getFilterStatus()).isEqualTo(CommentFilterStatus.PENDING);
+        stubCommentPage(comment);
+        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0).filtered())
+                .isTrue();
+    }
+
+    @Test
+    void 재판정이_PASS면_수정된_BLOCK_댓글이_다시_보이고_BLOCK이면_계속_가려진다() {
+        CreatorPostComment comment = blocked(1L, FAN_MEMBER_ID, "profanity:병신");
+        comment.update("고침", LATER);
+
+        comment.markFiltered(CommentFilterAction.PASS, List.of(), "rule-2", "model-2", LATER);
+        assertThat(comment.isBlocked()).isFalse();
+        assertThat(comment.getFilterStatus()).isEqualTo(CommentFilterStatus.DONE);
+
+        comment.update("또 고침", LATER);
+        comment.markFiltered(CommentFilterAction.BLOCK, List.of("spam:link"), "rule-2", "model-2", LATER);
+        assertThat(comment.isBlocked()).isTrue();
+    }
+
+    @Test
+    void 수정한_BLOCK_댓글의_재판정이_실패해도_이전_BLOCK을_유지한다() {
+        CreatorPostComment comment = blocked(1L, FAN_MEMBER_ID, "profanity:병신");
+        comment.update("고침", LATER);
+
+        comment.markFilterFailed();
+
+        assertThat(comment.getFilterStatus()).isEqualTo(CommentFilterStatus.FAILED);
+        assertThat(comment.isBlocked()).isTrue();
+    }
+
+    @Test
+    void 판정받은_적_없는_댓글이나_PASS_댓글을_수정해도_가려지지_않는다() {
+        CreatorPostComment fresh = comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID);
+        CreatorPostComment pass = passed(2L, FAN_MEMBER_ID);
+
+        fresh.update("수정", LATER);
+        pass.update("수정", LATER);
+
+        assertThat(fresh.isBlocked()).isFalse();
+        assertThat(pass.isBlocked()).isFalse();
+        assertThat(pass.getFilterStatus()).isEqualTo(CommentFilterStatus.PENDING);
     }
 
     @Test
