@@ -25,7 +25,7 @@ import kr.co.cking.common.repository.DatabaseTime;
 import kr.co.cking.creator.domain.RecommendationSourceType;
 import kr.co.cking.creator.scheduler.RecommendationTrackingRecovery;
 import kr.co.cking.common.repository.MemberActivityLock;
-import kr.co.cking.common.repository.CreatorFollowEventRepository;
+import kr.co.cking.follow.repository.CreatorFollowEventRepository;
 import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
@@ -424,6 +424,7 @@ class RecommendationTrackingIntegrationTest {
         service.collect(fan, List.of(event(late, RecommendationEventType.CLICK)));
         assertThat(count("conversion")).isZero();
         var recovery = new RecommendationTrackingRecovery(service, observer);
+        clock.set(NOW.plusSeconds(121));
         concurrently(recovery::recover);
         recovery.recover();
         assertThat(count("conversion")).isEqualTo(1);
@@ -444,6 +445,7 @@ class RecommendationTrackingIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ? AND processed_at IS NULL",
                 Long.class, fan)).isEqualTo(1);
         reset(repository);
+        clock.set(NOW.plusSeconds(120));
         new RecommendationTrackingRecovery(service, observer).recover();
         assertThat(count("conversion")).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ? AND processed_at IS NULL",
@@ -463,7 +465,7 @@ class RecommendationTrackingIntegrationTest {
 
     @Test
     void 영속_원본_저장이_실패하면_팔로우도_롤백한다() throws Exception {
-        doThrow(new IllegalStateException("journal unavailable")).when(followEvents).append(any());
+        doThrow(new IllegalStateException("journal unavailable")).when(followEvents).append(any(), any());
         assertThatThrownBy(() -> follow.follow(fan, creator)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         drain();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow WHERE member_id = ?", Long.class, fan)).isZero();
@@ -489,6 +491,93 @@ class RecommendationTrackingIntegrationTest {
         UUID empty = service.recordSnapshot(fan, new PersonalizedCreatorRecommendationView("POPULAR_FALLBACK_V1", List.of()));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_recommendation_card WHERE request_id = ?",
                 Long.class, empty.toString())).isZero();
+    }
+
+    @Test
+    void 복구_유예_전에는_조회와_직접_복구가_실행되지_않고_경계부터_허용한다() {
+        org.mockito.Mockito.doNothing().when(observer).onFollowCreated(any());
+        service.collect(fan, List.of(event(snapshot("POPULAR_FALLBACK_V1"), RecommendationEventType.CLICK)));
+        follow.follow(fan, creator);
+        UUID id = UUID.fromString(jdbc.queryForObject("SELECT event_id FROM creator_follow_event WHERE member_id = ?", String.class, fan));
+        assertThat(jdbc.queryForObject("SELECT next_attempt_at FROM creator_follow_event WHERE event_id = ?",
+                Timestamp.class, id.toString()).toInstant()).isEqualTo(NOW.plusSeconds(120));
+        clock.set(NOW.plusSeconds(119));
+        assertThat(service.pendingFollowEvents()).doesNotContain(id);
+        service.recoverFollowEvent(id);
+        assertThat(count("conversion")).isZero();
+        clock.set(NOW.plusSeconds(120));
+        assertThat(service.pendingFollowEvents()).contains(id);
+        new RecommendationTrackingRecovery(service, observer).recover();
+        assertThat(count("conversion")).isEqualTo(1);
+    }
+
+    @Test
+    void 반복_실패는_60초부터_최대_1시간으로_백오프하고_성공_후에는_재시도하지_않는다() {
+        org.mockito.Mockito.doNothing().when(observer).onFollowCreated(any());
+        service.collect(fan, List.of(event(snapshot("POPULAR_FALLBACK_V1"), RecommendationEventType.CLICK)));
+        follow.follow(fan, creator);
+        UUID id = UUID.fromString(jdbc.queryForObject("SELECT event_id FROM creator_follow_event WHERE member_id = ?", String.class, fan));
+        doThrow(new IllegalStateException()).when(repository).insertConversionIfAbsent(anyLong(), anyLong(), any(), any(), anyLong());
+        var recovery = new RecommendationTrackingRecovery(service, observer);
+        Instant due = NOW.plusSeconds(120);
+        int failures = 0;
+        for (long delay : new long[] {60, 120, 240, 480, 960, 1920, 3600, 3600}) {
+            clock.set(due);
+            recovery.recover();
+            failures++;
+            due = due.plusSeconds(delay);
+            assertThat(jdbc.queryForObject("SELECT retry_count FROM creator_follow_event WHERE event_id = ?", Integer.class, id.toString()))
+                    .isEqualTo(failures);
+            assertThat(jdbc.queryForObject("SELECT next_attempt_at FROM creator_follow_event WHERE event_id = ?", Timestamp.class, id.toString()).toInstant())
+                    .isEqualTo(due);
+            clock.set(due.minusNanos(1000));
+            assertThat(service.pendingFollowEvents()).doesNotContain(id);
+            // 목록 조회 후 다른 인스턴스가 연기한 ID를 갖고 있어도 재시도 시각을 다시 검증한다.
+            service.recoverFollowEvent(id);
+            assertThat(count("conversion")).isZero();
+        }
+        reset(repository);
+        clock.set(due);
+        recovery.recover();
+        assertThat(count("conversion")).isEqualTo(1);
+        assertThat(service.pendingFollowEvents()).doesNotContain(id);
+        service.deferFollowEvent(id);
+        assertThat(jdbc.queryForObject("SELECT retry_count FROM creator_follow_event WHERE event_id = ?", Integer.class, id.toString()))
+                .isEqualTo(failures);
+    }
+
+    @Test
+    void 전역_드라이버_옵션_없이_201개_출처를_여러_INSERT로_저장한다() {
+        var sources = new ArrayList<RecommendationSource>();
+        for (int i = 0; i < 201; i++) {
+            sources.add(new RecommendationSource(RecommendationSourceType.FOLLOW, Integer.toString(i), null,
+                    42L, "M2", "model-'?-test", i + 1));
+        }
+        UUID id = service.recordSnapshot(fan, new PersonalizedCreatorRecommendationView("FOLLOW_PERSONALIZED_V2",
+                List.of(new PersonalizedCreatorRecommendationView.Item(creator, "name", "intro", "image", BigDecimal.ONE,
+                        List.of(), List.of(1L), sources))));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_recommendation_source WHERE request_id = ?",
+                Long.class, id.toString())).isEqualTo(201);
+        assertThat(jdbc.queryForObject("SELECT model_version FROM creator_recommendation_source WHERE request_id = ? AND source_rank = 201",
+                String.class, id.toString())).isEqualTo("model-'?-test");
+        var dataSource = (com.zaxxer.hikari.HikariDataSource) jdbc.getDataSource();
+        assertThat(dataSource.getDataSourceProperties()).doesNotContainKey("rewriteBatchedStatements");
+    }
+
+    @Test
+    void 마지막_출처_INSERT가_실패하면_이전_100행_묶음도_롤백한다() {
+        var sources = new ArrayList<RecommendationSource>();
+        for (int i = 0; i < 201; i++) {
+            sources.add(new RecommendationSource(RecommendationSourceType.FOLLOW, Integer.toString(i), null,
+                    42L, "M2", i == 200 ? null : "model-test", i + 1));
+        }
+        var view = new PersonalizedCreatorRecommendationView("FOLLOW_PERSONALIZED_V2",
+                List.of(new PersonalizedCreatorRecommendationView.Item(creator, "name", "intro", "image", BigDecimal.ONE,
+                        List.of(), List.of(1L), sources)));
+        assertThat(observer.snapshot(fan, view)).isNull();
+        assertThat(count("request")).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_recommendation_card WHERE creator_id = ?", Long.class, creator)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_recommendation_source WHERE creator_id = ?", Long.class, creator)).isZero();
     }
 
     @Test

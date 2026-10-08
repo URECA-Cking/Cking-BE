@@ -15,7 +15,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import kr.co.cking.common.repository.DatabaseTime;
 import kr.co.cking.common.repository.MemberActivityLock;
-import kr.co.cking.common.repository.CreatorFollowEventRepository;
 import kr.co.cking.common.event.CreatorFollowCreated;
 import org.mockito.ArgumentCaptor;
 import java.time.Instant;
@@ -43,7 +42,7 @@ class CreatorFollowServiceTest {
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final DatabaseTime databaseTime = mock(DatabaseTime.class);
     private final MemberActivityLock activityLock = mock(MemberActivityLock.class);
-    private final CreatorFollowEventRepository followEvents = mock(CreatorFollowEventRepository.class);
+    private final CreatorFollowEventService followEvents = mock(CreatorFollowEventService.class);
     private final CreatorFollowService service = new CreatorFollowService(
             creatorRepository, followRepository, databaseTime, memberRepository, eventPublisher, activityLock, followEvents);
 

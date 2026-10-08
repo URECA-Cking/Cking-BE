@@ -3,6 +3,8 @@ package kr.co.cking.creator.repository;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,15 +37,22 @@ public class RecommendationTrackingRepository {
                         source.taxonomyVersion(), source.generationId(), source.method(), source.modelVersion(), source.sourceRank()});
             }
         }
-        if (!cards.isEmpty()) {
-            jdbc.batchUpdate("INSERT INTO creator_recommendation_card (request_id, creator_id, rank_no) VALUES (?, ?, ?)", cards);
-        }
-        if (!sources.isEmpty()) {
-            jdbc.batchUpdate("""
-                    INSERT INTO creator_recommendation_source
-                      (request_id, creator_id, source_type, source_key, taxonomy_version,
-                       generation_id, method, model_version, source_rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, sources);
+        insertRows("INSERT INTO creator_recommendation_card (request_id, creator_id, rank_no)", 3, cards);
+        insertRows("""
+                INSERT INTO creator_recommendation_source
+                  (request_id, creator_id, source_type, source_key, taxonomy_version,
+                   generation_id, method, model_version, source_rank)
+                """, 9, sources);
+    }
+
+    /** 추천 스냅샷의 INSERT만 100행씩 묶는다. 연결 풀/드라이버의 전역 배치 옵션은 바꾸지 않는다. */
+    private void insertRows(String insert, int columns, List<Object[]> rows) {
+        String tuple = "(" + String.join(", ", Collections.nCopies(columns, "?")) + ")";
+        for (int start = 0; start < rows.size(); start += 100) {
+            var chunk = rows.subList(start, Math.min(start + 100, rows.size()));
+            String sql = insert + " VALUES " + String.join(", ", Collections.nCopies(chunk.size(), tuple));
+            Object[] parameters = chunk.stream().flatMap(Arrays::stream).toArray();
+            jdbc.update(sql, parameters);
         }
     }
 

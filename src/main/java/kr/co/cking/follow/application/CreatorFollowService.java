@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Isolation;
 import java.time.Instant;
 import java.util.UUID;
 import kr.co.cking.common.event.CreatorFollowCreated;
-import kr.co.cking.common.repository.CreatorFollowEventRepository;
 import kr.co.cking.common.repository.DatabaseTime;
 import kr.co.cking.common.repository.MemberActivityLock;
 
@@ -37,7 +36,7 @@ public class CreatorFollowService {
     private final MemberRepository memberRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final MemberActivityLock activityLock;
-    private final CreatorFollowEventRepository followEvents;
+    private final CreatorFollowEventService followEvents;
 
     public void follow(Long memberId, Long creatorId) {
         lockMember(memberId);

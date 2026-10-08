@@ -1,9 +1,10 @@
 package kr.co.cking.creator.application;
 
 import java.time.Instant;
+import kr.co.cking.common.event.CreatorFollowCreated;
 import kr.co.cking.common.repository.DatabaseTime;
 import kr.co.cking.common.repository.MemberActivityLock;
-import kr.co.cking.common.repository.CreatorFollowEventRepository;
+import kr.co.cking.follow.application.CreatorFollowEventService;
 import java.util.List;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
@@ -29,7 +30,7 @@ public class RecommendationTrackingService {
     private final RecommendationTrackingSettings settings;
     private final DatabaseTime databaseTime;
     private final MemberActivityLock activityLock;
-    private final CreatorFollowEventRepository followEvents;
+    private final CreatorFollowEventService followEvents;
 
     public UUID recordSnapshot(Long memberId, PersonalizedCreatorRecommendationView view) {
         UUID requestId = UUID.randomUUID();
@@ -97,20 +98,26 @@ public class RecommendationTrackingService {
     }
 
     public void processFollowEvent(UUID eventId) {
-        var event = followEvents.findPending(eventId);
-        if (event.isEmpty()) return;
-        lockMember(event.get().memberId());
+        followEvents.findPending(eventId).ifPresent(this::processFollowEvent);
+    }
+
+    public void recoverFollowEvent(UUID eventId) {
+        // 목록 조회 뒤 다른 인스턴스가 연기한 이벤트도 행 잠금 아래에서 재판정한다.
+        followEvents.findRecoverable(eventId, now()).ifPresent(this::processFollowEvent);
+    }
+
+    private void processFollowEvent(CreatorFollowCreated original) {
+        lockMember(original.memberId());
         // 영속 이벤트의 FOR UPDATE가 큐와 여러 인스턴스의 복구 잡을 직렬화한다.
-        var original = event.get();
         repository.findLastClick(original.memberId(), original.creatorId(),
                         original.followedAt().minus(settings.attributionWindow()), original.followedAt())
                 .ifPresent(click -> repository.insertConversionIfAbsent(original.memberId(), original.creatorId(),
                         original.followedAt(), click, settings.attributionWindow().toSeconds()));
-        followEvents.complete(eventId, now());
+        followEvents.complete(original.eventId(), now());
     }
 
     public void deferFollowEvent(UUID eventId) {
-        followEvents.defer(eventId, now().plusSeconds(60));
+        followEvents.defer(eventId, now());
     }
 
     private void lockMember(Long memberId) {

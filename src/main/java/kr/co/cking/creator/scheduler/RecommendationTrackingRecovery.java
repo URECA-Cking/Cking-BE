@@ -21,7 +21,7 @@ public class RecommendationTrackingRecovery {
             for (var id : service.pendingFollowEvents()) {
                 try {
                     // 건별 REQUIRES_NEW: 한 건의 실패가 나머지 복구를 롤백하지 않는다.
-                    service.processFollowEvent(id);
+                    service.recoverFollowEvent(id);
                     observer.result("follow_recovery", "success");
                 } catch (RuntimeException failure) {
                     observer.failed("follow_recovery", failure);
