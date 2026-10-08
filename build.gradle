@@ -106,3 +106,40 @@ tasks.register('loadTest', Test) {
 		exceptionFormat "full"
 	}
 }
+
+// 개발 전용 비교 코드와 운영 아티팩트를 분리한다. 외부 벤치마크 의존성은 추가하지 않는다.
+sourceSets {
+	benchmark {
+		compileClasspath += sourceSets.main.output
+		runtimeClasspath += sourceSets.main.output
+	}
+	test {
+		compileClasspath += sourceSets.benchmark.output
+		runtimeClasspath += sourceSets.benchmark.output
+	}
+}
+
+tasks.register('weightedRandomBenchmark', JavaExec) {
+	group = 'verification'
+	description = '개발 전용 가중치 비복원 추첨 비교. 일반 test/check에서는 실행하지 않는다.'
+	classpath = sourceSets.benchmark.runtimeClasspath
+	mainClass = 'kr.co.cking.drawing.domain.engine.WeightedRandomBenchmark'
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+	jvmArgs '-Xms512m', '-Xmx512m', '-XX:+UseG1GC'
+	systemProperty 'benchmark.cpu', providers.gradleProperty('benchmarkCpu')
+			.getOrElse(System.getenv('PROCESSOR_IDENTIFIER') ?: 'unknown')
+	systemProperty 'benchmark.revision', providers.gradleProperty('benchmarkRevision').getOrElse('unrecorded')
+	doFirst {
+		def output = providers.gradleProperty('benchmarkOutput')
+				.getOrElse(layout.buildDirectory.dir('weighted-random-' + System.currentTimeMillis()).get().asFile.path)
+		file(output).absoluteFile.parentFile.mkdirs()
+		args output,
+				providers.gradleProperty('benchmarkWarmups').getOrElse('5'),
+				providers.gradleProperty('benchmarkIterations').getOrElse('20'),
+				providers.gradleProperty('benchmarkSeed').getOrElse('0123456789abcdef'.repeat(4)),
+				providers.gradleProperty('benchmarkMaxTickets').getOrElse('1000000'),
+				providers.gradleProperty('benchmarkMaxTicketBytes').getOrElse('8388608')
+	}
+}
