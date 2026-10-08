@@ -3,6 +3,9 @@ package kr.co.cking.creator.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
+import kr.co.cking.creator.application.dto.RecommendationSource;
+import kr.co.cking.creator.repository.ActiveCreatorRecommendationCandidate;
+import kr.co.cking.interest.repository.ActiveInterestRecommendationCandidate;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.repository.CreatorRepository;
@@ -51,12 +54,11 @@ public class CreatorRecommendationQueryService {
                 .map(Creator::getCreatorId)
                 .ifPresent(excludedCreatorIds::add);
 
-        PersonalizedCreatorRecommendationPolicy.Recommendation recommendation = policy.recommend(
-                followedCreatorIds.isEmpty()
-                        ? List.of()
-                        : candidateRepository.findActiveCandidatesBySeedCreatorIds(followedCreatorIds),
-                interestQueryService.findActiveCandidates(memberId),
-                excludedCreatorIds);
+        List<ActiveCreatorRecommendationCandidate> followRows = followedCreatorIds.isEmpty() ? List.of()
+                : candidateRepository.findActiveCandidatesBySeedCreatorIds(followedCreatorIds);
+        List<ActiveInterestRecommendationCandidate> interestRows = interestQueryService.findActiveCandidates(memberId);
+        PersonalizedCreatorRecommendationPolicy.Recommendation recommendation =
+                policy.recommend(followRows, interestRows, excludedCreatorIds);
 
         if (recommendation.items().isEmpty()) {
             return popularFallback(excludedCreatorIds, size);
@@ -83,7 +85,7 @@ public class CreatorRecommendationQueryService {
                         .map(candidate -> toItem(
                                 candidate,
                                 creators.get(candidate.creatorId()),
-                                spaces.get(candidate.creatorId())))
+                                spaces.get(candidate.creatorId()), followRows, interestRows))
                         .toList());
     }
 
@@ -113,8 +115,17 @@ public class CreatorRecommendationQueryService {
     private PersonalizedCreatorRecommendationView.Item toItem(
             PersonalizedCreatorRecommendationPolicy.Item candidate,
             Creator creator,
-            CreatorSpace space
+            CreatorSpace space,
+            List<ActiveCreatorRecommendationCandidate> followRows,
+            List<ActiveInterestRecommendationCandidate> interestRows
     ) {
+        var sources = new java.util.ArrayList<RecommendationSource>();
+        followRows.stream().filter(row -> row.candidateCreatorId().equals(candidate.creatorId()))
+                .forEach(row -> sources.add(new RecommendationSource("FOLLOW", row.seedCreatorId().toString(),
+                        null, row.generationId(), row.method(), row.modelVersion(), row.rank())));
+        interestRows.stream().filter(row -> row.creatorId().equals(candidate.creatorId()))
+                .forEach(row -> sources.add(new RecommendationSource("INTEREST", row.interestCode(),
+                        row.taxonomyVersion(), row.generationId(), row.method(), row.modelVersion(), row.rank())));
         return new PersonalizedCreatorRecommendationView.Item(
                 candidate.creatorId(),
                 creator.getName(),
@@ -122,6 +133,6 @@ public class CreatorRecommendationQueryService {
                 space.getProfileImageUrl(),
                 candidate.aggregateScore(),
                 candidate.interestCodes(),
-                candidate.seedCreatorIds());
+                candidate.seedCreatorIds(), List.copyOf(sources));
     }
 }
