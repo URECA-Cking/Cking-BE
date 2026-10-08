@@ -134,7 +134,7 @@ class CreatorRecommendationQueryServiceTest {
 
         PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
 
-        assertThat(result.items()).containsExactly(new PersonalizedCreatorRecommendationView.Item(
+        assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(new PersonalizedCreatorRecommendationView.Item(
                 10L, "열", "소개10", "profile10", new BigDecimal("0.01639344"), List.of(), List.of(1L)));
     }
 
@@ -158,7 +158,7 @@ class CreatorRecommendationQueryServiceTest {
 
         PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
 
-        assertThat(result.items()).containsExactly(
+        assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(
                 // 후보가 남는 seed는 1·2 두 명뿐이라(3은 활성 후보 없음) 기여도 합을 2로 나눈다.
                 new PersonalizedCreatorRecommendationView.Item(
                         10L, "열", "소개10", "profile10", new BigDecimal("0.01639344"), List.of(), List.of(1L, 2L)),

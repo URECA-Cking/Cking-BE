@@ -6,6 +6,10 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.follow.domain.FollowErrorCode;
 import kr.co.cking.follow.repository.CreatorFollowRepository;
+import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.member.domain.Member;
+import org.springframework.context.ApplicationEventPublisher;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -31,8 +35,15 @@ class CreatorFollowServiceTest {
 
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final CreatorFollowRepository followRepository = mock(CreatorFollowRepository.class);
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final CreatorFollowService service = new CreatorFollowService(
-            creatorRepository, followRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+            creatorRepository, followRepository, Clock.fixed(NOW, ZoneOffset.UTC), memberRepository, eventPublisher);
+
+    @BeforeEach
+    void setUp() {
+        given(memberRepository.findByIdForUpdate(anyLong())).willReturn(Optional.of(mock(Member.class)));
+    }
 
     @Test
     void 팔로우는_관계가_없을_때만_추가하는_insert를_호출한다() {
@@ -41,6 +52,16 @@ class CreatorFollowServiceTest {
         service.follow(MEMBER_ID, CREATOR_ID);
 
         verify(followRepository).insertIfAbsent(MEMBER_ID, CREATOR_ID, NOW);
+        verify(eventPublisher).publishEvent(new CreatorFollowCreated(MEMBER_ID, CREATOR_ID, NOW));
+    }
+
+    @Test
+    void 반복_팔로우는_신규_전환_이벤트를_발행하지_않는다() {
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator()));
+        given(followRepository.existsByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)).willReturn(true);
+        service.follow(MEMBER_ID, CREATOR_ID);
+        verify(eventPublisher, never()).publishEvent(any());
+        verify(followRepository, never()).insertIfAbsent(anyLong(), anyLong(), any());
     }
 
     @Test

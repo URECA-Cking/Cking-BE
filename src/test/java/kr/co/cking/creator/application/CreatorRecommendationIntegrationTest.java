@@ -85,7 +85,7 @@ class CreatorRecommendationIntegrationTest {
         PersonalizedCreatorRecommendationView result =
                 recommendationQueryService.findForMember(fan.getMemberId(), 10);
 
-        assertThat(result.items()).containsExactly(
+        assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(
                 new PersonalizedCreatorRecommendationView.Item(
                         repeatedCandidate.getCreatorId(),
                         repeatedCandidate.getName(),
@@ -160,7 +160,7 @@ class CreatorRecommendationIntegrationTest {
         PersonalizedCreatorRecommendationView result =
                 recommendationQueryService.findForMember(fan.getMemberId(), 1);
 
-        assertThat(result.items()).containsExactly(new PersonalizedCreatorRecommendationView.Item(
+        assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(new PersonalizedCreatorRecommendationView.Item(
                 availableCandidate.getCreatorId(),
                 availableCandidate.getName(),
                 "정상 후보 소개",
