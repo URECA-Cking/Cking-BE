@@ -2,6 +2,7 @@ package kr.co.cking.creator.presentation;
 
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.creator.application.CreatorRecommendationQueryService;
+import kr.co.cking.creator.application.RecommendationTrackingObserver;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
@@ -25,11 +26,14 @@ class CreatorRecommendationControllerTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean CreatorRecommendationQueryService queryService;
+    @MockitoBean RecommendationTrackingObserver trackingObserver;
     @MockitoBean MemberRepository memberRepository;
 
     @Test
     @WithMockJwt(memberId = "7")
     void 기본_size_10으로_개인화_추천_카드를_반환한다() throws Exception {
+        var requestId = java.util.UUID.randomUUID();
+        given(trackingObserver.snapshot(org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.any())).willReturn(requestId);
         given(queryService.findForMember(7L, 10)).willReturn(new PersonalizedCreatorRecommendationView(
                 "HYBRID_PERSONALIZED_V1",
                 List.of(new PersonalizedCreatorRecommendationView.Item(
@@ -44,6 +48,7 @@ class CreatorRecommendationControllerTest {
         mockMvc.perform(get("/api/me/creator-recommendations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.recommendationRequestId").value(requestId.toString()))
                 .andExpect(jsonPath("$.data.policyVersion").value("HYBRID_PERSONALIZED_V1"))
                 .andExpect(jsonPath("$.data.items[0].creatorId").value(20))
                 .andExpect(jsonPath("$.data.items[0].creatorName").value("추천 크리에이터"))
@@ -57,6 +62,16 @@ class CreatorRecommendationControllerTest {
                 .andExpect(jsonPath("$.data.items[0].seedCreatorIds[1]").value(2));
 
         then(queryService).should().findForMember(7L, 10);
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 스냅샷_기록이_실패해도_추천은_성공하고_ID는_null이다() throws Exception {
+        given(queryService.findForMember(7L, 10)).willReturn(new PersonalizedCreatorRecommendationView("POPULAR_FALLBACK_V1", List.of()));
+        mockMvc.perform(get("/api/me/creator-recommendations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.recommendationRequestId").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.policyVersion").value("POPULAR_FALLBACK_V1"));
     }
 
     @Test

@@ -126,7 +126,7 @@
 | 122 | 외부 | 비정상 행동 탐지 | ADMIN | PATCH | `/api/admin/abuse-detections/{detectionId}/review` | Detection 검토 판정 | 상태 기반 |
 | 123 | 외부 | Creator 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/creators/{creatorId}/similar` | LLM 유사 추천 후보 묶음 검증·원자 교체 | `creatorId + applicationSequence` |
 | 124 | 외부 | Creator 추천 | PUBLIC | GET | `/api/creators/{creatorId}/similar` | 저장된 유사 크리에이터 후보 조회 | - |
-| 125 | 외부 | Creator 추천 | USER | GET | `/api/me/creator-recommendations` | 관심 분야·팔로우 기반 개인화 Creator 추천 조회(`HYBRID`·`INTEREST`·`FOLLOW_PERSONALIZED_V2`, 결과가 비면 `POPULAR_FALLBACK_V1`) | - |
+| 125 | 외부 | Creator 추천 | USER | GET | `/api/me/creator-recommendations` | 관심 분야·팔로우 기반 개인화 Creator 추천 조회 및 recommendationRequestId 발급(`HYBRID`·`INTEREST`·`FOLLOW_PERSONALIZED_V2`, 결과가 비면 `POPULAR_FALLBACK_V1`) | - |
 | 126 | 외부 | 관심 분야 | PUBLIC | GET | `/api/interests` | 선택 가능한 관심 분야 목록 조회(활성 분류체계) | - |
 | 127 | 외부 | 관심 분야 | USER | GET | `/api/me/interests` | 내 관심 분야 조회 | - |
 | 128 | 외부 | 관심 분야 | USER | PUT | `/api/me/interests` | 내 관심 분야 전체 교체 저장(0~3개) | 전체 교체(멱등) |
@@ -140,5 +140,6 @@
 | 137 | 외부 | Post | ADMIN | GET | `/api/admin/comment-reports` | 신고된 게시글 댓글 목록(댓글별 신고 수·사유별 수, 최근 신고 순) | - |
 | 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V50, 기존 회원은 전원 true) | 상태 기반 |
 | 139 | 외부 | Drawing | ADMIN | GET | `/api/admin/events/{eventId}/drawings/initial` | Event의 INITIAL Drawing 조회 | - |
+| 140 | 외부 | Creator 추천 | USER | POST | `/api/me/creator-recommendation-events` | 실제 노출·클릭 최대 50건 원자 수집, JWT 소유권/후보/신규 이벤트 24시간 검증, 보존 중 승인 재전송은 만료 후 멱등 성공 | eventId 및 요청+Creator+타입 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

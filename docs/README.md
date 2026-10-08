@@ -46,6 +46,8 @@
 - [YouTube 구독 인증 비동기 처리](domains/subscription-verification/processing.md): VLM 판정, Processing Claim과 Recovery 계약
 - [Creator](domains/creator/README.md): 신청·승인, 기본 템플릿, 승인 시 Creator Space 자동 생성 책임 경계
 - [Creator 유사 추천 결과](domains/creator/similarity-recommendation.md): LLM 후보 묶음 검증, 세대 이력·현재 포인터와 저장 결과 공개 조회 계약
+- [추천 행동 수집 API](domains/creator/recommendation-events.md): 추천 응답 스냅샷, 노출·클릭 수집, 신규 팔로우 귀속과 FE 지침
+- [추천 행동 운영](operations/creator-recommendation-events.md): 실패 격리, 지표 SQL, 보존과 삭제
 - [Creator Space Template API](domains/creator/space-template-api.md): 관리자 기본 크리에이터 스페이스 템플릿 관리 API 계약
 - [Creator Space API](domains/creator/space-api.md): Creator Space 조회, 홈·프로필 수정, 커스텀 slug 변경 API 계약
 - [Creator Space slug 정책](domains/creator/space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리

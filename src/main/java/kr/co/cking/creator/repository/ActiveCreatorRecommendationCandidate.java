@@ -8,6 +8,8 @@ public record ActiveCreatorRecommendationCandidate(
         Long candidateCreatorId,
         String method,
         BigDecimal rawScore,
-        int rank
+        int rank,
+        Long generationId,
+        String modelVersion
 ) {
 }

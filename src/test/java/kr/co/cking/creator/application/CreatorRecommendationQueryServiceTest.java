@@ -110,7 +110,7 @@ class CreatorRecommendationQueryServiceTest {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
         given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
         given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L)))
-                .willReturn(List.of(new ActiveCreatorRecommendationCandidate(1L, 20L, "M4", new BigDecimal("0.9"), 1)));
+                .willReturn(List.of(new ActiveCreatorRecommendationCandidate(1L, 20L, "M4", new BigDecimal("0.9"), 1, 42L, "test-model")));
         given(creatorRepository.findByCreatorIdIn(List.of(20L))).willReturn(List.of(creator(20L, "후보")));
         given(spaceRepository.findByCreatorIdIn(List.of(20L))).willReturn(List.of(space(20L, "소개", "p")));
 
@@ -134,7 +134,7 @@ class CreatorRecommendationQueryServiceTest {
 
         PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
 
-        assertThat(result.items()).containsExactly(new PersonalizedCreatorRecommendationView.Item(
+        assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(new PersonalizedCreatorRecommendationView.Item(
                 10L, "열", "소개10", "profile10", new BigDecimal("0.01639344"), List.of(), List.of(1L)));
     }
 
@@ -158,7 +158,7 @@ class CreatorRecommendationQueryServiceTest {
 
         PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
 
-        assertThat(result.items()).containsExactly(
+        assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(
                 // 후보가 남는 seed는 1·2 두 명뿐이라(3은 활성 후보 없음) 기여도 합을 2로 나눈다.
                 new PersonalizedCreatorRecommendationView.Item(
                         10L, "열", "소개10", "profile10", new BigDecimal("0.01639344"), List.of(), List.of(1L, 2L)),
@@ -232,6 +232,12 @@ class CreatorRecommendationQueryServiceTest {
         assertThat(result.items().getFirst().seedCreatorIds()).containsExactly(1L);
         assertThat(result.items().get(1).aggregateScore()).isEqualByComparingTo("0.00806452");
         assertThat(result.items().get(1).interestCodes()).isEmpty();
+        assertThat(result.items().getFirst().sources()).extracting(source -> source.sourceType().name())
+                .containsExactly("FOLLOW", "INTEREST");
+        assertThat(result.items().getFirst().sources()).extracting(source -> source.generationId())
+                .containsExactly(42L, 43L);
+        assertThat(result.items().get(1).sources()).hasSize(1);
+        assertThat(result.items().get(1).sources().getFirst().sourceKey()).isEqualTo("1");
     }
 
     @Test
@@ -252,12 +258,12 @@ class CreatorRecommendationQueryServiceTest {
     }
 
     private ActiveInterestRecommendationCandidate interestRow(String interestCode, Long creatorId, int rank) {
-        return new ActiveInterestRecommendationCandidate(interestCode, creatorId, rank);
+        return new ActiveInterestRecommendationCandidate(interestCode, creatorId, rank, "v0.2", 43L, "M2", "test-model");
     }
 
     private ActiveCreatorRecommendationCandidate row(Long seedCreatorId, Long candidateCreatorId, int rank) {
         return new ActiveCreatorRecommendationCandidate(
-                seedCreatorId, candidateCreatorId, "M4", new BigDecimal("1.00000000"), rank);
+                seedCreatorId, candidateCreatorId, "M4", new BigDecimal("1.00000000"), rank, 42L, "test-model");
     }
 
     private Creator creator(Long creatorId, String name) {

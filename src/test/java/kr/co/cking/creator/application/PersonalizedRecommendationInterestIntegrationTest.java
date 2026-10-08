@@ -105,6 +105,15 @@ class PersonalizedRecommendationInterestIntegrationTest {
         assertThat(result.items().getFirst().aggregateScore()).isEqualByComparingTo("0.01626124");
         assertThat(result.items().getFirst().interestCodes()).containsExactly("FOOD");
         assertThat(result.items().getFirst().seedCreatorIds()).containsExactly(seed.getCreatorId());
+        assertThat(result.items().getFirst().sources()).hasSize(2).allSatisfy(source -> {
+            assertThat(source.generationId()).isPositive();
+            assertThat(source.modelVersion()).isNotBlank();
+            assertThat(source.sourceRank()).isPositive();
+        });
+        assertThat(result.items().getFirst().sources()).extracting(kr.co.cking.creator.application.dto.RecommendationSource::method)
+                .containsExactlyInAnyOrder("M4", METHOD);
+        assertThat(result.items().getFirst().sources()).filteredOn(source -> source.sourceType().equals("INTEREST"))
+                .allSatisfy(source -> assertThat(source.taxonomyVersion()).isEqualTo(version));
         assertThat(result.items().get(1).interestCodes()).isEmpty();
         assertThat(result.items().get(1).seedCreatorIds()).containsExactly(seed.getCreatorId());
         assertThat(result.items().get(2).seedCreatorIds()).isEmpty();

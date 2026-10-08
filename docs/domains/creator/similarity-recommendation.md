@@ -64,6 +64,10 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호�
 
 ## 요구사항 추적
 
+추천 응답의 실제 노출/클릭과 팔로우 전환은 [추천 행동 수집](recommendation-events.md)에서 별도로 관리한다.
+응답 식별자 발급은 노출이 아니며, 후보 계산에 사용한 각 source의 generationId/method/modelVersion을 스냅샷에 보존한다.
+개인화 및 인기순 fallback 지표는 policyVersion별로 분리한다. 집계 SQL은 [운영 문서](../../operations/creator-recommendation-events.md)에 있다.
+
 | Issue #393 완료 조건 | 구현·검증 |
 | --- | --- |
 | LLM 계약·저장 단위·갱신·멱등 문서화 | 이 문서와 Creator API 문서 |

@@ -28,7 +28,7 @@ public interface CreatorSimilarityCandidateRepository extends JpaRepository<Crea
     /** 여러 seed Creator의 현재 활성 세대에서 Space가 있어 카드를 만들 수 있는 후보만 한 번에 읽는다. */
     @Query("""
             select new kr.co.cking.creator.repository.ActiveCreatorRecommendationCandidate(
-                s.creatorId, c.similarCreatorId, g.method, c.score, c.rank
+                s.creatorId, c.similarCreatorId, g.method, c.score, c.rank, g.generationId, g.modelVersion
             )
             from CreatorSimilarityState s, CreatorSimilarityGeneration g,
                  CreatorSimilarityCandidate c, CreatorSpace space

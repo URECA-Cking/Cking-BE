@@ -80,7 +80,7 @@ class PersonalizedCreatorRecommendationPolicyFixtureTest {
             if (selectedInterests.contains(code) && !source.get("activeGeneration").isNull()) {
                 source.get("activeGeneration").get("candidates").forEach(candidate -> interestRows.add(
                         new ActiveInterestRecommendationCandidate(
-                                code, candidate.get("creatorId").asLong(), candidate.get("rank").asInt())));
+                                code, candidate.get("creatorId").asLong(), candidate.get("rank").asInt(), "v0.2", 43L, "M2", "test-model")));
             }
         }
         List<ActiveCreatorRecommendationCandidate> followRows = new ArrayList<>();
@@ -89,7 +89,7 @@ class PersonalizedCreatorRecommendationPolicyFixtureTest {
             if (followed.contains(seed) && !source.get("activeGeneration").isNull()) {
                 source.get("activeGeneration").get("candidates").forEach(candidate -> followRows.add(
                         new ActiveCreatorRecommendationCandidate(
-                                seed, candidate.get("creatorId").asLong(), null, null, candidate.get("rank").asInt())));
+                                seed, candidate.get("creatorId").asLong(), null, null, candidate.get("rank").asInt(), 42L, "test-model")));
             }
         }
 
