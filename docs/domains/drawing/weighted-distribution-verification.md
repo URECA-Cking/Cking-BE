@@ -16,6 +16,10 @@ DB, Redis, Spring Context 없이 실행하며 시뮬레이션 클래스는 운�
 | `multi-two` | 1, 3, 6 | 2 | 첫 순위, 모든 앞선 순서에 대한 조건부 확률, 포함 확률 |
 | `multi-three-excluded` | 1, 2, 3, 4 | 3 | 두 당첨자를 제외한 3순위 조건부 확률, 제외 계약 |
 
+`large-total`의 후보는 3명이며 가중치는 `u, 3u, 6u`다. 합은
+`u + 3u + 6u = 10u = 9223372036854775800 = Long.MAX_VALUE - 7`이다.
+`SimulationScenario.of(id, winnerCount, weights...)`의 두 번째 인수 `1`은 당첨자 수이며 가중치에 포함되지 않는다.
+
 후보 ID는 표의 순서대로 1부터 부여한다. 마지막 시나리오에는 가중치 `Long.MAX_VALUE`인
 5번 회원을 추가하고 제외한다. 제외 후보는 이론 확률의 분모에도 들어가지 않는다.
 총합은 제외 후 `long` 정수 덧셈으로 계산하고, 확률 비율·순서 확률 합산만 `double`을 쓴다.

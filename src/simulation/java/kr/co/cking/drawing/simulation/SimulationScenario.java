@@ -44,14 +44,16 @@ public record SimulationScenario(String id, List<CandidateValue> candidates,
         return candidates.stream().filter(c -> !excludedMemberIds.contains(c.memberId())).toList();
     }
 
-    // 표본 수, 후보, 기준은 결과를 보기 전에 고정한다. 큰 합은 Long.MAX_VALUE - 7이다.
+    // 표본 수, 후보, 기준은 결과를 보기 전에 고정한다. 큰 합은 u + 3u + 6u = 10u = Long.MAX_VALUE - 7이다.
     public static List<SimulationScenario> standardScenarios() {
         long unit = Long.MAX_VALUE / 10;
         return List.of(
                 of("equal", 1, 1, 1, 1, 1),
                 of("asymmetric", 1, 1, 3, 6),
                 of("rare", 1, 1, 999_999, 9_000_000),
-                of("large-total", 1, unit, 3 * unit, 6 * unit),
+                new SimulationScenario("large-total", List.of(
+                        new CandidateValue(1L, unit), new CandidateValue(2L, 3 * unit),
+                        new CandidateValue(3L, 6 * unit)), 1, Set.of()),
                 of("multi-two", 2, 1, 3, 6),
                 new SimulationScenario("multi-three-excluded", List.of(
                         new CandidateValue(1L, 1), new CandidateValue(2L, 2),

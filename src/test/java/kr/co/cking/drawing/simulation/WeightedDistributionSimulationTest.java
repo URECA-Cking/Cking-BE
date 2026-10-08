@@ -21,6 +21,19 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class WeightedDistributionSimulationTest {
     @Test
+    void 큰_합_시나리오는_세_후보의_가중치만_합산한다() {
+        var scenario = SimulationScenario.standardScenarios().stream()
+                .filter(value -> value.id().equals("large-total")).findFirst().orElseThrow();
+        long unit = Long.MAX_VALUE / 10;
+        assertThat(scenario.winnerCount()).isEqualTo(1);
+        assertThat(scenario.eligible()).extracting(CandidateValue::ticketCount)
+                .containsExactly(unit, 3 * unit, 6 * unit);
+        long total = scenario.eligible().stream().mapToLong(CandidateValue::ticketCount)
+                .reduce(0L, Math::addExact);
+        assertThat(total).isEqualTo(Long.MAX_VALUE - 7);
+    }
+
+    @Test
     void 고정_Seed_집합으로_일반_CI에서_확률_분포를_회귀_검증한다() {
         var result = WeightedDistributionSimulation.run(SimulationScenario.standardScenarios(),
                 WeightedDistributionSimulation.REGRESSION_ITERATIONS,
