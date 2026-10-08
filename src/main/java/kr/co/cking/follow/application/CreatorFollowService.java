@@ -11,9 +11,14 @@ import org.springframework.context.ApplicationEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
-import java.time.Clock;
 import java.time.Instant;
+import java.util.UUID;
+import kr.co.cking.common.event.CreatorFollowCreated;
+import kr.co.cking.common.repository.CreatorFollowEventRepository;
+import kr.co.cking.common.repository.DatabaseTime;
+import kr.co.cking.common.repository.MemberActivityLock;
 
 /**
  * 크리에이터 팔로우·언팔로우를 처리한다(이슈 #328).
@@ -23,14 +28,16 @@ import java.time.Instant;
  */
 @Service
 @RequiredArgsConstructor
-@Transactional
+@Transactional(isolation = Isolation.READ_COMMITTED)
 public class CreatorFollowService {
 
     private final CreatorRepository creatorRepository;
     private final CreatorFollowRepository followRepository;
-    private final Clock clock;
+    private final DatabaseTime databaseTime;
     private final MemberRepository memberRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MemberActivityLock activityLock;
+    private final CreatorFollowEventRepository followEvents;
 
     public void follow(Long memberId, Long creatorId) {
         lockMember(memberId);
@@ -40,9 +47,12 @@ public class CreatorFollowService {
             throw new BusinessException(FollowErrorCode.SELF_FOLLOW_NOT_ALLOWED);
         }
         if (!followRepository.existsByMemberIdAndCreatorId(memberId, creatorId)) {
-            Instant followedAt = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+            Instant followedAt = databaseTime.now();
             followRepository.insertIfAbsent(memberId, creatorId, followedAt);
-            eventPublisher.publishEvent(new CreatorFollowCreated(memberId, creatorId, followedAt));
+            var event = new CreatorFollowCreated(UUID.randomUUID(), memberId, creatorId, followedAt);
+            // 원본 이벤트가 없는데 팔로우만 커밋되는 상태를 막는다.
+            followEvents.append(event);
+            eventPublisher.publishEvent(event);
         }
     }
 
@@ -55,7 +65,9 @@ public class CreatorFollowService {
     }
 
     private void lockMember(Long memberId) {
-        memberRepository.findByIdForUpdate(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (!memberRepository.existsById(memberId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+        activityLock.lock(memberId);
     }
 }

@@ -1,8 +1,9 @@
 package kr.co.cking.creator.application;
 
-import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import kr.co.cking.common.repository.DatabaseTime;
+import kr.co.cking.common.repository.MemberActivityLock;
+import kr.co.cking.common.repository.CreatorFollowEventRepository;
 import java.util.List;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
@@ -17,15 +18,18 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 5)
+@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED, timeout = 5)
 public class RecommendationTrackingService {
     private final RecommendationTrackingRepository repository;
     private final MemberRepository memberRepository;
     private final RecommendationTrackingSettings settings;
-    private final Clock clock;
+    private final DatabaseTime databaseTime;
+    private final MemberActivityLock activityLock;
+    private final CreatorFollowEventRepository followEvents;
 
     public UUID recordSnapshot(Long memberId, PersonalizedCreatorRecommendationView view) {
         UUID requestId = UUID.randomUUID();
@@ -49,18 +53,18 @@ public class RecommendationTrackingService {
             if (!request.memberId().equals(memberId)) {
                 throw new BusinessException(CommonErrorCode.FORBIDDEN);
             }
-            if (!receivedAt.isBefore(request.expiresAt())) {
-                throw new BusinessException(CreatorErrorCode.RECOMMENDATION_REQUEST_EXPIRED);
-            }
-            if (!repository.containsCard(event.recommendationRequestId(), event.creatorId())) {
-                throw new BusinessException(CreatorErrorCode.RECOMMENDATION_CANDIDATE_NOT_RETURNED);
-            }
             var receipt = repository.findReceipt(event.eventId());
             if (receipt.isPresent()) {
                 if (!receipt.get().equals(event)) {
                     throw new BusinessException(CreatorErrorCode.RECOMMENDATION_EVENT_CONFLICT);
                 }
                 continue;
+            }
+            if (!receivedAt.isBefore(request.expiresAt())) {
+                throw new BusinessException(CreatorErrorCode.RECOMMENDATION_REQUEST_EXPIRED);
+            }
+            if (!repository.containsCard(event.recommendationRequestId(), event.creatorId())) {
+                throw new BusinessException(CreatorErrorCode.RECOMMENDATION_CANDIDATE_NOT_RETURNED);
             }
             try {
                 repository.insertReceipt(memberId, event, receivedAt);
@@ -81,15 +85,42 @@ public class RecommendationTrackingService {
     }
 
     public int cleanUp() {
-        return repository.deleteExpiredHistory(now().minus(settings.retention()));
+        return repository.deleteExpiredHistory(now().minus(settings.retention()), 100);
+    }
+
+    public int cleanUpFollowEvents() {
+        return followEvents.deleteExpired(now().minus(settings.retention()), 100);
+    }
+
+    public List<UUID> pendingFollowEvents() {
+        return followEvents.pendingIds(now(), 100);
+    }
+
+    public void processFollowEvent(UUID eventId) {
+        var event = followEvents.findPending(eventId);
+        if (event.isEmpty()) return;
+        lockMember(event.get().memberId());
+        // 영속 이벤트의 FOR UPDATE가 큐와 여러 인스턴스의 복구 잡을 직렬화한다.
+        var original = event.get();
+        repository.findLastClick(original.memberId(), original.creatorId(),
+                        original.followedAt().minus(settings.attributionWindow()), original.followedAt())
+                .ifPresent(click -> repository.insertConversionIfAbsent(original.memberId(), original.creatorId(),
+                        original.followedAt(), click, settings.attributionWindow().toSeconds()));
+        followEvents.complete(eventId, now());
+    }
+
+    public void deferFollowEvent(UUID eventId) {
+        followEvents.defer(eventId, now().plusSeconds(60));
     }
 
     private void lockMember(Long memberId) {
-        memberRepository.findByIdForUpdate(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (!memberRepository.existsById(memberId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+        activityLock.lock(memberId);
     }
 
     private Instant now() {
-        return clock.instant().truncatedTo(ChronoUnit.MICROS);
+        return databaseTime.now();
     }
 }

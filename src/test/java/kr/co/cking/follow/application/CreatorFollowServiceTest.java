@@ -13,7 +13,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Clock;
+import kr.co.cking.common.repository.DatabaseTime;
+import kr.co.cking.common.repository.MemberActivityLock;
+import kr.co.cking.common.repository.CreatorFollowEventRepository;
+import kr.co.cking.common.event.CreatorFollowCreated;
+import org.mockito.ArgumentCaptor;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -37,12 +41,16 @@ class CreatorFollowServiceTest {
     private final CreatorFollowRepository followRepository = mock(CreatorFollowRepository.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final DatabaseTime databaseTime = mock(DatabaseTime.class);
+    private final MemberActivityLock activityLock = mock(MemberActivityLock.class);
+    private final CreatorFollowEventRepository followEvents = mock(CreatorFollowEventRepository.class);
     private final CreatorFollowService service = new CreatorFollowService(
-            creatorRepository, followRepository, Clock.fixed(NOW, ZoneOffset.UTC), memberRepository, eventPublisher);
+            creatorRepository, followRepository, databaseTime, memberRepository, eventPublisher, activityLock, followEvents);
 
     @BeforeEach
     void setUp() {
-        given(memberRepository.findByIdForUpdate(anyLong())).willReturn(Optional.of(mock(Member.class)));
+        given(memberRepository.existsById(anyLong())).willReturn(true);
+        given(databaseTime.now()).willReturn(NOW);
     }
 
     @Test
@@ -52,7 +60,12 @@ class CreatorFollowServiceTest {
         service.follow(MEMBER_ID, CREATOR_ID);
 
         verify(followRepository).insertIfAbsent(MEMBER_ID, CREATOR_ID, NOW);
-        verify(eventPublisher).publishEvent(new CreatorFollowCreated(MEMBER_ID, CREATOR_ID, NOW));
+        var event = ArgumentCaptor.forClass(CreatorFollowCreated.class);
+        verify(followEvents).append(event.capture());
+        org.assertj.core.api.Assertions.assertThat(event.getValue().memberId()).isEqualTo(MEMBER_ID);
+        org.assertj.core.api.Assertions.assertThat(event.getValue().creatorId()).isEqualTo(CREATOR_ID);
+        org.assertj.core.api.Assertions.assertThat(event.getValue().followedAt()).isEqualTo(NOW);
+        verify(eventPublisher).publishEvent(event.getValue());
     }
 
     @Test

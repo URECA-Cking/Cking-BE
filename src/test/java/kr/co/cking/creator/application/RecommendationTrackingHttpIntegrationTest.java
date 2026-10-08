@@ -32,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** 실제 HTTP/서명 JWT/DB를 통과하는 추천→행동→팔로우 계약 검증. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"management.server.port=0", "cking.recommendation.tracking.cleanup-enabled=false"})
+        properties = {"management.server.port=0", "cking.recommendation.tracking.cleanup-enabled=false", "cking.recommendation.tracking.recovery-enabled=false"})
 class RecommendationTrackingHttpIntegrationTest {
     @LocalServerPort int port;
     @Autowired AccessTokenIssuer tokens;

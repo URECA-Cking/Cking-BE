@@ -16,14 +16,14 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
-import kr.co.cking.follow.application.CreatorFollowCreated;
+import kr.co.cking.common.event.CreatorFollowCreated;
 import org.junit.jupiter.api.Test;
 
 class RecommendationTrackingObserverTest {
     private final RecommendationTrackingService service = mock(RecommendationTrackingService.class);
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final RecommendationTrackingObserver observer = new RecommendationTrackingObserver(service, meters, Runnable::run);
-    private final CreatorFollowCreated follow = new CreatorFollowCreated(7L, 20L, Instant.parse("2026-10-08T00:00:00Z"));
+    private final CreatorFollowCreated follow = new CreatorFollowCreated(UUID.randomUUID(), 7L, 20L, Instant.parse("2026-10-08T00:00:00Z"));
 
     @Test
     void 스냅샷_실패는_null과_실패_지표로_분리한다() {
@@ -34,7 +34,7 @@ class RecommendationTrackingObserverTest {
 
     @Test
     void 팔로우_저장_실패는_호출자에게_전파하지_않는다() {
-        doThrow(new IllegalStateException()).when(service).recordFollow(7L, 20L, follow.followedAt());
+        doThrow(new IllegalStateException()).when(service).processFollowEvent(follow.eventId());
         assertThatCode(() -> observer.onFollowCreated(follow)).doesNotThrowAnyException();
         assertThat(meters.get("cking.recommendation.tracking").tags("phase", "follow", "outcome", "failure").counter().count()).isEqualTo(1);
     }
@@ -54,6 +54,6 @@ class RecommendationTrackingObserverTest {
         when(service.recordSnapshot(7L, view)).thenReturn(id);
         assertThat(observer.snapshot(7L, view)).isEqualTo(id);
         observer.onFollowCreated(follow);
-        verify(service).recordFollow(7L, 20L, follow.followedAt());
+        verify(service).processFollowEvent(follow.eventId());
     }
 }

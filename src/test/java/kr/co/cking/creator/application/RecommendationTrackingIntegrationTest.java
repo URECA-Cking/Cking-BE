@@ -21,6 +21,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.repository.DatabaseTime;
+import kr.co.cking.creator.domain.RecommendationSourceType;
+import kr.co.cking.creator.scheduler.RecommendationTrackingRecovery;
+import kr.co.cking.common.repository.MemberActivityLock;
+import kr.co.cking.common.repository.CreatorFollowEventRepository;
 import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
@@ -52,12 +57,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** 실제 MySQL/Flyway에 고유 회원 fixture만 생성하고 그 회원의 데이터만 정리한다. */
-@SpringBootTest(properties = "cking.recommendation.tracking.cleanup-enabled=false")
+@SpringBootTest(properties = {"cking.recommendation.tracking.cleanup-enabled=false", "cking.recommendation.tracking.recovery-enabled=false"})
 @Import(RecommendationTrackingIntegrationTest.TimeConfiguration.class)
 class RecommendationTrackingIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-10-08T00:00:00Z");
     @Autowired RecommendationTrackingService service;
-    @Autowired RecommendationTrackingObserver observer;
+    @MockitoSpyBean RecommendationTrackingObserver observer;
     @Autowired CreatorFollowService follow;
     @Autowired MemberRepository members;
     @Autowired CreatorRepository creators;
@@ -66,6 +71,9 @@ class RecommendationTrackingIntegrationTest {
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired @Qualifier("recommendationTrackingExecutor") ThreadPoolTaskExecutor executor;
     @MockitoSpyBean RecommendationTrackingRepository repository;
+    @MockitoSpyBean DatabaseTime databaseTime;
+    @MockitoSpyBean CreatorFollowEventRepository followEvents;
+    @Autowired MemberActivityLock activityLock;
     private final List<Member> fixtureMembers = new ArrayList<>();
     private final List<Creator> fixtureCreators = new ArrayList<>();
     private Long fan;
@@ -76,6 +84,7 @@ class RecommendationTrackingIntegrationTest {
     @BeforeEach
     void setUp() {
         clock.set(NOW);
+        org.mockito.Mockito.doAnswer(call -> clock.instant()).when(databaseTime).now();
         fan = member();
         stranger = member();
         creator = creator();
@@ -86,6 +95,8 @@ class RecommendationTrackingIntegrationTest {
     void cleanUp() throws Exception {
         drain();
         reset(repository);
+        reset(observer);
+        reset(followEvents);
         for (Member member : fixtureMembers) {
             jdbc.update("DELETE FROM creator_follow WHERE member_id = ?", member.getMemberId());
             jdbc.update("DELETE FROM creator_recommendation_request WHERE member_id = ?", member.getMemberId());
@@ -144,7 +155,11 @@ class RecommendationTrackingIntegrationTest {
         var accepted = event(request, RecommendationEventType.CLICK);
         service.collect(fan, List.of(accepted));
         clock.set(NOW.plusSeconds(86400));
-        error(() -> service.collect(fan, List.of(accepted)), CreatorErrorCode.RECOMMENDATION_REQUEST_EXPIRED);
+        assertThat(service.collect(fan, List.of(accepted))).isEqualTo(1);
+        error(() -> service.collect(fan, List.of(event(request, RecommendationEventType.CLICK))),
+                CreatorErrorCode.RECOMMENDATION_REQUEST_EXPIRED);
+        error(() -> service.collect(fan, List.of(new RecommendationEventCommand(accepted.eventId(), request,
+                creator, RecommendationEventType.IMPRESSION))), CreatorErrorCode.RECOMMENDATION_EVENT_CONFLICT);
     }
 
     @Test
@@ -197,7 +212,7 @@ class RecommendationTrackingIntegrationTest {
 
     @Test
     void 스냅샷_부분_저장_오류는_요청과_카드까지_원자적으로_롤백한다() {
-        var invalidSource = new RecommendationSource("FOLLOW", "1", null, 42L, "M2", null, 1);
+        var invalidSource = new RecommendationSource(RecommendationSourceType.FOLLOW, "1", null, 42L, "M2", null, 1);
         var invalid = new PersonalizedCreatorRecommendationView("FOLLOW_PERSONALIZED_V2",
                 List.of(new PersonalizedCreatorRecommendationView.Item(creator, "name", "intro", "image", BigDecimal.ONE,
                         List.of(), List.of(1L), List.of(invalidSource))));
@@ -335,6 +350,7 @@ class RecommendationTrackingIntegrationTest {
         concurrently(() -> follow.follow(fan, creator));
         drain();
         assertThat(count("conversion")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ?", Long.class, fan)).isEqualTo(1);
     }
 
     @Test
@@ -380,12 +396,179 @@ class RecommendationTrackingIntegrationTest {
         fixtureMembers.removeIf(member -> member.getMemberId().equals(fan));
     }
 
+    @Test
+    void 만료된_승인_재전송과_유효한_새_이벤트를_같은_배치로_수락한다() {
+        UUID expired = snapshot("POPULAR_FALLBACK_V1");
+        var accepted = event(expired, RecommendationEventType.CLICK);
+        service.collect(fan, List.of(accepted));
+        clock.set(NOW.plusSeconds(86400));
+        UUID fresh = snapshot("POPULAR_FALLBACK_V1");
+        assertThat(service.collect(fan, List.of(accepted, event(fresh, RecommendationEventType.IMPRESSION))))
+                .isEqualTo(2);
+        assertThat(receipts()).isEqualTo(2);
+        error(() -> service.collect(stranger, List.of(accepted)), CommonErrorCode.FORBIDDEN);
+        assertThat(jdbc.queryForObject("SELECT received_at FROM creator_recommendation_event_receipt WHERE event_id = ?",
+                Timestamp.class, accepted.eventId().toString()).toInstant()).isEqualTo(NOW);
+    }
+
+    @Test
+    void 커밋_알림이_유실되고_언팔로우해도_영속_이벤트로_원본_시각에_복구한다() throws Exception {
+        UUID original = snapshot("POPULAR_FALLBACK_V1");
+        service.collect(fan, List.of(event(original, RecommendationEventType.CLICK)));
+        org.mockito.Mockito.doNothing().when(observer).onFollowCreated(any());
+        clock.set(NOW.plusSeconds(1));
+        follow.follow(fan, creator);
+        follow.unfollow(fan, creator);
+        clock.set(NOW.plusSeconds(2));
+        UUID late = snapshot("POPULAR_FALLBACK_V1");
+        service.collect(fan, List.of(event(late, RecommendationEventType.CLICK)));
+        assertThat(count("conversion")).isZero();
+        var recovery = new RecommendationTrackingRecovery(service, observer);
+        concurrently(recovery::recover);
+        recovery.recover();
+        assertThat(count("conversion")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT request_id FROM creator_recommendation_conversion WHERE member_id = ?",
+                String.class, fan)).isEqualTo(original.toString());
+        assertThat(jdbc.queryForObject("SELECT followed_at FROM creator_recommendation_conversion WHERE member_id = ?",
+                Timestamp.class, fan).toInstant()).isEqualTo(NOW.plusSeconds(1));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ? AND processed_at IS NULL",
+                Long.class, fan)).isZero();
+    }
+
+    @Test
+    void 전환_저장_오류를_복구하면_완료_표시와_전환이_함께_커밋된다() throws Exception {
+        service.collect(fan, List.of(event(snapshot("POPULAR_FALLBACK_V1"), RecommendationEventType.CLICK)));
+        doThrow(new IllegalStateException()).when(repository).insertConversionIfAbsent(anyLong(), anyLong(), any(), any(), anyLong());
+        follow.follow(fan, creator);
+        drain();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ? AND processed_at IS NULL",
+                Long.class, fan)).isEqualTo(1);
+        reset(repository);
+        new RecommendationTrackingRecovery(service, observer).recover();
+        assertThat(count("conversion")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ? AND processed_at IS NULL",
+                Long.class, fan)).isZero();
+    }
+
+    @Test
+    void 팔로우_롤백은_영속_이벤트도_롤백한다() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            follow.follow(fan, creator);
+            status.setRollbackOnly();
+        });
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ?", Long.class, fan)).isZero();
+        new RecommendationTrackingRecovery(service, observer).recover();
+        assertThat(count("conversion")).isZero();
+    }
+
+    @Test
+    void 영속_원본_저장이_실패하면_팔로우도_롤백한다() throws Exception {
+        doThrow(new IllegalStateException("journal unavailable")).when(followEvents).append(any());
+        assertThatThrownBy(() -> follow.follow(fan, creator)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        drain();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow WHERE member_id = ?", Long.class, fan)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_follow_event WHERE member_id = ?", Long.class, fan)).isZero();
+        assertThat(count("conversion")).isZero();
+    }
+
+    @Test
+    void 스냅샷_배치가_20개_카드의_순위와_모든_출처를_저장한다() {
+        var items = new ArrayList<PersonalizedCreatorRecommendationView.Item>();
+        for (int i = 0; i < 20; i++) {
+            var sources = List.of(
+                    new RecommendationSource(RecommendationSourceType.FOLLOW, "1", null, 42L, "M2", "follow-model", i + 1),
+                    new RecommendationSource(RecommendationSourceType.INTEREST, "FOOD", "v0.2", 43L, "M3", "interest-model", i + 1));
+            items.add(new PersonalizedCreatorRecommendationView.Item(creator(), "name", "intro", "image",
+                    BigDecimal.ONE, List.of("FOOD"), List.of(1L), sources));
+        }
+        UUID id = service.recordSnapshot(fan, new PersonalizedCreatorRecommendationView("HYBRID_PERSONALIZED_V1", items));
+        assertThat(jdbc.queryForList("SELECT creator_id FROM creator_recommendation_card WHERE request_id = ? ORDER BY rank_no",
+                Long.class, id.toString())).containsExactlyElementsOf(items.stream().map(PersonalizedCreatorRecommendationView.Item::creatorId).toList());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_recommendation_source WHERE request_id = ?",
+                Long.class, id.toString())).isEqualTo(40);
+        UUID empty = service.recordSnapshot(fan, new PersonalizedCreatorRecommendationView("POPULAR_FALLBACK_V1", List.of()));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_recommendation_card WHERE request_id = ?",
+                Long.class, empty.toString())).isZero();
+    }
+
+    @Test
+    void 업무_잠금_중에도_같은_회원의_스냅샷_FK_검사는_대기하지_않는다() throws Exception {
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var owner = pool.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                activityLock.lock(fan);
+                locked.countDown();
+                try {
+                    if (!release.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("lock wait timeout");
+                } catch (InterruptedException interrupted) { throw new RuntimeException(interrupted); }
+            }));
+            try {
+                assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(pool.submit(() -> snapshot("POPULAR_FALLBACK_V1")).get(3, TimeUnit.SECONDS)).isNotNull();
+            } finally { release.countDown(); }
+            owner.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void 인스턴스_시계가_틀려도_스냅샷_수집_팔로우는_DB_UTC_시각을_쓴다() throws Exception {
+        org.mockito.Mockito.doCallRealMethod().when(databaseTime).now();
+        Instant before = databaseTime.now();
+        clock.set(Instant.parse("2099-01-01T00:00:00Z"));
+        UUID request = snapshot("POPULAR_FALLBACK_V1");
+        service.collect(fan, List.of(event(request, RecommendationEventType.CLICK)));
+        follow.follow(fan, creator);
+        drain();
+        Instant after = databaseTime.now();
+        for (String column : List.of("created_at", "expires_at")) {
+            Instant actual = jdbc.queryForObject("SELECT " + column + " FROM creator_recommendation_request WHERE request_id = ?",
+                    Timestamp.class, request.toString()).toInstant();
+            long offset = column.equals("expires_at") ? 86400 : 0;
+            assertThat(actual).isBetween(before.plusSeconds(offset), after.plusSeconds(offset));
+        }
+        assertThat(count("conversion")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT followed_at FROM creator_follow_event WHERE member_id = ?",
+                Timestamp.class, fan).toInstant()).isBetween(before, after);
+    }
+
+    @Test
+    void 보존_정리는_500건을_넘는_적체를_한_실행에서_여러_트랜잭션으로_제거한다() {
+        var rows = new ArrayList<Object[]>();
+        for (int i = 0; i < 601; i++) {
+            rows.add(new Object[] {UUID.randomUUID().toString(), fan, "POPULAR_FALLBACK_V1",
+                    Timestamp.from(NOW), Timestamp.from(NOW.plusSeconds(86400))});
+        }
+        jdbc.batchUpdate("INSERT INTO creator_recommendation_request (request_id, member_id, policy_version, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", rows);
+        clock.set(NOW.plusSeconds(90L * 86400 + 1));
+        new kr.co.cking.creator.scheduler.RecommendationTrackingCleanup(service, observer).cleanUp();
+        assertThat(count("request")).isZero();
+    }
+
+    @Test
+    void 뒤_정리_배치가_실패해도_앞_배치_삭제는_유지된다() {
+        var rows = new ArrayList<Object[]>();
+        for (int i = 0; i < 101; i++) {
+            rows.add(new Object[] {UUID.randomUUID().toString(), fan, "POPULAR_FALLBACK_V1",
+                    Timestamp.from(NOW), Timestamp.from(NOW.plusSeconds(86400))});
+        }
+        jdbc.batchUpdate("INSERT INTO creator_recommendation_request (request_id, member_id, policy_version, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", rows);
+        clock.set(NOW.plusSeconds(90L * 86400 + 1));
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        org.mockito.Mockito.doAnswer(call -> {
+            if (calls.incrementAndGet() == 2) throw new IllegalStateException("second batch");
+            return call.callRealMethod();
+        }).when(repository).deleteExpiredHistory(any(), org.mockito.ArgumentMatchers.anyInt());
+        new kr.co.cking.creator.scheduler.RecommendationTrackingCleanup(service, observer).cleanUp();
+        assertThat(count("request")).isEqualTo(1);
+    }
+
     private UUID snapshot(String policy) { return service.recordSnapshot(fan, view(policy)); }
 
     private PersonalizedCreatorRecommendationView view(String policy) {
         var sources = policy.equals("POPULAR_FALLBACK_V1") ? List.<RecommendationSource>of() : List.of(
-                new RecommendationSource("FOLLOW", "1", null, 42L, "M2", "bge-m3-test", 2),
-                new RecommendationSource("INTEREST", "FOOD", "v0.2", 43L, "INTEREST_M3_V1", "m3-test", 1));
+                new RecommendationSource(RecommendationSourceType.FOLLOW, "1", null, 42L, "M2", "bge-m3-test", 2),
+                new RecommendationSource(RecommendationSourceType.INTEREST, "FOOD", "v0.2", 43L, "INTEREST_M3_V1", "m3-test", 1));
         return new PersonalizedCreatorRecommendationView(policy, List.of(new PersonalizedCreatorRecommendationView.Item(
                 creator, "name", "must not persist this intro", "image", BigDecimal.ONE, List.of(), List.of(), sources)));
     }

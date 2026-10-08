@@ -5,6 +5,11 @@ spring:
   profiles:
     default: local
 
+  datasource:
+    hikari:
+      data-source-properties:
+        rewriteBatchedStatements: true
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -54,7 +59,9 @@ cking:
       attribution-window: ${RECOMMENDATION_TRACKING_ATTRIBUTION_WINDOW:PT24H}
       retention: ${RECOMMENDATION_TRACKING_RETENTION:P90D}
       cleanup-enabled: ${RECOMMENDATION_TRACKING_CLEANUP_ENABLED:true}
-      cleanup-interval-ms: ${RECOMMENDATION_TRACKING_CLEANUP_INTERVAL_MS:3600000}
+      cleanup-interval-ms: ${RECOMMENDATION_TRACKING_CLEANUP_INTERVAL_MS:60000}
+      recovery-enabled: ${RECOMMENDATION_TRACKING_RECOVERY_ENABLED:true}
+      recovery-interval-ms: ${RECOMMENDATION_TRACKING_RECOVERY_INTERVAL_MS:60000}
     # 추천 적재 배치 API Key의 SHA-256 hex(쉼표 구분). 키 교체 중에는 새 키·이전 키를 함께 둔다. 비어 있으면 키 인증은 항상 401.
     api-key-hashes: ${CKING_RECOMMENDATION_API_KEY_HASHES:}
   abuse:

@@ -12,8 +12,4 @@ public record ActiveCreatorRecommendationCandidate(
         Long generationId,
         String modelVersion
 ) {
-    public ActiveCreatorRecommendationCandidate(Long seedCreatorId, Long candidateCreatorId,
-                                                 String method, BigDecimal rawScore, int rank) {
-        this(seedCreatorId, candidateCreatorId, method, rawScore, rank, null, null);
-    }
 }

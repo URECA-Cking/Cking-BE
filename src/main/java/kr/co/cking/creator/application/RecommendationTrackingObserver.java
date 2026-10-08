@@ -4,7 +4,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
-import kr.co.cking.follow.application.CreatorFollowCreated;
+import kr.co.cking.common.event.CreatorFollowCreated;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -43,7 +43,7 @@ public class RecommendationTrackingObserver {
             // 커밋 콜백이 원래 연결을 반환하도록 먼저 큐에 넣어 연결 풀 고갈을 피한다.
             executor.execute(() -> {
                 try {
-                    service.recordFollow(event.memberId(), event.creatorId(), event.followedAt());
+                    service.processFollowEvent(event.eventId());
                     result("follow", "success");
                 } catch (RuntimeException failure) {
                     failed("follow", failure);

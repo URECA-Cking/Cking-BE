@@ -4,7 +4,4 @@ package kr.co.cking.interest.repository;
 public record ActiveInterestRecommendationCandidate(String interestCode, Long creatorId, int rank,
                                                     String taxonomyVersion, Long generationId,
                                                     String method, String modelVersion) {
-    public ActiveInterestRecommendationCandidate(String interestCode, Long creatorId, int rank) {
-        this(interestCode, creatorId, rank, null, null, null, null);
-    }
 }

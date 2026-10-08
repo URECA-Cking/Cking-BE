@@ -2,6 +2,7 @@ package kr.co.cking.creator.repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,18 +25,25 @@ public class RecommendationTrackingRepository {
                 INSERT INTO creator_recommendation_request
                   (request_id, member_id, policy_version, created_at, expires_at) VALUES (?, ?, ?, ?, ?)
                 """, requestId.toString(), memberId, view.policyVersion(), Timestamp.from(now), Timestamp.from(expiresAt));
+        var cards = new ArrayList<Object[]>();
+        var sources = new ArrayList<Object[]>();
         int rank = 0;
         for (var item : view.items()) {
-            jdbc.update("INSERT INTO creator_recommendation_card (request_id, creator_id, rank_no) VALUES (?, ?, ?)",
-                    requestId.toString(), item.creatorId(), ++rank);
+            cards.add(new Object[] {requestId.toString(), item.creatorId(), ++rank});
             for (var source : item.sources()) {
-                jdbc.update("""
-                        INSERT INTO creator_recommendation_source
-                          (request_id, creator_id, source_type, source_key, taxonomy_version,
-                           generation_id, method, model_version, source_rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, requestId.toString(), item.creatorId(), source.sourceType(), source.sourceKey(),
-                        source.taxonomyVersion(), source.generationId(), source.method(), source.modelVersion(), source.sourceRank());
+                sources.add(new Object[] {requestId.toString(), item.creatorId(), source.sourceType().name(), source.sourceKey(),
+                        source.taxonomyVersion(), source.generationId(), source.method(), source.modelVersion(), source.sourceRank()});
             }
+        }
+        if (!cards.isEmpty()) {
+            jdbc.batchUpdate("INSERT INTO creator_recommendation_card (request_id, creator_id, rank_no) VALUES (?, ?, ?)", cards);
+        }
+        if (!sources.isEmpty()) {
+            jdbc.batchUpdate("""
+                    INSERT INTO creator_recommendation_source
+                      (request_id, creator_id, source_type, source_key, taxonomy_version,
+                       generation_id, method, model_version, source_rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, sources);
         }
     }
 
@@ -79,7 +87,7 @@ public class RecommendationTrackingRepository {
                 SELECT request_id, event_id FROM creator_recommendation_event_receipt
                 WHERE member_id = ? AND creator_id = ? AND event_type = 'CLICK'
                   AND received_at >= ? AND received_at <= ?
-                ORDER BY received_at DESC, event_id DESC LIMIT 1
+                ORDER BY received_at DESC, event_id DESC LIMIT 1 FOR UPDATE
                 """, (rs, n) -> new Click(rs.getString(1), rs.getString(2)), memberId, creatorId,
                 Timestamp.from(since), Timestamp.from(until)).stream().findFirst();
     }
@@ -93,16 +101,11 @@ public class RecommendationTrackingRepository {
                 """, click.requestId(), creatorId, memberId, click.eventId(), Timestamp.from(followedAt), windowSeconds);
     }
 
-    public int deleteExpiredHistory(Instant cutoff) {
-        List<String> ids = jdbc.queryForList("""
-                SELECT request_id FROM creator_recommendation_request WHERE created_at < ?
-                ORDER BY created_at, request_id LIMIT 500
-                """, String.class, Timestamp.from(cutoff));
-        int deleted = 0;
-        for (String id : ids) {
-            deleted += jdbc.update("DELETE FROM creator_recommendation_request WHERE request_id = ?", id);
-        }
-        return deleted;
+    public int deleteExpiredHistory(Instant cutoff, int limit) {
+        return jdbc.update("""
+                DELETE FROM creator_recommendation_request WHERE created_at < ?
+                ORDER BY created_at, request_id LIMIT ?
+                """, Timestamp.from(cutoff), limit);
     }
 
     public record RequestSnapshot(Long memberId, Instant expiresAt) { }

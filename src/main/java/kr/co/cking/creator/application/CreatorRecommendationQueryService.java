@@ -21,12 +21,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import kr.co.cking.creator.domain.RecommendationSourceType;
 
 /**
  * 요청 중 모델 API를 호출하지 않고 저장된 활성 추천 결과만 합쳐 개인화 목록을 만든다. 회원이 고른 관심 분야의 후보와 팔로우
@@ -77,6 +79,15 @@ public class CreatorRecommendationQueryService {
         if (creators.size() != selectedCreatorIds.size()) {
             throw new BusinessException(CommonErrorCode.SYSTEM_ERROR);
         }
+        var sources = new ArrayList<SourceRow>();
+        followRows.forEach(row -> sources.add(new SourceRow(row.candidateCreatorId(),
+                new RecommendationSource(RecommendationSourceType.FOLLOW, row.seedCreatorId().toString(),
+                        null, row.generationId(), row.method(), row.modelVersion(), row.rank()))));
+        interestRows.forEach(row -> sources.add(new SourceRow(row.creatorId(),
+                new RecommendationSource(RecommendationSourceType.INTEREST, row.interestCode(),
+                        row.taxonomyVersion(), row.generationId(), row.method(), row.modelVersion(), row.rank()))));
+        Map<Long, List<RecommendationSource>> sourcesByCreator = sources.stream().collect(Collectors.groupingBy(
+                SourceRow::creatorId, Collectors.mapping(SourceRow::source, Collectors.toList())));
 
         return new PersonalizedCreatorRecommendationView(
                 recommendation.policyVersion(),
@@ -85,7 +96,7 @@ public class CreatorRecommendationQueryService {
                         .map(candidate -> toItem(
                                 candidate,
                                 creators.get(candidate.creatorId()),
-                                spaces.get(candidate.creatorId()), followRows, interestRows))
+                                spaces.get(candidate.creatorId()), sourcesByCreator.getOrDefault(candidate.creatorId(), List.of())))
                         .toList());
     }
 
@@ -116,16 +127,8 @@ public class CreatorRecommendationQueryService {
             PersonalizedCreatorRecommendationPolicy.Item candidate,
             Creator creator,
             CreatorSpace space,
-            List<ActiveCreatorRecommendationCandidate> followRows,
-            List<ActiveInterestRecommendationCandidate> interestRows
+            List<RecommendationSource> sources
     ) {
-        var sources = new java.util.ArrayList<RecommendationSource>();
-        followRows.stream().filter(row -> row.candidateCreatorId().equals(candidate.creatorId()))
-                .forEach(row -> sources.add(new RecommendationSource("FOLLOW", row.seedCreatorId().toString(),
-                        null, row.generationId(), row.method(), row.modelVersion(), row.rank())));
-        interestRows.stream().filter(row -> row.creatorId().equals(candidate.creatorId()))
-                .forEach(row -> sources.add(new RecommendationSource("INTEREST", row.interestCode(),
-                        row.taxonomyVersion(), row.generationId(), row.method(), row.modelVersion(), row.rank())));
         return new PersonalizedCreatorRecommendationView.Item(
                 candidate.creatorId(),
                 creator.getName(),
@@ -135,4 +138,6 @@ public class CreatorRecommendationQueryService {
                 candidate.interestCodes(),
                 candidate.seedCreatorIds(), List.copyOf(sources));
     }
+
+    private record SourceRow(Long creatorId, RecommendationSource source) { }
 }

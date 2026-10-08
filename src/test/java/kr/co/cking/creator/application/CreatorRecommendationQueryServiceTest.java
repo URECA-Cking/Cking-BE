@@ -110,7 +110,7 @@ class CreatorRecommendationQueryServiceTest {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
         given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
         given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L)))
-                .willReturn(List.of(new ActiveCreatorRecommendationCandidate(1L, 20L, "M4", new BigDecimal("0.9"), 1)));
+                .willReturn(List.of(new ActiveCreatorRecommendationCandidate(1L, 20L, "M4", new BigDecimal("0.9"), 1, 42L, "test-model")));
         given(creatorRepository.findByCreatorIdIn(List.of(20L))).willReturn(List.of(creator(20L, "후보")));
         given(spaceRepository.findByCreatorIdIn(List.of(20L))).willReturn(List.of(space(20L, "소개", "p")));
 
@@ -232,6 +232,12 @@ class CreatorRecommendationQueryServiceTest {
         assertThat(result.items().getFirst().seedCreatorIds()).containsExactly(1L);
         assertThat(result.items().get(1).aggregateScore()).isEqualByComparingTo("0.00806452");
         assertThat(result.items().get(1).interestCodes()).isEmpty();
+        assertThat(result.items().getFirst().sources()).extracting(source -> source.sourceType().name())
+                .containsExactly("FOLLOW", "INTEREST");
+        assertThat(result.items().getFirst().sources()).extracting(source -> source.generationId())
+                .containsExactly(42L, 43L);
+        assertThat(result.items().get(1).sources()).hasSize(1);
+        assertThat(result.items().get(1).sources().getFirst().sourceKey()).isEqualTo("1");
     }
 
     @Test
@@ -252,12 +258,12 @@ class CreatorRecommendationQueryServiceTest {
     }
 
     private ActiveInterestRecommendationCandidate interestRow(String interestCode, Long creatorId, int rank) {
-        return new ActiveInterestRecommendationCandidate(interestCode, creatorId, rank);
+        return new ActiveInterestRecommendationCandidate(interestCode, creatorId, rank, "v0.2", 43L, "M2", "test-model");
     }
 
     private ActiveCreatorRecommendationCandidate row(Long seedCreatorId, Long candidateCreatorId, int rank) {
         return new ActiveCreatorRecommendationCandidate(
-                seedCreatorId, candidateCreatorId, "M4", new BigDecimal("1.00000000"), rank);
+                seedCreatorId, candidateCreatorId, "M4", new BigDecimal("1.00000000"), rank, 42L, "test-model");
     }
 
     private Creator creator(Long creatorId, String name) {
