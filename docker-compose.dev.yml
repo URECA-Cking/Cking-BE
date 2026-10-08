@@ -22,6 +22,8 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+        # 수집기가 로그를 서비스별로 나누도록 서비스 이름을 로그 줄에 함께 기록한다.
+        labels: "com.docker.compose.service"
 
   app:
     # 태그는 배포 시점에 deploy.sh가 지정한다. latest는 동시 빌드 시 과거 이미지로 덮어써질 수 있다.
@@ -57,6 +59,7 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+        labels: "com.docker.compose.service"
 
 volumes:
   redis-data:
