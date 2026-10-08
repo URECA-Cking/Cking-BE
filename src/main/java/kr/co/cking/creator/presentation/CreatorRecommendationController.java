@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Min;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.creator.application.CreatorRecommendationQueryService;
+import kr.co.cking.creator.application.RecommendationTrackingObserver;
 import kr.co.cking.creator.presentation.dto.CreatorRecommendationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CreatorRecommendationController {
 
     private final CreatorRecommendationQueryService queryService;
+    private final RecommendationTrackingObserver trackingObserver;
 
     @GetMapping("/api/me/creator-recommendations")
     @Operation(
@@ -33,7 +35,8 @@ public class CreatorRecommendationController {
             @CurrentMemberId Long memberId,
             @RequestParam(defaultValue = "10") @Min(1) @Max(20) int size
     ) {
-        return ApiResponse.success(CreatorRecommendationResponse.Result.from(
-                queryService.findForMember(memberId, size)));
+        var view = queryService.findForMember(memberId, size);
+        var requestId = trackingObserver.snapshot(memberId, view);
+        return ApiResponse.success(CreatorRecommendationResponse.Result.from(view, requestId));
     }
 }
