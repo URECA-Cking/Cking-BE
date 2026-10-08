@@ -18,6 +18,10 @@
   누적 구간 선택과 당첨 후보 제거를 `O(log candidateCount)`에 처리한다.
 - 두 방식 모두 후보를 `memberId ASC`로 정규화하고 `winnerCount`만큼 중복 없이 선정한다.
 
+개발 전용 네 가지 가중치 비복원 선정 방식의 동일성 계약과 측정 절차는
+[가중치 추첨 비교](weighted-random-benchmark.md)를 참고한다. 운영 `WEIGHTED_V1`은
+기존 Fenwick Tree와 난수 규칙을 유지한다.
+
 ## 상품 배정
 
 - `PRIZE_UNIFORM_V1`은 재고가 남은 각 상품 등급을 동일한 확률로 선택한다. `weight`는 양의 정수로
