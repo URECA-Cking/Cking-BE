@@ -54,7 +54,7 @@ tasks.named('test') {
 	useJUnitPlatform {
 		// 부하 테스트(NFR-06)는 수백 건 동시 요청 + Consumer Drain 대기가 있어 매 빌드마다
 		// 돌리지 않는다. 별도로 필요할 때 ./gradlew loadTest로 실행한다.
-		excludeTags 'load'
+		excludeTags 'load', 'drawing-memory'
 	}
 	// 테스트 프로필 설정을 모든 테스트 컨텍스트에 추가해 Hikari 연결 수를 제한한다.
 	systemProperty 'spring.config.additional-location', 'optional:classpath:/application-test.yml'
@@ -68,6 +68,28 @@ tasks.named('test') {
 		events "passed", "skipped", "failed"
 		exceptionFormat "full"
 		showStandardStreams = false
+	}
+}
+
+tasks.register('drawingMemoryTest', Test) {
+	group = 'verification'
+	description = '128MiB 힙에서 가중 추첨의 티켓 총합·후보 수별 스레드 할당량을 측정한다.'
+	useJUnitPlatform {
+		includeTags 'drawing-memory'
+	}
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	minHeapSize = '128m'
+	maxHeapSize = '128m'
+	maxParallelForks = 1
+	systemProperty 'junit.jupiter.execution.parallel.enabled', 'false'
+	systemProperty 'drawing.memory.report', layout.buildDirectory.file('reports/drawing-memory/allocation.csv').get().asFile.absolutePath
+	// 실행할 때마다 현재 JVM의 할당량과 메타데이터를 다시 기록한다.
+	outputs.upToDateWhen { false }
+	outputs.cacheIf { false }
+	testLogging {
+		events 'passed', 'failed', 'standard_out'
+		exceptionFormat 'full'
 	}
 }
 
