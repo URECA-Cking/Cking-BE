@@ -40,3 +40,7 @@ V2 Input Hash에 기록한다.
 Seed를 사용한다. 같은 Snapshot, Seed, 후보·상품 알고리즘 버전, 제외 대상,
 `winnerCount`는 항상 같은 Winner, Rank, 상품 배정을 만든다. 선택된 두 알고리즘 버전과
 상품 설정·배정 결과는 Snapshot/Input/Result Hash에 포함한다.
+
+응모자 선정 확률은 [가중 추첨 확률 분포 검증](weighted-distribution-verification.md)의
+고정 Seed 회귀와 별도 대량 명령으로 검증한다. 비복원 다중 당첨의 최종 포함 확률은
+단순히 `winnerCount * ticketCount / totalWeight`가 아니며 순서별 확률의 합을 기준으로 한다.
