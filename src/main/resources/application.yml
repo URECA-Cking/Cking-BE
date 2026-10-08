@@ -26,6 +26,12 @@ spring:
       max-file-size: 5MB
       max-request-size: 6MB
 
+server:
+  tomcat:
+    # Tomcat 스레드 지표(tomcat_threads_*)는 MBean 등록이 켜져 있어야 수집된다.
+    mbeanregistry:
+      enabled: true
+
 management:
   server:
     # 관리 포트는 호스트에 열지 않는다. 별도 웹 서버라 서비스 포트가 과부하여도 지표가 응답한다.
@@ -46,6 +52,11 @@ management:
   info:
     env:
       enabled: true
+  metrics:
+    distribution:
+      # 서버끼리 합칠 수 있는 구간별 개수로 p95/p99를 계산한다. 기본 히스토그램은 구간이 수십 개라 경계를 직접 둔다.
+      slo:
+        "[http.server.requests]": 10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s
 
 cking:
   recommendation:
