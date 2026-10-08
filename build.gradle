@@ -17,6 +17,27 @@ repositories {
 	mavenCentral()
 }
 
+// 운영 패키지에 포함하지 않는 순수 엔진 확률 검증 도구. DB/Redis가 필요하지 않다.
+sourceSets {
+	simulation {
+		compileClasspath = sourceSets.main.output
+		runtimeClasspath = output + compileClasspath
+	}
+	test {
+		compileClasspath += sourceSets.simulation.output
+		runtimeClasspath += sourceSets.simulation.output
+	}
+}
+
+tasks.register('weightedDistributionSimulation', JavaExec) {
+	group = 'verification'
+	description = '고정 기준으로 WEIGHTED_V1 대량 확률 분포를 검증하고 CSV와 실행 환경을 저장한다.'
+	classpath = sourceSets.simulation.runtimeClasspath
+	mainClass = 'kr.co.cking.drawing.simulation.WeightedDistributionSimulation'
+	maxHeapSize = '1g'
+	args layout.buildDirectory.dir('reports/weighted-distribution').get().asFile.absolutePath
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
