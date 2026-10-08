@@ -11,6 +11,10 @@
 ## PUT /api/creators/{creatorId}/follow
 
 크리에이터를 팔로우한다. 멱등하며, 이미 팔로우 중이어도 성공한다.
+실제 신규 팔로우 커밋 이후 동일 회원/Creator의 직전 24시간 마지막 추천 클릭에 전환을 귀속한다.
+클릭 없음/기간 밖/반복 PUT은 전환을 생성하지 않으며, 재팔로우도 동일 추천 요청/Creator에는 최대 1건이다.
+분석 기록은 별도 비동기 트랜잭션으로 실패를 격리한다. 팔로우 응답은 유지되지만 장애 시 분석 전환은 유실될 수 있다.
+정확한 귀속·실패·재처리 계약은 [추천 행동 수집](../creator/recommendation-events.md)과 [운영 문서](../../operations/creator-recommendation-events.md)를 따른다.
 
 ```json
 {
