@@ -22,6 +22,9 @@
 [가중치 추첨 비교](weighted-random-benchmark.md)를 참고한다. 운영 `WEIGHTED_V1`은
 기존 Fenwick Tree와 난수 규칙을 유지한다.
 
+`WEIGHTED_V1`의 long 총합 지원 범위, 제외 후 오버플로 오류 계약과 메모리 측정 절차는
+[가중 추첨 메모리·경계값 검증](weighted-memory-boundaries.md)을 참고한다.
+
 ## 상품 배정
 
 - `PRIZE_UNIFORM_V1`은 재고가 남은 각 상품 등급을 동일한 확률로 선택한다. `weight`는 양의 정수로
