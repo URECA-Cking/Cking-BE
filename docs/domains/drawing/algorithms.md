@@ -18,6 +18,9 @@
   누적 구간 선택과 당첨 후보 제거를 `O(log candidateCount)`에 처리한다.
 - 두 방식 모두 후보를 `memberId ASC`로 정규화하고 `winnerCount`만큼 중복 없이 선정한다.
 
+`WEIGHTED_V1`의 long 총합 지원 범위, 제외 후 오버플로 오류 계약과 메모리 측정 절차는
+[가중 추첨 메모리·경계값 검증](weighted-memory-boundaries.md)을 참고한다.
+
 ## 상품 배정
 
 - `PRIZE_UNIFORM_V1`은 재고가 남은 각 상품 등급을 동일한 확률로 선택한다. `weight`는 양의 정수로

@@ -24,6 +24,7 @@
 
 - [Snapshot](domains/snapshot/README.md): 공식 후보 확정, 멱등 생성, Snapshot Hash 정규화 계약
 - [Drawing](domains/drawing/README.md): 추첨 엔진 알고리즘과 당첨 결과 영속성 경계
+- [가중 추첨 메모리·경계값 검증](domains/drawing/weighted-memory-boundaries.md): 대규모 long 가중치 회귀 테스트와 128MiB 힙 할당량 측정
 - [Drawing 재현 검증 API](domains/drawing/verification-api.md): 원본 Seed 결정적 재현과 새 Seed 독립 재실행 검증
 - [Drawing 실행·재시도·공개 API](domains/drawing/api.md): INITIAL 실행, 실패 Drawing 재시도·결과 공개 API 계약
 - [Drawing 조회 API](domains/drawing/admin-query-api.md): INITIAL Drawing·Drawing 상세·당첨 결과 조회 API 계약
