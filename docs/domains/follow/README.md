@@ -9,6 +9,7 @@
 - 개인화 추천은 `findFollowedCreatorIds(memberId)`로 전체 seed Creator ID를 한 번에 읽는다. 추천 집계와 유사 후보 조회는 Creator 도메인이 담당한다.
 - 신규 팔로우는 커밋 후 `CreatorFollowCreated`를 통해 Creator 추천 분석에 전달한다. 별도 `member_activity_lock` 행으로 팔로우/언팔로우 전환을 직렬화하며 반복 PUT은 이벤트를 발행하지 않는다.
 - 실제 신규 관계와 공통 ID 이벤트(`common.event.CreatorFollowCreated`)의 영속 원본을 같은 트랜잭션에 저장한다. 원본 저장 실패는 팔로우도 롤백한다. 원본은 언팔로우 후에도 남으며 분석 실패는 주기적 재처리로 복구한다. 시각은 DB UTC를 쓴다.
+- 원본 저장소는 `follow.repository`, 상태 변경 경계는 `CreatorFollowEventService`가 소유한다. 복구 잡은 새 이벤트를 기본 2분 유예하며 실패 횟수를 저장하고 60초부터 최대 1시간까지 지수 백오프한다. 커밋 후 비동기 처리는 즉시 실행한다.
 - Creator 정보는 읽기만 한다. 팔로우 대상 존재 확인과 목록의 크리에이터 이름은 `CreatorRepository` 조회로 얻는다.
 
 ## 소유 데이터

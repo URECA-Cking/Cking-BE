@@ -6,6 +6,7 @@ API와 FE 전송 계약은 [추천 행동 수집](../domains/creator/recommendat
 
 - Flyway V51은 request, card, source, event_receipt, interaction, conversion 테이블을 추가한다.
 - V52는 별도 업무 잠금 `member_activity_lock`과 영속 팔로우 이벤트 `creator_follow_event`를 추가한다.
+- V53은 영속 이벤트에 `retry_count`를 추가한다. 기존 pending 이벤트도 실패 횟수 0부터 백오프를 적용한다.
 - request 생성은 노출이 아니다. card는 실제 응답 순위를 보존하며 source는 당시 후보 생성 세대별 메타데이터다.
 - receipt는 승인한 모든 eventId의 내용을 보존한다. interaction은 요청/카드/타입의 최초 수신만 저장한다.
 - last-click은 receipt의 실제 승인 클릭 중 가장 최근 것을 사용한다. 새 ID의 재클릭은 귀속 시각만 갱신하고 고유 클릭 수를 늘리지 않는다. 같은 ID 재시도는 어느 시각도 갱신하지 않는다.
@@ -19,7 +20,8 @@ API와 FE 전송 계약은 [추천 행동 수집](../domains/creator/recommendat
 
 추천 조회 트랜잭션이 끝난 후 스냅샷을 `REQUIRES_NEW`로 저장한다. 실패하면 추천 카드와 정상 HTTP 응답은 유지하고
 `recommendationRequestId: null`을 반환한다. 스냅샷과 카드/source는 원자적이라 일부만 저장되지 않는다.
-카드와 source는 각각 `batchUpdate`로 저장하고 MySQL `rewriteBatchedStatements=true`로 묶는다.
+카드와 source는 추천 저장소에서만 최대 100행씩 파라미터 바인딩한 다중 VALUES INSERT로 저장한다.
+연결 풀의 전역 `rewriteBatchedStatements`는 설정하지 않아 다른 모듈의 JDBC/Hibernate 배치 동작을 바꾸지 않는다.
 requestId는 응답 전에 발급해야 하므로 스냅샷 저장은 동기식이며 별도 연결/트랜잭션 비용은 남는다.
 
 팔로우/언팔로우/수집은 별도 업무 잠금 행으로 직렬화한다. 회원 부모 행을 FOR UPDATE하지 않아 스냅샷 FK의 공유 잠금을 막지 않는다. 실제 신규 관계 생성에만 `CreatorFollowCreated`를 발행하고,
@@ -34,9 +36,13 @@ requestId는 응답 전에 발급해야 하므로 스냅샷 저장은 동기식�
 - 신규 팔로우와 영속 이벤트 원본은 같은 트랜잭션에 저장한다. 원본 저장 실패 시 팔로우도 롤백해 복구 근거 없는 성공을 방지한다.
   전환 계산/저장 실패, 커밋 직후 종료, 큐 포화는 팔로우 성공을 바꾸지 않으며 pending 이벤트를 남긴다.
 - 기본 1분 주기 복구 잡은 준비된 pending 이벤트 최대 100건을 건별 독립 트랜잭션으로 처리한다.
+  새 이벤트의 첫 복구 가능 시각은 원본 followed_at + 기본 2분이다. 커밋 후 비동기 worker는 이 유예 없이 즉시 처리한다.
+  목록 조회 후에도 행 잠금 아래에서 next_attempt_at을 재검증해 다른 인스턴스가 연기한 이벤트의 조기 재시도를 막는다.
   원본 followed_at으로 last-click을 계산하고 전환 INSERT와 processed_at 갱신을 함께 커밋한다.
   클릭 없음도 처리 완료다. 이벤트 FOR UPDATE와 전환 UNIQUE로 다중 인스턴스/반복 복구를 멱등 처리한다.
-  실패 건은 60초 뒤 다시 시도하고 나머지 건을 계속 처리한다. 정상 복구 주기는 실행 시간과 적체에 따라 늘어날 수 있다.
+  복구 실패 횟수는 retry_count에 저장한다. 실패 후 60/120/240/480/960/1920/3600초 순으로 간격을 늘리고 이후 1시간을 유지한다.
+  횟수 제한으로 영구 중단하지 않아 장애 해소 후에도 보존 기간 안에서 복구할 수 있다. 다른 건의 처리는 계속한다.
+  실제 재시도는 next_attempt_at 이후 잡이 실행될 때이며 실행 시간과 적체에 따라 늦어질 수 있다.
 - 언팔로우 후에도 원본 이벤트를 보존하므로 현재 팔로우 상태로 과거 시각을 추정하지 않는다.
   원본/클릭이 보존 기간을 지나 삭제되면 복구하지 않는다. 영속 원본 도입 이전에 유실된 이벤트도 자동 복원하지 않는다.
 - 운영자가 확실한 원본 전환 시각을 확보한 경우 `recordFollow(memberId, creatorId, originalFollowedAt)`로
@@ -49,6 +55,9 @@ Micrometer `cking.recommendation.tracking` counter는 `phase=snapshot|collect|fo
 follow success는 기록 처리 성공이며, 클릭이 없어 실제 저장한 전환이 0건일 수도 있다.
 Prometheus `cking_recommendation_tracking_total`의 failure 증가와 follow_dispatch failure를 경보 대상으로 삼는다.
 운영자는 pending 이벤트 수/최초 followed_at과 follow_recovery failure 증가를 확인한다.
+retry_count가 계속 증가하는 이벤트와 next_attempt_at을 함께 조회해 영구 실패 원인을 조사한다.
+영속 이벤트 저장소와 상태 변경은 Follow 도메인의 `CreatorFollowEventService`가 소유하며,
+추천 분석은 이 Application 경계를 통해 호출자의 트랜잭션 안에서 조회/완료/연기를 처리한다.
 DB 저장이 성공했어도 FE 전송 실패, 스냅샷 null, 보존 기간을 넘긴 분석 적체 때문에 실제 모든 행동을 대표하지 않는다.
 
 ## 기간별 집계
@@ -96,8 +105,10 @@ Creator hard delete도 card 이하를 삭제한다. 익명화하거나 분석 �
 | `cking.recommendation.tracking.cleanup-interval-ms` / `RECOMMENDATION_TRACKING_CLEANUP_INTERVAL_MS` | 60000 |
 | `cking.recommendation.tracking.recovery-enabled` / `RECOMMENDATION_TRACKING_RECOVERY_ENABLED` | true |
 | `cking.recommendation.tracking.recovery-interval-ms` / `RECOMMENDATION_TRACKING_RECOVERY_INTERVAL_MS` | 60000 |
+| `cking.recommendation.tracking.recovery-initial-delay` / `RECOMMENDATION_TRACKING_RECOVERY_INITIAL_DELAY` | PT2M |
 
 window는 1초 이상 정수 초다. TTL은 양수, retention은 TTL + attribution-window 이상이어야 하며 위반 시 기동을 거부한다.
+복구 초기 유예도 양수 정수 초여야 한다. 재시도 간격 상한 1시간은 시도 횟수 상한과 다르다.
 분석 트랜잭션 timeout은 5초다. 풀 연결 대기는 별도 DataSource 설정의 영향을 받으므로 장애 시 지연은 생길 수 있다.
 수집 최대 50건은 HTTP DTO와 Application에서 모두 검증한다.
 
@@ -111,8 +122,9 @@ window는 1초 이상 정수 초다. TTL은 양수, retention은 TTL + attributi
 집계 SQL도 실제 DB에서 노출/미노출 클릭, 정책 분리, 0 분모를 확인한다.
 통합 테스트는 운영 DB가 아닌 전용 DB/Redis에서 실행한다. fixture 외 전체 테이블 삭제는 사용하지 않는다.
 
-2026-10-08 리뷰 반영 검증: 별도 MySQL 8.4/Redis 7.2 환경에서 빈 DB에 V52까지 적용했다.
-추천/팔로우/행동 수집 관련 16개 클래스, 127개 테스트가 실패·오류·skip 없이 통과했고 `bootJar`도 성공했다.
+2026-10-08 추가 리뷰 반영 검증: 별도 MySQL 8.4/Redis 7.2 환경에서 빈 DB에 V53까지 적용했다.
+추천/팔로우/행동 수집 관련 17개 클래스, 133개 테스트가 실패·오류·skip 없이 통과했고 `bootJar`도 성공했다.
 만료 후 승인 재전송/혼합 배치, 20개 카드 배치, 알림 유실/언팔로우 후 복구, 동시 복구,
 영속 원본 저장 실패의 팔로우 롤백, 업무 잠금 중 스냅샷 저장, DB 시각, 여러 정리 배치의 커밋 독립성도 검증했다.
+2분 유예 경계, 지수 백오프/1시간 상한/성공 후 재시도 제외, 201개 출처 저장/마지막 INSERT 실패 시 전체 롤백과 전역 JDBC 설정 제거도 검증했다.
 이는 해당 기능과 관련 회귀 테스트 실행 결과이며 저장소 전체 테스트 실행 결과는 아니다.
