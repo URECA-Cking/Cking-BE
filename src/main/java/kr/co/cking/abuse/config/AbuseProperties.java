@@ -3,6 +3,7 @@ package kr.co.cking.abuse.config;
 import jakarta.validation.constraints.AssertTrue;
 import kr.co.cking.abuse.application.model.AbuseFeatureWindowPolicy;
 import kr.co.cking.abuse.domain.AbuseType;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -22,6 +23,13 @@ public record AbuseProperties(
         FailureRule failureBurst,
         YoutubeSubscriptionRule youtubeSubscription
 ) {
+
+    /**
+     * 기존 호환 생성자가 함께 있어도 Spring이 설정 바인딩에 사용할 canonical 생성자를 명시한다.
+     */
+    @ConstructorBinding
+    public AbuseProperties {
+    }
 
     public static final Duration TTL_PADDING = Duration.ofSeconds(60);
     public static final int COOLDOWN_WINDOW_MULTIPLIER = 2;
