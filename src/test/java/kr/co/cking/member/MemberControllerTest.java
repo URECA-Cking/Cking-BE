@@ -73,7 +73,7 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.data.email").value("hong@example.com"))
                 .andExpect(jsonPath("$.data.role").value("USER"))
                 .andExpect(jsonPath("$.data.creator").value(false))
-                .andExpect(jsonPath("$.data.profileSetupRequired").value(false))
+                .andExpect(jsonPath("$.data.profileConfigured").value(true))
                 .andExpect(jsonPath("$.data.onboardingCompleted").value(true));
     }
 
@@ -86,7 +86,8 @@ class MemberControllerTest {
 
         mockMvc.perform(get("/api/me"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.creator").value(true));
+                .andExpect(jsonPath("$.data.creator").value(true))
+                .andExpect(jsonPath("$.data.profileConfigured").value(false));
     }
 
     @Test

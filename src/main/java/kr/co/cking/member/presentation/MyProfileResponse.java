@@ -15,7 +15,7 @@ public record MyProfileResponse(
         MemberRole role,
         boolean creator,
         boolean onboardingCompleted,
-        boolean profileSetupRequired,
+        boolean profileConfigured,
         OffsetDateTime nicknameChangeableAt,
         String restorableNickname
 ) {
@@ -23,7 +23,7 @@ public record MyProfileResponse(
     public static MyProfileResponse from(MemberProfile profile, boolean creator) {
         return new MyProfileResponse(
                 profile.memberId(), profile.name(), profile.nickname(), profile.email(), profile.role(), creator,
-                profile.onboardingCompleted(), profile.nickname() == null,
+                profile.onboardingCompleted(), profile.nickname() != null,
                 profile.nicknameChangeableAt() == null ? null : profile.nicknameChangeableAt().atOffset(ZoneOffset.UTC),
                 profile.restorableNickname());
     }

@@ -145,7 +145,7 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
     "role": "USER",
     "creator": false,
     "onboardingCompleted": true,
-    "profileSetupRequired": false,
+    "profileConfigured": true,
     "nicknameChangeableAt": null,
     "restorableNickname": null
   },
