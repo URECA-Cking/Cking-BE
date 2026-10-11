@@ -62,6 +62,8 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 
 게시 취소 후에는 승인 근거가 여전히 유효한 최신 revision을 재승인 없이 다시 게시할 수 있다. 결정은 되돌리지 않는다.
 
+`published_at`은 현재(게시 취소 상태라면 마지막) 게시가 시작된 시각이고, `unpublished_at`은 그 게시가 취소된 시각이다. 게시하면 `published_at`을 새로 기록하고 `unpublished_at`을 지우므로 `PUBLISHED`일 때 `unpublished_at`은 항상 비어 있다.
+
 ## Judge 미연동 승인·게시 차단
 
 승인과 게시는 `QuizApprovalPolicy`를 통과해야 한다. GPT Judge 평가를 아직 저장하지 않으므로 운영 구현은 항상 거부하는 `JudgeNotIntegratedQuizApprovalPolicy` 하나뿐이며, 승인·게시는 `QUIZ_JUDGE_EVALUATION_REQUIRED`(409)다.

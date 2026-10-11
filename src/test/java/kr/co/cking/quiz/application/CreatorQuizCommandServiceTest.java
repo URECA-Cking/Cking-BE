@@ -269,6 +269,7 @@ class CreatorQuizCommandServiceTest {
 
         assertThat(view.publicationStatus()).isEqualTo(QuizPublicationStatus.PUBLISHED);
         assertThat(view.publishedRevisionId()).isEqualTo(REVISION_ID);
+        assertThat(view.unpublishedAt()).isNull();
     }
 
     @Test

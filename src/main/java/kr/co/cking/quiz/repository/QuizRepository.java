@@ -21,11 +21,18 @@ public interface QuizRepository extends JpaRepository<Quiz, Long> {
     @Query("select q from Quiz q where q.creatorId = :creatorId order by q.createdAt desc, q.quizId desc")
     Page<Quiz> findByCreatorIdLatestFirst(@Param("creatorId") Long creatorId, Pageable pageable);
 
-    @Query("""
-            select q from Quiz q
+    /** 공개 목록은 Quiz마다 최대 5만 자인 원본 텍스트가 필요 없으므로 필요한 컬럼만 읽는다. */
+    @Query(value = """
+            select new kr.co.cking.quiz.repository.PublishedQuizSummary(q.quizId, q.publishedRevisionId, q.publishedAt)
+            from Quiz q
             where q.creatorId = :creatorId
               and q.publicationStatus = kr.co.cking.quiz.domain.QuizPublicationStatus.PUBLISHED
             order by q.publishedAt desc, q.quizId desc
-            """)
-    Page<Quiz> findPublishedByCreatorId(@Param("creatorId") Long creatorId, Pageable pageable);
+            """,
+            countQuery = """
+                    select count(q) from Quiz q
+                    where q.creatorId = :creatorId
+                      and q.publicationStatus = kr.co.cking.quiz.domain.QuizPublicationStatus.PUBLISHED
+                    """)
+    Page<PublishedQuizSummary> findPublishedByCreatorId(@Param("creatorId") Long creatorId, Pageable pageable);
 }

@@ -89,11 +89,17 @@ public class Quiz {
         return QuizRevisionFingerprint.contentTextSha256(contentText).equals(contentTextSha256);
     }
 
-    /** 게시 조건 검증은 호출자가 마친 뒤 부른다. 이미 게시 중이면 게시 revision만 바꾼다. */
+    /**
+     * 게시 조건 검증은 호출자가 마친 뒤 부른다. 이미 게시 중이면 게시 revision만 바꾼다.
+     *
+     * <p>{@code publishedAt}은 현재 게시가 시작된 시각이고 {@code unpublishedAt}은 그 게시가 취소된 시각이므로,
+     * 게시하면 이전 게시 취소 시각을 지운다.
+     */
     public void publish(Long revisionId, Instant now) {
         this.publicationStatus = QuizPublicationStatus.PUBLISHED;
         this.publishedRevisionId = Objects.requireNonNull(revisionId, "revisionId");
         this.publishedAt = Objects.requireNonNull(now, "now");
+        this.unpublishedAt = null;
         this.updatedAt = now;
     }
 

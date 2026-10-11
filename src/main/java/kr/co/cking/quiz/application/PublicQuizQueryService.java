@@ -7,6 +7,7 @@ import kr.co.cking.quiz.application.dto.PublicQuizViews;
 import kr.co.cking.quiz.domain.Quiz;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizRevision;
+import kr.co.cking.quiz.repository.PublishedQuizSummary;
 import kr.co.cking.quiz.repository.QuizRepository;
 import kr.co.cking.quiz.repository.QuizRevisionRepository;
 import lombok.RequiredArgsConstructor;
@@ -38,15 +39,15 @@ public class PublicQuizQueryService {
     /** 최근 게시 순(publishedAt 내림차순, quizId 내림차순). 없는 Creator는 {@code RESOURCE_NOT_FOUND}. */
     public Page<PublicQuizViews.Summary> findPublished(Long creatorId, Pageable pageable) {
         requireCreator(creatorId);
-        Page<Quiz> quizzes = quizRepository.findPublishedByCreatorId(creatorId, pageable);
+        Page<PublishedQuizSummary> quizzes = quizRepository.findPublishedByCreatorId(creatorId, pageable);
         Map<Long, QuizRevision> revisions = quizzes.isEmpty()
                 ? Map.of()
-                : revisionRepository.findAllById(quizzes.map(Quiz::getPublishedRevisionId).toList()).stream()
+                : revisionRepository.findAllById(quizzes.map(PublishedQuizSummary::publishedRevisionId).toList()).stream()
                         .collect(Collectors.toMap(QuizRevision::getRevisionId, Function.identity()));
         return quizzes.map(quiz -> {
-            QuizRevision revision = revisions.get(quiz.getPublishedRevisionId());
-            return new PublicQuizViews.Summary(quiz.getQuizId(), revision.getRevisionId(), revision.getTitle(),
-                    revision.getQuestionCount(), quiz.getPublishedAt());
+            QuizRevision revision = revisions.get(quiz.publishedRevisionId());
+            return new PublicQuizViews.Summary(quiz.quizId(), revision.getRevisionId(), revision.getTitle(),
+                    revision.getQuestionCount(), quiz.publishedAt());
         });
     }
 

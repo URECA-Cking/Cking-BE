@@ -14,6 +14,7 @@ import kr.co.cking.quiz.domain.Quiz;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizReviewStatus;
 import kr.co.cking.quiz.domain.QuizRevision;
+import kr.co.cking.quiz.repository.PublishedQuizSummary;
 import kr.co.cking.quiz.repository.QuizOptionRepository;
 import kr.co.cking.quiz.repository.QuizQuestionRepository;
 import kr.co.cking.quiz.repository.QuizRepository;
@@ -22,6 +23,7 @@ import kr.co.cking.quiz.repository.QuizRevisionRepository;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -154,17 +156,21 @@ class QuizQueryServiceTest {
 
     @Test
     void 공개_목록은_게시_revision의_제목과_문항_수를_보여준다() {
-        quiz.publish(100L, QuizFixtures.NOW);
-        PageRequest pageable = PageRequest.of(0, 20);
-        given(quizRepository.findPublishedByCreatorId(CREATOR_ID, pageable))
-                .willReturn(new PageImpl<>(List.of(quiz), pageable, 1));
+        PageRequest pageable = PageRequest.of(1, 1);
+        given(quizRepository.findPublishedByCreatorId(CREATOR_ID, pageable)).willReturn(new PageImpl<>(
+                List.of(new PublishedQuizSummary(QUIZ_ID, 100L, QuizFixtures.NOW)), pageable, 3));
         given(revisionRepository.findAllById(List.of(100L))).willReturn(List.of(QuizFixtures.revision(100L, QUIZ_ID, 1)));
 
-        PublicQuizViews.Summary summary = publicQueryService.findPublished(CREATOR_ID, pageable).getContent().get(0);
+        Page<PublicQuizViews.Summary> page = publicQueryService.findPublished(CREATOR_ID, pageable);
 
+        PublicQuizViews.Summary summary = page.getContent().get(0);
+        assertThat(summary.quizId()).isEqualTo(QUIZ_ID);
         assertThat(summary.revisionId()).isEqualTo(100L);
         assertThat(summary.title()).isEqualTo(QuizFixtures.TITLE);
         assertThat(summary.questionCount()).isEqualTo(2);
+        assertThat(summary.publishedAt()).isEqualTo(QuizFixtures.NOW);
+        assertThat(page.getNumber()).isEqualTo(1);
+        assertThat(page.getTotalElements()).isEqualTo(3);
     }
 
     private static void assertError(ThrowingCallable call, ErrorCode errorCode) {

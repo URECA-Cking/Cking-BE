@@ -19,6 +19,8 @@ GPT Judge 평가가 연동되기 전까지 승인과 게시는 항상 `QUIZ_JUDG
 | `reviewStatus` | revision 검토 상태. `PENDING_REVIEW`, `APPROVED`, `REJECTED` |
 | `questionNo`, `optionNo` | 0부터 시작하는 표시 순서 |
 | `correctOptionIndex` | 0-based. 정답 보기의 `optionNo`와 같다(Creator API에만 있다) |
+| `publishedAt` | 현재(또는 마지막) 게시가 시작된 시각. 재게시·게시 revision 변경 때 갱신된다. 게시한 적 없으면 null |
+| `unpublishedAt` | 그 게시가 취소된 시각. `PUBLISHED`이면 항상 null이고, 재게시하면 지워진다 |
 | 시각 | UTC Instant |
 
 ## GET /api/creator/quizzes

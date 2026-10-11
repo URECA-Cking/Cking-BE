@@ -50,6 +50,20 @@ class QuizTest {
     }
 
     @Test
+    void 재게시하면_게시_시각을_갱신하고_게시_취소_시각을_지운다() {
+        Quiz quiz = QuizFixtures.quiz(1L, 10L);
+        quiz.publish(100L, LATER);
+        quiz.unpublish(LATER.plusSeconds(1));
+
+        quiz.publish(100L, LATER.plusSeconds(2));
+
+        assertThat(quiz.getPublicationStatus()).isEqualTo(QuizPublicationStatus.PUBLISHED);
+        assertThat(quiz.getPublishedRevisionId()).isEqualTo(100L);
+        assertThat(quiz.getPublishedAt()).isEqualTo(LATER.plusSeconds(2));
+        assertThat(quiz.getUnpublishedAt()).isNull();
+    }
+
+    @Test
     void 게시_중이_아니면_게시_취소할_수_없다() {
         Quiz quiz = QuizFixtures.quiz(1L, 10L);
 
