@@ -57,7 +57,7 @@ public class CreatorPostCommentService {
         Map<Long, String> authorNames = comments.isEmpty()
                 ? Map.of()
                 : memberRepository.findAllById(comments.map(CreatorPostComment::getMemberId).toSet()).stream()
-                        .collect(Collectors.toMap(Member::getMemberId, Member::getName));
+                        .collect(Collectors.toMap(Member::getMemberId, Member::publicDisplayName));
         return comments.map(comment ->
                 toView(comment, creator, authorNames.get(comment.getMemberId()), viewerMemberId));
     }
@@ -94,7 +94,7 @@ public class CreatorPostCommentService {
         CreatorPostComment comment = commentRepository.save(
                 new CreatorPostComment(postId, memberId, validate(content), clock.instant()));
         eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
-        return toView(comment, creator, author.getName(), memberId);
+        return toView(comment, creator, author.publicDisplayName(), memberId);
     }
 
     public CreatorPostCommentView update(
@@ -110,7 +110,7 @@ public class CreatorPostCommentService {
 
         comment.update(validate(content), clock.instant());
         eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
-        return toView(comment, creator, author.getName(), memberId);
+        return toView(comment, creator, author.publicDisplayName(), memberId);
     }
 
     /** 팔로우와 공개 범위를 보지 않는다. 팔로우를 끊은 작성자도 자기 댓글은 지울 수 있어야 하기 때문이다. */

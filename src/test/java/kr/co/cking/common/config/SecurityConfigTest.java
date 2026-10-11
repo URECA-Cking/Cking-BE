@@ -142,7 +142,8 @@ class SecurityConfigTest {
     @Test
     void 유효한_Access_JWT로_현재_사용자를_조회한다() throws Exception {
         when(memberQueryService.getProfile(17L))
-                .thenReturn(new MemberProfile(17L, "홍길동", "hong@example.com", MemberRole.USER, true));
+                .thenReturn(new MemberProfile(
+                        17L, "홍길동", null, "hong@example.com", MemberRole.USER, true, null, null));
         when(creatorQueryService.isCreatorMember(17L)).thenReturn(false);
 
         mockMvc.perform(get("/api/me")

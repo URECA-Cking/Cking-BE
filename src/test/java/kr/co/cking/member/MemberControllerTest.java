@@ -58,7 +58,8 @@ class MemberControllerTest {
     @Test
     void 일반_사용자의_현재_프로필을_공통_응답으로_반환한다() throws Exception {
         when(memberQueryService.getProfile(1L))
-                .thenReturn(new MemberProfile(1L, "홍길동", "hong@example.com", MemberRole.USER, true));
+                .thenReturn(new MemberProfile(
+                        1L, "홍길동", "닉네임", "hong@example.com", MemberRole.USER, true, null, null));
         when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
 
         mockMvc.perform(get("/api/me"))
@@ -66,16 +67,19 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.memberId").value(1))
                 .andExpect(jsonPath("$.data.name").value("홍길동"))
+                .andExpect(jsonPath("$.data.nickname").value("닉네임"))
                 .andExpect(jsonPath("$.data.email").value("hong@example.com"))
                 .andExpect(jsonPath("$.data.role").value("USER"))
                 .andExpect(jsonPath("$.data.creator").value(false))
+                .andExpect(jsonPath("$.data.profileSetupRequired").value(false))
                 .andExpect(jsonPath("$.data.onboardingCompleted").value(true));
     }
 
     @Test
     void Creator의_현재_프로필은_creator_true를_반환한다() throws Exception {
         when(memberQueryService.getProfile(1L))
-                .thenReturn(new MemberProfile(1L, "크리에이터", "creator@example.com", MemberRole.USER, true));
+                .thenReturn(new MemberProfile(
+                        1L, "크리에이터", null, "creator@example.com", MemberRole.USER, true, null, null));
         when(creatorQueryService.isCreatorMember(1L)).thenReturn(true);
 
         mockMvc.perform(get("/api/me"))

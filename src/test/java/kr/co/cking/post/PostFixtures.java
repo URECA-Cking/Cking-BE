@@ -2,6 +2,7 @@ package kr.co.cking.post;
 
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.post.domain.CreatorPost;
 import kr.co.cking.post.domain.CreatorPostImage;
@@ -22,6 +23,7 @@ public final class PostFixtures {
     public static Member member(Long memberId) {
         Member member = new Member("member-" + memberId, null, null, MemberRole.USER);
         ReflectionTestUtils.setField(member, "memberId", memberId);
+        member.setInitialNickname(MemberNickname.of("member-" + memberId));
         return member;
     }
 

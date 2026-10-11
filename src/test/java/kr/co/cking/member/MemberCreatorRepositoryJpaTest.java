@@ -3,6 +3,7 @@ package kr.co.cking.member;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,19 @@ class MemberCreatorRepositoryJpaTest {
 
         assertThatThrownBy(() -> creatorRepository.saveAndFlush(
                 new Creator(member.getMemberId(), "Duplicate Creator")))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void nicknameNormalizedCannotBeRegisteredTwice() {
+        Member first = new Member("첫 사용자", null, null, MemberRole.USER);
+        first.setInitialNickname(MemberNickname.of("CkingFan"));
+        memberRepository.saveAndFlush(first);
+
+        Member second = new Member("둘째 사용자", null, null, MemberRole.USER);
+        second.setInitialNickname(MemberNickname.of("ckingfan"));
+
+        assertThatThrownBy(() -> memberRepository.saveAndFlush(second))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 }

@@ -5,11 +5,14 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.member.repository.MemberNicknameReservationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -20,12 +23,19 @@ import java.util.function.Function;
 public class MemberQueryService {
 
     private final MemberRepository memberRepository;
+    private final MemberNicknameReservationRepository nicknameReservationRepository;
+    private final Clock clock;
 
     /** 인증된 호출자의 Member 프로필을 조회한다. */
     public MemberProfile getProfile(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return MemberProfile.from(member);
+        String restorableNickname = member.getPreviousNicknameNormalized() == null ? null
+                : nicknameReservationRepository.findByNicknameNormalized(member.getPreviousNicknameNormalized())
+                .filter(reservation -> reservation.isOwnedBy(memberId, LocalDateTime.now(clock)))
+                .map(kr.co.cking.member.domain.MemberNicknameReservation::getNickname)
+                .orElse(null);
+        return MemberProfile.from(member, restorableNickname);
     }
 
     /** 호출자 식별에 사용한 Member가 실제로 존재하는지 검증한다. */
