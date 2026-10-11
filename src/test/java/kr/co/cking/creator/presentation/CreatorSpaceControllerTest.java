@@ -58,6 +58,7 @@ class CreatorSpaceControllerTest {
     @Test
     void publicSpaceIsReadableWithoutJwt() throws Exception {
         given(profileService.findByCreatorId(42L)).willReturn(slugChangedView());
+        given(profileService.countFollowers(42L)).willReturn(1280L);
 
         mockMvc.perform(get("/api/creators/{creatorId}/space", 42L))
                 .andExpect(status().isOk())
@@ -66,18 +67,21 @@ class CreatorSpaceControllerTest {
                 .andExpect(jsonPath("$.data.creatorName").value("크리에이터"))
                 .andExpect(jsonPath("$.data.slug").value("iu-official"))
                 .andExpect(jsonPath("$.data.introText").value("소개"))
+                .andExpect(jsonPath("$.data.followerCount").value(1280))
                 .andExpect(jsonPath("$.data.slugChangeableAt").doesNotExist());
     }
 
     @Test
     void sharedUrlResolvesSpaceBySlugWithoutJwt() throws Exception {
         given(profileService.findBySlug("creator-42")).willReturn(view());
+        given(profileService.countFollowers(42L)).willReturn(0L);
 
         mockMvc.perform(get("/api/creator-spaces/{slug}", "creator-42"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.creatorId").value(42))
-                .andExpect(jsonPath("$.data.slug").value("creator-42"));
+                .andExpect(jsonPath("$.data.slug").value("creator-42"))
+                .andExpect(jsonPath("$.data.followerCount").value(0));
     }
 
     @Test
@@ -287,6 +291,7 @@ class CreatorSpaceControllerTest {
                 .andExpect(jsonPath("$.data.items[0].profileImageUrl").value("https://img/profile.png"))
                 .andExpect(jsonPath("$.data.items[0].bannerImageUrl").value("https://img/banner.png"))
                 .andExpect(jsonPath("$.data.items[0].slugChangeableAt").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].followerCount").doesNotExist())
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.size").value(20))
                 .andExpect(jsonPath("$.data.totalElements").value(1))

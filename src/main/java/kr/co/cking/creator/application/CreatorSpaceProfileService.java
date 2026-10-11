@@ -10,6 +10,7 @@ import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceCustomSlug;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.follow.application.CreatorFollowQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -35,11 +36,17 @@ public class CreatorSpaceProfileService {
     private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceSlugRegistry slugRegistry;
     private final Clock clock;
+    private final CreatorFollowQueryService followQueryService;
 
     /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
         Creator creator = requireCreatorById(creatorId);
         return new CreatorSpaceView(requireSpace(creatorId), creator.getName());
+    }
+
+    /** 공개 조회 응답에 담는 팔로워 수. Space 존재 확인은 호출 전 단건 조회가 끝낸 뒤라는 전제로 집계만 한다. */
+    public long countFollowers(Long creatorId) {
+        return followQueryService.countFollowers(creatorId);
     }
 
     /** 공유 URL slug를 Creator ID로 해석해 기존 공개 Creator Space 응답을 만든다. */

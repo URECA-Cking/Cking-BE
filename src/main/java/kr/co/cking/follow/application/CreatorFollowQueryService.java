@@ -37,6 +37,14 @@ public class CreatorFollowQueryService {
         return followRepository.existsByMemberIdAndCreatorId(memberId, creatorId);
     }
 
+    /**
+     * 다른 도메인용 팔로워 수 조회. 크리에이터 존재 여부는 검증하지 않아 없는 크리에이터는 0이다.
+     * 팔로우 건수를 요청 시점에 센다(추천의 인기순 대체와 같은 기준).
+     */
+    public long countFollowers(Long creatorId) {
+        return creatorId == null ? 0L : followRepository.countByCreatorId(creatorId);
+    }
+
     /** API용 팔로우 여부 조회. 존재하지 않는 크리에이터는 404다. */
     public boolean findFollowStatus(Long memberId, Long creatorId) {
         if (!creatorRepository.existsById(creatorId)) {

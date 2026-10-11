@@ -48,6 +48,21 @@ class CreatorFollowQueryServiceTest {
     }
 
     @Test
+    void 팔로워_수는_크리에이터의_팔로우_건수다() {
+        given(followRepository.countByCreatorId(1L)).willReturn(1280L);
+
+        assertThat(service.countFollowers(1L)).isEqualTo(1280L);
+    }
+
+    @Test
+    void 팔로워가_없거나_크리에이터_ID가_없으면_0이다() {
+        assertThat(service.countFollowers(2L)).isZero();
+        assertThat(service.countFollowers(null)).isZero();
+
+        verify(followRepository, never()).countByCreatorId(null);
+    }
+
+    @Test
     void API_팔로우_여부_조회는_존재하지_않는_크리에이터면_404다() {
         given(creatorRepository.existsById(1L)).willReturn(false);
 

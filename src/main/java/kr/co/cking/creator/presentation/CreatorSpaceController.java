@@ -11,6 +11,7 @@ import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
+import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceRequest;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceResponse;
 import lombok.RequiredArgsConstructor;
@@ -52,11 +53,12 @@ public class CreatorSpaceController {
     /** Creator ID로 공개 Creator Space를 조회한다. */
     @Operation(
             summary = "Creator Space 조회",
-            description = "인증 없이 조회할 수 있습니다. 응답의 slug로 공유 URL을 만들 수 있습니다."
+            description = "인증 없이 조회할 수 있습니다. 응답의 slug로 공유 URL을 만들 수 있고, followerCount에 팔로워 수가 담깁니다."
     )
     @GetMapping("/api/creators/{creatorId}/space")
-    public ApiResponse<CreatorSpaceResponse.Detail> findByCreatorId(@PathVariable Long creatorId) {
-        return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.findByCreatorId(creatorId)));
+    public ApiResponse<CreatorSpaceResponse.Profile> findByCreatorId(@PathVariable Long creatorId) {
+        CreatorSpaceView view = profileService.findByCreatorId(creatorId);
+        return ApiResponse.success(CreatorSpaceResponse.Profile.from(view, profileService.countFollowers(creatorId)));
     }
 
     /** 공유 URL slug로 공개 Creator Space를 조회한다. */
@@ -65,8 +67,10 @@ public class CreatorSpaceController {
             description = "인증 없이 조회할 수 있습니다. slug는 공유 URL 탐색에만 사용하며 응답의 creatorId를 내부 식별자로 사용합니다."
     )
     @GetMapping("/api/creator-spaces/{slug}")
-    public ApiResponse<CreatorSpaceResponse.Detail> findBySlug(@PathVariable String slug) {
-        return ApiResponse.success(CreatorSpaceResponse.Detail.from(profileService.findBySlug(slug)));
+    public ApiResponse<CreatorSpaceResponse.Profile> findBySlug(@PathVariable String slug) {
+        CreatorSpaceView view = profileService.findBySlug(slug);
+        return ApiResponse.success(CreatorSpaceResponse.Profile.from(
+                view, profileService.countFollowers(view.space().getCreatorId())));
     }
 
     /** 인증된 Creator 본인의 Creator Space를 조회한다. */
