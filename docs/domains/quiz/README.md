@@ -8,7 +8,7 @@ Creator가 YouTube 영상으로 만든 AI Quiz를 저장하고, Creator가 검�
 - Creator 본인 Quiz 조회, revision 승인·거절, 게시·게시 취소
 - 게시된 revision의 공개 조회 (정답·해설·근거 제외)
 
-AI 생성(`quiz.generation`)은 결과만 반환하며 이 도메인이 저장 전에 같은 `QuizGenerationValidator`로 다시 검증한다. Member·Creator는 읽기만 한다. YouTube URL 처리, Grounding, Quiz 생성 실행, GPT Judge, 풀이 제출·채점, 응모권 지급, 게시 후 수정은 아직 구현하지 않았다.
+AI 생성(`quiz.generation`)은 결과만 반환하며 이 도메인이 저장 전에 같은 `QuizGenerationValidator`로 다시 검증한다. Member·Creator는 읽기만 한다. 영상 Grounding Adapter(`quiz.grounding`)는 있지만 생성 요청과는 아직 연결하지 않았다. YouTube URL 처리, Quiz 생성 실행, GPT Judge, 풀이 제출·채점, 응모권 지급, 게시 후 수정은 아직 구현하지 않았다.
 
 ## 소유 데이터
 
@@ -87,3 +87,15 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 ## 동시성
 
 모든 변경 명령은 Quiz 행을 쓰기 잠금(`findByIdForUpdate`)으로 읽어 같은 Quiz의 명령을 직렬화한다. 잠금 순서는 Quiz → revision → 결정이다. 명령 Transaction은 READ COMMITTED라서, 잠금을 기다린 요청도 앞 요청이 커밋한 결정·게시 상태를 읽고 멱등 응답이나 409로 끝난다. 결정 중복은 `UNIQUE(revision_id)`가, 게시 상태와 포인터 불일치는 CHECK가 마지막으로 막는다.
+
+## 영상 Grounding (이슈 #524)
+
+`VideoGrounder.ground(videoId)`가 YouTube 영상을 Gemini Interactions API(`POST /v1beta/interactions`)로 분석해 Quiz 생성 입력(contentText)과 근거(facts)를 돌려준다. 생성 요청·비동기 작업과의 연결은 #525에서 한다.
+
+- 입력: 11자 videoId만 받고 `https://www.youtube.com/watch?v=<videoId>`로 다시 만들어 보낸다. 사용자 URL을 그대로 보내지 않는다.
+- 요청: 영상과 prompt(`GroundingPrompt`, 버전 `quiz-grounding-v1`), `response_format`(JSON schema), `store: false`. `store: false`는 Interaction 객체를 나중에 조회할 수 있게 저장하지 않도록 요청할 뿐 Provider의 모든 데이터 보관을 끈다는 뜻이 아니다.
+- 결과: contentText(검증 후 원문 그대로), facts(사실, evidenceType `SPEECH`·`VISUAL`·`UNKNOWN`, 근거, 시작·끝 시각), promptVersion, model. promptVersion과 model은 응답이 아니라 실행 설정에서 정한다. facts는 저장하지 않는다.
+- 검증(`VideoGroundingValidator`): contentText는 공백 불가, 50,000자 이하(Java `String.length()`). facts는 비어도 되지만 각 사실과 근거는 공백 불가. 시각은 시작·끝이 모두 null이거나 모두 `MM:SS`/`MM:SS.s`(분 2자리 이상, 초 00~59)이고 시작이 끝보다 늦을 수 없다. 영상 길이는 알 수 없어 검사하지 않는다.
+- 오류: 429·5xx만 최대 시도 횟수(기본 3)까지 지수 대기(기본 1초부터 두 배, 상한 4초) 후 재시도한다. 시간 초과는 재시도하지 않고 `QuizProviderTimeoutException`이다. 나머지는 `VideoGroundingException`으로, 그 밖의 4xx는 `REJECTED`, 재시도 소진·네트워크 오류는 `PROVIDER_ERROR`, 미완료(`incomplete` 등)·형식·계약 위반은 `INVALID_RESPONSE`, API key 미설정은 `NOT_CONFIGURED`(호출하지 않음)다. 예외는 고정 문구만 쓰고 cause를 붙이지 않으며, 로그에는 HTTP 상태만 남긴다.
+- 설정: `cking.quiz.grounding.*`(model, base-url, connect/read timeout, max-attempts, retry-backoff, retry-backoff-max, max-output-tokens). Quiz 생성 설정(`cking.quiz.gemini`)과 분리하고 API key는 같은 `GEMINI_API_KEY`를 쓰므로 quota와 비용이 합산된다. 출력 token 상한은 비워 두면 요청에 넣지 않는다.
+- Interactions API는 Beta, YouTube URL 입력은 preview이며 공개 영상만 가능하다. 모델·timeout 기본값은 실제 호출로 확인한 뒤 조정한다.
