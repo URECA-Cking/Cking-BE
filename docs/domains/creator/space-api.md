@@ -21,9 +21,10 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 | `slug` | 공유 링크(`/space/{slug}`)에 쓰는 식별 문자열. 승인 시 자동으로 만들어지고 Creator가 바꿀 수 있다 |
 | `introText` | 소개 문구 |
 | `profileImageUrl`, `bannerImageUrl` | 프로필·배너 이미지 URL |
+| `followerCount` | **단건 공개 조회(`GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)에만 있다.** 이 Creator를 팔로우한 건수(0 이상). `creator_follow`를 요청 시점에 센다(`idx_creator_follow_creator` 사용). 목록(`GET /api/creators`)과 본인 API 응답에는 담지 않는다 |
 | `slugChangeableAt` | **본인 API 응답에만 있다.** slug를 다시 바꿀 수 있는 시각(UTC RFC 3339). 한 번도 바꾸지 않았으면 `null`이며 바로 바꿀 수 있다. slug 변경 이력이라 공개 조회 응답에는 담지 않는다 |
 
-공개 조회 응답:
+단건 공개 조회 응답:
 
 ```json
 {
@@ -32,11 +33,14 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
   "slug": "iu-official",
   "introText": "크리에이터와 함께하는 공간이에요",
   "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
-  "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png"
+  "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
+  "followerCount": 1280
 }
 ```
 
-본인 API 응답(`GET`·`PATCH /api/creator/space`, `PATCH /api/creator/space/slug`)은 위 필드에 `slugChangeableAt`이 더해진다.
+목록(`GET /api/creators`) 항목은 `followerCount` 없이 위 필드만 담는다. 항목마다 집계가 늘어나는 것을 피하기 위해서이며, 목록에 팔로워 수가 필요하면 별도 이슈에서 일괄 집계로 다룬다.
+
+본인 API 응답(`GET`·`PATCH /api/creator/space`, `PATCH /api/creator/space/slug`)은 공통 프로필 필드(`creatorId`, `creatorName`, `slug`, `introText`, `profileImageUrl`, `bannerImageUrl`)와 `slugChangeableAt`을 담는다. `followerCount`는 담지 않는다.
 
 ```json
 {

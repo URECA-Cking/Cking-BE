@@ -30,6 +30,28 @@ public final class CreatorSpaceResponse {
         }
     }
 
+    /**
+     * 단건 공개 조회 응답. 목록 항목(Detail)과 달리 팔로워 수를 담는다.
+     * 목록은 항목마다 집계가 늘어나므로 포함하지 않는다.
+     */
+    public record Profile(
+            Long creatorId,
+            String creatorName,
+            String slug,
+            String introText,
+            String profileImageUrl,
+            String bannerImageUrl,
+            long followerCount
+    ) {
+        public static Profile from(CreatorSpaceView view, long followerCount) {
+            CreatorSpace space = view.space();
+            return new Profile(
+                    space.getCreatorId(), view.creatorName(), space.getSlug(), space.getIntroText(),
+                    space.getProfileImageUrl(), space.getBannerImageUrl(), followerCount
+            );
+        }
+    }
+
     /** 본인 조회·수정 응답. 화면에서 "N일 후 변경 가능"을 보여줄 수 있게 다음 slug 변경 가능 시각을 담는다. */
     public record Mine(
             Long creatorId,

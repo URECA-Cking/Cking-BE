@@ -13,6 +13,7 @@ import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
+import kr.co.cking.follow.application.CreatorFollowQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -47,9 +48,10 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
     private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
+    private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
             creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-            Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+            Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
 
     private Creator creator;
     private CreatorSpace space;
@@ -72,6 +74,13 @@ class CreatorSpaceProfileServiceTest {
 
         assertThat(view.space()).isSameAs(space);
         assertThat(view.creatorName()).isEqualTo("크리에이터");
+    }
+
+    @Test
+    void countFollowersDelegatesToFollowQueryService() {
+        given(followQueryService.countFollowers(42L)).willReturn(1280L);
+
+        assertThat(service.countFollowers(42L)).isEqualTo(1280L);
     }
 
     @Test
