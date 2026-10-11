@@ -7,7 +7,7 @@ public record MemberInfo(Long memberId, String name, String phone, String email)
     public static MemberInfo from(Member member) {
         return new MemberInfo(
                 member.getMemberId(),
-                member.publicDisplayName(),
+                member.getName(),
                 member.getPhone(),
                 member.getEmail()
         );

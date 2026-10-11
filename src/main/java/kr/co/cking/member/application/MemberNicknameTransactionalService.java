@@ -8,13 +8,12 @@ import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
 
-/** 닉네임 변경·예약 갱신을 하나의 새 트랜잭션으로 처리한다. */
+/** 닉네임 변경·예약 갱신을 호출자 트랜잭션에 합쳐 처리한다. */
 @Service
 @RequiredArgsConstructor
 class MemberNicknameTransactionalService {
@@ -24,7 +23,7 @@ class MemberNicknameTransactionalService {
     private final MemberNicknameContentPolicy contentPolicy;
     private final Clock clock;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public MemberNicknameService.MemberNicknameResult change(Long memberId, String requestedNickname) {
         Member member = memberRepository.findByIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));

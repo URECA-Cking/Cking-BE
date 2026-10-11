@@ -70,7 +70,7 @@ public class CreatorApplicationService {
         Page<CreatorApplication> applications = applicationRepository.findAllByOrderByRequestedAtAscIdAsc(pageable);
         Map<Long, String> applicantNames = memberRepository.findByMemberIdIn(applications.stream()
                         .map(CreatorApplication::getMemberId).toList())
-                .stream().collect(Collectors.toMap(Member::getMemberId, Member::publicDisplayName));
+                .stream().collect(Collectors.toMap(Member::getMemberId, Member::getName));
         List<AdminApplication> items = applications.stream()
                 .map(application -> new AdminApplication(application, applicantNames.get(application.getMemberId())))
                 .toList();

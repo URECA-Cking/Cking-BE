@@ -27,6 +27,8 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
+
 @WebMvcTest(MemberController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({WebMvcConfig.class, CurrentMemberIdArgumentResolver.class})
@@ -85,6 +87,19 @@ class MemberControllerTest {
         mockMvc.perform(get("/api/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.creator").value(true));
+    }
+
+    @Test
+    void 닉네임_변경_가능_시각은_UTC_오프셋을_포함해_반환한다() throws Exception {
+        when(memberQueryService.getProfile(1L))
+                .thenReturn(new MemberProfile(
+                        1L, "홍길동", "닉네임", "hong@example.com", MemberRole.USER, true,
+                        LocalDateTime.of(2026, 10, 26, 12, 0), null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nicknameChangeableAt").value("2026-10-26T12:00:00Z"));
     }
 
     @Test
