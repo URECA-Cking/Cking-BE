@@ -99,17 +99,22 @@ class AbuseConfigurationTest {
     }
 
     @Test
-    void RuleEvaluator는_명시한_운영_생성자로_주입된다() {
+    void 실제_Abuse_관측_구성에서_RuleEvaluator는_운영_생성자로_주입된다() {
         new ApplicationContextRunner()
-                .withBean(AbuseProperties.class, () -> mock(AbuseProperties.class))
+                .withUserConfiguration(AbuseConfiguration.class)
+                .withPropertyValues("cking.abuse.enabled=false")
                 .withBean(AbuseFeatureStore.class, () -> mock(AbuseFeatureStore.class))
                 .withBean(RequestBurstRuleEvaluator.class, () -> mock(RequestBurstRuleEvaluator.class))
                 .withBean(FailureBurstRuleEvaluator.class, () -> mock(FailureBurstRuleEvaluator.class))
                 .withBean(RapidEarnSpendRuleEvaluator.class, () -> mock(RapidEarnSpendRuleEvaluator.class))
                 .withBean(CompositeRuleEvaluator.class, () -> mock(CompositeRuleEvaluator.class))
                 .withBean(YoutubeSubscriptionRuleEvaluator.class, () -> mock(YoutubeSubscriptionRuleEvaluator.class))
+                .withBean(AbuseDetectionRecorder.class, () -> mock(AbuseDetectionRecorder.class))
                 .withBean(AbuseRuleEvaluator.class)
-                .run(context -> assertThat(context).hasNotFailed().hasSingleBean(AbuseRuleEvaluator.class));
+                .run(context -> assertThat(context)
+                        .hasNotFailed()
+                        .hasSingleBean(AbuseRuleEvaluator.class)
+                        .hasSingleBean(AbuseObservationExecutor.class));
     }
 
     private String[] enabledProperties() {
