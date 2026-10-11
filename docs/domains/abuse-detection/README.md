@@ -4,7 +4,7 @@ Mission 완료와 Event 응모의 여러 요청에 걸친 패턴을 탐지해 �
 
 ## 범위와 경계
 
-관찰 대상은 인증된 사용자의 다음 POST 네 개뿐이다.
+관찰 대상은 인증된 사용자의 Mission 완료·Event 응모와 별도 계약의 [YouTube 구독 인증](youtube-subscription.md)이다.
 
 | actionType | API | resource 확인 |
 | --- | --- | --- |
@@ -12,8 +12,9 @@ Mission 완료와 Event 응모의 여러 요청에 걸친 패턴을 탐지해 �
 | `MISSION_COMPLETE` | `POST /api/creators/{creatorId}/missions/share/complete` | Member·Creator·SHARE Mission |
 | `MISSION_COMPLETE` | `POST /api/missions/{missionId}/complete` | Member·Common Mission |
 | `EVENT_ENTRY` | `POST /api/events/{eventId}/entries` | Event |
+| `YOUTUBE_SUBSCRIPTION` | `POST /api/creators/{creatorId}/subscription-verifications` 및 비동기 판정 | [별도 계약](youtube-subscription.md) |
 
-관찰은 인증·Controller validation·대상 resource 확인이 모두 성공한 뒤 시작한다. 따라서 인증/인가 실패, 형식·범위 validation 실패, Member·Mission·Event 미존재는 Observation을 만들지 않는다. 조회 API와 구독 인증 제출은 v1 범위 밖이다.
+관찰은 인증·Controller validation·대상 resource 확인이 모두 성공한 뒤 시작한다. 따라서 인증/인가 실패, 형식·범위 validation 실패, Member·Mission·Event 미존재는 Observation을 만들지 않는다.
 
 각 Use Case는 resource 확인 직후 `requestedAt`을 기록하고, 비즈니스 결과가 확정된 직후 `observedAt`을 기록한다. 두 값은 서버 UTC `Instant`다. Mission/Entry는 context와 최종 결과만 Abuse 모듈에 넘긴다. Redis 조작, rule 판정, cooldown, DB 저장은 이 모듈의 책임이며 HTTP Filter로 모든 요청을 가로채지 않는다.
 

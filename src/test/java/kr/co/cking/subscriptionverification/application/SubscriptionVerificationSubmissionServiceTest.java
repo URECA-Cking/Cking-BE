@@ -17,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.common.storage.PutResult;
 import kr.co.cking.subscriptionverification.application.image.ProcessedSubscriptionImage;
@@ -45,6 +46,8 @@ class SubscriptionVerificationSubmissionServiceTest {
             mock(SubscriptionVerificationSubmissionValidator.class);
     private final SubscriptionVerificationPersistenceService persistenceService =
             mock(SubscriptionVerificationPersistenceService.class);
+    private final SubscriptionVerificationAbuseObserver abuseObserver =
+            mock(SubscriptionVerificationAbuseObserver.class);
 
     private SubscriptionVerificationSubmissionService service;
 
@@ -170,6 +173,7 @@ class SubscriptionVerificationSubmissionServiceTest {
                 availability,
                 validator,
                 persistenceService,
+                abuseObserver,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

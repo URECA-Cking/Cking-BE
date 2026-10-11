@@ -38,7 +38,7 @@ public record AbuseObservationEvent(
             throw new IllegalArgumentException("requestedAt은 observedAt보다 늦을 수 없습니다.");
         }
 
-        if (actionType == AbuseActionType.MISSION_COMPLETE) {
+        if (actionType == AbuseActionType.MISSION_COMPLETE || actionType == AbuseActionType.YOUTUBE_SUBSCRIPTION) {
             requirePositive(missionId, "missionId");
             if (eventId != null) {
                 throw new IllegalArgumentException("MISSION_COMPLETE에는 eventId를 지정할 수 없습니다.");
@@ -53,6 +53,13 @@ public record AbuseObservationEvent(
                 if (!creatorId.equals(balanceScope.creatorId())) {
                     throw new IllegalArgumentException("Creator Mission의 creatorId와 balanceScope가 다릅니다.");
                 }
+            }
+            if (actionType == AbuseActionType.YOUTUBE_SUBSCRIPTION && periodKey != null) {
+                throw new IllegalArgumentException("YOUTUBE_SUBSCRIPTION에는 periodKey를 지정할 수 없습니다.");
+            }
+            if (actionType == AbuseActionType.YOUTUBE_SUBSCRIPTION
+                    && balanceScope.type() != BalanceScope.Type.CREATOR) {
+                throw new IllegalArgumentException("YOUTUBE_SUBSCRIPTION은 Creator Balance Scope를 사용해야 합니다.");
             }
         } else {
             requirePositive(eventId, "eventId");

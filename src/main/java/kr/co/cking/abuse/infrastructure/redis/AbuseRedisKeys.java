@@ -72,6 +72,22 @@ public final class AbuseRedisKeys {
         return balanceScopeKey("insufficient-sequence", userId, balanceScope);
     }
 
+    public static String youtubeSubmission(Long userId) {
+        return PREFIX + "youtube-submission:" + positiveId(userId, "userId");
+    }
+
+    public static String youtubeImageReuse(String businessKey) {
+        return PREFIX + "youtube-image-reuse:" + businessKeyHash(businessKey);
+    }
+
+    public static String youtubeNegativeDecision(String businessKey) {
+        return PREFIX + "youtube-negative-decision:" + businessKeyHash(businessKey);
+    }
+
+    public static String youtubeNegativeDecisionSequence(String businessKey) {
+        return PREFIX + "youtube-negative-sequence:" + businessKeyHash(businessKey);
+    }
+
     /** 탐지 유형과 이미 hash 처리된 scope의 중복 생성 방지 cooldown key를 생성한다. */
     public static String cooldown(AbuseType abuseType, String scopeHash) {
         Objects.requireNonNull(abuseType, "abuseType은 필수입니다.");

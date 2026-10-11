@@ -12,7 +12,11 @@ public enum AbuseMetric {
     RAPID_EARN_SPEND_PAIR_CREATED("rapidEarnSpendPairCreated"),
     FAILURE_COUNT("failureCount"),
     FAILURE_CONSECUTIVE_COUNT("failureConsecutiveCount"),
-    DISTINCT_FAILURE_TYPE_COUNT("distinctFailureTypeCount");
+    DISTINCT_FAILURE_TYPE_COUNT("distinctFailureTypeCount"),
+    YOUTUBE_SUBMISSION_COUNT("youtubeSubmissionCount"),
+    YOUTUBE_IMAGE_REUSE_COUNT("youtubeImageReuseCount"),
+    YOUTUBE_NEGATIVE_DECISION_COUNT("youtubeNegativeDecisionCount"),
+    YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_COUNT("youtubeNegativeDecisionConsecutiveCount");
 
     private final String evidenceKey;
 

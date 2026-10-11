@@ -64,6 +64,7 @@
 - [Post API](domains/post/api.md): 게시글 작성·수정·삭제, 이미지 업로드, 공개 조회 API 계약
 - [Post Comment API](domains/post/comment-api.md): 게시글 댓글 조회·작성·수정·삭제 API 계약
 - [비정상 행동 탐지](domains/abuse-detection/README.md): Mission·Entry 행동 패턴 탐지, Redis feature, Evidence와 Fail Open 계약
+- [YouTube 구독 인증 어뷰징 관측](domains/abuse-detection/youtube-subscription.md): 제출·이미지 재사용·음성 판정 Rule과 Fail Open 계약
 - [비정상 행동 탐지 API](domains/abuse-detection/api.md): 관리자 Detection 목록·상세·검토 API 계약
 
 빈 도메인 문서나 디렉터리는 미리 만들지 않는다. 문서는 원칙적으로 300줄 이하로 유지하며, 이를 넘으면 관심사별 파일로 분리한다.

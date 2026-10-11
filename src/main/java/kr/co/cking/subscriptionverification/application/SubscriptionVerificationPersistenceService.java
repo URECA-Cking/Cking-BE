@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationImageReuseType;
 import kr.co.cking.subscriptionverification.repository.SubscriptionVerificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -56,9 +57,10 @@ class SubscriptionVerificationPersistenceService {
                 command.rewardRequestId(),
                 persistedAt);
         verificationRepository.saveAndFlush(verification);
-        imageReuseDetectionService.detectAndRecord(verification, persistedAt);
+        SubscriptionVerificationImageReuseType imageReuseType = imageReuseDetectionService.detectAndRecord(
+                verification, persistedAt);
         eventPublisher.publishEvent(
                 new SubscriptionVerificationSubmittedEvent(verification.getVerificationId()));
-        return new SubscriptionVerificationSubmissionResult(verification, true);
+        return new SubscriptionVerificationSubmissionResult(verification, true, imageReuseType);
     }
 }
