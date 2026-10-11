@@ -213,6 +213,31 @@ class SecurityConfigTest {
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
+    /** Creator AI Quiz API는 조회·명령 모두 JWT 인증 없이는 호출할 수 없다. */
+    @Test
+    void Creator_Quiz_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/creator/quizzes"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/1/revisions/100/approve"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/1/unpublish"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** 게시 Quiz 공개 조회 경로는 인증 없이 Security를 통과한다. */
+    @Test
+    void 공개_Quiz_조회는_인증_없이_호출할_수_있다() throws Exception {
+        mockMvc.perform(get("/api/creators/1/quizzes"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("public-quizzes"));
+        mockMvc.perform(get("/api/creators/1/quizzes/2"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("public-quiz"));
+    }
+
     /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
     @Test
     void 만료된_Access_JWT와_LoginCode로_AccessToken을_발급한다() throws Exception {
@@ -441,6 +466,18 @@ class SecurityConfigTest {
         @GetMapping("/api/admin/events")
         String accessManagedEventList() {
             return "admin-api";
+        }
+
+        /** 공개 Quiz 목록 경로가 인증 없이 도달하는지 확인한다. */
+        @GetMapping("/api/creators/{creatorId}/quizzes")
+        String publicQuizList() {
+            return "public-quizzes";
+        }
+
+        /** 공개 Quiz 상세 경로가 인증 없이 도달하는지 확인한다. */
+        @GetMapping("/api/creators/{creatorId}/quizzes/{quizId}")
+        String publicQuizDetail() {
+            return "public-quiz";
         }
     }
 

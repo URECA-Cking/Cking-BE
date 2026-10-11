@@ -135,6 +135,8 @@ public class SecurityConfig {
                                 "/api/creator/calendar/**",
                                 "/api/creator/posts",
                                 "/api/creator/posts/**",
+                                "/api/creator/quizzes",
+                                "/api/creator/quizzes/**",
                                 "/api/creator/youtube-channel",
                                 "/api/creator/space/slug"
                         ).authenticated()
@@ -149,6 +151,8 @@ public class SecurityConfig {
                                 "/api/creators/*/posts",
                                 "/api/creators/*/posts/*",
                                 "/api/creators/*/posts/*/comments",
+                                "/api/creators/*/quizzes",
+                                "/api/creators/*/quizzes/*",
                                 "/api/creators/*/youtube-channel"
                         ).permitAll()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
