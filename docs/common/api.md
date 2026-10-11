@@ -139,10 +139,15 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
   "code": "SUCCESS",
   "data": {
     "memberId": 1,
-    "name": "홍길동",
+    "name": "OAuth 원본 이름",
+    "nickname": "cking_fan",
     "email": "hong@example.com",
     "role": "USER",
-    "creator": false
+    "creator": false,
+    "onboardingCompleted": true,
+    "profileConfigured": true,
+    "nicknameChangeableAt": null,
+    "restorableNickname": null
   },
   "message": null
 }
@@ -150,6 +155,8 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 
 - `creator`는 JWT role이 아니라 `creator.member_id` 존재 여부다.
 - JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
+- `name`은 OAuth 제공자 원본 이름이며 `nickname`은 공개 활동명으로 준비된다. 공개 조회 응답의 닉네임 전환과
+  설정 제한은 후속 프로필 수정 작업에서 함께 적용한다. 상세는 [Member API](../domains/member/api.md)를 따른다.
 
 ### GET /api/creators
 

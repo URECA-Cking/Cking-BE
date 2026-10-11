@@ -53,6 +53,8 @@
 - [Creator Space slug 정책](domains/creator/space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 - [Auth](domains/auth/README.md): OAuth2, Access JWT, Login Code와 인증·인가 책임 경계
 - [Auth API](domains/auth/api.md): OAuth 로그인과 Login Code 기반 Access JWT 교환 계약
+- [Member](domains/member/README.md): 공개 닉네임의 형식·중복·변경·복귀 정책
+- [Member API](domains/member/api.md): 현재 사용자 프로필과 닉네임 상태 조회 계약
 - [관리자 백오피스 통합 검증](domains/auth/admin-backoffice-verification.md): 관리자 인증·CORS·운영 API 연결 검증 범위와 프런트엔드 연동 조건
 - [Calendar](domains/calendar/README.md): 크리에이터 일정과 Event 분리 경계
 - [Calendar API](domains/calendar/api.md): 크리에이터 일정 CRUD·공개 조회 API 계약

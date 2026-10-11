@@ -22,6 +22,8 @@ import java.time.ZoneOffset;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Member {
 
+    public static final String NICKNAME_NOT_CONFIGURED = "닉네임 미설정";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "member_id")
@@ -46,6 +48,25 @@ public class Member {
     @Column(name = "onboarding_completed", nullable = false)
     private boolean onboardingCompleted;
 
+    /** OAuth 제공자 이름과 분리된 서비스 공개 활동명. 최초 가입·기존 회원은 설정 전까지 null이다. */
+    @Column(name = "nickname", length = MemberNickname.MAX_LENGTH)
+    private String nickname;
+
+    /** NFC 정규화 후 Locale.ROOT 소문자로 만든 전역 중복 판정 키. */
+    @Column(name = "nickname_normalized", length = MemberNickname.MAX_LENGTH)
+    private String nicknameNormalized;
+
+    /** 최초 설정 뒤 실제 닉네임을 바꾼 마지막 시각(UTC). 되돌리기는 갱신하지 않는다. */
+    @Column(name = "nickname_changed_at")
+    private LocalDateTime nicknameChangedAt;
+
+    /** 바로 직전에 쓰던 닉네임. 예약 기간 안의 복귀 대상만 보관한다. */
+    @Column(name = "previous_nickname", length = MemberNickname.MAX_LENGTH)
+    private String previousNickname;
+
+    @Column(name = "previous_nickname_normalized", length = MemberNickname.MAX_LENGTH)
+    private String previousNicknameNormalized;
+
     public Member(String name, String phone, String email, MemberRole role) {
         this.name = name;
         this.phone = phone;
@@ -57,6 +78,62 @@ public class Member {
     /** 온보딩 완료를 기록한다. 이미 완료된 회원에게도 같은 결과다. */
     public void completeOnboarding() {
         this.onboardingCompleted = true;
+    }
+
+    public boolean hasNickname() {
+        return nickname != null;
+    }
+
+    /** 외부 응답에서 OAuth 제공자 이름을 대신할 공개 표시명이다. */
+    public String publicDisplayName() {
+        return nickname == null ? NICKNAME_NOT_CONFIGURED : nickname;
+    }
+
+    public boolean hasCurrentNickname(MemberNickname requested) {
+        return nicknameNormalized != null && nicknameNormalized.equals(requested.normalized());
+    }
+
+    /** 최초 설정은 바로 허용하며 변경 간격의 기준 시각을 만들지 않는다. */
+    public void setInitialNickname(MemberNickname nickname) {
+        if (hasNickname()) {
+            throw new IllegalStateException("닉네임이 이미 설정되어 있습니다.");
+        }
+        this.nickname = nickname.value();
+        this.nicknameNormalized = nickname.normalized();
+    }
+
+    /** 새 닉네임으로 실제 변경한다. 형식·중복·예약·변경 간격 검증은 Application이 담당한다. */
+    public void changeNickname(MemberNickname nickname, LocalDateTime changedAt) {
+        if (!hasNickname()) {
+            throw new IllegalStateException("최초 설정에는 changeNickname을 사용할 수 없습니다.");
+        }
+        this.previousNickname = this.nickname;
+        this.previousNicknameNormalized = this.nicknameNormalized;
+        this.nickname = nickname.value();
+        this.nicknameNormalized = nickname.normalized();
+        this.nicknameChangedAt = changedAt;
+    }
+
+    /** 바로 이전 닉네임으로 복귀한다. 변경 시각을 바꾸지 않아 14일 제한을 우회할 수 없다. */
+    public void revertNickname() {
+        if (previousNickname == null || previousNicknameNormalized == null) {
+            throw new IllegalStateException("복귀할 이전 닉네임이 없습니다.");
+        }
+        String currentNickname = nickname;
+        String currentNormalized = nicknameNormalized;
+        this.nickname = previousNickname;
+        this.nicknameNormalized = previousNicknameNormalized;
+        this.previousNickname = currentNickname;
+        this.previousNicknameNormalized = currentNormalized;
+    }
+
+    public LocalDateTime nicknameChangeableAt() {
+        return nicknameChangedAt == null ? null : nicknameChangedAt.plus(MemberNickname.CHANGE_INTERVAL);
+    }
+
+    public boolean canChangeNicknameAt(LocalDateTime now) {
+        LocalDateTime changeableAt = nicknameChangeableAt();
+        return changeableAt == null || !now.isBefore(changeableAt);
     }
 
     @PrePersist

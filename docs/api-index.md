@@ -79,7 +79,7 @@
 | 75 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/{templateId}/activate` | 템플릿 활성화 | 상태 기반 |
 | 76 | 외부 | Auth | PUBLIC | POST | `/api/auth/refresh` | Refresh Cookie를 회전해 Access JWT 갱신 | Refresh Token 1회 소비 |
 | 77 | 외부 | Auth | PUBLIC | POST | `/api/auth/logout` | Refresh Token 폐기 및 Cookie 만료 | - |
-| 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보 조회(`onboardingCompleted` 포함) | - |
+| 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보·닉네임 설정 상태 조회 | - |
 | 79 | 외부 | Ticket | ADMIN | POST | `/api/admin/tickets/common/resync` | 공용 응모권 잔액 수동 재동기화(Redis를 DB 기준으로) | 상태 기반 |
 | 80 | 외부 | Creator Space | PUBLIC | GET | `/api/creators/{creatorId}/space` | Creator Space 홈·프로필 조회(팔로워 수 포함) | - |
 | 81 | 외부 | Creator Space | CREATOR | GET | `/api/creator/space` | 내 Creator Space 조회 | - |

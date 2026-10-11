@@ -19,6 +19,10 @@ class MemberCreatorMappingTest {
         assertThat(member.getAnnotation(Table.class).name()).isEqualTo("member");
         assertThat(member.getDeclaredField("memberId")).isNotNull();
         assertThat(member.getDeclaredField("name")).isNotNull();
+        assertThat(member.getDeclaredField("nickname")).isNotNull();
+        assertThat(member.getDeclaredField("nicknameNormalized")).isNotNull();
+        assertThat(member.getDeclaredField("nicknameChangedAt")).isNotNull();
+        assertThat(member.getDeclaredField("previousNickname")).isNotNull();
         assertThat(member.getDeclaredField("phone")).isNotNull();
         assertThat(member.getDeclaredField("email")).isNotNull();
         assertThat(member.getDeclaredField("role")).isNotNull();

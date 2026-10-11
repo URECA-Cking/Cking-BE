@@ -9,6 +9,7 @@ import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.repository.CreatorApplicationRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.application.MissionInitializationService;
@@ -44,6 +45,7 @@ class CreatorApplicationServiceTest {
         CreatorSpaceService creatorSpaceService = mock(CreatorSpaceService.class);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Member applicant = new Member("신청자", null, null, MemberRole.USER);
+        applicant.setInitialNickname(MemberNickname.of("신청자"));
         ReflectionTestUtils.setField(applicant, "memberId", 10L);
         CreatorApplication application = new CreatorApplication(10L);
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
