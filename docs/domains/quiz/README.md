@@ -12,7 +12,7 @@ AI 생성(`quiz.generation`)은 결과만 반환하며 이 도메인이 저장 �
 
 ## 소유 데이터
 
-V54의 `quiz`, `quiz_revision`, `quiz_question`, `quiz_option`, `quiz_revision_decision`을 소유한다.
+V55의 `quiz`, `quiz_revision`, `quiz_question`, `quiz_option`, `quiz_revision_decision`을 소유한다.
 
 - **quiz**: Creator 소유. `quiz_id`는 revision이 바뀌어도 그대로다. 원본 YouTube `videoId`, 생성 입력 `content_text`와 그 SHA-256은 생성 후 바꾸지 않는다.
 - **quiz_revision·quiz_question·quiz_option**: INSERT 후 바꾸지 않는다. 수정은 새 revision(`revision_no` + 1)으로 만든다. `question_no`·`option_no`는 0부터의 표시 순서이고 `correct_option_index`는 0-based `option_no`다.
