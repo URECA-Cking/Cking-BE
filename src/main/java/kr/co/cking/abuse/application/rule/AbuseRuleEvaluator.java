@@ -9,6 +9,7 @@ import kr.co.cking.abuse.domain.AbuseObservationEvent;
 import kr.co.cking.abuse.domain.AbuseScopeHash;
 import kr.co.cking.abuse.domain.AbuseType;
 import kr.co.cking.abuse.domain.DetectionResult;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /** 한 Observation의 Feature 갱신과 기본·복합 Rule 평가를 조합하는 application 경계다. */
@@ -23,6 +24,7 @@ public class AbuseRuleEvaluator {
     private final CompositeRuleEvaluator compositeRuleEvaluator;
     private final YoutubeSubscriptionRuleEvaluator youtubeSubscriptionRuleEvaluator;
 
+    @Autowired
     public AbuseRuleEvaluator(
             AbuseProperties properties,
             AbuseFeatureStore featureStore,
