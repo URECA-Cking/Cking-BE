@@ -143,6 +143,25 @@ class SubscriptionVerificationSubmissionServiceTest {
     }
 
     @Test
+    void DB_잠금_뒤_업무_거절은_SYSTEM_FAILURE가_아닌_BUSINESS_FAILURE로_관측한다() {
+        BusinessException rejection = new BusinessException(
+                SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS);
+        given(persistenceService.create(any())).willThrow(rejection);
+
+        assertThatThrownBy(() -> service.submit(command())).isSameAs(rejection);
+
+        then(objectStorage).should().delete(any());
+        then(abuseObserver).should().observeBusinessFailure(
+                MEMBER_ID,
+                CREATOR_ID,
+                MISSION_ID,
+                REQUEST_ID,
+                SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS.code(),
+                NOW);
+        then(abuseObserver).should(never()).observeSystemFailure(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void Object_보상_삭제가_실패해도_원래_DB_예외를_보존한다() {
         IllegalStateException databaseFailure = new IllegalStateException("db failure");
         given(persistenceService.create(any())).willThrow(databaseFailure);

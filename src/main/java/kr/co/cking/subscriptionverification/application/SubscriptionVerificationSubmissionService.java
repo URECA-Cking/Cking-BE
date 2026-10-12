@@ -107,6 +107,11 @@ public class SubscriptionVerificationSubmissionService {
                 return new SubscriptionVerificationSubmissionResult(concurrentExisting.get(), false);
             }
             throw exception;
+        } catch (BusinessException exception) {
+            deleteQuietly(objectKey);
+            abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), exception.getErrorCode().code(), submittedAt);
+            throw exception;
         } catch (RuntimeException exception) {
             deleteQuietly(objectKey);
             abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
