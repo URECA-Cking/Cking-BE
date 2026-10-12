@@ -127,9 +127,9 @@
 | 123 | 외부 | Creator 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/creators/{creatorId}/similar` | LLM 유사 추천 후보 묶음 검증·원자 교체 | `creatorId + applicationSequence` |
 | 124 | 외부 | Creator 추천 | PUBLIC | GET | `/api/creators/{creatorId}/similar` | 저장된 유사 크리에이터 후보 조회 | - |
 | 125 | 외부 | Creator 추천 | USER | GET | `/api/me/creator-recommendations` | 관심 분야·팔로우 기반 개인화 Creator 추천 조회 및 recommendationRequestId 발급(`HYBRID`·`INTEREST`·`FOLLOW_PERSONALIZED_V2`, 결과가 비면 `POPULAR_FALLBACK_V1`) | - |
-| 126 | 외부 | 관심 분야 | PUBLIC | GET | `/api/interests` | 선택 가능한 관심 분야 목록 조회(활성 분류체계) | - |
-| 127 | 외부 | 관심 분야 | USER | GET | `/api/me/interests` | 내 관심 분야 조회 | - |
-| 128 | 외부 | 관심 분야 | USER | PUT | `/api/me/interests` | 내 관심 분야 전체 교체 저장(0~3개) | 전체 교체(멱등) |
+| 126 | 외부 | 관심 분야 | PUBLIC | GET | `/api/interests` | 선택 가능한 관심 분야 목록 조회(활성 분류체계, 세부 주제 포함) | - |
+| 127 | 외부 | 관심 분야 | USER | GET | `/api/me/interests` | 내 관심 분야·세부 주제 조회 | - |
+| 128 | 외부 | 관심 분야 | USER | PUT | `/api/me/interests` | 내 관심 분야 전체 교체 저장(0~3개, 세부 주제는 상위당 3개·생략 시 유지) | 전체 교체(멱등) |
 | 129 | 외부 | 관심 분야 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/interests/{interestCode}/recommendations` | LLM 관심 분야별 추천 후보 묶음 검증·원자 교체 | `taxonomyVersion + interestCode + applicationSequence` |
 | 130 | 외부 | Auth | PUBLIC | POST | `/api/auth/admin/login` | 관리자 ID/PW를 기존 Access JWT·Refresh Cookie로 교환 | - |
 | 131 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original` | 필터링된 게시글 댓글 원문 조회(작성자 본인·개인정보 차단 댓글 제외) | - |
