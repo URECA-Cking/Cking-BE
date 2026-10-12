@@ -21,6 +21,6 @@ public class MemberProfileUpdateService {
         }
     }
 
-    public record UpdateFields(String nickname, String profileImageKey) {
+    public record UpdateFields(String nickname, String profileImageKey, boolean profileImageKeyProvided) {
     }
 }

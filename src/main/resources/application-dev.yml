@@ -46,8 +46,8 @@ cking:
     region: ap-northeast-2
   member:
     profile-image:
-      # CDN 공개 주소는 S3 bucket URL과 다르므로 배포 환경변수로만 주입한다.
-      public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:}
+      # member-profile-images/*만 공개하는 개발 CloudFront 주소다. 비밀값이 아니므로 환경변수 주입 없이 고정한다.
+      public-base-url: https://dev-images.cking.co.kr
   verification:
     youtube-subscription:
       submission-enabled: false

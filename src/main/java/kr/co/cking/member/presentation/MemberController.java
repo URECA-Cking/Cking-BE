@@ -72,8 +72,8 @@ public class MemberController {
                 .body(ApiResponse.success(new MemberProfileImageResponse(imageKey)));
     }
 
-    @Operation(summary = "내 프로필 수정", description = "닉네임과 프로필 사진을 전체 교체합니다. 현재 사진은 key를 다시 보내고, 기본 "
-            + "이미지로 돌아가려면 profileImageKey에 null을 보냅니다.")
+    @Operation(summary = "내 프로필 수정", description = "닉네임을 수정합니다. profileImageKey를 생략하면 현재 사진을 유지하고, "
+            + "새 key를 보내면 교체하며, null을 명시하면 기본 이미지로 돌아갑니다.")
     @PutMapping("/api/me/profile")
     public ApiResponse<MyProfileResponse> updateMyProfile(
             @CurrentMemberId Long memberId,

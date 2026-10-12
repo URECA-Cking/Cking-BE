@@ -53,15 +53,17 @@
 ## PUT /api/me/profile
 
 - 권한: Access JWT 필요
-- `nickname`과 `profileImageKey`를 모두 보내는 전체 교체다.
-- `profileImageKey`에 현재 키를 보내면 사진을 유지하고, `null`이면 기본 이미지로 바꾼다.
+- `nickname`은 항상 보낸다.
+- `profileImageKey`를 생략하면 현재 사진을 유지한다. 새 업로드 키를 보내면 사진을 교체하고, `null`을 명시하면 기본 이미지로 바꾼다.
+- 내부 Object Storage 키는 `GET /api/me`에 노출하지 않는다.
 - 다른 회원의 키, 이미 연결·삭제 대기·존재하지 않는 키는 `PROFILE_IMAGE_UNAVAILABLE`(400)이다.
 
 ```json
 {
-  "nickname": "cking_fan",
-  "profileImageKey": "member-profile-images/1/uuid.jpg"
+  "nickname": "cking_fan"
 }
 ```
+
+사진을 새로 연결할 때만 `profileImageKey`를 추가한다. 기본 이미지로 되돌릴 때는 `"profileImageKey": null`을 명시한다.
 
 성공 응답은 `GET /api/me`와 같다. `profileImageUrl`은 만료되지 않는 CDN URL이며 기본 이미지를 쓸 때는 `null`이다.

@@ -30,7 +30,9 @@ class MemberProfileUpdateTransactionalService {
         Member member = memberRepository.findByIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         nicknameService.change(member, fields.nickname());
-        updateProfileImage(member, fields.profileImageKey());
+        if (fields.profileImageKeyProvided()) {
+            updateProfileImage(member, fields.profileImageKey());
+        }
         memberRepository.saveAndFlush(member);
     }
 

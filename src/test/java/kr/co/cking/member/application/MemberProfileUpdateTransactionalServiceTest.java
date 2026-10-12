@@ -42,7 +42,8 @@ class MemberProfileUpdateTransactionalServiceTest {
         given(imageRepository.linkToProfile("member-profile-images/10/new.jpg", MEMBER_ID, NOW)).willReturn(1);
         given(imageRepository.markDeletePending("member-profile-images/10/old.jpg", MEMBER_ID, NOW)).willReturn(1);
 
-        service.update(MEMBER_ID, new MemberProfileUpdateService.UpdateFields("fan", "member-profile-images/10/new.jpg"));
+        service.update(MEMBER_ID,
+                new MemberProfileUpdateService.UpdateFields("fan", "member-profile-images/10/new.jpg", true));
 
         verify(nicknameService).change(member, "fan");
         verify(imageRepository).linkToProfile("member-profile-images/10/new.jpg", MEMBER_ID, NOW);
@@ -59,7 +60,7 @@ class MemberProfileUpdateTransactionalServiceTest {
         given(imageRepository.linkToProfile("member-profile-images/99/other.jpg", MEMBER_ID, NOW)).willReturn(0);
 
         assertThatThrownBy(() -> service.update(MEMBER_ID,
-                new MemberProfileUpdateService.UpdateFields("fan", "member-profile-images/99/other.jpg")))
+                new MemberProfileUpdateService.UpdateFields("fan", "member-profile-images/99/other.jpg", true)))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(MemberErrorCode.PROFILE_IMAGE_UNAVAILABLE);
@@ -73,11 +74,38 @@ class MemberProfileUpdateTransactionalServiceTest {
         Member member = memberWithCurrentImage("member-profile-images/10/current.jpg");
         given(memberRepository.findByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
 
-        service.update(MEMBER_ID, new MemberProfileUpdateService.UpdateFields("fan", "member-profile-images/10/current.jpg"));
+        service.update(MEMBER_ID,
+                new MemberProfileUpdateService.UpdateFields("fan", "member-profile-images/10/current.jpg", true));
 
         verify(imageRepository, never()).linkToProfile(any(), any(), any());
         verify(imageRepository, never()).markDeletePending(any(), any(), any());
         verify(memberRepository).saveAndFlush(member);
+    }
+
+    @Test
+    void 사진_키를_생략하면_현재_사진을_유지한다() {
+        Member member = memberWithCurrentImage("member-profile-images/10/current.jpg");
+        given(memberRepository.findByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
+
+        service.update(MEMBER_ID, new MemberProfileUpdateService.UpdateFields("fan", null, false));
+
+        verify(imageRepository, never()).linkToProfile(any(), any(), any());
+        verify(imageRepository, never()).markDeletePending(any(), any(), any());
+        verify(memberRepository).saveAndFlush(member);
+        assertThat(member.getProfileImageKey()).isEqualTo("member-profile-images/10/current.jpg");
+    }
+
+    @Test
+    void 사진_키에_null을_명시하면_기본_이미지로_전환한다() {
+        Member member = memberWithCurrentImage("member-profile-images/10/current.jpg");
+        given(memberRepository.findByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
+        given(imageRepository.markDeletePending("member-profile-images/10/current.jpg", MEMBER_ID, NOW)).willReturn(1);
+
+        service.update(MEMBER_ID, new MemberProfileUpdateService.UpdateFields("fan", null, true));
+
+        verify(imageRepository).markDeletePending("member-profile-images/10/current.jpg", MEMBER_ID, NOW);
+        verify(eventPublisher).publishEvent(new MemberProfileImageDeletionRequestedEvent("member-profile-images/10/current.jpg"));
+        assertThat(member.getProfileImageKey()).isNull();
     }
 
     private Member memberWithCurrentImage(String imageKey) {

@@ -43,11 +43,11 @@ OAuth 재로그인은 기존 Member의 `name`·`nickname`을 변경하지 않는
 
 - 사진은 `POST /api/me/profile-images`로 먼저 올린다. JPEG/PNG 검증·정규화를 거친 JPEG의 `imageKey`를 반환하며,
   현재 Member가 올린 `UPLOADED` 상태 키만 프로필에 연결할 수 있다.
-- `PUT /api/me/profile`은 `nickname`과 `profileImageKey`를 모두 받는 전체 교체다. 현재 키를 다시 보내면 유지하고,
-  `null`이면 기본 이미지로 돌아간다.
+- `PUT /api/me/profile`은 `nickname`을 항상 받고, `profileImageKey`를 생략하면 현재 사진을 유지한다. 새 키를 보내면 교체하고,
+  `null`을 명시하면 기본 이미지로 돌아간다. 내부 저장 키는 `GET /api/me`에 노출하지 않는다.
 - 새 사진으로 교체하거나 기본 이미지로 돌아가면 이전 객체는 commit 뒤 best-effort로 삭제한다. 실패 기록과 24시간
   동안 연결되지 않은 업로드는 scheduler가 회수한다.
-- 공개 응답에는 presigned URL 대신 `MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL` 기준의 고정 CDN URL을 쓴다. 개발 환경은
-  배포 시 이 값을 반드시 주입한다.
+- 공개 응답에는 presigned URL 대신 고정 CDN URL을 쓴다. 개발 환경은 `application-dev.yml`의
+  `https://dev-images.cking.co.kr`를 사용한다.
 
 Creator 활동명은 Member 닉네임과 다른 네임스페이스이며 별도 Creator 작업에서 관리한다.

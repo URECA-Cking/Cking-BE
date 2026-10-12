@@ -150,7 +150,9 @@
 | 147 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/unpublish` | 게시 취소(Judge 상태와 무관) | 상태 기반 |
 | 148 | 외부 | AI Quiz | PUBLIC | GET | `/api/creators/{creatorId}/quizzes` | 게시 Quiz 목록(최근 게시 순) | - |
 | 149 | 외부 | AI Quiz | PUBLIC | GET | `/api/creators/{creatorId}/quizzes/{quizId}` | 게시 Quiz 상세(문항·보기·videoId, 정답·해설 제외) | - |
-| 150 | 외부 | Member | USER | POST | `/api/me/profile-images` | 내 프로필 사진 업로드 후 연결용 imageKey 반환 | - |
-| 151 | 외부 | Member | USER | PUT | `/api/me/profile` | 닉네임·프로필 사진 전체 교체 | 상태 기반 |
+| 150 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/generations` | YouTube URL 기반 Quiz 비동기 생성 요청(202, 문항 3·5개·보기 4개, Creator당 진행 중 1개, 기능 꺼짐 시 503) | `requestId` |
+| 151 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/generations/{generationId}` | 내 Quiz 생성 작업 상태(성공 시 quizId·revisionId, 실패 코드) | - |
+| 152 | 외부 | Member | USER | POST | `/api/me/profile-images` | 내 프로필 사진 업로드 후 연결용 imageKey 반환 | - |
+| 153 | 외부 | Member | USER | PUT | `/api/me/profile` | 닉네임 수정·프로필 사진 교체/삭제(키 생략 시 유지) | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

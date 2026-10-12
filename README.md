@@ -229,6 +229,8 @@ export SUBSCRIPTION_GEMINI_API_KEY=...
 
 `GEMINI_API_KEY`가 없어도 애플리케이션은 기동되지만, AI 퀴즈 생성 호출은 Provider 오류로 실패합니다. Gemini 설정은 `GEMINI_MODEL`, `GEMINI_BASE_URL`, `GEMINI_CONNECT_TIMEOUT`, `GEMINI_READ_TIMEOUT`, `GEMINI_MAX_ATTEMPTS`로 바꿀 수 있습니다. 타임아웃은 ISO-8601 Duration 형식(예: `PT30S`)이고, `GEMINI_MAX_ATTEMPTS`는 최초 호출을 포함한 최대 시도 횟수입니다. HTTP 429·5xx만 재시도하며 타임아웃은 재시도하지 않습니다.
 
+AI 퀴즈용 YouTube 영상 Grounding은 같은 `GEMINI_API_KEY`를 쓰고, 나머지 설정은 `QUIZ_GROUNDING_MODEL`, `QUIZ_GROUNDING_BASE_URL`, `QUIZ_GROUNDING_CONNECT_TIMEOUT`, `QUIZ_GROUNDING_READ_TIMEOUT`, `QUIZ_GROUNDING_MAX_ATTEMPTS`(기본 3), `QUIZ_GROUNDING_RETRY_BACKOFF`, `QUIZ_GROUNDING_RETRY_BACKOFF_MAX`, `QUIZ_GROUNDING_MAX_OUTPUT_TOKENS`로 따로 둡니다. 계약은 [AI Quiz README](docs/domains/quiz/README.md#영상-grounding-이슈-524)를 따릅니다.
+
 구독 인증 제출 기능과 `SUBSCRIPTION_GEMINI_*` 설정은 [구독 인증 README](docs/domains/subscription-verification/README.md)를 따릅니다.
 
 실행을 종료하려면:

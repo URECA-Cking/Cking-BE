@@ -172,6 +172,37 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.data.profileConfigured").value(true));
 
         verify(memberProfileUpdateService).update(1L,
-                new MemberProfileUpdateService.UpdateFields("새닉네임", "member-profile-images/1/image.jpg"));
+                new MemberProfileUpdateService.UpdateFields("새닉네임", "member-profile-images/1/image.jpg", true));
+    }
+
+    @Test
+    void 프로필_사진_키를_생략하면_현재_사진_유지로_전달한다() throws Exception {
+        when(memberQueryService.getProfile(1L)).thenReturn(new MemberProfile(
+                1L, "홍길동", "새닉네임", "https://cdn.example.test/profile.jpg", "hong@example.com", MemberRole.USER,
+                true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\"}"))
+                .andExpect(status().isOk());
+
+        verify(memberProfileUpdateService).update(1L,
+                new MemberProfileUpdateService.UpdateFields("새닉네임", null, false));
+    }
+
+    @Test
+    void 프로필_사진_키에_null을_명시하면_기본_이미지로_전달한다() throws Exception {
+        when(memberQueryService.getProfile(1L)).thenReturn(new MemberProfile(
+                1L, "홍길동", "새닉네임", null, "hong@example.com", MemberRole.USER, true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\",\"profileImageKey\":null}"))
+                .andExpect(status().isOk());
+
+        verify(memberProfileUpdateService).update(1L,
+                new MemberProfileUpdateService.UpdateFields("새닉네임", null, true));
     }
 }
