@@ -13,6 +13,7 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpaceProfileImage;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 public class CreatorSpaceProfileImageUploadService {
     private static final ImagePolicy POLICY = new ImagePolicy(200, 200, 2048);
     private final CreatorRepository creatorRepository;
+    private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceProfileImageRepository imageRepository;
     private final ImageNormalizer imageNormalizer;
     private final ObjectStorage objectStorage;
@@ -28,6 +30,8 @@ public class CreatorSpaceProfileImageUploadService {
     public String upload(Long memberId, byte[] bytes) {
         Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        spaceRepository.findByCreatorId(creator.getCreatorId())
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         NormalizedImage image;
         try { image = imageNormalizer.normalize(bytes, POLICY); }
         catch (InvalidImageException exception) {
