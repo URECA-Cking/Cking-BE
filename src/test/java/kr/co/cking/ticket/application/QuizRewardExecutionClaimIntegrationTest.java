@@ -47,7 +47,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mockStatic;
-import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.reset;
 
 /**
@@ -223,12 +222,24 @@ class QuizRewardExecutionClaimIntegrationTest {
     @Test
     void 실행_기록_저장_직후_실패하면_실행_기록이_롤백된다() {
         QuizRewardCommand command = admitted();
-        willAnswer(invocation -> {
-            invocation.callRealMethod();
-            throw new IllegalStateException("저장 직후 실패");
-        }).given(executionRepository).saveAndFlush(any(TicketQuizRewardExecution.class));
-
-        assertThatThrownBy(() -> claimService.claim(command)).isInstanceOf(IllegalStateException.class);
+        List<Long> inserted = new ArrayList<>();
+        try (MockedStatic<QuizRewardExecutionClaim> claimed =
+                     mockStatic(QuizRewardExecutionClaim.class, CALLS_REAL_METHODS)) {
+            claimed.when(() -> QuizRewardExecutionClaim.claimed(any(), anyString(), anyInt()))
+                    .thenAnswer(invocation -> {
+                        entityManager.flush();
+                        inserted.add(((Number) entityManager.createNativeQuery(
+                                "SELECT COUNT(*) FROM ticket_quiz_reward_execution e "
+                                        + "JOIN ticket_quiz_reward_request r "
+                                        + "ON e.quiz_reward_request_id = r.quiz_reward_request_id "
+                                        + "WHERE r.reward_request_id = ?1 AND e.status = 'STARTED'")
+                                .setParameter(1, command.rewardRequestId().toString()).getSingleResult()).longValue());
+                        throw new IllegalStateException("저장 직후 실패");
+                    });
+            assertThatThrownBy(() -> claimService.claim(command)).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("저장 직후 실패");
+        }
+        assertThat(inserted).containsExactly(1L);
 
         assertThat(executions(command)).isEmpty();
         assertThat(request(command)).containsEntry("status", "RECEIVED");

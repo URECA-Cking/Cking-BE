@@ -158,7 +158,10 @@ class QuizRewardEarnWorkerIntegrationTest {
                     .isEqualTo(testCase.requestStatus());
             Map<String, Object> execution = executions(rewardRequestId).get(0);
             assertThat(execution).containsEntry("status", "FINISHED");
-            assertThat(((Number) execution.get("not_executed_confirmed")).intValue() == 1)
+            assertThat(jdbcTemplate.queryForObject("SELECT e.not_executed_confirmed "
+                    + "FROM ticket_quiz_reward_execution e JOIN ticket_quiz_reward_request r "
+                    + "ON e.quiz_reward_request_id = r.quiz_reward_request_id WHERE r.reward_request_id = ?",
+                    Boolean.class, rewardRequestId.toString()))
                     .as(testCase.result().toString()).isEqualTo(testCase.notExecuted());
         }
     }

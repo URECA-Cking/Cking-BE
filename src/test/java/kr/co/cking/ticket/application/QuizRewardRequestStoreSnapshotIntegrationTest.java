@@ -1,5 +1,6 @@
 package kr.co.cking.ticket.application;
 
+import jakarta.persistence.EntityManager;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
@@ -7,6 +8,7 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.application.dto.QuizRewardCommand;
 import kr.co.cking.ticket.domain.QuizRewardRequestStatus;
+import kr.co.cking.ticket.domain.TicketQuizRewardRequest;
 import kr.co.cking.ticket.repository.TicketQuizRewardRequestRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,6 +64,8 @@ class QuizRewardRequestStoreSnapshotIntegrationTest {
     private CreatorRepository creatorRepository;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private EntityManager entityManager;
 
     private Member member;
     private Creator creator;
@@ -93,7 +97,10 @@ class QuizRewardRequestStoreSnapshotIntegrationTest {
         String rewardRequestId = command.rewardRequestId().toString();
         AtomicBoolean committedConcurrently = new AtomicBoolean();
         willAnswer(invocation -> {
-            Object found = invocation.callRealMethod();
+            var found = entityManager.createQuery(
+                    "select r from TicketQuizRewardRequest r where r.rewardRequestId = :requestId",
+                    TicketQuizRewardRequest.class).setParameter("requestId", rewardRequestId)
+                    .getResultStream().findFirst();
             if (committedConcurrently.compareAndSet(false, true)) {
                 // Quiz 요청을 읽은 직후, 다른 연결에서 같은 요청을 접수해 커밋한다.
                 CompletableFuture.runAsync(() -> store.insert(command)).get(30, TimeUnit.SECONDS);
