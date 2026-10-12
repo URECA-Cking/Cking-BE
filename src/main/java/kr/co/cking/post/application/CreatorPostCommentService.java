@@ -163,11 +163,14 @@ public class CreatorPostCommentService {
     private CreatorPostCommentView toView(
             CreatorPostComment comment, Creator creator, String authorName, Long viewerMemberId) {
         boolean filtered = comment.isBlocked() && !comment.isWrittenBy(viewerMemberId);
+        String publicAuthorName = creator.getMemberId().equals(comment.getMemberId())
+                ? creator.publicDisplayName()
+                : authorName;
         return new CreatorPostCommentView(
                 comment.getCommentId(),
                 comment.getPostId(),
                 comment.getMemberId(),
-                authorName,
+                publicAuthorName,
                 creator.getMemberId().equals(comment.getMemberId()),
                 filtered ? null : comment.getContent(),
                 filtered,

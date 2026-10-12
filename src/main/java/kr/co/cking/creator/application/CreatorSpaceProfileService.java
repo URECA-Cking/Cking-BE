@@ -41,7 +41,7 @@ public class CreatorSpaceProfileService {
     /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
         Creator creator = requireCreatorById(creatorId);
-        return new CreatorSpaceView(requireSpace(creatorId), creator.getName());
+        return new CreatorSpaceView(requireSpace(creatorId), creator.publicDisplayName());
     }
 
     /** 공개 조회 응답에 담는 팔로워 수. Space 존재 확인은 호출 전 단건 조회가 끝낸 뒤라는 전제로 집계만 한다. */
@@ -54,7 +54,7 @@ public class CreatorSpaceProfileService {
         CreatorSpace space = spaceRepository.findBySlug(slug)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Creator creator = requireCreatorById(space.getCreatorId());
-        return new CreatorSpaceView(space, creator.getName());
+        return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 
     /**
@@ -67,7 +67,7 @@ public class CreatorSpaceProfileService {
         Map<Long, String> creatorNames = creatorRepository
                 .findByCreatorIdIn(spaces.map(CreatorSpace::getCreatorId).toList())
                 .stream()
-                .collect(Collectors.toMap(Creator::getCreatorId, Creator::getName));
+                .collect(Collectors.toMap(Creator::getCreatorId, Creator::publicDisplayName));
         return spaces.map(space -> new CreatorSpaceView(space, creatorNames.get(space.getCreatorId())));
     }
 
@@ -86,7 +86,7 @@ public class CreatorSpaceProfileService {
     /** 인증된 Creator 본인의 Creator Space를 조회한다. */
     public CreatorSpaceView findMine(Long memberId) {
         Creator creator = requireCreator(memberId);
-        return new CreatorSpaceView(requireSpace(creator.getCreatorId()), creator.getName());
+        return new CreatorSpaceView(requireSpace(creator.getCreatorId()), creator.publicDisplayName());
     }
 
     /** 인증된 Creator 본인의 Creator Space 프로필 값을 모두 갱신한다. */
@@ -95,7 +95,7 @@ public class CreatorSpaceProfileService {
         Creator creator = requireCreator(memberId);
         CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
-        return new CreatorSpaceView(space, creator.getName());
+        return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 
     /**
@@ -112,7 +112,7 @@ public class CreatorSpaceProfileService {
         Long creatorId = creator.getCreatorId();
         CreatorSpace space = requireSpaceForUpdate(creatorId);
         if (space.getSlug().equals(slug)) {
-            return new CreatorSpaceView(space, creator.getName());
+            return new CreatorSpaceView(space, creator.publicDisplayName());
         }
         LocalDateTime now = LocalDateTime.now(clock);
         boolean revert = slugRegistry.isReservedBy(slug, creatorId, now);
@@ -136,7 +136,7 @@ public class CreatorSpaceProfileService {
         } catch (DataIntegrityViolationException exception) {
             throw new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN);
         }
-        return new CreatorSpaceView(space, creator.getName());
+        return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 
     private void validateNewSlug(CreatorSpace space, String slug, Long creatorId, LocalDateTime now) {

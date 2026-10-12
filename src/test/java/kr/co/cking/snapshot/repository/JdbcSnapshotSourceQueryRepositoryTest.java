@@ -44,7 +44,7 @@ class JdbcSnapshotSourceQueryRepositoryTest {
         cleanUp();
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
                 MEMBER_ID, "Snapshot 복구 소유자", "USER");
-        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)",
                 CREATOR_ID, MEMBER_ID, "Snapshot 복구 크리에이터");
 
         insertEvent(FIRST_OLD_EVENT_ID, "CLOSED", CLOSED_BEFORE.minusSeconds(120), 201);

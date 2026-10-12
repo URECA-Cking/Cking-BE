@@ -59,7 +59,7 @@ public class CreatorFollowQueryService {
         Map<Long, String> creatorNames = creatorRepository
                 .findByCreatorIdIn(follows.map(CreatorFollow::getCreatorId).toList())
                 .stream()
-                .collect(Collectors.toMap(Creator::getCreatorId, Creator::getName, (first, second) -> first));
+                .collect(Collectors.toMap(Creator::getCreatorId, Creator::publicDisplayName, (first, second) -> first));
         return follows.map(follow -> new FollowedCreatorView(
                 follow.getCreatorId(), creatorNames.get(follow.getCreatorId()), follow.getCreatedAt()));
     }

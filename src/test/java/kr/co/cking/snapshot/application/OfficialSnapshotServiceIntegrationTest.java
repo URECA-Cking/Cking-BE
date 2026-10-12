@@ -66,8 +66,7 @@ class OfficialSnapshotServiceIntegrationTest {
         insertMember(FIRST_MEMBER_ID, "첫 번째 후보");
         insertMember(SECOND_MEMBER_ID, "두 번째 후보");
         jdbcTemplate.update("""
-                INSERT INTO creator (creator_id, member_id, name)
-                VALUES (?, ?, ?)
+                INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)
                 """, CREATOR_ID, OWNER_MEMBER_ID, "테스트 크리에이터");
         jdbcTemplate.update("""
                 INSERT INTO event (

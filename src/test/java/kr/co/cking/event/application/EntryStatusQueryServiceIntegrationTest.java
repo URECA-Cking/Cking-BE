@@ -52,7 +52,7 @@ class EntryStatusQueryServiceIntegrationTest {
                 MEMBER_A_ID, "현황조회 사용자A", "USER");
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
                 MEMBER_B_ID, "현황조회 사용자B", "USER");
-        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)",
                 CREATOR_ID, OWNER_MEMBER_ID, "현황조회 크리에이터");
         eventId = insertEvent("OPEN");
     }
