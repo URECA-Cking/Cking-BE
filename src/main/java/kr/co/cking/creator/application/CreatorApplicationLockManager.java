@@ -19,7 +19,21 @@ class CreatorApplicationLockManager {
     private final JdbcTemplate jdbcTemplate;
 
     <T> T execute(String key, Supplier<T> command) {
-        Long acquired = jdbcTemplate.queryForObject("SELECT GET_LOCK(?, 0)", Long.class, key);
+        return execute(key, 0, "SELECT GET_LOCK(?, 0)", command);
+    }
+
+    /**
+     * 같은 공개 활동명을 두 명이 동시에 선택해도, 먼저 끝난 트랜잭션의 결과를 다시 확인한 뒤
+     * 다음 후보를 선택하도록 이름 할당만 짧게 대기한다.
+     */
+    <T> T executeWaiting(String key, int waitSeconds, Supplier<T> command) {
+        return execute(key, waitSeconds, "SELECT GET_LOCK(?, ?)", command);
+    }
+
+    private <T> T execute(String key, int waitSeconds, String query, Supplier<T> command) {
+        Long acquired = waitSeconds == 0
+                ? jdbcTemplate.queryForObject(query, Long.class, key)
+                : jdbcTemplate.queryForObject(query, Long.class, key, waitSeconds);
         if (acquired == null || acquired != 1L) {
             throw new BusinessException(CreatorErrorCode.CONCURRENT_COMMAND);
         }

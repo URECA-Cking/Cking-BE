@@ -3,6 +3,7 @@ package kr.co.cking.creator.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -31,8 +32,10 @@ class CreatorActivityNameServiceTest {
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final CreatorActivityNameRegistry registry = mock(CreatorActivityNameRegistry.class);
     private final MemberNicknameContentPolicy contentPolicy = mock(MemberNicknameContentPolicy.class);
+    private final CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
     private final CreatorActivityNameService service = new CreatorActivityNameService(
-            creatorRepository, registry, contentPolicy, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+            creatorRepository, registry, contentPolicy, lockManager,
+            Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
 
     private Creator creator;
 
@@ -43,6 +46,8 @@ class CreatorActivityNameServiceTest {
         ReflectionTestUtils.setField(creator, "activityNameConfigured", false);
         given(creatorRepository.findByMemberIdForUpdate(10L)).willReturn(Optional.of(creator));
         given(registry.isTaken(any(), any(), any())).willReturn(false);
+        given(lockManager.executeWaiting(any(), anyInt(), any())).willAnswer(invocation ->
+                ((java.util.function.Supplier<?>) invocation.getArgument(2)).get());
     }
 
     @Test
@@ -50,6 +55,20 @@ class CreatorActivityNameServiceTest {
         CreatorActivityNameService.ActivityNameProfile result = service.updateMine(10L, "CreatorOne");
 
         assertThat(result.activityName()).isEqualTo("CreatorOne");
+        assertThat(result.activityNameConfigured()).isTrue();
+        assertThat(result.activityNameChangeableAt()).isNull();
+        then(creatorRepository).should().saveAndFlush(creator);
+    }
+
+    @Test
+    void 이관된_Creator는_임시_활동명을_그대로_확정할_수_있다() {
+        CreatorActivityName temporary = CreatorActivityName.temporaryFor(10L);
+        ReflectionTestUtils.setField(creator, "activityName", temporary.value());
+        ReflectionTestUtils.setField(creator, "activityNameNormalized", temporary.normalized());
+
+        CreatorActivityNameService.ActivityNameProfile result = service.updateMine(10L, temporary.value());
+
+        assertThat(result.activityName()).isEqualTo(temporary.value());
         assertThat(result.activityNameConfigured()).isTrue();
         assertThat(result.activityNameChangeableAt()).isNull();
         then(creatorRepository).should().saveAndFlush(creator);

@@ -20,9 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CreatorActivityNameService {
 
+    private static final String ACTIVITY_NAME_ALLOCATION_LOCK = "creator-activity-name:allocation";
+    private static final int ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS = 15;
+
     private final CreatorRepository creatorRepository;
     private final CreatorActivityNameRegistry registry;
     private final MemberNicknameContentPolicy contentPolicy;
+    private final CreatorApplicationLockManager lockManager;
     private final Clock clock;
 
     @Transactional
@@ -33,18 +37,25 @@ public class CreatorActivityNameService {
 
     @Transactional
     public ActivityNameProfile updateMine(Long memberId, String requestedName) {
+        CreatorActivityName requested = parse(requestedName);
+        return lockManager.executeWaiting(ACTIVITY_NAME_ALLOCATION_LOCK, ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS,
+                () -> updateMineLocked(memberId, requested));
+    }
+
+    private ActivityNameProfile updateMineLocked(Long memberId, CreatorActivityName requested) {
         Creator creator = creatorRepository.findByMemberIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
-        CreatorActivityName requested = parse(requestedName);
-        if (creator.hasCurrentActivityName(requested)) {
-            return toProfile(creator, LocalDateTime.now(clock));
-        }
         LocalDateTime now = LocalDateTime.now(clock);
         if (!creator.isActivityNameConfigured()) {
-            if (registry.isTaken(requested, creator.getCreatorId(), now)) {
+            // 이관된 Creator가 임시값 creator-{id}를 그대로 확정할 수 있어야 한다.
+            // 현재 값과 다른 최초 활동명일 때만 다른 Creator·예약과 충돌하는지 확인한다.
+            if (!creator.hasCurrentActivityName(requested)
+                    && registry.isTaken(requested, creator.getCreatorId(), now)) {
                 throw new BusinessException(CreatorErrorCode.ACTIVITY_NAME_ALREADY_TAKEN);
             }
             creator.setInitialActivityName(requested);
+        } else if (creator.hasCurrentActivityName(requested)) {
+            return toProfile(creator, now);
         } else {
             boolean revert = creator.getPreviousActivityNameNormalized() != null
                     && creator.getPreviousActivityNameNormalized().equals(requested.normalized())
@@ -80,7 +91,25 @@ public class CreatorActivityNameService {
     /** 승인 트랜잭션에서 신규 Creator의 첫 활동명 후보를 충돌 없이 만든다. */
     @Transactional
     public CreatorActivityName initialAvailableName(String memberNickname) {
-        CreatorActivityName requested = parse(memberNickname);
+        return lockManager.executeWaiting(ACTIVITY_NAME_ALLOCATION_LOCK, ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS,
+                () -> initialAvailableNameLocked(memberNickname));
+    }
+
+    /**
+     * 닉네임 도입 전 가입한 회원을 승인하는 호환 경로다.
+     * 신규 회원은 Creator 신청 전에 닉네임을 설정하므로 첫 번째 인수만 사용한다.
+     */
+    @Transactional
+    public CreatorActivityName initialAvailableName(String memberNickname, String legacyName, Long memberId) {
+        return lockManager.executeWaiting(ACTIVITY_NAME_ALLOCATION_LOCK, ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS,
+                () -> initialAvailableNameLocked(initialCandidate(memberNickname, legacyName, memberId)));
+    }
+
+    private CreatorActivityName initialAvailableNameLocked(String memberNickname) {
+        return initialAvailableNameLocked(parse(memberNickname));
+    }
+
+    private CreatorActivityName initialAvailableNameLocked(CreatorActivityName requested) {
         LocalDateTime now = LocalDateTime.now(clock);
         if (!registry.isTaken(requested, null, now)) {
             return requested;
@@ -95,6 +124,17 @@ public class CreatorActivityNameService {
             }
         }
         throw new BusinessException(CreatorErrorCode.ACTIVITY_NAME_ALREADY_TAKEN);
+    }
+
+    private CreatorActivityName initialCandidate(String memberNickname, String legacyName, Long memberId) {
+        if (memberNickname != null) {
+            return parse(memberNickname);
+        }
+        try {
+            return parse(legacyName);
+        } catch (BusinessException exception) {
+            return CreatorActivityName.temporaryFor(memberId);
+        }
     }
 
     private Creator requireCreator(Long memberId) {

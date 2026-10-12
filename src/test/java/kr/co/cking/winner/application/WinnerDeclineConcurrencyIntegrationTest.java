@@ -92,7 +92,10 @@ class WinnerDeclineConcurrencyIntegrationTest {
         Member member = memberRepository.saveAndFlush(new Member("동시 포기 당첨자", null, null, MemberRole.USER));
         long creatorId = insert("creator", "creator_id", Map.of(
                 "member_id", member.getMemberId(),
-                "name", "동시성 테스트 크리에이터"
+                "name", "동시성 테스트 크리에이터",
+                "activity_name", "winner-decline",
+                "activity_name_normalized", "winner-decline",
+                "activity_name_configured", true
         ));
         long eventId = insert("event", "event_id", Map.of(
                 "creator_id", creatorId,

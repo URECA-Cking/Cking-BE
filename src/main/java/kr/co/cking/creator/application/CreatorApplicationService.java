@@ -91,7 +91,9 @@ public class CreatorApplicationService {
         }
         application.approve(adminId);
         Creator creator = creatorRepository.save(new Creator(
-                application.getMemberId(), applicant.getName(), activityNameService.initialAvailableName(applicant.getNickname())));
+                application.getMemberId(), applicant.getName(),
+                activityNameService.initialAvailableName(
+                        applicant.getNickname(), applicant.getName(), application.getMemberId())));
         missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
         creatorSpaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId());
         return application;

@@ -97,7 +97,10 @@ class AdminWinnerDisqualifyConcurrencyIntegrationTest {
         Member winnerMember = memberRepository.saveAndFlush(new Member("동시 자격 박탈 당첨자", null, null, MemberRole.USER));
         long creatorId = insert("creator", "creator_id", Map.of(
                 "member_id", admin.getMemberId(),
-                "name", "동시성 테스트 크리에이터"
+                "name", "동시성 테스트 크리에이터",
+                "activity_name", "winner-disq",
+                "activity_name_normalized", "winner-disq",
+                "activity_name_configured", true
         ));
         long eventId = insert("event", "event_id", Map.of(
                 "creator_id", creatorId,
