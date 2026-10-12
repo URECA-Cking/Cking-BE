@@ -13,7 +13,9 @@
 | 필드 | 설명 |
 | --- | --- |
 | `commentId`, `postId` | 댓글·게시글 ID |
-| `authorMemberId`, `authorName` | 작성자 |
+| `authorMemberId` | 작성자 회원 ID |
+| `authorName` | 작성자 공개 이름(닉네임). Creator 본인의 댓글은 활동명이다. **원문이 가려진 댓글(`filtered`)이면 `null`** |
+| `authorProfileImageUrl` | 작성자 프로필 사진의 공개 URL(만료되지 않는 CDN 주소). Creator 본인의 댓글은 **Creator Space 프로필 사진**이다. 사진을 설정하지 않았거나 Space가 없으면 `null`이고, **원문이 가려진 댓글(`filtered`)이면 `null`** |
 | `writtenByCreator` | 게시글을 작성한 Creator 본인이 단 댓글이면 true |
 | `content` | 본문 (1~500자). **필터링된 댓글(`filtered`)이면 `null`** |
 | `filtered` | 필터가 차단(BLOCK)했거나 관리자가 숨겨 원문을 가린 댓글이면 true. **작성자 본인에게는 항상 false**다 |
@@ -26,7 +28,8 @@
 
 - 판정받은 적 없는 댓글(`PENDING`·`FAILED`)과 통과(`PASS`)한 댓글은 평소처럼 원문을 내려준다. 가려지는 기준은 가장 최근 판정이 `BLOCK`인지다.
 - 차단(`BLOCK`)된 댓글은 **작성자 본인이 아닌 조회자**(비로그인, 다른 사용자, 게시글 작성 Creator 포함)에게 `content`를 비우고 `filtered: true`로 내려준다. 원문은 아래 `/original` 요청으로만 받는다.
-- 작성자 본인에게는 필터링 여부를 알리지 않고 원문을 그대로 내려준다(`filtered: false`).
+- 작성자 본인에게는 필터링 여부를 알리지 않고 원문과 작성자 이름·프로필 사진을 그대로 내려준다(`filtered: false`).
+- 원문이 가려진 댓글(필터 차단, 관리자 숨김)은 작성자 본인이 아닌 조회자에게 **작성자 이름(`authorName`)과 프로필 사진(`authorProfileImageUrl`)도 `null`**로 내려준다(이슈 #546). 가려진 이유가 부적절한 댓글이므로 누가 썼는지도 드러내지 않는다. `authorMemberId`와 `writtenByCreator`는 그대로다.
 - 개인정보 규칙(`privacy:*`)으로 막힌 댓글은 `revealable: false`이며 누구에게도 원문을 내려주지 않는다.
 - **관리자가 숨긴 댓글**(이슈 #499)은 필터 판정과 별개로 `admin_hidden_at`에 저장한다. 작성자 본인이 아닌 조회자에게 `content`를 비우고 `filtered: true`, `revealable: false`로 내려주며 `/original`도 `COMMENT_NOT_REVEALABLE`(403)이다. 작성자 본인에게는 가려졌는지 알리지 않고 원문을 그대로 내려준다. 숨김은 필터 재판정이나 댓글 본문 수정으로 풀리지 않고, 되돌리는 API도 없다.
 - 댓글 본문을 수정하면 다시 판정한다. 판정이 끝날 때까지(또는 재판정이 실패해도) 이전 판정이 `BLOCK`이면 계속 가려지고, 이전 판정이 `PASS`이거나 판정받은 적이 없으면 원문으로 보인다. 재판정 결과가 이전 판정을 덮어쓴다.
@@ -38,6 +41,7 @@
   "postId": 100,
   "authorMemberId": 7,
   "authorName": "팬",
+  "authorProfileImageUrl": "https://cdn.example.com/member-profile-images/7/uuid.jpg",
   "writtenByCreator": false,
   "content": "응원해요",
   "filtered": false,
@@ -47,14 +51,15 @@
 }
 ```
 
-필터링되어 원문이 가려진 댓글은 다음과 같다.
+필터링되어 원문이 가려진 댓글은 다음과 같다. 작성자 이름과 프로필 사진도 함께 가려진다.
 
 ```json
 {
   "commentId": 501,
   "postId": 100,
   "authorMemberId": 8,
-  "authorName": "팬2",
+  "authorName": null,
+  "authorProfileImageUrl": null,
   "writtenByCreator": false,
   "content": null,
   "filtered": true,
