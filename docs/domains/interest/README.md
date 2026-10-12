@@ -54,6 +54,10 @@
   `src/test/resources/fixtures/taxonomy/subtopic-v1.{canonical.json,sha256.txt}`와 같고 `MemberInterestSubtopicIntegrationTest`가 저장된 행에서 다시 계산해 확인한다.
 - 회원 행 잠금(`SELECT … FOR UPDATE`) 하나로 상위·세부 저장을 같은 Transaction에서 직렬화한다. 세부 상한(상위당 3개, `InterestPolicy.MAX_SUBTOPIC_PER_PARENT`)과
   "부모가 이번 선택에 포함" 규칙은 DB로 강제할 수 없어 서비스가 검증한다.
+- **태그 규칙(팀 합의, 2026-10-13).** 회원과 크리에이터 모두 상위 분야 최대 3개, 상위 하나당 세부 주제 최대 3개(전체 최대 9개)다.
+  크리에이터는 세부 주제의 정의에 해당하면 복수 태그를 모두 붙인다(상위당 상한 이내). 세부 태그가 없거나 분류 근거가 부족하면 비워 둘 수 있고,
+  그 경우 세부 없이 상위 분야 단위로만 추천한다(회원이 세부를 고르지 않은 경우도 같다). 한 상위에 상한보다 많이 해당할 때 무엇을 고를지는
+  성원과 미정이다. 크리에이터 태그 부여는 LLM 쪽 작업이며 BE는 회원 선택만 저장한다.
 - **시드는 아직 없다.** 정본이 `experimental_not_service_contract` 초안이고 이름·경계·부모가 확정되지 않았다. 마이그레이션은 한 번 적용되면 수정할 수 없고
   회원 선택이 그 코드에 묶이므로, 확정 전에는 세트를 등록하지 않는다. 활성 세트가 없으면 `GET /api/interests`는 `subtopicVersion: null`·`subtopics: []`이고
   세부 선택 저장은 `VALIDATION_FAILED`다. 테스트는 `fixtures/taxonomy/subtopic-v1-seed.sql`(초안 85개)을 직접 적재한다. 확정되면 그 내용으로 별도 마이그레이션을 추가한다.
