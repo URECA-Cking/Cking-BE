@@ -16,7 +16,7 @@
 ## 소유 데이터
 
 `interest_taxonomy`, `interest_category` (V41), `v0.2` 시드 17개 분야 (V42), `member_interest` (V43), `interest_recommendation_generation`·`interest_recommendation_candidate`·`interest_recommendation_state` (V44),
-`interest_subtopic_set`·`interest_subtopic`·`member_interest_subtopic` (V61), `subtopic-v1` 시드 85개 (V62).
+`interest_subtopic_set`·`interest_subtopic`·`member_interest_subtopic` (V64), `subtopic-v1` 시드 85개 (V65).
 
 | 테이블 | 핵심 제약 |
 | --- | --- |
@@ -48,7 +48,7 @@
 상위 분류체계·기존 회원 선택·분야 추천 후보에는 영향이 없다. 안정되면 하나의 계층 분류체계로 합치는 것은 별도로 검토한다.
 
 - 정본은 Cking-LLM-Benchmark `data/creator-subtopics.json`(`subtopic-v1-draft`)이며 필드 대응은 `code`→`subtopic_code`, `parent`→`parent_interest_code`,
-  `name`, `definition`→`description`이다. V62가 배열 순서를 `display_order`로 시드한다. `include`·`exclude`·`formats`는 저장하지 않는다.
+  `name`, `definition`→`description`이다. V65가 배열 순서를 `display_order`로 시드한다. `include`·`exclude`·`formats`는 저장하지 않는다.
 - 해시(`InterestSubtopicHash`)는 [taxonomyHash 규칙](#taxonomyhash-규칙)과 정규화·이스케이프·SHA-256이 같고 행 형태만
   `{"subtopics":[{"code","parent","name","description"}]}`다(순서는 `display_order`). 시드 해시 `7e06e15a…eb0f6`은
   `src/test/resources/fixtures/taxonomy/subtopic-v1.{canonical.json,sha256.txt}`와 같고 `MemberInterestSubtopicIntegrationTest`가 저장된 행에서 다시 계산해 확인한다.
