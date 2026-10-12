@@ -61,7 +61,7 @@ public class QuizGenerationService {
 
         Optional<QuizGeneration> existing = store.findByRequest(creator.getCreatorId(), requestId);
         if (existing.isPresent()) {
-            return replay(existing.get(), fingerprint);
+            return replay(creator.getCreatorId(), existing.get(), fingerprint);
         }
         if (!properties.isEnabled()) {
             throw new BusinessException(QuizErrorCode.QUIZ_GENERATION_DISABLED);
@@ -74,7 +74,7 @@ public class QuizGenerationService {
                     questionCount, now));
         } catch (DataIntegrityViolationException exception) {
             return store.findByRequest(creator.getCreatorId(), requestId)
-                    .map(generation -> replay(generation, fingerprint))
+                    .map(generation -> replay(creator.getCreatorId(), generation, fingerprint))
                     .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_GENERATION_IN_PROGRESS));
         }
         Long generationId = created.getGenerationId();
@@ -96,11 +96,13 @@ public class QuizGenerationService {
         return QuizGenerationView.of(store.find(generationId).orElse(generation));
     }
 
-    private QuizGenerationView replay(QuizGeneration generation, String fingerprint) {
+    /** 같은 요청이면 조회처럼 오래된 작업을 정리한 뒤 최신 상태를 돌려준다. 새 작업을 만들거나 제출하지 않는다. */
+    private QuizGenerationView replay(Long creatorId, QuizGeneration generation, String fingerprint) {
         if (!generation.getRequestFingerprint().equals(fingerprint)) {
             throw new BusinessException(QuizErrorCode.QUIZ_GENERATION_REQUEST_CONFLICT);
         }
-        return QuizGenerationView.of(generation);
+        store.expireStale(creatorId, clock.instant());
+        return QuizGenerationView.of(store.find(generation.getGenerationId()).orElse(generation));
     }
 
     private String requireTitle(String title) {
