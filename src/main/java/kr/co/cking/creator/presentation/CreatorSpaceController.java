@@ -134,7 +134,8 @@ public class CreatorSpaceController {
             @Valid @RequestBody CreatorSpaceRequest.UpdateProfile request
     ) {
         CreatorSpaceProfileFields fields = new CreatorSpaceProfileFields(
-                request.introText(), request.profileImageUrl(), request.bannerImageUrl());
+                request.introText(), request.profileImageUrl(), request.bannerImageUrl(),
+                request.profileImageKey(), request.profileImageKeyProvided());
         return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.updateMine(memberId, fields)));
     }
 

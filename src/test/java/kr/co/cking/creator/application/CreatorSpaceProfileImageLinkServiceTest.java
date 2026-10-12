@@ -39,10 +39,11 @@ class CreatorSpaceProfileImageLinkServiceTest {
         given(creators.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaces.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
         given(images.link("creator-space-profile-images/42/new.jpg", 42L, NOW)).willReturn(1);
-        CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(
-                creators, spaces, images,
-                new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
+        CreatorSpaceProfileImageManager manager = new CreatorSpaceProfileImageManager(
+                images, new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(
+                creators, spaces, manager);
 
         service.link(7L, "creator-space-profile-images/42/new.jpg");
 
@@ -61,10 +62,11 @@ class CreatorSpaceProfileImageLinkServiceTest {
                 new CreatorSpaceTemplate(1L, "소개", "https://img/profile.jpg", "https://img/banner.jpg", "creator-{creatorId}"),
                 "creator-42")));
         given(images.link(any(), eq(42L), any())).willReturn(0);
-        CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(
-                creators, spaces, images,
-                new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
+        CreatorSpaceProfileImageManager manager = new CreatorSpaceProfileImageManager(
+                images, new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(
+                creators, spaces, manager);
 
         assertThatThrownBy(() -> service.link(7L, "creator-space-profile-images/99/other.jpg"))
                 .isInstanceOf(BusinessException.class)

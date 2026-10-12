@@ -4,6 +4,11 @@ package kr.co.cking.creator.application.dto;
 public record CreatorSpaceProfileFields(
         String introText,
         String profileImageUrl,
-        String bannerImageUrl
+        String bannerImageUrl,
+        String profileImageKey,
+        boolean profileImageKeyProvided
 ) {
+    public CreatorSpaceProfileFields(String introText, String profileImageUrl, String bannerImageUrl) {
+        this(introText, profileImageUrl, bannerImageUrl, null, false);
+    }
 }

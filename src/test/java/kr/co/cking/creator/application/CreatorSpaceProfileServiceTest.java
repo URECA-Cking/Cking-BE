@@ -50,9 +50,10 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
     private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
+    private final CreatorSpaceProfileImageManager profileImageManager = mock(CreatorSpaceProfileImageManager.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
             creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-            Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
+            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
 
     private Creator creator;
     private CreatorSpace space;
@@ -201,13 +202,14 @@ class CreatorSpaceProfileServiceTest {
     }
 
     @Test
-    void updateMineKeepsConnectedStorageProfileImage() {
+    void updateMineDelegatesConnectedImageUpdateToImageManager() {
         space.updateProfileImage("creator-space-profile-images/42/current.jpg", "https://cdn/current.jpg");
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
 
         service.updateMine(7L, NEW_PROFILE);
 
+        then(profileImageManager).should().apply(creator, space, null, false);
         assertThat(space.getProfileImageUrl()).isEqualTo("https://cdn/current.jpg");
         assertThat(space.getBannerImageUrl()).isEqualTo("https://img/b2.png");
     }

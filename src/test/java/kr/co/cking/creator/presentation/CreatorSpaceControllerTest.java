@@ -162,6 +162,28 @@ class CreatorSpaceControllerTest {
     }
 
     @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesExplicitNullImageKeyForDefaultImageRestore() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, true);
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "profileImageKey": null
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    @Test
     void updateMySpaceRequiresJwt() throws Exception {
         mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY))
                 .andExpect(status().isUnauthorized());

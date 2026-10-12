@@ -1,5 +1,12 @@
 ALTER TABLE creator_space
-    ADD COLUMN profile_image_key VARCHAR(200) NULL AFTER profile_image_url;
+    ADD COLUMN profile_image_key VARCHAR(200) NULL AFTER profile_image_url,
+    ADD COLUMN default_profile_image_url VARCHAR(500) NULL AFTER profile_image_key;
+
+UPDATE creator_space
+SET default_profile_image_url = profile_image_url;
+
+ALTER TABLE creator_space
+    MODIFY COLUMN default_profile_image_url VARCHAR(500) NOT NULL;
 
 CREATE TABLE creator_space_profile_image (
     profile_image_id BIGINT NOT NULL AUTO_INCREMENT,

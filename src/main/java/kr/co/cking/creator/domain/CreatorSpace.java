@@ -45,6 +45,10 @@ public class CreatorSpace {
     @Column(name = "profile_image_key", length = 200)
     private String profileImageKey;
 
+    /** 업로드 이미지 연결을 해제할 때 복귀할, Space 생성·기존 URL 수정 시점의 기본 프로필 이미지다. */
+    @Column(name = "default_profile_image_url", nullable = false, length = 500)
+    private String defaultProfileImageUrl;
+
     @Column(name = "banner_image_url", nullable = false, length = 500)
     private String bannerImageUrl;
 
@@ -64,6 +68,7 @@ public class CreatorSpace {
         this.creatorId = creatorId;
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
+        this.defaultProfileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
         this.slug = slug;
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
@@ -72,13 +77,21 @@ public class CreatorSpace {
     /** Creator 본인이 홈·프로필을 수정한다. slug는 이 메서드로 바꾸지 않는다. */
     public void updateProfile(String introText, String profileImageUrl, String bannerImageUrl) {
         this.introText = introText;
-        this.profileImageUrl = profileImageUrl;
+        if (profileImageKey == null) {
+            this.profileImageUrl = profileImageUrl;
+            this.defaultProfileImageUrl = profileImageUrl;
+        }
         this.bannerImageUrl = bannerImageUrl;
     }
 
     public void updateProfileImage(String profileImageKey, String profileImageUrl) {
         this.profileImageKey = profileImageKey;
         this.profileImageUrl = profileImageUrl;
+    }
+
+    public void restoreDefaultProfileImage() {
+        this.profileImageKey = null;
+        this.profileImageUrl = defaultProfileImageUrl;
     }
 
     /** 커스텀 slug로 바꾼다. 형식·예약어·중복·변경 간격 검증은 호출하는 Application이 먼저 한다. */

@@ -35,6 +35,7 @@ public class CreatorSpaceProfileService {
     private final CreatorRepository creatorRepository;
     private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceSlugRegistry slugRegistry;
+    private final CreatorSpaceProfileImageManager profileImageManager;
     private final Clock clock;
     private final CreatorFollowQueryService followQueryService;
 
@@ -94,10 +95,8 @@ public class CreatorSpaceProfileService {
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
         CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
-        String profileImageUrl = space.getProfileImageKey() == null
-                ? fields.profileImageUrl()
-                : space.getProfileImageUrl();
-        space.updateProfile(fields.introText(), profileImageUrl, fields.bannerImageUrl());
+        profileImageManager.apply(creator, space, fields.profileImageKey(), fields.profileImageKeyProvided());
+        space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
         return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 

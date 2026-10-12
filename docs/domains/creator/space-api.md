@@ -100,21 +100,23 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 
 ## PATCH /api/creator/space
 
-호출자 본인의 Creator Space 홈·프로필을 수정한다. 모든 필드를 한 번에 교체하므로 전부 필수다. slug는 아래 slug 변경 API로 바꾼다. 응답은 수정된 Space이며 위 본인 API 응답이다.
+호출자 본인의 Creator Space 홈·프로필을 수정한다. 기본 필드는 모두 교체하며 slug는 아래 slug 변경 API로 바꾼다. `profileImageKey`는 생략하면 현재 이미지를 유지하고, 본인이 업로드한 키를 보내면 교체하며, `null`을 명시하면 Space의 기본 프로필 이미지로 복귀한다. 응답은 수정된 Space이며 위 본인 API 응답이다.
 
 ```json
 {
   "introText": "새 소개 문구",
   "profileImageUrl": "https://cdn.cking.co.kr/creator/42/profile.png",
-  "bannerImageUrl": "https://cdn.cking.co.kr/creator/42/banner.png"
+  "bannerImageUrl": "https://cdn.cking.co.kr/creator/42/banner.png",
+  "profileImageKey": "creator-space-profile-images/42/uuid.jpg"
 }
 ```
 
 | 필드 | 제약 |
 | --- | --- |
 | `introText`, `profileImageUrl`, `bannerImageUrl` | 필수, 공백 불가, 최대 500자 |
+| `profileImageKey` | 선택, 최대 200자. 생략하면 유지, 업로드 완료한 본인 키면 교체, `null`이면 기본 이미지 복귀 |
 
-기존 URL 기반 수정은 기존 Space 호환을 위해 유지한다. 새 파일 업로드는 아래 두 API를 사용하며, 업로드된 이미지가 연결되면 공개 응답의 `profileImageUrl`은 CDN URL로 갱신된다. 연결된 이미지가 있으면 이 API의 `profileImageUrl` 입력은 무시하고 현재 연결을 유지한다.
+기존 URL 기반 수정은 기존 Space 호환을 위해 유지한다. 새 파일 업로드는 아래 두 API 또는 위 PATCH의 `profileImageKey`를 사용하며, 업로드된 이미지가 연결되면 공개 응답의 `profileImageUrl`은 CDN URL로 갱신된다. 연결된 이미지가 있으면 PATCH의 `profileImageUrl` 입력은 무시하고 현재 연결을 유지한다.
 
 ## POST /api/creator/space/profile-images
 
