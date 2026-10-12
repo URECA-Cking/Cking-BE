@@ -39,6 +39,10 @@ public class TicketLedger {
     @Column(name = "mission_completion_id")
     private Long missionCompletionId;
 
+    /** Quiz 보상 EARN 원인(이슈 #533). EARN은 이 값과 missionCompletionId 중 정확히 하나를 가진다. */
+    @Column(name = "quiz_reward_request_id")
+    private Long quizRewardRequestId;
+
     @Column(name = "delta_amount", nullable = false)
     private Long deltaAmount;
 
@@ -70,7 +74,7 @@ public class TicketLedger {
 
     @Builder
     private TicketLedger(Long ledgerId, Long memberId, Long creatorId, Long eventEntryId,
-                         Long missionCompletionId, Long deltaAmount, TicketLedgerType type,
+                         Long missionCompletionId, Long quizRewardRequestId, Long deltaAmount, TicketLedgerType type,
                          String reason, String requestId, Long balanceBefore, Long balanceAfter,
                          Instant createdAt) {
         this.ledgerId = ledgerId;
@@ -78,6 +82,7 @@ public class TicketLedger {
         this.creatorId = creatorId;
         this.eventEntryId = eventEntryId;
         this.missionCompletionId = missionCompletionId;
+        this.quizRewardRequestId = quizRewardRequestId;
         this.deltaAmount = deltaAmount;
         this.type = type;
         this.reason = reason;
