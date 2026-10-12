@@ -3,8 +3,9 @@ package kr.co.cking.ticket.domain;
 /**
  * Quiz 보상 지급 요청 상태(이슈 #533). 접수는 원장 반영 완료가 아니다.
  *
- * <p>지금은 접수({@link #RECEIVED})만 구현했다. 나머지 상태로의 전이와 Redis·Stream·원장 처리는 후속 단계에서
- * 구현하며, 어느 상태에서도 복구는 새 rewardRequestId를 만들지 않고 같은 요청으로 처리 여부를 확인한다.
+ * <p>지금은 접수({@link #RECEIVED}), 실행권 발급({@link #RECEIVED}·{@link #RETRYABLE_FAILURE} → {@link #EXECUTING}),
+ * 원장 반영({@link #APPLIED})까지 구현했다. 나머지 전이는 후속 단계에서 구현하며, 어느 상태에서도 복구는 새
+ * rewardRequestId를 만들지 않고 같은 요청으로 처리 여부를 확인한다.
  */
 public enum QuizRewardRequestStatus {
 

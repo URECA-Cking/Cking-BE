@@ -64,6 +64,19 @@ public class TicketQuizRewardRequest {
     }
 
     /**
+     * 실행권 발급과 같은 Transaction에서 EXECUTING으로 바꾼다. 아직 실행하지 않았거나(RECEIVED) 이전 실행이 무반영으로
+     * 확인된 재시도 가능한 실패(RETRYABLE_FAILURE)에서만 허용한다. 무반영 증거 확인은 호출자 몫이다. 호출자는 행을 잠근
+     * 뒤 부른다.
+     */
+    public void startExecution() {
+        if (status != QuizRewardRequestStatus.RECEIVED && status != QuizRewardRequestStatus.RETRYABLE_FAILURE) {
+            throw new IllegalStateException("Quiz 보상 실행을 시작할 수 없는 상태입니다. status=" + status
+                    + ", rewardRequestId=" + rewardRequestId);
+        }
+        this.status = QuizRewardRequestStatus.EXECUTING;
+    }
+
+    /**
      * Ticket 원장·잔액 반영과 같은 Transaction에서 APPLIED로 바꾼다. APPLIED는 끝 상태라 되돌리거나 다시 적용하지
      * 않는다. 호출자는 행을 잠근 뒤 부른다.
      */

@@ -2,6 +2,7 @@ package kr.co.cking.ticket.domain;
 
 import kr.co.cking.ticket.application.dto.QuizRewardCommand;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -59,6 +60,25 @@ class TicketQuizRewardRequestTest {
                 QuizRewardCommand.FINGERPRINT_VERSION, "f".repeat(64), NOW)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new TicketQuizRewardRequest("id", 100L, 7L, 10L, 3,
                 QuizRewardCommand.FINGERPRINT_VERSION, "f".repeat(64), null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void 실행은_RECEIVED와_RETRYABLE_FAILURE에서만_시작해_EXECUTING이_된다() {
+        for (QuizRewardRequestStatus status : QuizRewardRequestStatus.values()) {
+            TicketQuizRewardRequest request = request(command);
+            ReflectionTestUtils.setField(request, "status", status);
+            boolean startable = status == QuizRewardRequestStatus.RECEIVED
+                    || status == QuizRewardRequestStatus.RETRYABLE_FAILURE;
+
+            if (startable) {
+                request.startExecution();
+                assertThat(request.getStatus()).as(status.name()).isEqualTo(QuizRewardRequestStatus.EXECUTING);
+            } else {
+                assertThatThrownBy(request::startExecution).as(status.name())
+                        .isInstanceOf(IllegalStateException.class);
+                assertThat(request.getStatus()).as(status.name()).isEqualTo(status);
+            }
+        }
     }
 
     private static TicketQuizRewardRequest request(QuizRewardCommand command) {
