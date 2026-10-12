@@ -40,10 +40,8 @@ public class CreatorApplicationService {
     }
 
     private ApplyResult applyLocked(Long memberId) {
-        // 신청 처리에는 Member의 상세 정보가 필요 없으므로 존재 여부만 확인한다.
-        if (!memberRepository.existsById(memberId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
-        }
+        Member member = requireMember(memberId);
+        member.requireProfileConfigured();
         if (creatorRepository.existsByMemberId(memberId)) {
             throw new BusinessException(CreatorErrorCode.INVALID_STATE);
         }
@@ -70,7 +68,7 @@ public class CreatorApplicationService {
         Page<CreatorApplication> applications = applicationRepository.findAllByOrderByRequestedAtAscIdAsc(pageable);
         Map<Long, String> applicantNames = memberRepository.findByMemberIdIn(applications.stream()
                         .map(CreatorApplication::getMemberId).toList())
-                .stream().collect(Collectors.toMap(Member::getMemberId, Member::getName));
+                .stream().collect(Collectors.toMap(Member::getMemberId, Member::publicDisplayName));
         List<AdminApplication> items = applications.stream()
                 .map(application -> new AdminApplication(application, applicantNames.get(application.getMemberId())))
                 .toList();

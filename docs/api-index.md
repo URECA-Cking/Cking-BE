@@ -141,5 +141,7 @@
 | 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V50, 기존 회원은 전원 true) | 상태 기반 |
 | 139 | 외부 | Drawing | ADMIN | GET | `/api/admin/events/{eventId}/drawings/initial` | Event의 INITIAL Drawing 조회 | - |
 | 140 | 외부 | Creator 추천 | USER | POST | `/api/me/creator-recommendation-events` | 실제 노출·클릭 최대 50건 원자 수집, JWT 소유권/후보/신규 이벤트 24시간 검증, 보존 중 승인 재전송은 만료 후 멱등 성공 | eventId 및 요청+Creator+타입 |
+| 141 | 외부 | Member | USER | POST | `/api/me/profile-images` | 내 프로필 사진 업로드 후 연결용 imageKey 반환 | - |
+| 142 | 외부 | Member | USER | PUT | `/api/me/profile` | 닉네임·프로필 사진 전체 교체 | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

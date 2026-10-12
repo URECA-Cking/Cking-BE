@@ -44,6 +44,10 @@ cking:
     type: s3
     bucket: dev-cking-uploads-551372961758-ap-northeast-2-an
     region: ap-northeast-2
+  member:
+    profile-image:
+      # CDN 공개 주소는 S3 bucket URL과 다르므로 배포 환경변수로만 주입한다.
+      public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:}
   verification:
     youtube-subscription:
       submission-enabled: false

@@ -5,6 +5,8 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberProfile;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.member.application.MemberProfileImageProperties;
+import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberNicknameReservation;
@@ -32,7 +34,9 @@ class MemberQueryServiceTest {
     private final MemberRepository repository = mock(MemberRepository.class);
     private final MemberNicknameReservationRepository reservationRepository = mock(MemberNicknameReservationRepository.class);
     private final MemberQueryService service = new MemberQueryService(
-            repository, reservationRepository, Clock.fixed(Instant.parse("2026-10-12T00:00:00Z"), ZoneOffset.UTC));
+            repository, reservationRepository,
+            new ProfileImageUrlResolver(new MemberProfileImageProperties("https://cdn.example.test/")),
+            Clock.fixed(Instant.parse("2026-10-12T00:00:00Z"), ZoneOffset.UTC));
 
     @Test
     void 인증된_사용자의_프로필을_조회한다() {
@@ -50,7 +54,7 @@ class MemberQueryServiceTest {
         MemberProfile result = service.getProfile(1L);
 
         assertThat(result).isEqualTo(new MemberProfile(
-                1L, "홍길동", null, "hong@example.com", MemberRole.USER, true, null, null));
+                1L, "홍길동", null, null, "hong@example.com", MemberRole.USER, true, null, null));
     }
 
     @Test
@@ -134,12 +138,12 @@ class MemberQueryServiceTest {
     void 사용자_ID_목록을_한번에_사용자_정보로_조회한다() {
         Member first = mock(Member.class);
         when(first.getMemberId()).thenReturn(1L);
-        when(first.getName()).thenReturn("홍길동");
+        when(first.publicDisplayName()).thenReturn("닉네임1");
         when(first.getPhone()).thenReturn("010-0000-0001");
         when(first.getEmail()).thenReturn("one@example.com");
         Member second = mock(Member.class);
         when(second.getMemberId()).thenReturn(2L);
-        when(second.getName()).thenReturn("김철수");
+        when(second.publicDisplayName()).thenReturn("닉네임2");
         when(second.getPhone()).thenReturn("010-0000-0002");
         when(second.getEmail()).thenReturn("two@example.com");
         when(repository.findByMemberIdIn(List.of(1L, 2L))).thenReturn(List.of(second, first));
@@ -147,8 +151,8 @@ class MemberQueryServiceTest {
         Map<Long, MemberInfo> result = service.findMemberInfosByIds(List.of(1L, 2L));
 
         assertThat(result).containsExactlyInAnyOrderEntriesOf(Map.of(
-                1L, new MemberInfo(1L, "홍길동", "010-0000-0001", "one@example.com"),
-                2L, new MemberInfo(2L, "김철수", "010-0000-0002", "two@example.com")
+                1L, new MemberInfo(1L, "닉네임1", "010-0000-0001", "one@example.com"),
+                2L, new MemberInfo(2L, "닉네임2", "010-0000-0002", "two@example.com")
         ));
     }
 }

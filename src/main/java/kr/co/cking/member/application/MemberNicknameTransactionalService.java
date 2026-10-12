@@ -31,6 +31,20 @@ class MemberNicknameTransactionalService {
         if (member.hasCurrentNickname(requested)) {
             return MemberNicknameService.MemberNicknameResult.from(member);
         }
+        MemberNicknameService.MemberNicknameResult result = change(member, requested);
+        memberRepository.saveAndFlush(member);
+        return result;
+    }
+
+    /** 이미 호출자가 Member 행 잠금을 보유한 통합 프로필 수정 transaction에서 재사용한다. */
+    public MemberNicknameService.MemberNicknameResult change(Member member, String requestedNickname) {
+        return change(member, parseAndValidate(requestedNickname));
+    }
+
+    private MemberNicknameService.MemberNicknameResult change(Member member, MemberNickname requested) {
+        if (member.hasCurrentNickname(requested)) {
+            return MemberNicknameService.MemberNicknameResult.from(member);
+        }
 
         LocalDateTime now = LocalDateTime.now(clock);
         if (!member.hasNickname()) {
@@ -56,7 +70,6 @@ class MemberNicknameTransactionalService {
             throw new BusinessException(MemberErrorCode.NICKNAME_ALREADY_TAKEN);
         }
         member.setInitialNickname(nickname);
-        memberRepository.saveAndFlush(member);
     }
 
     private void changeOrRevert(Member member, MemberNickname nickname, LocalDateTime now) {
@@ -77,7 +90,6 @@ class MemberNicknameTransactionalService {
         member.changeNickname(nickname, now);
         nicknameRegistry.clear(nickname);
         nicknameRegistry.reserveReleased(released, member.getMemberId(), now);
-        memberRepository.saveAndFlush(member);
     }
 
     private void revert(Member member, MemberNickname nickname, LocalDateTime now) {
@@ -85,6 +97,5 @@ class MemberNicknameTransactionalService {
         member.revertNickname();
         nicknameRegistry.clear(nickname);
         nicknameRegistry.reserveReleased(released, member.getMemberId(), now);
-        memberRepository.saveAndFlush(member);
     }
 }

@@ -67,6 +67,10 @@ public class Member {
     @Column(name = "previous_nickname_normalized", length = MemberNickname.MAX_LENGTH)
     private String previousNicknameNormalized;
 
+    /** 현재 연결된 개인 프로필 이미지의 Object Storage key. null이면 기본 이미지를 사용한다. */
+    @Column(name = "profile_image_key", length = 200)
+    private String profileImageKey;
+
     public Member(String name, String phone, String email, MemberRole role) {
         this.name = name;
         this.phone = phone;
@@ -82,6 +86,13 @@ public class Member {
 
     public boolean hasNickname() {
         return nickname != null;
+    }
+
+    /** 댓글·Creator 신청·이벤트 응모처럼 공개 활동을 만들기 전 공개 닉네임 설정을 강제한다. */
+    public void requireProfileConfigured() {
+        if (!hasNickname()) {
+            throw new kr.co.cking.common.exception.BusinessException(MemberErrorCode.PROFILE_SETUP_REQUIRED);
+        }
     }
 
     /** 외부 응답에서 OAuth 제공자 이름을 대신할 공개 표시명이다. */
@@ -134,6 +145,10 @@ public class Member {
     public boolean canChangeNicknameAt(LocalDateTime now) {
         LocalDateTime changeableAt = nicknameChangeableAt();
         return changeableAt == null || !now.isBefore(changeableAt);
+    }
+
+    public void updateProfileImageKey(String profileImageKey) {
+        this.profileImageKey = profileImageKey;
     }
 
     @PrePersist

@@ -2,6 +2,8 @@ package kr.co.cking.member;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,7 +13,10 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
 import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.member.application.MemberProfile;
+import kr.co.cking.member.application.MemberProfileImageUploadService;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.member.application.MemberProfileUpdateService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.presentation.MemberController;
 import org.junit.jupiter.api.AfterEach;
@@ -26,8 +31,15 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.function.Supplier;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 
 @WebMvcTest(MemberController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -46,6 +58,15 @@ class MemberControllerTest {
     @MockitoBean
     private kr.co.cking.member.application.MemberOnboardingService memberOnboardingService;
 
+    @MockitoBean
+    private MemberProfileImageUploadService memberProfileImageUploadService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
+
+    @MockitoBean
+    private MemberProfileUpdateService memberProfileUpdateService;
+
     @BeforeEach
     void authenticatedMember() {
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
@@ -61,7 +82,7 @@ class MemberControllerTest {
     void 일반_사용자의_현재_프로필을_공통_응답으로_반환한다() throws Exception {
         when(memberQueryService.getProfile(1L))
                 .thenReturn(new MemberProfile(
-                        1L, "홍길동", "닉네임", "hong@example.com", MemberRole.USER, true, null, null));
+                        1L, "홍길동", "닉네임", null, "hong@example.com", MemberRole.USER, true, null, null));
         when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
 
         mockMvc.perform(get("/api/me"))
@@ -81,7 +102,7 @@ class MemberControllerTest {
     void Creator의_현재_프로필은_creator_true를_반환한다() throws Exception {
         when(memberQueryService.getProfile(1L))
                 .thenReturn(new MemberProfile(
-                        1L, "크리에이터", null, "creator@example.com", MemberRole.USER, true, null, null));
+                        1L, "크리에이터", null, null, "creator@example.com", MemberRole.USER, true, null, null));
         when(creatorQueryService.isCreatorMember(1L)).thenReturn(true);
 
         mockMvc.perform(get("/api/me"))
@@ -94,7 +115,7 @@ class MemberControllerTest {
     void 닉네임_변경_가능_시각은_UTC_오프셋을_포함해_반환한다() throws Exception {
         when(memberQueryService.getProfile(1L))
                 .thenReturn(new MemberProfile(
-                        1L, "홍길동", "닉네임", "hong@example.com", MemberRole.USER, true,
+                        1L, "홍길동", "닉네임", null, "hong@example.com", MemberRole.USER, true,
                         LocalDateTime.of(2026, 10, 26, 12, 0), null));
         when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
 
@@ -120,5 +141,37 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"));
 
         org.mockito.Mockito.verify(memberOnboardingService).complete(1L);
+    }
+
+    @Test
+    void 프로필_이미지_업로드는_연결용_imageKey를_반환한다() throws Exception {
+        doAnswer(invocation -> ((Supplier<?>) invocation.getArgument(0)).get())
+                .when(imageProcessingLimiter).admit(any());
+        when(memberProfileImageUploadService.upload(eq(1L), any())).thenReturn("member-profile-images/1/image.jpg");
+
+        mockMvc.perform(multipart("/api/me/profile-images")
+                        .file(new MockMultipartFile("image", "profile.png", "image/png", new byte[] {1, 2})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.imageKey").value("member-profile-images/1/image.jpg"));
+    }
+
+    @Test
+    void 프로필_수정은_JWT_회원으로_닉네임과_사진_키를_함께_전달한다() throws Exception {
+        when(memberQueryService.getProfile(1L)).thenReturn(new MemberProfile(
+                1L, "홍길동", "새닉네임", "https://cdn.example.test/profile.jpg", "hong@example.com", MemberRole.USER,
+                true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\",\"profileImageKey\":\"member-profile-images/1/image.jpg\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("새닉네임"))
+                .andExpect(jsonPath("$.data.profileImageUrl").value("https://cdn.example.test/profile.jpg"))
+                .andExpect(jsonPath("$.data.profileConfigured").value(true));
+
+        verify(memberProfileUpdateService).update(1L,
+                new MemberProfileUpdateService.UpdateFields("새닉네임", "member-profile-images/1/image.jpg"));
     }
 }
