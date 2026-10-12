@@ -165,7 +165,10 @@ public class QuizJudgeWorker {
         boolean interrupted = Thread.interrupted();
         try {
             if (store.finishRunning(jobId, status, failure, execution, clock.instant())) {
-                log.warn("평가 Job이 끝나지 못했습니다. jobId={}, status={}, failure={}", jobId, status, failure);
+                log.info("평가 Job을 끝 상태로 기록했습니다. jobId={}, status={}, failure={}", jobId, status, failure);
+            } else {
+                log.warn("평가 Job이 이미 RUNNING이 아니라 상태를 바꾸지 않았습니다. jobId={}, status={}, failure={}",
+                        jobId, status, failure);
             }
         } catch (RuntimeException exception) {
             log.error("평가 Job 상태를 기록하지 못했습니다. jobId={}, type={}", jobId, exception.getClass().getSimpleName());

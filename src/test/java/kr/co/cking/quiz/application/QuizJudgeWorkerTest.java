@@ -21,7 +21,10 @@ import kr.co.cking.quiz.judge.QuizJudgeTimeoutException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
@@ -46,6 +49,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+@ExtendWith(OutputCaptureExtension.class)
 class QuizJudgeWorkerTest {
 
     private static final Instant NOW = Instant.parse("2026-10-12T04:00:00Z");
@@ -120,6 +124,33 @@ class QuizJudgeWorkerTest {
         verify(store, never()).loadInput(anyLong());
         verify(judge, never()).judge(any());
         verify(store, never()).finishRunning(anyLong(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 끝_상태를_기록하면_실패_경고가_아니라_기록_로그를_남긴다(CapturedOutput output) {
+        given(judge.currentSettings(3)).willReturn(QuizJudgeSettings.current("model-b", "medium", 8192, 200,
+                objectMapper));
+        given(store.finishRunning(JOB_ID, QuizJudgeJobStatus.FAILED, QuizJudgeFailure.SETTINGS_MISMATCH, null, NOW))
+                .willReturn(true);
+
+        worker.run(JOB_ID);
+
+        assertThat(output.getAll()).contains("평가 Job을 끝 상태로 기록했습니다.", "status=FAILED",
+                        "failure=SETTINGS_MISMATCH")
+                .doesNotContain("끝나지 못했습니다", "상태를 바꾸지 않았습니다");
+    }
+
+    @Test
+    void 이미_끝난_Job이라_상태를_바꾸지_못하면_경고한다(CapturedOutput output) {
+        given(judge.currentSettings(3)).willReturn(QuizJudgeSettings.current("model-b", "medium", 8192, 200,
+                objectMapper));
+        given(store.finishRunning(JOB_ID, QuizJudgeJobStatus.FAILED, QuizJudgeFailure.SETTINGS_MISMATCH, null, NOW))
+                .willReturn(false);
+
+        worker.run(JOB_ID);
+
+        assertThat(output.getAll()).contains("평가 Job이 이미 RUNNING이 아니라 상태를 바꾸지 않았습니다.")
+                .doesNotContain("평가 Job을 끝 상태로 기록했습니다.");
     }
 
     @Test
