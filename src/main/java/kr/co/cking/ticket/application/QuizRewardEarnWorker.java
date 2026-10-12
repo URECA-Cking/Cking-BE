@@ -36,8 +36,8 @@ import java.util.UUID;
  * Redis를 부르는 동안 DB Transaction이나 행 잠금을 잡지 않는다. 같은 실행권으로 Lua를 다시 부르지 않으며, 다시 실행은
  * 결과가 기록된 뒤 새 실행권으로만 한다. 결과 기록이 실패하면 요청이 EXECUTING으로 남아 새 실행권도 발급되지 않는다.
  *
- * <p>운영에서 Quiz 원장 반영은 아직 막혀 있어(fail-closed) Redis만 적립되는 일을 막도록, 기본값은 꺼짐이다
- * ({@code cking.ticket.quiz-reward.worker-enabled}).
+ * <p>Quiz 도메인 연동(응시·채점·호출) 전에 지급이 시작되지 않도록 기본값은 꺼짐이다
+ * ({@code cking.ticket.quiz-reward.worker-enabled}). 꺼져 있으면 아무것도 바꾸지 않고 DISABLED로 끝난다.
  */
 @Slf4j
 @Service

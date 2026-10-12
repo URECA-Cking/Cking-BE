@@ -6,8 +6,8 @@ import kr.co.cking.ticket.domain.TicketQuizRewardRequest;
 /**
  * Quiz EARN 메시지가 저장된 요청의 Redis 실행 결과로 받아들일 수 있는지 판단한다(이슈 #533).
  *
- * <p>실행권(execution token) 발급·저장과 상태 전이 규칙은 아직 확정되지 않았다. DB 반영 서비스는 이 경계만 호출하며,
- * 실행권 정책이 정해지면 구현을 바꾼다. 구현은 DB 반영 Transaction 안에서 호출되며 Redis를 호출하지 않는다.
+ * <p>운영 구현은 저장된 실행 기록과 대조하는 {@link StoredExecutionQuizRewardExecutionPolicy}다. 구현은 DB 반영
+ * Transaction 안에서 Quiz 요청을 잠근 뒤 호출되며 Redis를 호출하지 않는다.
  */
 public interface QuizRewardExecutionPolicy {
 

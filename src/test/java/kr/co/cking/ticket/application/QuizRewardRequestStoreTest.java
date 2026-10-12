@@ -60,6 +60,18 @@ class QuizRewardRequestStoreTest {
     }
 
     @Test
+    void 상태_조회는_저장된_요청의_상태만_돌려준다() {
+        TicketQuizRewardRequest stored = new TicketQuizRewardRequest(REQUEST_ID.toString(), 100L, 7L, 10L, 3,
+                QuizRewardCommand.FINGERPRINT_VERSION, command.computeFingerprint(), NOW);
+        ReflectionTestUtils.setField(stored, "status", QuizRewardRequestStatus.UNKNOWN);
+        given(quizRepository.findByRewardRequestId(REQUEST_ID.toString())).willReturn(Optional.of(stored));
+        given(quizRepository.findByRewardRequestId("missing")).willReturn(Optional.empty());
+
+        assertThat(store.findStatus(REQUEST_ID.toString())).contains(QuizRewardRequestStatus.UNKNOWN);
+        assertThat(store.findStatus("missing")).isEmpty();
+    }
+
+    @Test
     void 전역_EARN_request를_QUIZ_PENDING으로_선점한_뒤_같은_Transaction에서_Quiz_요청을_RECEIVED로_만든다() {
         QuizRewardAdmission admission = store.insert(command);
 

@@ -7,10 +7,12 @@ import kr.co.cking.ticket.domain.TicketEarnRequest;
 import kr.co.cking.ticket.domain.TicketEarnRequestStatus;
 import kr.co.cking.ticket.domain.TicketLedger;
 import kr.co.cking.ticket.domain.TicketLedgerType;
+import kr.co.cking.ticket.domain.TicketQuizRewardExecution;
 import kr.co.cking.ticket.domain.TicketQuizRewardRequest;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.TicketEarnRequestRepository;
 import kr.co.cking.ticket.repository.TicketLedgerRepository;
+import kr.co.cking.ticket.repository.TicketQuizRewardExecutionRepository;
 import kr.co.cking.ticket.repository.TicketQuizRewardRequestRepository;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,8 +47,11 @@ class QuizRewardLedgerServiceTest {
     private final TicketQuizRewardRequestRepository quizRepository = mock(TicketQuizRewardRequestRepository.class);
     private final TicketLedgerRepository ledgerRepository = mock(TicketLedgerRepository.class);
     private final UserTicketBalanceRepository balanceRepository = mock(UserTicketBalanceRepository.class);
-    /** 원장 반영 동작을 보려고 상태만 보는 테스트 정책을 쓴다. 운영 기본 정책은 아래 fail-closed 테스트가 확인한다. */
-    private final QuizRewardExecutionPolicy executionPolicy = new StatusOnlyTestQuizRewardExecutionPolicy();
+    private final TicketQuizRewardExecutionRepository executionRepository =
+            mock(TicketQuizRewardExecutionRepository.class);
+    /** 운영 정책을 그대로 쓰고, 저장된 실행 기록만 mock으로 준다. */
+    private final QuizRewardExecutionPolicy executionPolicy =
+            new StoredExecutionQuizRewardExecutionPolicy(executionRepository);
     private final QuizRewardLedgerService service = new QuizRewardLedgerService(earnRequestRepository,
             quizRepository, ledgerRepository, balanceRepository, executionPolicy, Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -65,16 +70,20 @@ class QuizRewardLedgerServiceTest {
         given(earnRequestRepository.findByRequestIdForUpdate(REQUEST_ID.toString())).willReturn(Optional.of(claim));
         given(quizRepository.findByRewardRequestIdForUpdate(REQUEST_ID.toString())).willReturn(Optional.of(request));
         given(balanceRepository.findByMemberIdAndCreatorIdForUpdate(7L, 10L)).willReturn(Optional.of(balance));
+        given(executionRepository.findByExecutionToken("token-1")).willReturn(Optional.of(
+                TicketQuizRewardExecution.start(QUIZ_REQUEST_ID, 1, "token-1", NOW)));
     }
 
     @Test
     void 잠근_순서대로_검증한_뒤_원장_잔액_APPLIED_ACCEPTED를_한_Transaction에서_반영한다() throws Exception {
         service.apply(event);
 
-        InOrder order = inOrder(earnRequestRepository, quizRepository, ledgerRepository, balanceRepository);
+        InOrder order = inOrder(earnRequestRepository, quizRepository, ledgerRepository, executionRepository,
+                balanceRepository);
         order.verify(earnRequestRepository).findByRequestIdForUpdate(REQUEST_ID.toString());
         order.verify(quizRepository).findByRewardRequestIdForUpdate(REQUEST_ID.toString());
         order.verify(ledgerRepository).findByRequestId(REQUEST_ID.toString());
+        order.verify(executionRepository).findByExecutionToken("token-1");
         order.verify(balanceRepository).findByMemberIdAndCreatorIdForUpdate(7L, 10L);
         order.verify(ledgerRepository).save(any(TicketLedger.class));
         TicketLedger ledger = savedLedger();
@@ -191,21 +200,25 @@ class QuizRewardLedgerServiceTest {
     }
 
     @Test
-    void 운영_기본_정책은_허용_상태라도_실행권을_확인할_수_없으면_원장_잔액_상태를_바꾸지_않는다() {
-        QuizRewardLedgerService failClosed = new QuizRewardLedgerService(earnRequestRepository, quizRepository,
-                ledgerRepository, balanceRepository, new FailClosedQuizRewardExecutionPolicy(),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+    void 저장되지_않았거나_다른_요청의_실행권이면_허용_상태라도_원장_잔액_상태를_바꾸지_않는다() {
         QuizEarnEvent forged = new QuizEarnEvent(REQUEST_ID, 100L, 7L, 10L, 3, 3L,
                 QuizRewardCommand.FINGERPRINT_VERSION, command.computeFingerprint(), "arbitrary-token");
+        given(executionRepository.findByExecutionToken("other-request-token")).willReturn(Optional.of(
+                TicketQuizRewardExecution.start(QUIZ_REQUEST_ID + 1, 1, "other-request-token", NOW)));
+        QuizEarnEvent otherRequestToken = new QuizEarnEvent(REQUEST_ID, 100L, 7L, 10L, 3, 3L,
+                QuizRewardCommand.FINGERPRINT_VERSION, command.computeFingerprint(), "other-request-token");
 
         for (QuizRewardRequestStatus status : new QuizRewardRequestStatus[] {QuizRewardRequestStatus.EXECUTING,
                 QuizRewardRequestStatus.ACCEPTED, QuizRewardRequestStatus.UNKNOWN}) {
-            TicketQuizRewardRequest stored = request(status);
-            given(quizRepository.findByRewardRequestIdForUpdate(REQUEST_ID.toString())).willReturn(Optional.of(stored));
+            for (QuizEarnEvent rejected : new QuizEarnEvent[] {forged, otherRequestToken}) {
+                TicketQuizRewardRequest stored = request(status);
+                given(quizRepository.findByRewardRequestIdForUpdate(REQUEST_ID.toString()))
+                        .willReturn(Optional.of(stored));
 
-            assertThatThrownBy(() -> failClosed.apply(forged)).isInstanceOf(IllegalStateException.class);
-            assertThat(stored.getStatus()).isEqualTo(status);
-            assertThat(stored.getAppliedAt()).isNull();
+                assertThatThrownBy(() -> service.apply(rejected)).isInstanceOf(IllegalStateException.class);
+                assertThat(stored.getStatus()).isEqualTo(status);
+                assertThat(stored.getAppliedAt()).isNull();
+            }
         }
         verify(ledgerRepository, never()).save(any());
         verify(balanceRepository, never()).findByMemberIdAndCreatorIdForUpdate(any(), any());
@@ -215,16 +228,14 @@ class QuizRewardLedgerServiceTest {
     }
 
     @Test
-    void 운영_기본_정책에서도_이미_반영된_요청의_검증된_중복_전달은_그대로_멱등_처리한다() {
-        QuizRewardLedgerService failClosed = new QuizRewardLedgerService(earnRequestRepository, quizRepository,
-                ledgerRepository, balanceRepository, new FailClosedQuizRewardExecutionPolicy(),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+    void 이미_반영된_요청의_검증된_중복_전달은_실행권을_다시_보지_않고_멱등_처리한다() {
         request.markApplied(NOW);
         given(ledgerRepository.findByRequestId(REQUEST_ID.toString())).willReturn(Optional.of(quizLedger(3L)));
 
-        failClosed.apply(event);
+        service.apply(event);
 
         verify(ledgerRepository, never()).save(any());
+        verify(executionRepository, never()).findByExecutionToken(any());
         assertThat(balance.getBalance()).isEqualTo(4L);
     }
 

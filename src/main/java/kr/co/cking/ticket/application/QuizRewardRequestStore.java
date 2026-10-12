@@ -3,6 +3,7 @@ package kr.co.cking.ticket.application;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.application.dto.QuizRewardCommand;
+import kr.co.cking.ticket.domain.QuizRewardRequestStatus;
 import kr.co.cking.ticket.domain.TicketQuizRewardRequest;
 import kr.co.cking.ticket.repository.TicketEarnRequestRepository;
 import kr.co.cking.ticket.repository.TicketQuizRewardRequestRepository;
@@ -68,6 +69,13 @@ public class QuizRewardRequestStore {
             return Optional.of(QuizRewardAdmission.conflict(QuizRewardAdmission.Outcome.ATTEMPT_CONFLICT));
         }
         return Optional.empty();
+    }
+
+    /** rewardRequestId로 접수된 요청의 현재 상태. 접수되지 않았으면 빈 값이다. */
+    @Transactional(readOnly = true)
+    public Optional<QuizRewardRequestStatus> findStatus(String rewardRequestId) {
+        return quizRewardRequestRepository.findByRewardRequestId(rewardRequestId)
+                .map(TicketQuizRewardRequest::getStatus);
     }
 
     /**

@@ -35,6 +35,17 @@ class TicketQuizRewardServiceTest {
     }
 
     @Test
+    void 지급_상태는_rewardRequestId로_조회하고_접수되지_않았으면_빈_값이다() {
+        given(store.findStatus(command.rewardRequestId().toString()))
+                .willReturn(Optional.of(QuizRewardRequestStatus.APPLIED));
+        UUID unknown = UUID.randomUUID();
+        given(store.findStatus(unknown.toString())).willReturn(Optional.empty());
+
+        assertThat(service.findStatus(command.rewardRequestId())).contains(QuizRewardRequestStatus.APPLIED);
+        assertThat(service.findStatus(unknown)).isEmpty();
+    }
+
+    @Test
     void 처음_보는_요청은_새로_접수한다() {
         given(store.findExisting(command)).willReturn(Optional.empty());
         given(store.insert(command)).willReturn(QuizRewardAdmission.received(1L, QuizRewardRequestStatus.RECEIVED));

@@ -6,7 +6,10 @@ import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.application.dto.QuizEarnEvent;
+import kr.co.cking.ticket.application.dto.QuizRedisEarnOutcome;
+import kr.co.cking.ticket.application.dto.QuizRedisEarnResult;
 import kr.co.cking.ticket.application.dto.QuizRewardCommand;
+import kr.co.cking.ticket.domain.QuizRewardRequestStatus;
 import kr.co.cking.ticket.domain.TicketLedger;
 import kr.co.cking.ticket.repository.TicketLedgerRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -47,13 +50,14 @@ import static org.mockito.Mockito.reset;
 /**
  * 실제 MySQL로 Quiz 보상 EARN 반영(원장·DB 잔액·APPLIED)의 원자성·멱등성과 V61 원장 제약을 확인한다(이슈 #533).
  * CI에서만 실행한다. Redis는 쓰지 않고, 메시지는 정상 소비와 같은 분기({@link TicketEarnEventDispatcher})로 넣는다.
- * Redis 실행 단계가 아직 없으므로 요청을 EXECUTING으로 직접 바꾸고, 운영 기본 정책(fail-closed) 대신 상태만 보는
- * 테스트 정책({@link StatusOnlyTestQuizRewardExecutionPolicy})으로 원장 반영 동작을 확인한다.
+ * Redis 실행 없이 실행권을 실제로 발급해(요청 EXECUTING, 실행 STARTED) 운영 정책
+ * ({@link StoredExecutionQuizRewardExecutionPolicy})으로 원장 반영 동작을 확인한다.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({TicketQuizRewardService.class, QuizRewardRequestStore.class, QuizRewardLedgerService.class,
-        TicketEarnEventDispatcher.class, TicketEarnLedgerService.class,
+        TicketEarnEventDispatcher.class, TicketEarnLedgerService.class, StoredExecutionQuizRewardExecutionPolicy.class,
+        QuizRewardExecutionClaimService.class, QuizRewardExecutionStore.class,
         QuizRewardLedgerServiceIntegrationTest.FixedClockConfiguration.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class QuizRewardLedgerServiceIntegrationTest {
@@ -65,6 +69,10 @@ class QuizRewardLedgerServiceIntegrationTest {
     private TicketQuizRewardService admissionService;
     @Autowired
     private TicketEarnEventDispatcher dispatcher;
+    @Autowired
+    private QuizRewardExecutionClaimService claimService;
+    @Autowired
+    private QuizRewardExecutionStore executionStore;
     @Autowired
     private MemberRepository memberRepository;
     @Autowired
@@ -91,6 +99,8 @@ class QuizRewardLedgerServiceIntegrationTest {
         reset(ticketLedgerRepository);
         jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", member.getMemberId());
         jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ?", member.getMemberId());
+        jdbcTemplate.update("DELETE e FROM ticket_quiz_reward_execution e JOIN ticket_quiz_reward_request r "
+                + "ON e.quiz_reward_request_id = r.quiz_reward_request_id WHERE r.member_id = ?", member.getMemberId());
         jdbcTemplate.update("DELETE FROM ticket_quiz_reward_request WHERE member_id = ?", member.getMemberId());
         for (String requestId : requestIds) {
             jdbcTemplate.update("DELETE FROM ticket_earn_request WHERE request_id = ?", requestId);
@@ -159,7 +169,7 @@ class QuizRewardLedgerServiceIntegrationTest {
     void 실행을_시작하지_않은_요청의_메시지는_반영하지_않는다() {
         QuizRewardCommand command = command(3);
         admissionService.admit(command);
-        QuizEarnEvent event = event(command);
+        QuizEarnEvent event = event(command, UUID.randomUUID().toString());
 
         assertThatThrownBy(() -> dispatcher.apply(event.toStreamFields())).isInstanceOf(IllegalStateException.class);
         assertThat(count("SELECT COUNT(*) FROM ticket_ledger WHERE member_id = ?", member.getMemberId())).isZero();
@@ -224,18 +234,79 @@ class QuizRewardLedgerServiceIntegrationTest {
         assertThat(jdbcTemplate.update(insert, memberId, creatorId, null, 1L, "COMPENSATE", null)).isEqualTo(1);
     }
 
+    /** 접수 후 실행권을 발급해(요청 EXECUTING, 실행 STARTED) 그 실행권으로 발행됐을 메시지를 만든다. */
     private QuizEarnEvent executing(int correctCount) {
         QuizRewardCommand command = command(correctCount);
         admissionService.admit(command);
-        jdbcTemplate.update("UPDATE ticket_quiz_reward_request SET status = 'EXECUTING' WHERE reward_request_id = ?",
-                command.rewardRequestId().toString());
-        return event(command);
+        QuizRewardExecutionClaim claim = claimService.claim(command);
+        assertThat(claim.outcome()).isEqualTo(QuizRewardExecutionClaim.Outcome.CLAIMED);
+        return event(command, claim.executionToken());
     }
 
-    private static QuizEarnEvent event(QuizRewardCommand command) {
+    private static QuizEarnEvent event(QuizRewardCommand command, String executionToken) {
         return new QuizEarnEvent(command.rewardRequestId(), command.attemptId(), command.memberId(),
                 command.creatorId(), command.correctCount(), command.amount(), QuizRewardCommand.FINGERPRINT_VERSION,
-                command.computeFingerprint(), "token-1");
+                command.computeFingerprint(), executionToken);
+    }
+
+    private String requestStatus(QuizEarnEvent event) {
+        return jdbcTemplate.queryForObject("SELECT status FROM ticket_quiz_reward_request WHERE reward_request_id = ?",
+                String.class, event.requestId().toString());
+    }
+
+    private QuizRedisEarnResult accepted() {
+        return new QuizRedisEarnResult(QuizRedisEarnOutcome.ACCEPTED, "1-0", 3L, null, null);
+    }
+
+    @Test
+    void 응답_유실로_UNKNOWN이_된_요청도_저장된_실행권의_메시지면_반영한다() {
+        QuizEarnEvent event = executing(3);
+        executionStore.finish(event.requestId(), event.executionToken(), QuizRedisEarnResult.unknown("TIMEOUT"));
+        assertThat(requestStatus(event)).isEqualTo("UNKNOWN");
+
+        dispatcher.apply(event.toStreamFields());
+
+        assertThat(requestStatus(event)).isEqualTo("APPLIED");
+        assertThat(balance()).isEqualTo(3L);
+    }
+
+    @Test
+    void 위조_다른_요청_무반영_실행의_실행권이나_재시도_대기_상태의_메시지는_반영하지_않는다() {
+        QuizEarnEvent event = executing(3);
+        QuizEarnEvent otherRequest = executing(2);
+        // 저장되지 않은 실행권
+        assertThatThrownBy(() -> dispatcher.apply(event(commandOf(event), UUID.randomUUID().toString())
+                .toStreamFields())).isInstanceOf(IllegalStateException.class);
+        // 다른 요청의 실행권
+        assertThatThrownBy(() -> dispatcher.apply(event(commandOf(event), otherRequest.executionToken())
+                .toStreamFields())).isInstanceOf(IllegalStateException.class);
+        // 무반영으로 확인된 실행의 실행권(요청은 RETRYABLE_FAILURE)
+        executionStore.finish(event.requestId(), event.executionToken(),
+                QuizRedisEarnResult.of(QuizRedisEarnOutcome.RETRYABLE_FAILURE, "XADD_FAILED"));
+        assertThat(requestStatus(event)).isEqualTo("RETRYABLE_FAILURE");
+        assertThatThrownBy(() -> dispatcher.apply(event.toStreamFields())).isInstanceOf(IllegalStateException.class);
+
+        assertThat(count("SELECT COUNT(*) FROM ticket_ledger WHERE member_id = ?", member.getMemberId())).isZero();
+        assertThat(requestStatus(event)).isEqualTo("RETRYABLE_FAILURE");
+    }
+
+    @Test
+    void Consumer가_먼저_APPLIED로_만든_뒤_Worker_결과가_와도_APPLIED를_유지한다() {
+        QuizEarnEvent event = executing(3);
+        dispatcher.apply(event.toStreamFields());
+
+        assertThat(executionStore.finish(event.requestId(), event.executionToken(), accepted()))
+                .isEqualTo(QuizRewardExecutionStore.FinishOutcome.RECORDED_REQUEST_ALREADY_APPLIED);
+        dispatcher.apply(event.toStreamFields());
+
+        assertThat(requestStatus(event)).isEqualTo("APPLIED");
+        assertThat(count("SELECT COUNT(*) FROM ticket_ledger WHERE member_id = ?", member.getMemberId())).isEqualTo(1);
+        assertThat(admissionService.findStatus(event.requestId())).contains(QuizRewardRequestStatus.APPLIED);
+    }
+
+    private static QuizRewardCommand commandOf(QuizEarnEvent event) {
+        return new QuizRewardCommand(event.attemptId(), event.memberId(), event.creatorId(), event.correctCount(),
+                event.requestId());
     }
 
     private QuizRewardCommand command(int correctCount) {
@@ -264,11 +335,6 @@ class QuizRewardLedgerServiceIntegrationTest {
         @Bean
         Clock clock() {
             return Clock.fixed(Instant.parse("2026-10-12T00:00:00Z"), ZoneOffset.UTC);
-        }
-
-        @Bean
-        QuizRewardExecutionPolicy quizRewardExecutionPolicy() {
-            return new StatusOnlyTestQuizRewardExecutionPolicy();
         }
     }
 }
