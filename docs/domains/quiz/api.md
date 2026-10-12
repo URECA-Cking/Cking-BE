@@ -5,7 +5,7 @@
 ## 인증
 
 - `/api/creator/quizzes/**`는 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다. 없는 Member는 `RESOURCE_NOT_FOUND`(404), Creator가 아니거나 다른 Creator의 Quiz면 `FORBIDDEN`(403)이다.
-- `GET /api/creators/{creatorId}/quizzes/**`(공개 조회)는 인증이 필요 없다.
+- 공개 Quiz 목록·상세 GET은 인증이 필요 없다. [답안 제출·본인 결과 조회](attempt-api.md)는 JWT 인증이 필수다.
 
 ## Judge 평가와 승인
 
@@ -18,7 +18,7 @@ Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가
 | `publicationStatus` | `NOT_PUBLISHED`, `PUBLISHED`, `UNPUBLISHED` |
 | `reviewStatus` | revision 검토 상태. `PENDING_REVIEW`, `APPROVED`, `REJECTED` |
 | `questionNo`, `optionNo` | 0부터 시작하는 표시 순서 |
-| `correctOptionIndex` | 0-based. 정답 보기의 `optionNo`와 같다(Creator API에만 있다) |
+| `correctOptionIndex` | 0-based. 정답 보기의 `optionNo`와 같다(Creator 검토 및 본인 응시 결과에만 있다) |
 | `publishedAt` | 현재(또는 마지막) 게시가 시작된 시각. 재게시·게시 revision 변경 때 갱신된다. 게시한 적 없으면 null |
 | `unpublishedAt` | 그 게시가 취소된 시각. `PUBLISHED`이면 항상 null이고, 재게시하면 지워진다 |
 | 시각 | UTC Instant |
@@ -254,3 +254,7 @@ YouTube 영상으로 Quiz 생성을 요청한다. 응답 `202`와 생성 작업.
 | --- | --- | --- |
 | `RESOURCE_NOT_FOUND` | 404 | Creator 없음 |
 | `QUIZ_NOT_FOUND` | 404 | Quiz 없음, 미게시·게시 취소, 다른 Creator의 Quiz |
+
+## Fan 응시
+
+[답안 제출·서버 채점·본인 결과 조회 계약](attempt-api.md)을 따른다. 공개 Quiz 조회의 정답 비노출은 유지한다.

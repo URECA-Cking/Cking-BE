@@ -33,7 +33,7 @@ Creator 명시적 승인 → 저장된 평가/해시 검증 → 게시 → Fan �
 
 **CONFIRMED**: 기본 기능 OFF, OpenAI 모델·token·timeout·Executor 값은 운영 검증 전 초기값이다. 모델 접근 권한·최대 입력 latency·실제 비용·평가 품질과 실제 Provider E2E는 아직 확인하지 않았다. Fake 연결 및 MySQL 제약 검증은 CI 전용이며 로컬 통합 테스트 실행 결과로 주장하지 않는다.
 
-**DECISION REQUIRED**: 영상 이용 권한 확인, 운영 기능 활성화, 실제 Provider 검증 및 비용·quota 운영 기준, Fan 풀이·채점·미션·보상 연결. 새로운 수정/재생성 API와 관리자 override는 현재 범위 밖이다.
+**DECISION REQUIRED**: 영상 이용 권한 확인, 운영 기능 활성화, 실제 Provider 검증 및 비용·quota 운영 기준, Ticket 지급·Outbox 연동. Fan 제출·서버 채점·본인 결과는 [응시 API](attempt-api.md)에서 정의한다. 새로운 수정/재생성 API와 관리자 override는 현재 범위 밖이다.
 
 ## #514 당시 구현과 근거
 
@@ -204,3 +204,8 @@ Judge를 도입해도 text-relative 평가라는 한계와 Creator 최종 판단
 - [Creator YouTube 채널 Service](../../../src/main/java/kr/co/cking/subscriptionverification/application/CreatorYoutubeChannelService.java)
 - [DB 정본](../../../src/main/resources/db/migration/), [Core 테스트](../../../src/test/java/kr/co/cking/quiz/generation/)
 - [조직 협업 규칙](https://github.com/URECA-Cking/.github/blob/main/CONTRIBUTING.md)
+
+## Fan 응시 구현 (#535)
+
+**CONFIRMED**: JWT 본인 제출·서버 채점·불변 결과 조회는 [응시 API](attempt-api.md)를 따른다. 공개 조회에는 정답·해설·근거를 포함하지 않는다.
+**DECISION REQUIRED**: 실제 Ticket 지급·Outbox 연동은 후속 범위이며 저장된 rewardRequestId를 재사용해야 한다.
