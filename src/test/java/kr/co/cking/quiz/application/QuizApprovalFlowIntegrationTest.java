@@ -31,12 +31,12 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 테스트 전용 승인 정책으로 승인·게시·게시 취소·재게시와 동시 요청을 실제 MySQL에서 확인한다. */
+/** 실제 저장된 Fake 평가와 운영 승인 정책으로 승인·게시·재게시와 동시 요청을 MySQL에서 확인한다. */
 @SpringBootTest
 class QuizApprovalFlowIntegrationTest {
 
-    @TestBean
-    private QuizApprovalPolicy approvalPolicy;
+    @Autowired
+    private org.springframework.context.ApplicationContext context;
 
     @Autowired
     private CreatorQuizCommandService commandService;
@@ -55,15 +55,13 @@ class QuizApprovalFlowIntegrationTest {
     private Creator creator;
     private QuizDraft draft;
 
-    static QuizApprovalPolicy approvalPolicy() {
-        return new FakeQuizApprovalPolicy();
-    }
-
     @BeforeEach
     void setUp() {
         data = new QuizIntegrationData(memberRepository, creatorRepository, draftService, jdbcTemplate);
         creator = data.creator();
-        draft = data.draft(creator);
+        QuizJudgeIntegrationFixture fixture = new QuizJudgeIntegrationFixture(context);
+        draft = fixture.draft(creator);
+        fixture.saveResult(creator, draft, kr.co.cking.quiz.judge.JudgeVerdict.PASS);
     }
 
     @AfterEach
@@ -74,6 +72,7 @@ class QuizApprovalFlowIntegrationTest {
     @Test
     void 승인_게시_게시취소_재게시와_공개_조회() {
         Long memberId = creator.getMemberId();
+        assertThat(data.decisionCount(draft.revisionId())).isZero();
         assertThat(publicQueryService.findPublished(creator.getCreatorId(), PageRequest.of(0, 20))).isEmpty();
 
         commandService.approve(memberId, draft.quizId(), draft.revisionId());
@@ -83,7 +82,7 @@ class QuizApprovalFlowIntegrationTest {
         assertThat(detail.revisionId()).isEqualTo(draft.revisionId());
         assertThat(detail.videoId()).isEqualTo(QuizFixtures.VIDEO_ID);
         assertThat(detail.questions()).extracting(PublicQuizViews.Question::question)
-                .containsExactly("물이 증발하면 무엇이 되나요?", "구름은 무엇이 되어 내리나요?");
+                .containsExactly("물의 순환 질문 1", "물의 순환 질문 2", "물의 순환 질문 3");
         assertThat(publicQueryService.findPublished(creator.getCreatorId(), PageRequest.of(0, 20)))
                 .extracting(PublicQuizViews.Summary::quizId).containsExactly(draft.quizId());
 
@@ -170,5 +169,50 @@ class QuizApprovalFlowIntegrationTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void 기능_OFF와_모델_설정_변경은_기존_평가의_승인과_게시를_막지_않는다() {
+        var properties = context.getBean(kr.co.cking.quiz.application.config.QuizJudgeEvaluationProperties.class);
+        var provider = context.getBean(kr.co.cking.quiz.judge.openai.OpenAiJudgeProperties.class);
+        boolean enabled = properties.isEnabled();
+        String model = provider.getModel();
+        var pricing = provider.getPricing();
+        String pricingVersion = pricing.getVersion();
+        var inputPrice = pricing.getInputUsdPerMillionTokens();
+        var cachedPrice = pricing.getCachedInputUsdPerMillionTokens();
+        var outputPrice = pricing.getOutputUsdPerMillionTokens();
+        try {
+            properties.setEnabled(false);
+            commandService.approve(creator.getMemberId(), draft.quizId(), draft.revisionId());
+            provider.setModel("changed-model");
+            pricing.setVersion("changed-pricing");
+            pricing.setInputUsdPerMillionTokens(java.math.BigDecimal.ONE);
+            pricing.setCachedInputUsdPerMillionTokens(java.math.BigDecimal.ZERO);
+            pricing.setOutputUsdPerMillionTokens(java.math.BigDecimal.TEN);
+            commandService.approve(creator.getMemberId(), draft.quizId(), draft.revisionId());
+            assertThat(commandService.publish(creator.getMemberId(), draft.quizId(), draft.revisionId())
+                    .publicationStatus()).isEqualTo(QuizPublicationStatus.PUBLISHED);
+        } finally {
+            properties.setEnabled(enabled);
+            provider.setModel(model);
+            pricing.setVersion(pricingVersion);
+            pricing.setInputUsdPerMillionTokens(inputPrice);
+            pricing.setCachedInputUsdPerMillionTokens(cachedPrice);
+            pricing.setOutputUsdPerMillionTokens(outputPrice);
+        }
+    }
+
+    @Test
+    void 다른_revision의_결과를_승인_근거로_연결하면_DB가_거부한다() {
+        var fixture = new QuizJudgeIntegrationFixture(context);
+        var other = fixture.draft(creator);
+        var otherResult = fixture.saveResult(creator, other, kr.co.cking.quiz.judge.JudgeVerdict.PASS);
+        assertThatThrownBy(() -> jdbcTemplate.update("INSERT INTO quiz_revision_decision "
+                + "(revision_id, decision, decided_by_member_id, judge_evaluation_id, judge_evaluation_sha256, decided_at) "
+                + "VALUES (?, 'APPROVED', ?, ?, ?, UTC_TIMESTAMP(6))", draft.revisionId(), creator.getMemberId(),
+                otherResult.getResultId(), otherResult.getResultSha256()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(data.decisionCount(draft.revisionId())).isZero();
     }
 }

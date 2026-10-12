@@ -80,6 +80,7 @@ class PublicQuizControllerTest {
         Set<String> keys = new HashSet<>();
         collectKeys(new ObjectMapper().readTree(body), keys);
         assertThat(keys).contains("videoId", "questions", "options");
+        assertThat(keys).doesNotContain("aggregation", "verdict", "reason", "evaluationId", "resultId", "judgeEvaluationId");
         keys.forEach(key -> assertThat(FORBIDDEN_NAMES).noneMatch(key.toLowerCase(Locale.ROOT)::contains));
     }
 

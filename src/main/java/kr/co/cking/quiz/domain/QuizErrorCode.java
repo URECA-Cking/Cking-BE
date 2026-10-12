@@ -18,7 +18,17 @@ public enum QuizErrorCode implements ErrorCode {
     QUIZ_GENERATION_NOT_FOUND(HttpStatus.NOT_FOUND, "Quiz 생성 작업을 찾을 수 없습니다."),
     QUIZ_GENERATION_REQUEST_CONFLICT(HttpStatus.CONFLICT, "같은 requestId로 다른 내용의 생성 요청이 이미 있습니다."),
     QUIZ_GENERATION_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 Quiz 생성 작업이 있습니다."),
-    QUIZ_GENERATION_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "지금은 Quiz를 생성할 수 없습니다.");
+    QUIZ_GENERATION_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "지금은 Quiz를 생성할 수 없습니다."),
+    QUIZ_JUDGE_EVALUATION_NOT_FOUND(HttpStatus.NOT_FOUND, "평가 작업을 찾을 수 없습니다."),
+    QUIZ_JUDGE_REQUEST_CONFLICT(HttpStatus.CONFLICT, "같은 requestId로 다른 평가 요청이 있습니다."),
+    QUIZ_JUDGE_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 평가가 있습니다."),
+    QUIZ_JUDGE_ATTEMPT_LIMIT_REACHED(HttpStatus.CONFLICT, "평가 시도 한도에 도달했습니다."),
+    QUIZ_JUDGE_EVALUATION_COMPLETED(HttpStatus.CONFLICT, "완료된 평가를 다시 실행할 수 없습니다."),
+    QUIZ_JUDGE_REVISION_APPROVED(HttpStatus.CONFLICT, "승인된 revision은 다시 평가할 수 없습니다."),
+    QUIZ_JUDGE_SETTINGS_MISMATCH(HttpStatus.CONFLICT, "평가 설정이 바뀌어 이 revision을 다시 평가할 수 없습니다."),
+    QUIZ_JUDGE_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "지금은 평가를 요청할 수 없습니다."),
+    QUIZ_JUDGE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "지금은 평가를 실행할 수 없습니다."),
+    QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "평가 데이터를 확인할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

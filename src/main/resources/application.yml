@@ -145,6 +145,39 @@ cking:
         pool-size: ${QUIZ_GENERATION_EXECUTOR_POOL_SIZE:2}
         queue-capacity: ${QUIZ_GENERATION_EXECUTOR_QUEUE_CAPACITY:10}
         await-termination-seconds: ${QUIZ_GENERATION_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+    # Quiz revision GPT Pointwise Judge(이슈 #529, OpenAI Responses API). 유료 Provider라 기본으로 꺼 둔다.
+    # model·timeout·token 한도는 실제 Provider 검증 전 잠정값이다. 비용 단가는 기본값이 없고 비우면 추정하지 않는다.
+    judge:
+      enabled: ${QUIZ_JUDGE_ENABLED:false}
+      # 오래된 평가 Job 정리 기준. stale-running은 execution-timeout보다 길어야 한다. 운영 확인 전 초기값이다.
+      stale-pending: ${QUIZ_JUDGE_STALE_PENDING:PT15M}
+      stale-running: ${QUIZ_JUDGE_STALE_RUNNING:PT5M}
+      # Quiz 생성과 분리한 Judge 전용 Executor. 운영 확인 전 초기값이다.
+      executor:
+        pool-size: ${QUIZ_JUDGE_EXECUTOR_POOL_SIZE:1}
+        queue-capacity: ${QUIZ_JUDGE_EXECUTOR_QUEUE_CAPACITY:4}
+        await-termination-seconds: ${QUIZ_JUDGE_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${QUIZ_JUDGE_BASE_URL:https://api.openai.com/v1}
+      model: ${QUIZ_JUDGE_MODEL:gpt-6.1-sol}
+      reasoning-effort: ${QUIZ_JUDGE_REASONING_EFFORT:medium}
+      max-output-tokens:
+        three-questions: ${QUIZ_JUDGE_MAX_OUTPUT_TOKENS_3:8192}
+        five-questions: ${QUIZ_JUDGE_MAX_OUTPUT_TOKENS_5:12288}
+      connect-timeout: ${QUIZ_JUDGE_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${QUIZ_JUDGE_READ_TIMEOUT:PT60S}
+      execution-timeout: ${QUIZ_JUDGE_EXECUTION_TIMEOUT:PT150S}
+      http:
+        max-attempts: ${QUIZ_JUDGE_HTTP_MAX_ATTEMPTS:2}
+        retry-backoff: ${QUIZ_JUDGE_RETRY_BACKOFF:PT1S}
+        retry-after-max: ${QUIZ_JUDGE_RETRY_AFTER_MAX:PT5S}
+      # 정책 상한은 200자다. 환경변수로 이를 초과하면 기동 검증에서 거부한다.
+      reason-max-length: ${QUIZ_JUDGE_REASON_MAX_LENGTH:200}
+      pricing:
+        version: ${QUIZ_JUDGE_PRICING_VERSION:}
+        input-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_INPUT:}
+        cached-input-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_CACHED_INPUT:}
+        output-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_OUTPUT:}
   comment-filter:
     # 별도 필터 서비스가 준비될 때까지 꺼 둔다. 꺼져 있으면 댓글은 판정 없이 PENDING으로 남는다.
     enabled: ${COMMENT_FILTER_ENABLED:false}

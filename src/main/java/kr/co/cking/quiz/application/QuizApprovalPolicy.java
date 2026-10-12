@@ -5,9 +5,8 @@ import kr.co.cking.quiz.domain.QuizRevisionDecision;
 /**
  * revision을 승인·게시할 수 있는지 Judge 평가로 판정한다.
  *
- * <p>운영 구현은 Judge 연동 전까지 {@link JudgeNotIntegratedQuizApprovalPolicy} 하나뿐이며 항상 거부한다.
- * 설정·Profile로 다른 구현을 고르는 장치를 두지 않는다. Judge 연동 Issue에서 평가 저장소를 검증하는 구현으로
- * 교체한다.
+ * <p>운영 구현은 저장된 불변 Judge 결과를 검증한다. 현재 Provider 설정이나 기능 활성화 여부로 과거 근거를
+ * 무효화하지 않는다.
  */
 public interface QuizApprovalPolicy {
 

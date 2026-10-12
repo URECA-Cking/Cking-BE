@@ -2,21 +2,42 @@
 
 ## 목적과 범위
 
-[Issue #514](https://github.com/URECA-Cking/Cking-BE/issues/514)의 서비스 연결 계약 초안이다.
+[Issue #514](https://github.com/URECA-Cking/Cking-BE/issues/514)의 초기 설계 기록과 이후 구현 상태를 함께 관리한다.
 기존 `QuizGenerator`와 Gemini Adapter를 재사용하고, Benchmark는 품질 기준과 참고 구현으로 활용한다.
 Python 파이프라인의 운영 서비스화 또는 전체 Java 이식을 전제로 하지 않는다.
-운영 코드, DB migration, 외부 API 구현과 실제 Provider 호출은 이번 문서 범위 밖이다.
+이 문서는 설계·구현 경계를 설명하며 실제 Provider E2E 성공을 주장하지 않는다.
 
 - **CONFIRMED**: 기준 코드·정본 문서에서 확인된 사실.
 - **PROPOSED**: 이번 문서가 권장하는 설계. 구현 완료나 팀 합의를 뜻하지 않는다.
 - **DECISION REQUIRED**: 구현 전에 팀 합의가 필요한 정책.
 
-이 문서는 현황과 설계 경계를 정리한다. endpoint, DTO, 테이블, 상태 enum 및 운영 정책을 확정하지 않는다.
-API 구현 시 [API 인덱스](../../api-index.md)와 도메인 API 문서를 함께 갱신한다.
+현재 구현된 endpoint·DTO·상태·DB 계약은 [Quiz API](api.md), [Judge API](judge-api.md), [Quiz README](README.md)가 정본이다. 아래 #514 초기 제안은 당시 기록이며 현재 계약을 대신하지 않는다.
 
-## 현재 구현과 근거
+## 현재 연결 상태 (#521·#524·#525·#529)
 
-**CONFIRMED**: BE 기준은 develop `3f151c392ba2496ff3eeb20c54c796631606db71`이다.
+**CONFIRMED**: BE에서 Gemini YouTube Grounding → 기존 Gemini QuizGenerator → 불변 draft/revision 저장을 비동기 생성 Job으로 연결했다. Creator는 저장된 revision에 별도 Judge Job을 요청한다. Python Benchmark를 런타임에서 호출하지 않는다.
+
+```text
+Creator 생성 요청 → Grounding → QuizGenerator → 구조 검증 → draft 저장
+Creator 평가 요청 → OpenAI Pointwise Judge → 결과·실행 기록 저장
+Creator 명시적 승인 → 저장된 평가/해시 검증 → 게시 → Fan 조회
+```
+
+- 인증·소유권·Job·DB·승인·게시 책임은 BE에 있다. Judge는 contentText 기준이며 원본 영상을 재검증하거나 자동 승인하지 않는다.
+- 서비스 생성은 3·5문항 / 보기 4개이며 정답 index는 0-based다. Core의 일반 입력 범위와 서비스 정책을 구분한다.
+- V55는 Quiz/revision/Creator 결정, V56은 생성 Job, V57은 revision별 Judge series·attempt Job·HTTP 기록·불변 result/item을 저장한다.
+- requestId는 Creator별 UUID다. Judge는 revision당 최초 포함 2 attempts, Creator당 활성 Job 1개를 DB 제약과 행 잠금으로 제한한다. 평가와 생성 Executor는 분리한다.
+- SUCCEEDED는 유효한 평가 저장이며 fail/uncertain도 포함한다. 7개 항목이 모두 pass인 ALL_PASS만 명시적 승인 근거로 사용할 수 있다.
+- 승인 시 immutable result ID/hash를 고정하고 게시·재게시 시 같은 결과를 저장된 정책 버전으로 검증한다. 모델·prompt·pricing 변경과 feature OFF는 기존 유효 근거를 무효화하지 않는다.
+- Provider 호출은 DB Transaction 밖이다. timeout·interrupt·stale RUNNING은 UNKNOWN이며 늦은 결과는 폐기한다. 관측한 실행·부분 비용은 terminal 상태를 바꾸지 않고 기록할 수 있다.
+
+**CONFIRMED**: 기본 기능 OFF, OpenAI 모델·token·timeout·Executor 값은 운영 검증 전 초기값이다. 모델 접근 권한·최대 입력 latency·실제 비용·평가 품질과 실제 Provider E2E는 아직 확인하지 않았다. Fake 연결 및 MySQL 제약 검증은 CI 전용이며 로컬 통합 테스트 실행 결과로 주장하지 않는다.
+
+**DECISION REQUIRED**: 영상 이용 권한 확인, 운영 기능 활성화, 실제 Provider 검증 및 비용·quota 운영 기준, Fan 풀이·채점·미션·보상 연결. 새로운 수정/재생성 API와 관리자 override는 현재 범위 밖이다.
+
+## #514 당시 구현과 근거
+
+**CONFIRMED (당시)**: 초기 설계의 BE 기준은 develop `3f151c392ba2496ff3eeb20c54c796631606db71`이다. 이후 항목은 이 시점의 제안·미결정 기록으로 보존하며, 현재 상태는 위 절과 구현 정본을 우선한다.
 [PR #291](https://github.com/URECA-Cking/Cking-BE/pull/291)과
 [PR #300](https://github.com/URECA-Cking/Cking-BE/pull/300)은 develop에 병합됐다.
 

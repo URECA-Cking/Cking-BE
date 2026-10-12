@@ -64,6 +64,15 @@ class QuizIntegrationData {
                     + "WHERE creator_id = ?", creatorId);
             jdbcTemplate.update("DELETE d FROM quiz_revision_decision d JOIN quiz_revision r ON d.revision_id = r.revision_id "
                     + "JOIN quiz q ON r.quiz_id = q.quiz_id WHERE q.creator_id = ?", creatorId);
+            jdbcTemplate.update("DELETE i FROM quiz_judge_result_item i JOIN quiz_judge_result r ON i.result_id = r.result_id "
+                    + "JOIN quiz_judge_job j ON r.job_id = j.job_id WHERE j.creator_id = ?", creatorId);
+            jdbcTemplate.update("DELETE r FROM quiz_judge_result r JOIN quiz_judge_job j ON r.job_id = j.job_id "
+                    + "WHERE j.creator_id = ?", creatorId);
+            jdbcTemplate.update("DELETE c FROM quiz_judge_job_call c JOIN quiz_judge_job j ON c.job_id = j.job_id "
+                    + "WHERE j.creator_id = ?", creatorId);
+            jdbcTemplate.update("DELETE FROM quiz_judge_job WHERE creator_id = ?", creatorId);
+            jdbcTemplate.update("DELETE s FROM quiz_judge_series s JOIN quiz q ON s.quiz_id = q.quiz_id "
+                    + "WHERE q.creator_id = ?", creatorId);
             jdbcTemplate.update("DELETE o FROM quiz_option o JOIN quiz_question qq ON o.question_id = qq.question_id "
                     + "JOIN quiz_revision r ON qq.revision_id = r.revision_id JOIN quiz q ON r.quiz_id = q.quiz_id "
                     + "WHERE q.creator_id = ?", creatorId);

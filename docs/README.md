@@ -65,8 +65,10 @@
 - [Post](domains/post/README.md): Creator Space 게시글 공개 범위, 이미지 업로드 기록 상태와 정리 규칙
 - [Post API](domains/post/api.md): 게시글 작성·수정·삭제, 이미지 업로드, 공개 조회 API 계약
 - [Post Comment API](domains/post/comment-api.md): 게시글 댓글 조회·작성·수정·삭제 API 계약
-- [AI Quiz](domains/quiz/README.md): Quiz·불변 revision 저장, 검토·게시 상태, revision 해시와 Judge 미연동 승인 차단
+- [AI Quiz](domains/quiz/README.md): 비동기 생성·GPT Judge 평가, 불변 revision·결과, Creator 승인·게시와 해시 검증
 - [AI Quiz API](domains/quiz/api.md): Creator Quiz 조회·승인·거절·게시·게시 취소와 공개 조회 API 계약
+- [Quiz Judge API](domains/quiz/judge-api.md): Creator 평가 요청·조회, attempt·멱등성·실패 코드
+- [Quiz Judge 검증 목록](domains/quiz/judge-verification.md): #529 완료 조건별 구현·테스트와 로컬/CI 검증 경계
 - [AI Quiz 서비스 연결 설계](domains/quiz/integration-design.md): 생성·Grounding·Judge·승인·게시 책임 경계와 후속 작업 분리
 - [비정상 행동 탐지](domains/abuse-detection/README.md): Mission·Entry 행동 패턴 탐지, Redis feature, Evidence와 Fail Open 계약
 - [비정상 행동 탐지 API](domains/abuse-detection/api.md): 관리자 Detection 목록·상세·검토 API 계약
