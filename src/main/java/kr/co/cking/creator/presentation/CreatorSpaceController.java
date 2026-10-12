@@ -9,11 +9,18 @@ import jakarta.validation.constraints.Size;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
+import kr.co.cking.common.image.ImageProcessingLimiter;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageUploadService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageLinkService;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceRequest;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceResponse;
+import kr.co.cking.creator.presentation.dto.CreatorSpaceProfileImageResponse;
+import kr.co.cking.creator.presentation.dto.CreatorSpaceProfileImageRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.validation.annotation.Validated;
@@ -23,6 +30,14 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import java.io.IOException;
 
 /** Creator Space 홈·프로필 공개 조회와 Creator 본인의 조회·수정 HTTP 요청을 처리한다. */
 @RestController
@@ -32,6 +47,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class CreatorSpaceController {
 
     private final CreatorSpaceProfileService profileService;
+    private final CreatorSpaceProfileImageUploadService profileImageUploadService;
+    private final CreatorSpaceProfileImageLinkService profileImageLinkService;
+    private final ImageProcessingLimiter imageProcessingLimiter;
 
     /** 공개 Creator Space가 있는 Creator 목록을 페이지로 조회한다. */
     @Operation(
@@ -80,6 +98,30 @@ public class CreatorSpaceController {
         return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.findMine(memberId)));
     }
 
+    @Operation(summary = "Creator Space 프로필 이미지 업로드", description = "이미지를 올리고 Space 프로필 사진 연결에 사용할 imageKey를 반환합니다.")
+    @PostMapping(value = "/api/creator/space/profile-images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<CreatorSpaceProfileImageResponse>> uploadProfileImage(
+            @CurrentMemberId Long memberId, @RequestPart(value = "image", required = false) MultipartFile image
+    ) {
+        String key = imageProcessingLimiter.admit(() -> profileImageUploadService.upload(memberId, readBytes(image)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(new CreatorSpaceProfileImageResponse(key)));
+    }
+
+    @Operation(summary = "Creator Space 프로필 이미지 연결", description = "본인이 업로드한 imageKey를 현재 Creator Space 프로필 사진으로 연결합니다.")
+    @PutMapping("/api/creator/space/profile-image")
+    public ApiResponse<CreatorSpaceResponse.Mine> linkProfileImage(
+            @CurrentMemberId Long memberId, @Valid @RequestBody CreatorSpaceProfileImageRequest request
+    ) {
+        profileImageLinkService.link(memberId, request.imageKey());
+        return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.findMine(memberId)));
+    }
+
+    private byte[] readBytes(MultipartFile image) {
+        if (image == null) throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        try { return image.getBytes(); }
+        catch (IOException exception) { throw new BusinessException(CommonErrorCode.SYSTEM_ERROR); }
+    }
+
     /** 인증된 Creator 본인의 Creator Space 프로필을 갱신한다. */
     /** 인증된 Creator 본인의 Creator Space slug를 변경한다. */
     @Operation(
@@ -92,7 +134,8 @@ public class CreatorSpaceController {
             @Valid @RequestBody CreatorSpaceRequest.UpdateProfile request
     ) {
         CreatorSpaceProfileFields fields = new CreatorSpaceProfileFields(
-                request.introText(), request.profileImageUrl(), request.bannerImageUrl());
+                request.introText(), request.profileImageUrl(), request.bannerImageUrl(),
+                request.profileImageKey(), request.profileImageKeyProvided());
         return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.updateMine(memberId, fields)));
     }
 
