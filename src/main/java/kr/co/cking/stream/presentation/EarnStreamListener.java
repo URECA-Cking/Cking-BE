@@ -9,30 +9,30 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 import kr.co.cking.stream.scheduler.EarnStreamPelRecoveryScheduler;
-import kr.co.cking.ticket.application.TicketEarnLedgerService;
-import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.TicketEarnEventDispatcher;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * {@code stream:ticket-earned} 메시지를 {@link TicketEarnLedgerService}에 반영하고,
- * DB 반영이 끝난 뒤에만 XACK한다(명세: "DB Transaction Commit 이후에만 XACK").
+ * {@code stream:ticket-earned} 메시지를 적립 원인·버전별로 {@link TicketEarnEventDispatcher}에 넘겨 DB에 반영하고,
+ * DB 반영이 끝난 뒤에만 XACK한다(명세: "DB Transaction Commit 이후에만 XACK"). 원인·버전을 알 수 없는 메시지는
+ * 반영하지 않고 XACK하지 않는다.
  */
 @Slf4j
 @Component
 public class EarnStreamListener implements StreamListener<String, MapRecord<String, String, String>> {
 
-    private final TicketEarnLedgerService ticketEarnLedgerService;
+    private final TicketEarnEventDispatcher earnEventDispatcher;
     private final StringRedisTemplate redisTemplate;
     private final String streamKey;
     private final String consumerGroup;
 
     public EarnStreamListener(
-            TicketEarnLedgerService ticketEarnLedgerService,
+            TicketEarnEventDispatcher earnEventDispatcher,
             StringRedisTemplate redisTemplate,
             @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String streamKey,
             @Value("${cking.ticket.earn-consumer-group:cg:ticket-earn}") String consumerGroup
     ) {
-        this.ticketEarnLedgerService = ticketEarnLedgerService;
+        this.earnEventDispatcher = earnEventDispatcher;
         this.redisTemplate = redisTemplate;
         this.streamKey = streamKey;
         this.consumerGroup = consumerGroup;
@@ -53,8 +53,7 @@ public class EarnStreamListener implements StreamListener<String, MapRecord<Stri
         Map<String, String> fields = message.getValue();
 
         try {
-            EarnCommand command = EarnCommand.fromStreamFields(fields);
-            ticketEarnLedgerService.apply(command);
+            earnEventDispatcher.apply(fields);
             redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, message.getId());
             return true;
         } catch (Exception e) {

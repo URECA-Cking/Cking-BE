@@ -4,6 +4,9 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageLinkService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageUploadService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.CreatorErrorCode;
@@ -20,6 +23,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +35,8 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +56,15 @@ class CreatorSpaceControllerTest {
 
     @MockitoBean
     private CreatorSpaceProfileService profileService;
+
+    @MockitoBean
+    private CreatorSpaceProfileImageUploadService profileImageUploadService;
+
+    @MockitoBean
+    private CreatorSpaceProfileImageLinkService profileImageLinkService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
 
     @MockitoBean
     private MemberRepository memberRepository;
@@ -147,10 +162,58 @@ class CreatorSpaceControllerTest {
     }
 
     @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesExplicitNullImageKeyForDefaultImageRestore() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, true);
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "profileImageKey": null
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    @Test
     void updateMySpaceRequiresJwt() throws Exception {
         mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY))
                 .andExpect(status().isUnauthorized());
         then(profileService).should(never()).updateMine(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void uploadProfileImageReturnsConnectionKey() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+        given(profileImageUploadService.upload(eq(7L), any())).willReturn("creator-space-profile-images/42/image.jpg");
+
+        mockMvc.perform(multipart("/api/creator/space/profile-images")
+                        .file(new MockMultipartFile("image", "profile.png", "image/png", new byte[] {1})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.imageKey").value("creator-space-profile-images/42/image.jpg"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void linkProfileImageUsesAuthenticatedCreatorAndReturnsMine() throws Exception {
+        given(profileService.findMine(7L)).willReturn(view());
+
+        mockMvc.perform(put("/api/creator/space/profile-image")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"imageKey\":\"creator-space-profile-images/42/image.jpg\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").value(42));
+
+        then(profileImageLinkService).should().link(7L, "creator-space-profile-images/42/image.jpg");
     }
 
     /** 모든 필드를 한 번에 교체하므로 공백이거나 누락된 필드는 검증 실패다. */

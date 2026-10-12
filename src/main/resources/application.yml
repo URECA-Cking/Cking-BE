@@ -101,6 +101,10 @@ cking:
     profile-image:
       # local 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
       public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
+  creator:
+    space-profile-image:
+      # local Creator Space 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      public-base-url: ${CREATOR_SPACE_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
   verification:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.

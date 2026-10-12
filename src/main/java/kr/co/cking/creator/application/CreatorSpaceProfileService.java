@@ -35,6 +35,7 @@ public class CreatorSpaceProfileService {
     private final CreatorRepository creatorRepository;
     private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceSlugRegistry slugRegistry;
+    private final CreatorSpaceProfileImageManager profileImageManager;
     private final Clock clock;
     private final CreatorFollowQueryService followQueryService;
 
@@ -95,6 +96,9 @@ public class CreatorSpaceProfileService {
         Creator creator = requireCreator(memberId);
         CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
+        // profileImageKey가 명시되면(특히 null로 기본 이미지 복귀를 요청하면) 일반 URL 수정 뒤에
+        // 연결 상태를 적용해야 삭제 대상인 기존 CDN URL이 다시 저장되지 않는다.
+        profileImageManager.apply(creator, space, fields.profileImageKey(), fields.profileImageKeyProvided());
         return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 

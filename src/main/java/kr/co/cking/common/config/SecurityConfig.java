@@ -101,6 +101,8 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/creators/*/quizzes/*/attempts").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/creators/*/quizzes/*/my-attempt").authenticated()
                         .requestMatchers("/api/winners/*/history").authenticated()
                         .requestMatchers("/api/creator/quizzes/*/revisions/*/judge-evaluations",
                                 "/api/creator/quizzes/*/revisions/*/judge-evaluations/*").authenticated()
@@ -141,7 +143,9 @@ public class SecurityConfig {
                                 "/api/creator/quizzes",
                                 "/api/creator/quizzes/**",
                                 "/api/creator/youtube-channel",
-                                "/api/creator/space/slug"
+                                "/api/creator/space/slug",
+                                "/api/creator/space/profile-images",
+                                "/api/creator/space/profile-image"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/comments").authenticated()
