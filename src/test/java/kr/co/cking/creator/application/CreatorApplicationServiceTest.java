@@ -73,7 +73,9 @@ class CreatorApplicationServiceTest {
         CreatorSpaceService creatorSpaceService = mock(CreatorSpaceService.class);
         runCommands(lockManager);
         CreatorApplication existing = new CreatorApplication(10L);
-        given(memberRepository.existsById(10L)).willReturn(true);
+        Member applicant = new Member("신청자", null, null, MemberRole.USER);
+        applicant.setInitialNickname(MemberNickname.of("신청자"));
+        given(memberRepository.findById(10L)).willReturn(Optional.of(applicant));
         given(creatorRepository.existsByMemberId(10L)).willReturn(false);
         given(applicationRepository.findFirstByMemberIdAndStatusOrderByIdDesc(10L, CreatorApplicationStatus.PENDING))
                 .willReturn(Optional.of(existing));
@@ -86,6 +88,26 @@ class CreatorApplicationServiceTest {
 
         assertThat(result.application()).isSameAs(existing);
         assertThat(result.created()).isFalse();
+    }
+
+    @Test
+    void 닉네임_미설정_회원의_Creator_신청은_차단한다() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        CreatorRepository creatorRepository = mock(CreatorRepository.class);
+        CreatorApplicationRepository applicationRepository = mock(CreatorApplicationRepository.class);
+        CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        MissionInitializationService missionInitializationService = mock(MissionInitializationService.class);
+        CreatorSpaceService creatorSpaceService = mock(CreatorSpaceService.class);
+        runCommands(lockManager);
+        given(memberRepository.findById(10L)).willReturn(Optional.of(new Member("신청자", null, null, MemberRole.USER)));
+        CreatorApplicationService service = new CreatorApplicationService(
+                memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
+                creatorSpaceService);
+
+        assertThatThrownBy(() -> service.apply(10L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(kr.co.cking.member.domain.MemberErrorCode.PROFILE_SETUP_REQUIRED);
     }
 
     @Test

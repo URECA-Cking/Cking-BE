@@ -24,6 +24,7 @@ public class MemberQueryService {
 
     private final MemberRepository memberRepository;
     private final MemberNicknameReservationRepository nicknameReservationRepository;
+    private final ProfileImageUrlResolver profileImageUrlResolver;
     private final Clock clock;
 
     /** 인증된 호출자의 Member 프로필을 조회한다. */
@@ -35,7 +36,7 @@ public class MemberQueryService {
                 .filter(reservation -> reservation.isOwnedBy(memberId, LocalDateTime.now(clock)))
                 .map(kr.co.cking.member.domain.MemberNicknameReservation::getNickname)
                 .orElse(null);
-        return MemberProfile.from(member, restorableNickname);
+        return MemberProfile.from(member, profileImageUrlResolver.resolve(member.getProfileImageKey()), restorableNickname);
     }
 
     /** 호출자 식별에 사용한 Member가 실제로 존재하는지 검증한다. */

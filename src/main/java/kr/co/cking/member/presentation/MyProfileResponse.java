@@ -11,6 +11,7 @@ public record MyProfileResponse(
         Long memberId,
         String name,
         String nickname,
+        String profileImageUrl,
         String email,
         MemberRole role,
         boolean creator,
@@ -22,7 +23,7 @@ public record MyProfileResponse(
 
     public static MyProfileResponse from(MemberProfile profile, boolean creator) {
         return new MyProfileResponse(
-                profile.memberId(), profile.name(), profile.nickname(), profile.email(), profile.role(), creator,
+                profile.memberId(), profile.name(), profile.nickname(), profile.profileImageUrl(), profile.email(), profile.role(), creator,
                 profile.onboardingCompleted(), profile.nickname() != null,
                 profile.nicknameChangeableAt() == null ? null : profile.nicknameChangeableAt().atOffset(ZoneOffset.UTC),
                 profile.restorableNickname());
