@@ -27,6 +27,7 @@ import kr.co.cking.mission.MissionCompletionRepository;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.domain.DeadStreamType;
 import kr.co.cking.stream.repository.DeadStreamMessageRepository;
+import kr.co.cking.ticket.application.TicketEarnEventDispatcher;
 import kr.co.cking.ticket.application.TicketEarnLedgerService;
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import tools.jackson.databind.ObjectMapper;
@@ -68,6 +69,9 @@ class EarnStreamPelRecoverySchedulerIntegrationTest {
 
     @Autowired
     private TicketEarnLedgerService ticketEarnLedgerService;
+
+    @Autowired
+    private TicketEarnEventDispatcher earnEventDispatcher;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -154,7 +158,7 @@ class EarnStreamPelRecoverySchedulerIntegrationTest {
         ticketEarnLedgerService.apply(EarnCommand.fromStreamFields(fields));
 
         EarnStreamListener redeliveryListener = new EarnStreamListener(
-                ticketEarnLedgerService, redisTemplate, REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
+                earnEventDispatcher, redisTemplate, REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
         EarnStreamPelRecoveryScheduler redeliveryScheduler = new EarnStreamPelRecoveryScheduler(
                 redisTemplate, redeliveryListener, deadStreamMessageRepository, objectMapper,
                 REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP, 100L, 5L);
