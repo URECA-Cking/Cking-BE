@@ -1,4 +1,4 @@
--- Fan Quiz 응시·서버 채점 스냅샷 (#535). V59/V60/V61 선행 적용 후 배포한다.
+-- Fan Quiz 응시·서버 채점 스냅샷 (#535). V59~V63 선행 적용 후 배포한다.
 -- Ticket 지급/Outbox는 포함하지 않는다. 양수 점수의 reward_request_id는 후속 연동에서도 유지한다.
 ALTER TABLE quiz ADD CONSTRAINT uk_quiz_creator_lineage UNIQUE (quiz_id, creator_id);
 
