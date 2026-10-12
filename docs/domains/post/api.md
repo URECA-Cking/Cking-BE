@@ -5,6 +5,8 @@
 ## 인증
 
 - `/api/creator/posts/**`(작성·수정·삭제·이미지 업로드)는 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다. 없는 Member는 `RESOURCE_NOT_FOUND`(404), Creator가 아니면 `FORBIDDEN`(403)이다.
+- 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 Creator도 게시글을 작성할 수 있다. 활동명 미설정 Creator의 작성 전
+  설정 강제는 FE 연동 완료 후 별도 릴리스에서 활성화한다.
 - `GET /api/creators/{creatorId}/posts/**`(공개 조회)는 인증이 필요 없다. 로그인했다면 Access JWT를 함께 보내야 팔로워 공개 게시글을 볼 수 있다.
 
 ## 게시글 응답
@@ -99,3 +101,9 @@
 | --- | --- | --- |
 | `POST_FOLLOWERS_ONLY` | 403 | 팔로워 공개 게시글이고 팔로워·작성 Creator 본인이 아님 (비로그인 포함) |
 | `RESOURCE_NOT_FOUND` | 404 | Creator 또는 게시글 없음, 다른 Creator의 게시글 |
+
+## 댓글 공개 이름
+
+일반 Member와 Creator가 다른 Creator Space에 팬으로 작성한 댓글은 Member 닉네임을 표시한다. Space 소유 Creator가
+자신의 Space에 작성한 댓글만 Creator의 현재 공개 활동명을 표시한다. 댓글은 이름을 snapshot하지 않으므로 활동명 변경 후
+기존 소유 Creator 댓글도 새 활동명으로 조회된다.

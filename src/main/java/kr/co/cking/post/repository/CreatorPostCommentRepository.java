@@ -26,6 +26,10 @@ public interface CreatorPostCommentRepository extends JpaRepository<CreatorPostC
     @Query("select c from CreatorPostComment c where c.commentId = :commentId")
     Optional<CreatorPostComment> findByIdForUpdate(@Param("commentId") Long commentId);
 
+    /** 댓글이 속한 게시글 ID. 엔티티를 영속성 컨텍스트에 올리지 않아, 이어서 잠금으로 읽는 댓글이 최신 상태이게 한다. */
+    @Query("select c.postId from CreatorPostComment c where c.commentId = :commentId")
+    Optional<Long> findPostIdByCommentId(@Param("commentId") Long commentId);
+
     @Query("""
             select c from CreatorPostComment c
              where c.postId = :postId

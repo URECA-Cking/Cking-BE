@@ -88,7 +88,7 @@ class CreatorRecommendationIntegrationTest {
         assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(
                 new PersonalizedCreatorRecommendationView.Item(
                         repeatedCandidate.getCreatorId(),
-                        repeatedCandidate.getName(),
+                        repeatedCandidate.publicDisplayName(),
                         "반복 소개",
                         "repeated-profile",
                         // 후보가 남는 seed 둘의 기여도 합 0.03252247을 2로 나눈 평균
@@ -97,7 +97,7 @@ class CreatorRecommendationIntegrationTest {
                         List.of(firstSeed.getCreatorId(), secondSeed.getCreatorId())),
                 new PersonalizedCreatorRecommendationView.Item(
                         singleCandidate.getCreatorId(),
-                        singleCandidate.getName(),
+                        singleCandidate.publicDisplayName(),
                         "단일 소개",
                         "single-profile",
                         new BigDecimal("0.00819672"),
@@ -162,7 +162,7 @@ class CreatorRecommendationIntegrationTest {
 
         assertThat(result.items()).usingRecursiveFieldByFieldElementComparatorIgnoringFields("sources").containsExactly(new PersonalizedCreatorRecommendationView.Item(
                 availableCandidate.getCreatorId(),
-                availableCandidate.getName(),
+                availableCandidate.publicDisplayName(),
                 "정상 후보 소개",
                 "available-profile",
                 new BigDecimal("0.01612903"),

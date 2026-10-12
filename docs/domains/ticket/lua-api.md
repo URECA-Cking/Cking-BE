@@ -131,3 +131,14 @@ Guard 자체가 idem보다 먼저 만료되는 경우는 없다 — 같은 `EX` 
 - idem이 PROCESSING이고 **Guard가 다른 요청의 값**이면(다른 requestId) 여전히 신규 지급을 막는지
 - **`earn()`이 PROCESSING 예약 시 실제로 사용한 Guard 키를 idem의 `guardKey` 필드에 기록하는지** — idem JSON을 직접 심어 읽기만 검증하는 다른 테스트들과 달리, 이 테스트는 정상 `earn()` 실행 결과를 직접 읽어 Lua의 저장 로직 자체를 검증한다
 - `status` 필드 없는 legacy 레코드가 fingerprint 불일치와 무관하게 `ALREADY_PROCESSED`로 재현되는지
+
+## Quiz 보상 Lua (quiz-ticket-earn.lua, 이슈 #533)
+
+스크립트: `src/main/resources/scripts/quiz-ticket-earn.lua`, Java 연동: `QuizTicketEarnRedisExecutor`. Mission용 `ticket-earn.lua`는 바꾸지 않았다.
+
+- **키**: `idem:quiz-reward:{rewardRequestId}`(JSON, 만료 없음 - `{status, fingerprint, executionToken, attemptId, streamId?}`), 기존 `ticket:balance:{creatorId}:{memberId}`, 기존 `ticket:maint:{creatorId}:{memberId}`. Lua는 KEYS가 ARGV의 요청·회원·Creator와 같은지 확인한다.
+- **순서**: 입력 검증 → guard 확인(같은 요청이면 다시 적립하지 않음) → 보정 락 → Balance 키 존재 → guard `PROCESSING` 예약 → `INCRBY` → `XADD`(`sourceType=QUIZ`, `payloadVersion=1`, `QuizEarnEvent.toStreamFields()`와 같은 필드) → guard `COMPLETED`.
+- **Balance 키가 없으면** Mission과 달리 0에서 시작하지 않고 `BALANCE_NOT_LOADED`로 끝낸다.
+- **실패 처리**: 첫 쓰기 이후 명령은 `pcall`로 실행한다. `XADD`가 실패하면 `DECRBY` 뒤 `GET` 원문이 변경 전과 같고 guard를 지웠을 때만 `NOT_EXECUTED`(재시도 가능)다. 되돌림을 확인하지 못하면 `EARN_STATUS_UNKNOWN`이고 guard가 남아 재실행을 막는다. 잔액은 Lua number(double)로 바꾸지 않고 `GET` 원문으로만 비교·반환한다.
+- **결과 코드**: `EARN_ACCEPTED`, `ALREADY_ACCEPTED`, `REQUEST_ID_CONFLICT`, `BALANCE_MAINTENANCE`, `BALANCE_NOT_LOADED`, `INVALID_REQUEST`, `NOT_EXECUTED`, `EARN_STATUS_UNKNOWN`. Java는 필드 개수·형식이 맞지 않거나 명령 전송 뒤 예외가 나면 모두 UNKNOWN으로 분류하고, 무반영이 확인된 결과만 재시도 가능으로 본다.
+- **테스트**: `QuizTicketEarnRedisExecutorTest`(응답 해석), `QuizTicketEarnLuaIntegrationTest`(실제 Redis, CI 전용).

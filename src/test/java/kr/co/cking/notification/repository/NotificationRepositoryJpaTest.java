@@ -104,7 +104,7 @@ class NotificationRepositoryJpaTest {
     }
 
     private long insertCreator(long memberId) {
-        entityManager.createNativeQuery("INSERT INTO creator (member_id, name) VALUES (:memberId, '테스트크리에이터')")
+        entityManager.createNativeQuery("INSERT INTO creator (member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (:memberId, '테스트크리에이터', (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)")
                 .setParameter("memberId", memberId)
                 .executeUpdate();
         return lastInsertId();

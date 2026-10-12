@@ -95,7 +95,7 @@ class CreatorPostCommentServiceTest {
 
         assertThat(comments).extracting(CreatorPostCommentView::commentId).containsExactly(1L, 2L);
         assertThat(comments).extracting(CreatorPostCommentView::authorName)
-                .containsExactly("member-" + FAN_MEMBER_ID, "member-" + OWNER_MEMBER_ID);
+                .containsExactly("member-" + FAN_MEMBER_ID, "creator-" + CREATOR_ID);
         assertThat(comments).extracting(CreatorPostCommentView::writtenByCreator).containsExactly(false, true);
     }
 
@@ -368,6 +368,55 @@ class CreatorPostCommentServiceTest {
         assertThat(view.filtered()).isTrue();
         assertThat(view.revealable()).isFalse();
         assertThat(view.content()).isNull();
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글은_다른_사람에게_가려지고_원문_보기도_허용하지_않는다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        stubCommentPage(hidden);
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0);
+
+        assertThat(view.filtered()).isTrue();
+        assertThat(view.revealable()).isFalse();
+        assertThat(view.content()).isNull();
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글도_작성자_본인에게는_원문이_그대로_보인다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        stubCommentPage(hidden);
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, FAN_MEMBER_ID, PAGE).getContent().get(0);
+
+        assertThat(view.filtered()).isFalse();
+        assertThat(view.content()).isEqualTo("댓글 1");
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글의_원문은_403이고_작성자_본인은_404다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        given(commentRepository.findById(1L)).willReturn(Optional.of(hidden));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
+                PostErrorCode.COMMENT_NOT_REVEALABLE);
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, FAN_MEMBER_ID),
+                CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글은_본문을_수정하고_재판정을_받아도_계속_숨겨진다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+
+        hidden.update("고친 댓글", LATER);
+        hidden.markFiltered(CommentFilterAction.PASS, List.of(), "rule-2", "model-2", LATER);
+
+        assertThat(hidden.isHiddenByAdmin()).isTrue();
+        assertThat(hidden.isConcealed()).isTrue();
     }
 
     @Test

@@ -22,6 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -74,6 +75,21 @@ class CreatorEventServiceIntegrationTest {
         Event persisted = eventRepository.findById(event.getEventId()).orElseThrow();
         assertThat(persisted.getDrawMethod()).isEqualTo("UNIFORM");
         assertThat(persisted.getPrizeAlgorithmVersion()).isEqualTo("PRIZE_UNIFORM_V1");
+    }
+
+    @Test
+    void 활동명_설정_화면_배포_전_기존_Creator도_Event를_생성할_수_있다() {
+        Member member = saveMember(new Member("기존크리에이터", null, null, MemberRole.USER));
+        Creator legacyCreator = new Creator(member.getMemberId(), member.getName());
+        ReflectionTestUtils.setField(legacyCreator, "activityNameConfigured", false);
+        saveCreator(legacyCreator);
+
+        Event event = creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440098", "호환 이벤트", null,
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                1, DrawMethod.WEIGHTED));
+
+        assertThat(event.getEventId()).isNotNull();
     }
 
     /** 동일 요청 식별자와 동일 본문은 새 Event 대신 기존 Event를 반환하는지 검증한다. */

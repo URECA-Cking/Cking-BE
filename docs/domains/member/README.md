@@ -50,4 +50,4 @@ OAuth 재로그인은 기존 Member의 `name`·`nickname`을 변경하지 않는
 - 공개 응답에는 presigned URL 대신 고정 CDN URL을 쓴다. 개발 환경은 `application-dev.yml`의
   `https://dev-images.cking.co.kr`를 사용한다.
 
-Creator 활동명은 Member 닉네임과 다른 네임스페이스이며 별도 Creator 작업에서 관리한다.
+Creator 활동명은 Member 닉네임과 다른 namespace이며, [Creator 공개 활동명 계약](../creator/README.md#공개-활동명이슈-520)에서 별도로 관리한다.

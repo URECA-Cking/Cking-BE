@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
+import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.subscriptionverification.application.image.ProcessedSubscriptionImage;
 import kr.co.cking.subscriptionverification.application.image.SubscriptionImageProcessor;
@@ -24,6 +26,7 @@ public class SubscriptionVerificationSubmissionService {
     private final SubscriptionVerificationAvailability availability;
     private final SubscriptionVerificationSubmissionValidator validator;
     private final SubscriptionVerificationPersistenceService persistenceService;
+    private final SubscriptionVerificationAbuseObserver abuseObserver;
     private final Clock clock;
 
     public SubscriptionVerificationSubmissionService(
@@ -32,6 +35,7 @@ public class SubscriptionVerificationSubmissionService {
             SubscriptionVerificationAvailability availability,
             SubscriptionVerificationSubmissionValidator validator,
             SubscriptionVerificationPersistenceService persistenceService,
+            SubscriptionVerificationAbuseObserver abuseObserver,
             Clock clock
     ) {
         this.imageProcessor = imageProcessor;
@@ -39,6 +43,7 @@ public class SubscriptionVerificationSubmissionService {
         this.availability = availability;
         this.validator = validator;
         this.persistenceService = persistenceService;
+        this.abuseObserver = abuseObserver;
         this.clock = clock;
     }
 
@@ -60,14 +65,17 @@ public class SubscriptionVerificationSubmissionService {
                 command.missionId(),
                 image.normalizedImageSha256());
 
-        Optional<SubscriptionVerification> existing = validator.validateRequest(
-                command.memberId(),
-                command.creatorId(),
-                command.missionId(),
-                requestId,
-                fingerprint,
-                submittedAt);
+        Optional<SubscriptionVerification> existing;
+        try {
+            existing = validator.validateRequest(
+                    command.memberId(), command.creatorId(), command.missionId(), requestId, fingerprint, submittedAt);
+        } catch (BusinessException exception) {
+            abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), exception.getErrorCode().code(), submittedAt);
+            throw exception;
+        }
         if (existing.isPresent()) {
+            abuseObserver.observeReplay(existing.get());
             return new SubscriptionVerificationSubmissionResult(existing.get(), false);
         }
 
@@ -87,24 +95,48 @@ public class SubscriptionVerificationSubmissionService {
                     UUID.randomUUID().toString()));
         } catch (DataIntegrityViolationException exception) {
             deleteQuietly(objectKey);
-            Optional<SubscriptionVerification> concurrentExisting = validator.validateRequest(
-                    command.memberId(),
-                    command.creatorId(),
-                    command.missionId(),
-                    requestId,
-                    fingerprint,
-                    submittedAt);
-            if (concurrentExisting.isPresent()) {
-                return new SubscriptionVerificationSubmissionResult(concurrentExisting.get(), false);
+            try {
+                Optional<SubscriptionVerification> concurrentExisting = validator.validateRequest(
+                        command.memberId(),
+                        command.creatorId(),
+                        command.missionId(),
+                        requestId,
+                        fingerprint,
+                        submittedAt);
+                if (concurrentExisting.isPresent()) {
+                    abuseObserver.observeReplay(concurrentExisting.get());
+                    return new SubscriptionVerificationSubmissionResult(concurrentExisting.get(), false);
+                }
+            } catch (BusinessException revalidationFailure) {
+                abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                        command.requestId(), revalidationFailure.getErrorCode().code(), submittedAt);
+                throw revalidationFailure;
+            } catch (RuntimeException revalidationFailure) {
+                abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                        command.requestId(), submittedAt);
+                throw revalidationFailure;
             }
+            abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), submittedAt);
+            throw exception;
+        } catch (BusinessException exception) {
+            deleteQuietly(objectKey);
+            abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), exception.getErrorCode().code(), submittedAt);
             throw exception;
         } catch (RuntimeException exception) {
             deleteQuietly(objectKey);
+            abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), submittedAt);
             throw exception;
         }
 
         if (!result.created()) {
             deleteQuietly(objectKey);
+            abuseObserver.observeReplay(result.verification());
+        } else {
+            abuseObserver.observeCreated(result.verification());
+            abuseObserver.observeImageReuse(result.verification(), result.imageReuseType());
         }
         return result;
     }

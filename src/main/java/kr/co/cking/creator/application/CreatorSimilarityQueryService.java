@@ -59,7 +59,7 @@ public class CreatorSimilarityQueryService {
                 candidates.stream()
                         .map(candidate -> new CreatorSimilarityView.Candidate(
                                 candidate.getSimilarCreatorId(),
-                                creators.get(candidate.getSimilarCreatorId()).getName(),
+                                creators.get(candidate.getSimilarCreatorId()).publicDisplayName(),
                                 candidate.getScore(),
                                 candidate.getRank()))
                         .toList());

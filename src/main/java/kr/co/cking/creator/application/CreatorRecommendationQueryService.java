@@ -131,7 +131,7 @@ public class CreatorRecommendationQueryService {
     ) {
         return new PersonalizedCreatorRecommendationView.Item(
                 candidate.creatorId(),
-                creator.getName(),
+                creator.publicDisplayName(),
                 space.getIntroText(),
                 space.getProfileImageUrl(),
                 candidate.aggregateScore(),
