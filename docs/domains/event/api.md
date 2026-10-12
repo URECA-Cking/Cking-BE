@@ -5,7 +5,8 @@
 ## 권한과 상태 전이
 
 - Creator는 승인된 `creator` 레코드가 존재해야 하며, 자신의 Event만 관리할 수 있다.
-- Creator의 공개 활동명이 미설정 상태이면 Event를 생성할 수 없으며 `ACTIVITY_NAME_SETUP_REQUIRED`(409)다.
+- 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 Creator도 Event를 생성할 수 있다. 활동명 미설정 Creator의 작성 전
+  설정 강제는 FE 연동 완료 후 별도 릴리스에서 활성화한다.
 - 관리자 목록·승인·거절은 `member.role == ADMIN`만 가능하다.
 - Event 상태는 Repository로 직접 변경하지 않는다. 아래 전이는 `EventCommandService`를 사용한다.
 

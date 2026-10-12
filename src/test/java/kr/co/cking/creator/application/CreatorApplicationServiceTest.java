@@ -131,7 +131,7 @@ class CreatorApplicationServiceTest {
         given(memberRepository.findById(10L)).willReturn(Optional.of(applicant));
         given(applicationRepository.findById(100L)).willReturn(Optional.of(application));
         given(creatorRepository.existsByMemberId(10L)).willReturn(false);
-        given(activityNameService.initialAvailableName("신청자닉네임", "신청자", 10L))
+        given(activityNameService.initialAvailableNameUnderAllocationLock("신청자닉네임", "신청자", 10L))
                 .willReturn(kr.co.cking.creator.domain.CreatorActivityName.of("신청자닉네임"));
         Creator creator = new Creator(10L, "신청자");
         ReflectionTestUtils.setField(creator, "creatorId", 20L);
@@ -173,7 +173,7 @@ class CreatorApplicationServiceTest {
         given(memberRepository.findById(10L)).willReturn(Optional.of(applicant));
         given(applicationRepository.findById(100L)).willReturn(Optional.of(application));
         given(creatorRepository.existsByMemberId(10L)).willReturn(false);
-        given(activityNameService.initialAvailableName("신청자닉네임", "신청자", 10L))
+        given(activityNameService.initialAvailableNameUnderAllocationLock("신청자닉네임", "신청자", 10L))
                 .willReturn(kr.co.cking.creator.domain.CreatorActivityName.of("신청자닉네임"));
         Creator creator = new Creator(10L, "신청자");
         ReflectionTestUtils.setField(creator, "creatorId", 20L);
@@ -217,5 +217,7 @@ class CreatorApplicationServiceTest {
     private void runCommands(CreatorApplicationLockManager lockManager) {
         given(lockManager.execute(any(), any())).willAnswer(invocation ->
                 ((Supplier<?>) invocation.getArgument(1)).get());
+        given(lockManager.executeActivityNameAllocation(any())).willAnswer(invocation ->
+                ((Supplier<?>) invocation.getArgument(0)).get());
     }
 }

@@ -3,7 +3,6 @@ package kr.co.cking.creator.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -46,8 +45,8 @@ class CreatorActivityNameServiceTest {
         ReflectionTestUtils.setField(creator, "activityNameConfigured", false);
         given(creatorRepository.findByMemberIdForUpdate(10L)).willReturn(Optional.of(creator));
         given(registry.isTaken(any(), any(), any())).willReturn(false);
-        given(lockManager.executeWaiting(any(), anyInt(), any())).willAnswer(invocation ->
-                ((java.util.function.Supplier<?>) invocation.getArgument(2)).get());
+        given(lockManager.executeActivityNameAllocation(any())).willAnswer(invocation ->
+                ((java.util.function.Supplier<?>) invocation.getArgument(0)).get());
     }
 
     @Test

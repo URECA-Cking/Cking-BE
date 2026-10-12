@@ -78,7 +78,8 @@ public class CreatorApplicationService {
 
     public CreatorApplication approve(Long adminId, Long applicationId) {
         return lockManager.execute("creator-application:review:" + applicationId,
-                () -> approveLocked(adminId, applicationId));
+                // 첫 JPA 조회 전에 이름 lock을 얻어 대기 중 commit한 활동명을 같은 snapshot에서 본다.
+                () -> lockManager.executeActivityNameAllocation(() -> approveLocked(adminId, applicationId)));
     }
 
     /** 신청을 승인하고 Creator·기본 미션·Creator Space를 하나의 트랜잭션으로 생성한다. */
@@ -92,7 +93,7 @@ public class CreatorApplicationService {
         application.approve(adminId);
         Creator creator = creatorRepository.save(new Creator(
                 application.getMemberId(), applicant.getName(),
-                activityNameService.initialAvailableName(
+                activityNameService.initialAvailableNameUnderAllocationLock(
                         applicant.getNickname(), applicant.getName(), application.getMemberId())));
         missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
         creatorSpaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId());

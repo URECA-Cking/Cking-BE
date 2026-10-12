@@ -20,9 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CreatorActivityNameService {
 
-    private static final String ACTIVITY_NAME_ALLOCATION_LOCK = "creator-activity-name:allocation";
-    private static final int ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS = 15;
-
     private final CreatorRepository creatorRepository;
     private final CreatorActivityNameRegistry registry;
     private final MemberNicknameContentPolicy contentPolicy;
@@ -38,7 +35,7 @@ public class CreatorActivityNameService {
     @Transactional
     public ActivityNameProfile updateMine(Long memberId, String requestedName) {
         CreatorActivityName requested = parse(requestedName);
-        return lockManager.executeWaiting(ACTIVITY_NAME_ALLOCATION_LOCK, ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS,
+        return lockManager.executeActivityNameAllocation(
                 () -> updateMineLocked(memberId, requested));
     }
 
@@ -91,7 +88,7 @@ public class CreatorActivityNameService {
     /** 승인 트랜잭션에서 신규 Creator의 첫 활동명 후보를 충돌 없이 만든다. */
     @Transactional
     public CreatorActivityName initialAvailableName(String memberNickname) {
-        return lockManager.executeWaiting(ACTIVITY_NAME_ALLOCATION_LOCK, ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS,
+        return lockManager.executeActivityNameAllocation(
                 () -> initialAvailableNameLocked(memberNickname));
     }
 
@@ -101,8 +98,15 @@ public class CreatorActivityNameService {
      */
     @Transactional
     public CreatorActivityName initialAvailableName(String memberNickname, String legacyName, Long memberId) {
-        return lockManager.executeWaiting(ACTIVITY_NAME_ALLOCATION_LOCK, ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS,
+        return lockManager.executeActivityNameAllocation(
                 () -> initialAvailableNameLocked(initialCandidate(memberNickname, legacyName, memberId)));
+    }
+
+    /** Caller가 승인 시작 시 이미 활동명 allocation lock을 획득한 경로다. */
+    CreatorActivityName initialAvailableNameUnderAllocationLock(
+            String memberNickname, String legacyName, Long memberId
+    ) {
+        return initialAvailableNameLocked(initialCandidate(memberNickname, legacyName, memberId));
     }
 
     private CreatorActivityName initialAvailableNameLocked(String memberNickname) {

@@ -16,6 +16,9 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 class CreatorApplicationLockManager {
 
+    private static final String ACTIVITY_NAME_ALLOCATION_LOCK = "creator-activity-name:allocation";
+    private static final int ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS = 15;
+
     private final JdbcTemplate jdbcTemplate;
 
     <T> T execute(String key, Supplier<T> command) {
@@ -28,6 +31,14 @@ class CreatorApplicationLockManager {
      */
     <T> T executeWaiting(String key, int waitSeconds, Supplier<T> command) {
         return execute(key, waitSeconds, "SELECT GET_LOCK(?, ?)", command);
+    }
+
+    /**
+     * Creator 승인에서 첫 JPA 조회 전에 전역 활동명 lock을 잡는다. 대기 중 다른 승인이 commit한
+     * 활동명이 이후 REPEATABLE READ snapshot에 포함되므로, 최신 상태를 기준으로 접미사 후보를 고른다.
+     */
+    <T> T executeActivityNameAllocation(Supplier<T> command) {
+        return executeWaiting(ACTIVITY_NAME_ALLOCATION_LOCK, ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS, command);
     }
 
     private <T> T execute(String key, int waitSeconds, String query, Supplier<T> command) {

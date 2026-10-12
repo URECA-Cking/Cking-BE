@@ -43,10 +43,7 @@ public class CreatorEventService {
         Creator creator = requireCreator(command.userId());
         return eventRepository.findByRequestId(command.requestId())
                 .map(existing -> returnExistingOrThrow(existing, command))
-                .orElseGet(() -> {
-                    creator.requireActivityNameConfigured();
-                    return createOrRecover(command, creator);
-                });
+                .orElseGet(() -> createOrRecover(command, creator));
     }
 
     /** 멱등 키 잠금 보유 중 생성 요청을 검증하고 기존 Event를 재사용한다. */

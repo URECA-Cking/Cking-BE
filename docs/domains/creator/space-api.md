@@ -170,4 +170,5 @@ Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 
 - 마지막 slug 변경 후 14일이 지나지 않았으면 `SLUG_CHANGE_TOO_SOON`(409)이다. 다시 바꿀 수 있는 시각은 조회 응답의 `slugChangeableAt`으로 확인한다.
 - 활동명 형식이 맞지 않으면 `VALIDATION_FAILED`(400), 다른 Creator가 사용·예약 중이면 `ACTIVITY_NAME_ALREADY_TAKEN`(409),
   변경 간격 안이면 `ACTIVITY_NAME_CHANGE_TOO_SOON`(409)이다.
-- 기존 이관 Creator가 활동명 설정 전에 게시글·Event를 생성하면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)다.
+- 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 이관 Creator도 게시글·Event를 생성할 수 있다. 작성 전 설정 강제는
+  FE 연동 완료 후 별도 릴리스에서 활성화한다.

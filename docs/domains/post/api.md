@@ -5,7 +5,8 @@
 ## 인증
 
 - `/api/creator/posts/**`(작성·수정·삭제·이미지 업로드)는 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다. 없는 Member는 `RESOURCE_NOT_FOUND`(404), Creator가 아니면 `FORBIDDEN`(403)이다.
-- 공개 활동명을 아직 설정하지 않은 Creator는 게시글을 작성할 수 없으며 `ACTIVITY_NAME_SETUP_REQUIRED`(409)다.
+- 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 Creator도 게시글을 작성할 수 있다. 활동명 미설정 Creator의 작성 전
+  설정 강제는 FE 연동 완료 후 별도 릴리스에서 활성화한다.
 - `GET /api/creators/{creatorId}/posts/**`(공개 조회)는 인증이 필요 없다. 로그인했다면 Access JWT를 함께 보내야 팔로워 공개 게시글을 볼 수 있다.
 
 ## 게시글 응답
