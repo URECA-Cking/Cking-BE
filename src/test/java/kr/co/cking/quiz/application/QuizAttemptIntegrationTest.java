@@ -20,6 +20,7 @@ import org.springframework.context.annotation.*;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.vendor.HibernateJpaDialect;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -47,6 +48,8 @@ class QuizAttemptIntegrationTest {
     @Autowired QuizQuestionRepository questions;
     @Autowired QuizOptionRepository options;
     @MockitoSpyBean QuizAttemptAnswerRepository answers;
+    /** Ticket·Redis를 쓰지 않는다(이슈 #543의 보상 전달은 별도 테스트가 검증한다). */
+    @MockitoBean QuizRewardDelivery rewardDelivery;
     @Autowired JdbcTemplate jdbc;
     @Autowired EntityManager entityManager;
     @Autowired PlatformTransactionManager manager;
