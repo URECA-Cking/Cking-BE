@@ -128,7 +128,7 @@ Creator Space 전용 프로필 사진을 업로드한다. `multipart/form-data`�
 
 ## PUT /api/creator/space/profile-image
 
-본인이 업로드한 `imageKey`를 현재 Creator Space 프로필 사진으로 연결한다. 다른 Creator의 키, 이미 연결·삭제 대기·존재하지 않는 키는 `INVALID_SPACE_PROFILE_IMAGE`(400)다. 이전 연결 이미지는 삭제 대기로 전환되어 정리 작업이 회수한다.
+본인이 업로드한 `imageKey`를 현재 Creator Space 프로필 사진으로 연결한다. 현재 연결된 것과 같은 key의 재요청은 멱등 성공한다. 다른 Creator의 키, 현재 연결된 것과 다른 이미 연결·삭제 대기·존재하지 않는 키는 `INVALID_SPACE_PROFILE_IMAGE`(400)다. 이전 연결 이미지는 삭제 대기로 전환되어 정리 작업이 회수한다.
 
 ```json
 { "imageKey": "creator-space-profile-images/42/uuid.jpg" }
