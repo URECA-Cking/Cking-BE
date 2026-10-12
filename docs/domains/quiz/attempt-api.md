@@ -76,15 +76,38 @@ POST와 GET은 같은 형식이다. 시각은 UTC Instant다.
   "reward": {
     "amount": 2,
     "requestId": "750e8400-e29b-41d4-a716-446655440001",
-    "status": "NOT_INTEGRATED"
+    "status": "NOT_INTEGRATED",
+    "paymentStatus": "PENDING"
   }
 }
 ```
 
 `reward.requestId`는 응시 requestId와 별개로 서버가 생성해 영속 저장한 rewardRequestId다.
-정답 1개당 해당 Creator Ticket 1장에 대응하는 수량만 기록하며 이번 기능은 Ticket을 지급하지 않는다.
 0점은 `amount=0`, `requestId=null`, `status=NOT_ELIGIBLE`이다. 양수 점수는 `NOT_INTEGRATED`다.
-후속 Outbox는 기존 양수 점수 응시도 대상으로 삼고 이 UUID를 그대로 사용한다. Outbox 구현은 현재 범위 밖이다.
+`reward.status`는 제출 당시 저장값이며 스냅샷 hash에 포함돼 바뀌지 않는다. 실제 지급 여부는 `reward.paymentStatus`로 본다.
+
+### Ticket 보상 지급(이슈 #543)
+
+양수 점수 응시는 저장이 커밋된 뒤 저장된 `attemptId`·`memberId`·`creatorId`·`correctCount`·`rewardRequestId`로
+Ticket Quiz 보상 엔진에 전달된다(정답 1개당 해당 Creator Ticket 1장). 재전송·재전달에도 같은 UUID를 쓰며 같은 응시를
+중복 지급하지 않는다. 전달이 실패해도 응시·점수·결과는 그대로이고 재응시는 허용되지 않는다. 0점은 전달하지 않는다.
+
+`reward.paymentStatus`는 POST·GET 응답 시점에 Ticket 상태를 조회해 채운다.
+
+| paymentStatus | 의미 |
+| --- | --- |
+| `NOT_ELIGIBLE` | 정답 0개 |
+| `PENDING` | 미접수 또는 지급 처리 중(Ticket `RECEIVED`·`EXECUTING`·`ACCEPTED`·`RETRYABLE_FAILURE`) |
+| `PAID` | Ticket `APPLIED`. 이것만 지급 완료다 |
+| `DELAYED` | Ticket `UNKNOWN`. 지급 여부 확인이 필요하며 자동으로 다시 실행하지 않는다 |
+| `UNAVAILABLE` | 지급 상태 조회 실패. 미지급을 뜻하지 않는다 |
+
+**활성화**: 실제 지급과 누락 재전달은 `cking.ticket.quiz-reward.worker-enabled=true`일 때만 동작한다(기본 `false`).
+꺼져 있으면 제출 시 접수만 되고(`PENDING`) 지급은 일어나지 않는다. 켜져 있으면 `QuizRewardDeliveryScheduler`가
+60초(`cking.quiz.reward-delivery.interval-ms`)마다 양수 점수 응시를 PK 순서로 최대 100건(`cking.quiz.reward-delivery.batch-size`)씩
+다시 전달해, 서버 중단·전달 실패·기능 OFF로 남은 요청과 과거 응시를 처리한다. 커서는 메모리에 있어 재시작하면 처음부터
+다시 훑는다. Ticket이 실행을 허용한 요청(`RECEIVED`, 무반영이 확인된 `RETRYABLE_FAILURE`)만 실행되며 `UNKNOWN`·실행 중
+요청은 자동 복구하지 않는다.
 
 ## 오류
 

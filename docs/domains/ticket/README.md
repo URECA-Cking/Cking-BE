@@ -41,7 +41,7 @@ Fan Quiz 응시(attempt) 보상은 Mission과 다른 적립 원인이다. 정답
 | `UNKNOWN` | 적립 여부를 확정할 수 없다. 자동으로 다시 실행하지 않는다. 그 실행권의 메시지가 오면 반영된다 |
 | `APPLIED` | 원장·DB 잔액에 반영했다. 최종 상태다 |
 
-**기본 비활성**: `cking.ticket.quiz-reward.worker-enabled`의 기본값은 `false`이며, 꺼져 있으면 Worker는 아무것도 바꾸지 않는다. Quiz 응시·채점·호출(Outbox 등)은 후속 Issue다.
+**기본 비활성**: `cking.ticket.quiz-reward.worker-enabled`의 기본값은 `false`이며, 꺼져 있으면 Worker는 아무것도 바꾸지 않는다. 호출 주체는 Fan Quiz 응시(`QuizRewardDelivery`, 이슈 #543)이며, 응시 저장 커밋 뒤 전달과 `QuizRewardDeliveryScheduler`의 누락 재전달을 같은 설정으로 켠다([응시 API](../quiz/attempt-api.md#ticket-보상-지급이슈-543)).
 
 **장애 시 차단**: Redis 응답 유실·형식 오류는 `UNKNOWN`으로 두고 재실행하지 않는다. 결과 기록이 실패하면 요청이 `EXECUTING`으로 남아 새 실행권이 발급되지 않는다. Redis 잔액 키가 없으면 같은 회원·Creator에 원장으로 확정되지 않은 Quiz 지급(다른 요청의 `EXECUTING`·`ACCEPTED`·`UNKNOWN`, 무반영이 확인되지 않은 과거 실행)이 없을 때만 `TicketBalanceKeyLoader`로 적재하고, 아니면 Lua를 부르지 않고 `RETRYABLE_FAILURE`로 기록한다. 메시지가 오지 않는 `UNKNOWN`·멈춘 `EXECUTING`의 복구와 Redis 유실 복구는 아직 없으며 운영자 확인이 필요하다.
 
