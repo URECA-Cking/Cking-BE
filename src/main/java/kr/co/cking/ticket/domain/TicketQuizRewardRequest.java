@@ -77,6 +77,22 @@ public class TicketQuizRewardRequest {
     }
 
     /**
+     * 실행 결과 기록과 같은 Transaction에서 EXECUTING을 결과 상태로 바꾼다. 결과 상태는 ACCEPTED·RETRYABLE_FAILURE·UNKNOWN
+     * 중 하나다. EXECUTING이 아니면(APPLIED 포함) 바꾸지 않고 예외다. 호출자는 행을 잠근 뒤 부른다.
+     */
+    public void recordExecutionResult(QuizRewardRequestStatus next) {
+        if (status != QuizRewardRequestStatus.EXECUTING) {
+            throw new IllegalStateException("실행 중이 아닌 Quiz 보상 요청에 실행 결과를 기록할 수 없습니다. status=" + status
+                    + ", rewardRequestId=" + rewardRequestId);
+        }
+        if (next != QuizRewardRequestStatus.ACCEPTED && next != QuizRewardRequestStatus.RETRYABLE_FAILURE
+                && next != QuizRewardRequestStatus.UNKNOWN) {
+            throw new IllegalArgumentException("Quiz 보상 실행 결과 상태가 아닙니다: " + next);
+        }
+        this.status = next;
+    }
+
+    /**
      * Ticket 원장·잔액 반영과 같은 Transaction에서 APPLIED로 바꾼다. APPLIED는 끝 상태라 되돌리거나 다시 적용하지
      * 않는다. 호출자는 행을 잠근 뒤 부른다.
      */

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,6 +79,35 @@ class TicketQuizRewardRequestTest {
                         .isInstanceOf(IllegalStateException.class);
                 assertThat(request.getStatus()).as(status.name()).isEqualTo(status);
             }
+        }
+    }
+
+    @Test
+    void 실행_결과는_EXECUTING에서만_ACCEPTED_RETRYABLE_FAILURE_UNKNOWN으로_기록한다() {
+        List<QuizRewardRequestStatus> results = List.of(QuizRewardRequestStatus.ACCEPTED,
+                QuizRewardRequestStatus.RETRYABLE_FAILURE, QuizRewardRequestStatus.UNKNOWN);
+        for (QuizRewardRequestStatus next : QuizRewardRequestStatus.values()) {
+            TicketQuizRewardRequest request = request(command);
+            ReflectionTestUtils.setField(request, "status", QuizRewardRequestStatus.EXECUTING);
+            if (results.contains(next)) {
+                request.recordExecutionResult(next);
+                assertThat(request.getStatus()).isEqualTo(next);
+            } else {
+                assertThatThrownBy(() -> request.recordExecutionResult(next)).as(next.name())
+                        .isInstanceOf(IllegalArgumentException.class);
+                assertThat(request.getStatus()).isEqualTo(QuizRewardRequestStatus.EXECUTING);
+            }
+        }
+        for (QuizRewardRequestStatus current : QuizRewardRequestStatus.values()) {
+            if (current == QuizRewardRequestStatus.EXECUTING) {
+                continue;
+            }
+            TicketQuizRewardRequest request = request(command);
+            ReflectionTestUtils.setField(request, "status", current);
+            // APPLIED를 포함해 실행 중이 아닌 요청은 결과로 되돌리지 않는다.
+            assertThatThrownBy(() -> request.recordExecutionResult(QuizRewardRequestStatus.ACCEPTED)).as(current.name())
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(request.getStatus()).isEqualTo(current);
         }
     }
 
