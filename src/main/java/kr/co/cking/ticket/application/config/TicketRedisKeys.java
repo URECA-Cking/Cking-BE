@@ -19,6 +19,12 @@ public final class TicketRedisKeys {
         return "idem:mission-once:" + requestId;
     }
 
+    // Quiz 보상 EARN의 멱등 guard(이슈 #533). rewardRequestId 하나가 기준이고 만료하지 않는다.
+    // quiz-ticket-earn.lua도 같은 형식으로 KEYS[1]을 검증한다.
+    public static String idemQuizReward(String rewardRequestId) {
+        return "idem:quiz-reward:" + rewardRequestId;
+    }
+
     // FR-P2-006 확정 포맷. periodKeyYyyyMmDd는 yyyyMMdd(대시 없음) - EarnCommand.periodKey()의
     // YYYY-MM-DD와는 다른 표기이니 호출측에서 변환해서 넘겨야 한다.
     public static String earnGuard(Long userId, String missionType, Long creatorId, String periodKeyYyyyMmDd) {
