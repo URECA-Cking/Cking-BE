@@ -16,7 +16,7 @@
 ## 소유 데이터
 
 `interest_taxonomy`, `interest_category` (V41), `v0.2` 시드 17개 분야 (V42), `member_interest` (V43), `interest_recommendation_generation`·`interest_recommendation_candidate`·`interest_recommendation_state` (V44),
-`interest_subtopic_set`·`interest_subtopic`·`member_interest_subtopic` (V64). 세부 주제 시드는 85개 확정 전이라 Flyway에 없다(아래 "세부 주제").
+`interest_subtopic_set`·`interest_subtopic`·`member_interest_subtopic` (V68). 세부 주제 시드는 85개 확정 전이라 Flyway에 없다(아래 "세부 주제").
 
 | 테이블 | 핵심 제약 |
 | --- | --- |
