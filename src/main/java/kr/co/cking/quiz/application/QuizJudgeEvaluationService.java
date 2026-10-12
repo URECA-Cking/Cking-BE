@@ -10,6 +10,7 @@ import kr.co.cking.quiz.domain.QuizJudgeJob;
 import kr.co.cking.quiz.judge.QuizJudge;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -36,6 +37,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class QuizJudgeEvaluationService {
+
+    private static final int MAX_ADMISSION_ATTEMPTS = 3;
 
     private final QuizCreatorLookup creatorLookup;
     private final QuizJudgeEvaluationStore store;
@@ -65,13 +68,26 @@ public class QuizJudgeEvaluationService {
         }
         Instant now = clock.instant();
         store.expireStale(creatorId, now);
-        QuizJudgeEvaluationStore.Admission admission;
-        try {
-            admission = store.create(creatorId, memberId, quizId, revisionId, request, now);
-        } catch (DataIntegrityViolationException exception) {
-            return store.findByRequest(creatorId, request)
-                    .map(job -> replay(creatorId, job, quizId, revisionId))
-                    .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_JUDGE_IN_PROGRESS));
+        QuizJudgeEvaluationStore.Admission admission = null;
+        for (int attempt = 1; attempt <= MAX_ADMISSION_ATTEMPTS; attempt++) {
+            try {
+                admission = store.create(creatorId, memberId, quizId, revisionId, request, clock.instant());
+                break;
+            } catch (CannotAcquireLockException exception) {
+                // Store 프록시의 Transaction이 롤백된 뒤 새 Transaction으로 다시 조회한다.
+                Optional<QuizJudgeJob> concurrent = store.findByRequest(creatorId, request);
+                if (concurrent.isPresent()) {
+                    return replay(creatorId, concurrent.get(), quizId, revisionId);
+                }
+                if (attempt == MAX_ADMISSION_ATTEMPTS) {
+                    // 활성 Job의 존재를 확인하지 못했으므로 진행 중 409로 추정하지 않는다.
+                    throw new BusinessException(CommonErrorCode.SYSTEM_ERROR);
+                }
+            } catch (DataIntegrityViolationException exception) {
+                return store.findByRequest(creatorId, request)
+                        .map(job -> replay(creatorId, job, quizId, revisionId))
+                        .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_JUDGE_IN_PROGRESS));
+            }
         }
         if (!admission.created()) {
             // 처음 조회 뒤 같은 requestId가 먼저 접수됐다. 재요청이므로 실행을 다시 제출하지 않는다.

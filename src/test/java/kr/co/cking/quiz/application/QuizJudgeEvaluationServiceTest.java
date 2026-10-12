@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 class QuizJudgeEvaluationServiceTest {
 
@@ -225,6 +227,86 @@ class QuizJudgeEvaluationServiceTest {
         given(store.findByRequest(CREATOR_ID, REQUEST_ID.toString())).willReturn(Optional.empty());
         assertError(() -> service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID),
                 QuizErrorCode.QUIZ_JUDGE_IN_PROGRESS);
+    }
+
+    @Test
+    void 잠금_실패_후_같은_requestId가_보이면_재제출하지_않는다() {
+        QuizJudgeJob concurrent = job(3L, QuizJudgeJobStatus.PENDING, 1);
+        given(store.create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW))
+                .willThrow(new CannotAcquireLockException("deadlock"));
+        given(store.findByRequest(CREATOR_ID, REQUEST_ID.toString()))
+                .willReturn(Optional.empty(), Optional.of(concurrent));
+        given(store.findJob(3L)).willReturn(Optional.of(concurrent));
+
+        assertThat(service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID).evaluationId()).isEqualTo(3L);
+        InOrder order = inOrder(store);
+        order.verify(store).create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW);
+        order.verify(store).findByRequest(CREATOR_ID, REQUEST_ID.toString());
+        verify(dispatcher, never()).dispatch(anyLong());
+    }
+
+    @Test
+    void 잠금_실패_후_새_접수가_성공하면_한_번만_제출한다() {
+        QuizJudgeJob created = job(1L, QuizJudgeJobStatus.PENDING, 1);
+        given(store.create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW))
+                .willThrow(new CannotAcquireLockException("deadlock"))
+                .willReturn(new QuizJudgeEvaluationStore.Admission(created, true));
+        given(store.findJob(1L)).willReturn(Optional.of(created));
+
+        assertThat(service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID).attempt()).isEqualTo(1);
+        verify(store, times(2)).create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW);
+        verify(dispatcher, times(1)).dispatch(1L);
+        verify(judge, never()).judge(any());
+    }
+
+    @Test
+    void 잠금_실패_후_경쟁_접수가_있으면_기존_409를_유지한다() {
+        given(store.create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW))
+                .willThrow(new CannotAcquireLockException("deadlock"))
+                .willThrow(new BusinessException(QuizErrorCode.QUIZ_JUDGE_IN_PROGRESS));
+
+        assertError(() -> service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID),
+                QuizErrorCode.QUIZ_JUDGE_IN_PROGRESS);
+        verify(store, times(2)).create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW);
+        verify(dispatcher, never()).dispatch(anyLong());
+    }
+
+    @Test
+    void 잠금_실패_후_다른_대상의_requestId가_보이면_충돌이다() {
+        QuizJudgeJob other = job(3L, QuizJudgeJobStatus.PENDING, 1);
+        ReflectionTestUtils.setField(other, "revisionId", 501L);
+        given(store.create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW))
+                .willThrow(new CannotAcquireLockException("deadlock"));
+        given(store.findByRequest(CREATOR_ID, REQUEST_ID.toString()))
+                .willReturn(Optional.empty(), Optional.of(other));
+
+        assertError(() -> service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID),
+                QuizErrorCode.QUIZ_JUDGE_REQUEST_CONFLICT);
+        verify(dispatcher, never()).dispatch(anyLong());
+    }
+
+    @Test
+    void 잠금_실패는_세_번까지만_접수하고_진행_중이라고_추정하지_않는다() {
+        given(store.create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW))
+                .willThrow(new CannotAcquireLockException("deadlock"));
+
+        assertError(() -> service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID), CommonErrorCode.SYSTEM_ERROR);
+        verify(store, times(3)).create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW);
+        verify(store, times(4)).findByRequest(CREATOR_ID, REQUEST_ID.toString());
+        verify(dispatcher, never()).dispatch(anyLong());
+    }
+
+    @Test
+    void 잠금_실패_후_Store가_기존_접수를_돌려주면_재제출하지_않는다() {
+        QuizJudgeJob concurrent = job(3L, QuizJudgeJobStatus.PENDING, 1);
+        given(store.create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW))
+                .willThrow(new CannotAcquireLockException("deadlock"))
+                .willReturn(new QuizJudgeEvaluationStore.Admission(concurrent, false));
+        given(store.findJob(3L)).willReturn(Optional.of(concurrent));
+
+        assertThat(service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID).attempt()).isEqualTo(1);
+        verify(store, times(2)).create(CREATOR_ID, MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID.toString(), NOW);
+        verify(dispatcher, never()).dispatch(anyLong());
     }
 
     @Test
