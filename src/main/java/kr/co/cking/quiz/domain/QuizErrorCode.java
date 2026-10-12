@@ -6,6 +6,10 @@ import org.springframework.http.HttpStatus;
 
 @RequiredArgsConstructor
 public enum QuizErrorCode implements ErrorCode {
+    QUIZ_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "응시 기록을 찾을 수 없습니다."),
+    QUIZ_ALREADY_ATTEMPTED(HttpStatus.CONFLICT, "이미 응시한 Quiz입니다."),
+    QUIZ_ATTEMPT_REQUEST_CONFLICT(HttpStatus.CONFLICT, "같은 requestId로 다른 응시 요청이 있습니다."),
+    QUIZ_PUBLISHED_REVISION_CHANGED(HttpStatus.CONFLICT, "게시된 revision이 변경됐습니다."),
     QUIZ_NOT_FOUND(HttpStatus.NOT_FOUND, "Quiz를 찾을 수 없습니다."),
     QUIZ_REVISION_NOT_FOUND(HttpStatus.NOT_FOUND, "Quiz revision을 찾을 수 없습니다."),
     QUIZ_REVISION_ALREADY_DECIDED(HttpStatus.CONFLICT, "이미 다른 결정이 기록된 revision입니다."),

@@ -143,3 +143,9 @@ Judge는 contentText 기준 평가이며 원본 영상의 사실성을 검증하
 - 오래된 작업: 별도 Scheduler 없이 생성 요청과 상태 조회 때 해당 Creator의 작업을 정리한다. 접수 후 `stale-pending`(기본 10분)이 지난 PENDING은 FAILED(`STALE_PENDING`), 시작 후 `stale-running`(기본 15분)이 지난 RUNNING은 UNKNOWN(`STALE_RUNNING`)이다. 늦게 끝난 Worker는 작업 행을 잠근 뒤 RUNNING이 아니면 결과를 저장하지 않는다.
 - 설정: `cking.quiz.generation.*`(enabled 기본 false, stale-pending, stale-running, executor.pool-size·queue-capacity·await-termination-seconds). 꺼져 있으면 새 요청은 503이고 기존 작업 조회는 된다. Executor 크기와 기준 시간은 운영 확인 전 초기값이다.
 - 로그에는 작업 ID·상태·실패 코드만 남기고 contentText·Provider 오류 원문·API key는 남기지 않는다.
+
+## Fan 응시와 결과
+
+[Fan 응시 API](attempt-api.md)는 Member별 Quiz 평생 1회 제출을 저장하고 서버에서 채점한다.
+동일 정규화 요청은 게시 취소·revision 교체 후에도 같은 결과를 반환한다. 전체 풀이·revision hash·snapshot hash를 보존하고 본인 조회에서 검증한다.
+양수 점수에는 고정 rewardRequestId와 NOT_INTEGRATED, 0점에는 UUID 없는 NOT_ELIGIBLE을 기록한다. Ticket 지급·Outbox는 구현하지 않는다.

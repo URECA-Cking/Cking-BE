@@ -156,5 +156,7 @@
 | 153 | 외부 | Member | USER | PUT | `/api/me/profile` | 닉네임 수정·프로필 사진 교체/삭제(키 생략 시 유지) | 상태 기반 |
 | 154 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/judge-evaluations` | GPT Judge 비동기 평가 접수(202, 최대 2 attempts, Creator당 활성 Job 1개) | `requestId` |
 | 155 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/judge-evaluations/{evaluationId}` | 본인 평가 Job 상태와 문항별 판정 조회 | - |
+| 158 | 외부 | AI Quiz | USER | POST | `/api/creators/{creatorId}/quizzes/{quizId}/attempts` | Fan 답안 제출·서버 채점·동일 요청 replay(200) | `requestId` |
+| 159 | 외부 | AI Quiz | USER | GET | `/api/creators/{creatorId}/quizzes/{quizId}/my-attempt` | 본인 응시 시점 결과 조회(게시 취소 후에도 유지) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
