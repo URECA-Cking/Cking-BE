@@ -96,10 +96,31 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: scripts/check-migration-versions.sh "$BASE"
 
+  # 배포 워크플로·스크립트·compose는 develop에 머지된 뒤에야 실행되어, 오류가 배포 때 드러난다.
+  lint:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: lint-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 셸 스크립트 검사
+        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh
+      - name: 워크플로 검사
+        run: >
+          docker run --rm -v "$PWD:/repo:ro" -w /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -no-color
+      # 값은 배포 때 Parameter Store에서 들어오므로 변수 치환 없이 구조만 검사한다.
+      - name: compose 검사
+        run: |
+          docker compose -f docker-compose.dev.yml config --no-interpolate --quiet
+          docker compose -f docker-compose.yml config --no-interpolate --quiet
+
   build-and-push:
     name: Build and Push to GHCR
-    # 테스트를 통과한 커밋만 이미지로 만든다. 이미지 빌드는 -x test라 자체 검증이 없다.
-    needs: [test, migration-version]
+    # 검증을 통과한 커밋만 이미지로 만든다. 이미지 빌드는 -x test라 자체 검증이 없다.
+    needs: [test, migration-version, lint]
     if: github.ref == 'refs/heads/develop'
     # 개발 서버가 t4g(ARM)이므로 ARM 러너에서 네이티브 빌드한다.
     # x86 러너에서 QEMU로 크로스 빌드하면 Gradle 빌드가 몇 배 느려진다.
@@ -125,8 +146,8 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           TIMESTAMP=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')
-          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
@@ -203,7 +224,7 @@ jobs:
         env:
           COMMAND_ID: ${{ steps.send.outputs.command_id }}
         run: |
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             # 전송 직후에는 invocation이 아직 조회되지 않을 수 있다(eventual consistency).
             # 이 오류만 재시도한다. 여기서 죽으면 서버 배포는 계속 도는데 워크플로만 실패로 남는다.
             # 권한·네트워크 등 다른 오류는 기다려도 해결되지 않으므로 즉시 실패시킨다.
