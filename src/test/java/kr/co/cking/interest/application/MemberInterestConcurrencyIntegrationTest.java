@@ -13,6 +13,7 @@ import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +34,11 @@ class MemberInterestConcurrencyIntegrationTest {
 
     private Long memberId;
 
+    @BeforeEach
+    void seedSubtopics() {
+        InterestSubtopicTestSeed.load(jdbcTemplate);
+    }
+
     @AfterEach
     void cleanUp() {
         if (memberId != null) {
@@ -40,6 +46,7 @@ class MemberInterestConcurrencyIntegrationTest {
             jdbcTemplate.update("delete from member_interest where member_id = ?", memberId);
             jdbcTemplate.update("delete from member where member_id = ?", memberId);
         }
+        InterestSubtopicTestSeed.remove(jdbcTemplate);
     }
 
     @Test

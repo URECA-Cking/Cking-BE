@@ -16,7 +16,7 @@
 ## 소유 데이터
 
 `interest_taxonomy`, `interest_category` (V41), `v0.2` 시드 17개 분야 (V42), `member_interest` (V43), `interest_recommendation_generation`·`interest_recommendation_candidate`·`interest_recommendation_state` (V44),
-`interest_subtopic_set`·`interest_subtopic`·`member_interest_subtopic` (V64), `subtopic-v1` 시드 85개 (V65).
+`interest_subtopic_set`·`interest_subtopic`·`member_interest_subtopic` (V64). 세부 주제 시드는 85개 확정 전이라 Flyway에 없다(아래 "세부 주제").
 
 | 테이블 | 핵심 제약 |
 | --- | --- |
@@ -48,12 +48,15 @@
 상위 분류체계·기존 회원 선택·분야 추천 후보에는 영향이 없다. 안정되면 하나의 계층 분류체계로 합치는 것은 별도로 검토한다.
 
 - 정본은 Cking-LLM-Benchmark `data/creator-subtopics.json`(`subtopic-v1-draft`)이며 필드 대응은 `code`→`subtopic_code`, `parent`→`parent_interest_code`,
-  `name`, `definition`→`description`이다. V65가 배열 순서를 `display_order`로 시드한다. `include`·`exclude`·`formats`는 저장하지 않는다.
+  `name`, `definition`→`description`이다. 시드할 때 배열 순서를 `display_order`로 보존한다. `include`·`exclude`·`formats`는 저장하지 않는다.
 - 해시(`InterestSubtopicHash`)는 [taxonomyHash 규칙](#taxonomyhash-규칙)과 정규화·이스케이프·SHA-256이 같고 행 형태만
-  `{"subtopics":[{"code","parent","name","description"}]}`다(순서는 `display_order`). 시드 해시 `7e06e15a…eb0f6`은
+  `{"subtopics":[{"code","parent","name","description"}]}`다(순서는 `display_order`). 초안의 해시 `7e06e15a…eb0f6`은
   `src/test/resources/fixtures/taxonomy/subtopic-v1.{canonical.json,sha256.txt}`와 같고 `MemberInterestSubtopicIntegrationTest`가 저장된 행에서 다시 계산해 확인한다.
 - 회원 행 잠금(`SELECT … FOR UPDATE`) 하나로 상위·세부 저장을 같은 Transaction에서 직렬화한다. 세부 상한(상위당 3개, `InterestPolicy.MAX_SUBTOPIC_PER_PARENT`)과
   "부모가 이번 선택에 포함" 규칙은 DB로 강제할 수 없어 서비스가 검증한다.
+- **시드는 아직 없다.** 정본이 `experimental_not_service_contract` 초안이고 이름·경계·부모가 확정되지 않았다. 마이그레이션은 한 번 적용되면 수정할 수 없고
+  회원 선택이 그 코드에 묶이므로, 확정 전에는 세트를 등록하지 않는다. 활성 세트가 없으면 `GET /api/interests`는 `subtopicVersion: null`·`subtopics: []`이고
+  세부 선택 저장은 `VALIDATION_FAILED`다. 테스트는 `fixtures/taxonomy/subtopic-v1-seed.sql`(초안 85개)을 직접 적재한다. 확정되면 그 내용으로 별도 마이그레이션을 추가한다.
 - 세부 선택의 추천 계산 반영(세부 분류 적재·세부 키 후보·개인화 집계)은 범위 밖이다.
 
 ## 추천 후보 적재

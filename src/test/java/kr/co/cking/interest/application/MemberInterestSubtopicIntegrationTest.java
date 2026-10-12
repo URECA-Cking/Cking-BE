@@ -31,7 +31,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 시드된 `subtopic-v1`(85개)로 세부 주제의 조회·저장 규칙을 실제 MySQL에서 확인한다. 테스트마다 롤백한다. */
+/** 테스트가 적재한 `subtopic-v1`(85개 초안)로 세부 주제의 조회·저장 규칙을 실제 MySQL에서 확인한다. 테스트마다 롤백한다. */
 @SpringBootTest
 @Transactional
 class MemberInterestSubtopicIntegrationTest {
@@ -49,13 +49,14 @@ class MemberInterestSubtopicIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        InterestSubtopicTestSeed.load(jdbcTemplate);
         memberId = memberRepository.saveAndFlush(
                 new Member("세부주제테스트-" + UUID.randomUUID().toString().substring(0, 8), null, null, MemberRole.USER))
                 .getMemberId();
     }
 
     @Test
-    void 시드는_85개이고_저장된_행에서_다시_계산한_해시가_등록_해시와_fixture와_같다() throws Exception {
+    void 적재한_85개의_행에서_다시_계산한_해시가_등록_해시와_fixture와_같다() throws Exception {
         List<Row> rows = subtopicRepository.findAllBySubtopicVersion(V).stream()
                 .map(s -> new Row(s.getSubtopicCode(), s.getParentInterestCode(), s.getName(), s.getDescription()))
                 .toList();
@@ -80,6 +81,20 @@ class MemberInterestSubtopicIntegrationTest {
         assertThat(fitness.interestCode()).isEqualTo("FITNESS");
         assertThat(fitness.subtopics()).extracting(SelectableInterests.Subtopic::subtopicCode)
                 .startsWith("FITNESS_WEIGHTS", "FITNESS_HOME_WORKOUT");
+    }
+
+    @Test
+    void 시드가_없는_환경에서는_세부_목록이_비고_세부_저장은_거부한다() {
+        jdbcTemplate.update("delete from interest_subtopic");
+        jdbcTemplate.update("delete from interest_subtopic_set");
+
+        SelectableInterests result = queryService.findSelectable();
+
+        assertThat(result.subtopicVersion()).isNull();
+        assertThat(result.items()).hasSize(17).allSatisfy(item -> assertThat(item.subtopics()).isEmpty());
+        assertThat(service.findMine(memberId).subtopicVersion()).isNull();
+        assertInvalid(List.of("FITNESS"), V, List.of("FITNESS_YOGA"));
+        assertThat(service.replace(memberId, "v0.2", List.of("FITNESS")).interestCodes()).containsExactly("FITNESS");
     }
 
     @Test

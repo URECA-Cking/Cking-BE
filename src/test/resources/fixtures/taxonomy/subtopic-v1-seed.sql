@@ -1,9 +1,6 @@
--- 세부 관심 주제 subtopic-v1 시드 (이슈 #537)
---
--- 정본은 Cking-LLM-Benchmark의 data/creator-subtopics.json(85개, 초안)이며 배열 순서를 display_order로 보존한다.
--- 필드 대응: code -> subtopic_code, parent -> parent_interest_code, definition -> description.
--- subtopic_hash는 InterestSubtopicHash로 계산한 값이고, 통합 테스트가 이 시드에서 다시 계산한 해시와 같은지 검증한다.
--- 상위 분류체계 v0.2는 수정하지 않는다.
+-- 테스트 전용 세부 주제 시드(subtopic-v1 초안 85개). 서비스 계약이 확정되기 전이라 Flyway에는 넣지 않고,
+-- 테스트가 직접 적재한다. 확정되면 이 행들을 별도 마이그레이션으로 시드한다.
+-- 정본은 Cking-LLM-Benchmark의 data/creator-subtopics.json이며 배열 순서를 display_order로 보존한다.
 INSERT INTO interest_subtopic_set (subtopic_version, parent_taxonomy_version, subtopic_hash, active, created_at)
 VALUES ('subtopic-v1', 'v0.2', '7e06e15a711beb6a04599b8a6b81e6c3c1aea2975db40df9bc17cc0157feb0f6', TRUE, UTC_TIMESTAMP(6));
 
