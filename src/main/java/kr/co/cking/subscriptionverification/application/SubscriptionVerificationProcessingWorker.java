@@ -100,11 +100,11 @@ public class SubscriptionVerificationProcessingWorker {
                     outcomeOf(decision),
                     decision.reasonCode(),
                     clock.instant());
-            if (completed && decision.status() == SubscriptionVerificationDecisionStatus.APPROVED) {
-                rewardService.reward(claim);
-            }
             if (completed) {
                 abuseObserver.observeDecision(claim, decision.status());
+                if (decision.status() == SubscriptionVerificationDecisionStatus.APPROVED) {
+                    rewardService.reward(claim);
+                }
             }
         } catch (RuntimeException exception) {
             log.warn("구독 인증 판정 결과 저장에 실패해 lease 만료 뒤 복구합니다. verificationId={}",

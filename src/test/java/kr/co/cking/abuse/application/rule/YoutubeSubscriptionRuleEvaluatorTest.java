@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 class YoutubeSubscriptionRuleEvaluatorTest {
 
     @Test
-    void 구독_인증_규칙은_제출_Rotation_재사용_음성_판정을_각각_분리해_탐지한다() {
+    void 이미지_재사용_관측은_이미지_재사용_Rule만_평가한다() {
         YoutubeSubscriptionRuleEvaluator evaluator = new YoutubeSubscriptionRuleEvaluator(properties());
         AbuseFeatureSnapshot snapshot = new AbuseFeatureSnapshot(Map.of(
                 AbuseMetric.YOUTUBE_SUBMISSION_COUNT, 2L,
@@ -30,11 +30,22 @@ class YoutubeSubscriptionRuleEvaluatorTest {
 
         assertThat(evaluator.evaluate(observation("IMAGE_REUSE"), snapshot))
                 .extracting(AbuseRuleMatch::abuseType)
-                .containsExactlyInAnyOrder(
-                        AbuseType.YOUTUBE_SUBMISSION_BURST,
-                        AbuseType.YOUTUBE_REQUEST_ID_ROTATION,
-                        AbuseType.YOUTUBE_IMAGE_REUSE,
-                        AbuseType.YOUTUBE_NEGATIVE_DECISION_BURST);
+                .containsExactly(AbuseType.YOUTUBE_IMAGE_REUSE);
+    }
+
+    @Test
+    void VLM_음성_판정은_음성_판정_Rule만_평가한다() {
+        YoutubeSubscriptionRuleEvaluator evaluator = new YoutubeSubscriptionRuleEvaluator(properties());
+        AbuseFeatureSnapshot snapshot = new AbuseFeatureSnapshot(Map.of(
+                AbuseMetric.YOUTUBE_SUBMISSION_COUNT, 2L,
+                AbuseMetric.DISTINCT_REQUEST_ID_COUNT, 2L,
+                AbuseMetric.YOUTUBE_IMAGE_REUSE_COUNT, 2L,
+                AbuseMetric.YOUTUBE_NEGATIVE_DECISION_COUNT, 2L,
+                AbuseMetric.YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_COUNT, 2L));
+
+        assertThat(evaluator.evaluate(observation("REJECTED"), snapshot))
+                .extracting(AbuseRuleMatch::abuseType)
+                .containsExactly(AbuseType.YOUTUBE_NEGATIVE_DECISION_BURST);
     }
 
     @Test

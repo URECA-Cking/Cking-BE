@@ -109,8 +109,18 @@ local youtubeNegativeDecisionCount = zero
 local youtubeNegativeDecisionConsecutiveCount = zero
 
 if actionType == 'YOUTUBE_SUBSCRIPTION' then
-    youtubeSubmissionCount = recordWindow(youtubeSubmissionKey, observationId, youtubeSubmissionWindowMs)
-    distinctRequestIdCount = recordWindow(requestIdRotationKey, requestId, youtubeRequestIdRotationWindowMs)
+    -- 실제 PENDING 저장 완료만 제출 수로 센다. 이미지 재사용과 VLM 판정은 한 제출에서
+    -- 파생되는 관측이므로 여기서 함께 세면 제출 burst가 과대 집계된다.
+    if resultCode == 'SUBMISSION_CREATED' then
+        youtubeSubmissionCount = recordWindow(youtubeSubmissionKey, observationId, youtubeSubmissionWindowMs)
+    end
+
+    -- Rotation은 사용자가 제출 API에 보낸 requestId만 대상으로 한다. VLM 판정은
+    -- verificationId에서 만든 내부 식별자를 쓰므로 rotation window에 넣지 않는다.
+    local isVlmDecision = resultCode == 'APPROVED' or resultCode == 'REJECTED' or resultCode == 'RETRY_REQUIRED'
+    if resultCode ~= 'IMAGE_REUSE' and not isVlmDecision then
+        distinctRequestIdCount = recordWindow(requestIdRotationKey, requestId, youtubeRequestIdRotationWindowMs)
+    end
     if resultCode == 'IMAGE_REUSE' then
         youtubeImageReuseCount = recordWindow(youtubeImageReuseKey, observationId, youtubeImageReuseWindowMs)
     end
@@ -119,7 +129,9 @@ if actionType == 'YOUTUBE_SUBSCRIPTION' then
                 youtubeNegativeDecisionKey, observationId, youtubeNegativeDecisionWindowMs)
         youtubeNegativeDecisionConsecutiveCount = recordSequence(
                 youtubeNegativeDecisionSequenceKey, youtubeNegativeDecisionWindowMs)
-    elseif resultClassification == 'NEW_SUCCESS' then
+    -- 연속 음성 판정은 실제 VLM 승인에서만 끊긴다. PENDING 제출 저장 성공은
+    -- 이전 VLM 음성 판정을 초기화하지 않는다.
+    elseif resultCode == 'APPROVED' then
         redis.call('DEL', youtubeNegativeDecisionSequenceKey)
     end
     return {

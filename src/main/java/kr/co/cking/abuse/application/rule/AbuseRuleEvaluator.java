@@ -68,6 +68,10 @@ public class AbuseRuleEvaluator {
         if (!properties.enabled()) {
             return List.of();
         }
+        if (observation.actionType() == kr.co.cking.abuse.domain.AbuseActionType.YOUTUBE_SUBSCRIPTION
+                && !properties.youtubeSubscriptionEnabled()) {
+            return List.of();
+        }
 
         AbuseFeatureSnapshot snapshot = featureStore.record(observation, properties.windowPolicy());
         if (observation.actionType() == kr.co.cking.abuse.domain.AbuseActionType.YOUTUBE_SUBSCRIPTION) {

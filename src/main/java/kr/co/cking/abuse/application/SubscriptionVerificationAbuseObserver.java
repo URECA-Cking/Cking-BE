@@ -53,12 +53,11 @@ public class SubscriptionVerificationAbuseObserver {
     }
 
     public void observeDecision(SubscriptionVerificationProcessingClaim claim, SubscriptionVerificationDecisionStatus status) {
-        if (status == SubscriptionVerificationDecisionStatus.REJECTED
-                || status == SubscriptionVerificationDecisionStatus.RETRY_REQUIRED) {
-            observe(claim.memberId(), claim.creatorId(), claim.missionId(),
-                    UUID.nameUUIDFromBytes(("verification:" + claim.verificationId()).getBytes()), status.name(),
-                    ResultClassification.BUSINESS_FAILURE, clock.instant());
-        }
+        ResultClassification classification = status == SubscriptionVerificationDecisionStatus.APPROVED
+                ? ResultClassification.NEW_SUCCESS : ResultClassification.BUSINESS_FAILURE;
+        observe(claim.memberId(), claim.creatorId(), claim.missionId(),
+                UUID.nameUUIDFromBytes(("verification:" + claim.verificationId()).getBytes()), status.name(),
+                classification, clock.instant());
     }
 
     private void observe(SubscriptionVerification verification, UUID requestId, String code,

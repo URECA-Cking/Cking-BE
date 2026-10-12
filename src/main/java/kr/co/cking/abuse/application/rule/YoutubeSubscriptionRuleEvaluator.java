@@ -39,26 +39,41 @@ public class YoutubeSubscriptionRuleEvaluator {
 
         AbuseProperties.YoutubeSubscriptionRule rule = properties.youtubeSubscription();
         List<AbuseRuleMatch> matches = new ArrayList<>();
-        if (snapshot.valueOf(AbuseMetric.YOUTUBE_SUBMISSION_COUNT) >= rule.submissionBurst().threshold()) {
+        if ("SUBMISSION_CREATED".equals(observation.resultCode())
+                && snapshot.valueOf(AbuseMetric.YOUTUBE_SUBMISSION_COUNT) >= rule.submissionBurst().threshold()) {
             matches.add(match(AbuseType.YOUTUBE_SUBMISSION_BURST, userScope(), rule.submissionBurst().window(),
                     AbuseMetric.YOUTUBE_SUBMISSION_COUNT, snapshot, rule.submissionBurst().threshold()));
         }
-        if (snapshot.valueOf(AbuseMetric.DISTINCT_REQUEST_ID_COUNT) >= rule.requestIdRotation().distinctThreshold()) {
+        if (isSubmissionRequest(observation)
+                && snapshot.valueOf(AbuseMetric.DISTINCT_REQUEST_ID_COUNT) >= rule.requestIdRotation().distinctThreshold()) {
             matches.add(match(AbuseType.YOUTUBE_REQUEST_ID_ROTATION, businessKeyScope(observation),
                     rule.requestIdRotation().window(), AbuseMetric.DISTINCT_REQUEST_ID_COUNT, snapshot,
                     rule.requestIdRotation().distinctThreshold()));
         }
-        if (snapshot.valueOf(AbuseMetric.YOUTUBE_IMAGE_REUSE_COUNT) >= rule.imageReuse().threshold()) {
+        if ("IMAGE_REUSE".equals(observation.resultCode())
+                && snapshot.valueOf(AbuseMetric.YOUTUBE_IMAGE_REUSE_COUNT) >= rule.imageReuse().threshold()) {
             matches.add(match(AbuseType.YOUTUBE_IMAGE_REUSE, businessKeyScope(observation), rule.imageReuse().window(),
                     AbuseMetric.YOUTUBE_IMAGE_REUSE_COUNT, snapshot, rule.imageReuse().threshold()));
         }
         long negativeCount = snapshot.valueOf(AbuseMetric.YOUTUBE_NEGATIVE_DECISION_COUNT);
         long negativeConsecutive = snapshot.valueOf(AbuseMetric.YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_COUNT);
-        if (negativeCount >= rule.negativeDecisionBurst().threshold()
-                || negativeConsecutive >= rule.negativeDecisionBurst().consecutiveThreshold()) {
+        if (isNegativeDecision(observation)
+                && (negativeCount >= rule.negativeDecisionBurst().threshold()
+                || negativeConsecutive >= rule.negativeDecisionBurst().consecutiveThreshold())) {
             matches.add(negativeDecisionMatch(observation, snapshot, rule.negativeDecisionBurst()));
         }
         return List.copyOf(matches);
+    }
+
+    private boolean isSubmissionRequest(AbuseObservationEvent observation) {
+        return !"IMAGE_REUSE".equals(observation.resultCode())
+                && !"APPROVED".equals(observation.resultCode())
+                && !isNegativeDecision(observation);
+    }
+
+    private boolean isNegativeDecision(AbuseObservationEvent observation) {
+        return "REJECTED".equals(observation.resultCode())
+                || "RETRY_REQUIRED".equals(observation.resultCode());
     }
 
     private AbuseRuleMatch negativeDecisionMatch(

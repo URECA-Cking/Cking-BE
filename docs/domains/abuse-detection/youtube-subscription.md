@@ -11,9 +11,11 @@
 | 검증된 제출의 정책 거절 | `BUSINESS_FAILURE` | 기존 오류 코드 |
 | 저장·처리의 예기치 못한 오류 | `SYSTEM_FAILURE` | `SYSTEM_ERROR` |
 | 다른 회원의 정규화 이미지 재사용 | `BUSINESS_FAILURE` | `IMAGE_REUSE` |
-| VLM 서버 판정 완료 | `BUSINESS_FAILURE` | `REJECTED`, `RETRY_REQUIRED` |
+| VLM 서버 판정 완료 | `NEW_SUCCESS` 또는 `BUSINESS_FAILURE` | `APPROVED` / `REJECTED`, `RETRY_REQUIRED` |
 
 Member·Creator·Mission 확인 전 오류와 형식/이미지 validation 오류는 관측하지 않는다. replay와 system failure는 어떤 Feature도 증가시키지 않는다. 이미지 재사용은 기존 감사 기록이 `DIFFERENT_MEMBER`인 경우만 관측하며, 이미지 hash·Object key·URL·VLM 원문은 Observation, Redis, Evidence, 로그에 넣지 않는다.
+
+`YOUTUBE_SUBMISSION_BURST`는 `SUBMISSION_CREATED`만 센다. requestId rotation은 실제 제출 요청 관측만 사용하며, 이미지 재사용·VLM 판정에서 파생한 관측은 포함하지 않는다. 음성 판정 연속 횟수는 `REJECTED`·`RETRY_REQUIRED`에서 증가하고 실제 VLM `APPROVED`에서만 초기화한다. 각 Rule은 자신을 발생시킨 관측 시점에서만 평가한다.
 
 모든 구독 인증은 `YOUTUBE_SUBSCRIPTION` action을 사용하며 ONCE Business Key는 `MISSION:CREATOR:ONCE:{memberId}:{creatorId}:{missionId}`다. `periodKey`는 null이고 Ticket EARN의 UTC 날짜와 독립적이다.
 

@@ -13,6 +13,8 @@ import java.util.UUID;
 import kr.co.cking.abuse.application.context.MissionBusinessKey;
 import kr.co.cking.abuse.application.context.MissionBusinessKeyFactory;
 import kr.co.cking.abuse.domain.AbuseObservationEvent;
+import kr.co.cking.subscriptionverification.application.SubscriptionVerificationProcessingClaim;
+import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationImageReuseType;
 import org.junit.jupiter.api.Test;
@@ -53,11 +55,35 @@ class SubscriptionVerificationAbuseObserverTest {
         then(executor).shouldHaveNoInteractions();
     }
 
+    @Test
+    void 승인_VLM_판정도_음성_판정_연속_횟수_초기화를_위해_관측한다() {
+        MissionBusinessKeyFactory businessKeyFactory = mock(MissionBusinessKeyFactory.class);
+        AbuseObservationExecutor executor = mock(AbuseObservationExecutor.class);
+        Instant now = Instant.parse("2026-10-10T00:00:00Z");
+        given(businessKeyFactory.forCreator(any(), any(), any(), any(), any()))
+                .willReturn(new MissionBusinessKey("MISSION:CREATOR:ONCE:7:42:103", null));
+        SubscriptionVerificationAbuseObserver observer = new SubscriptionVerificationAbuseObserver(
+                businessKeyFactory, executor, Clock.fixed(now, ZoneOffset.UTC));
+
+        observer.observeDecision(claim(), SubscriptionVerificationDecisionStatus.APPROVED);
+
+        ArgumentCaptor<AbuseObservationEvent> captor = ArgumentCaptor.forClass(AbuseObservationEvent.class);
+        then(executor).should().observe(captor.capture());
+        assertThat(captor.getValue())
+                .extracting(AbuseObservationEvent::resultCode, AbuseObservationEvent::resultClassification)
+                .containsExactly("APPROVED", kr.co.cking.abuse.domain.ResultClassification.NEW_SUCCESS);
+    }
+
     private SubscriptionVerification verification() {
         SubscriptionVerification verification = SubscriptionVerification.pending(7L, 42L, 103L,
                 UUID.randomUUID().toString(), "f".repeat(64), "채널", "@channel", "object", "a".repeat(64),
                 "JPEG_V1", UUID.randomUUID().toString(), Instant.EPOCH);
         ReflectionTestUtils.setField(verification, "verificationId", 1L);
         return verification;
+    }
+
+    private SubscriptionVerificationProcessingClaim claim() {
+        return new SubscriptionVerificationProcessingClaim(1L, "token", 7L, 42L, 103L,
+                "image", "채널", "@channel", "reward", "2026-10-10", 1, Instant.MAX);
     }
 }
