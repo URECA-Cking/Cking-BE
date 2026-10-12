@@ -104,7 +104,7 @@ POST와 GET은 같은 형식이다. 시각은 UTC Instant다.
 
 ## 저장 및 해시
 
-V67는 `quiz_attempt`와 `quiz_attempt_answer`를 추가한다. Member/Quiz, Member/requestId,
+V66는 `quiz_attempt`와 `quiz_attempt_answer`를 추가한다. Member/Quiz, Member/requestId,
 attempt/questionNo UNIQUE와 Quiz/Creator·Quiz/revision 소속 FK를 적용한다. 보상 UUID도 UNIQUE다.
 
 요청 fingerprint v1은 Member·Creator·Quiz·revision·문항 수·정규화된 문항 번호/선택지의 SHA-256이다.
@@ -115,8 +115,8 @@ UUID는 내용 hash에서 제외하고 Member/requestId UNIQUE로 별도 식별�
 
 ## 배포 및 검증
 
-- PR #534의 V59 → PR #536의 V60 → #533의 V61~V63 → #535의 V67 순서로 적용한다.
-- 선행 migration이 없는 환경에 V67를 먼저 배포하거나 Fan PR을 먼저 병합하지 않는다.
-- PR 병합 전 최신 develop과 열린 PR에서 V67 및 API 인덱스 번호 충돌을 재확인한다.
+- PR #534의 V59 → PR #536의 V60 → #533의 V61~V63 → #535의 V66 순서로 적용한다.
+- 선행 migration이 없는 환경에 V66를 먼저 배포하거나 Fan PR을 먼저 병합하지 않는다.
+- PR 병합 전 최신 develop과 열린 PR에서 V66 및 API 인덱스 번호 충돌을 재확인한다.
 - focused 단위·WebMvc 보안 및 공개 조회 회귀는 로컬 실행 대상이다.
 - MySQL UNIQUE 경쟁·rollback·게시 잠금 경쟁·FK·변조 검증은 CI 전용이며 로컬에서는 컴파일까지만 한다.
