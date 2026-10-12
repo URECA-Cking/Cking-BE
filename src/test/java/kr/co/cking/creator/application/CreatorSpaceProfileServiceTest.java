@@ -12,6 +12,7 @@ import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceSlugReservation;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
@@ -212,6 +213,29 @@ class CreatorSpaceProfileServiceTest {
         then(profileImageManager).should().apply(creator, space, null, false);
         assertThat(space.getProfileImageUrl()).isEqualTo("https://cdn/current.jpg");
         assertThat(space.getBannerImageUrl()).isEqualTo("https://img/b2.png");
+    }
+
+    @Test
+    void updateMineKeepsDefaultImageWhenExplicitNullImageKeyRestoresIt() {
+        space.updateProfileImage("creator-space-profile-images/42/current.jpg", "https://cdn/current.jpg");
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        CreatorSpaceProfileImageRepository imageRepository = mock(CreatorSpaceProfileImageRepository.class);
+        CreatorSpaceProfileImageManager realImageManager = new CreatorSpaceProfileImageManager(
+                imageRepository,
+                new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
+                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+        CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
+                creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
+
+        serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
+                "새 소개", "https://cdn/current.jpg", "https://img/b2.png", null, true));
+
+        assertThat(space.getProfileImageKey()).isNull();
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
+        then(imageRepository).should().markDeletePending(
+                "creator-space-profile-images/42/current.jpg", 42L, NOW.toInstant(ZoneOffset.UTC));
     }
 
     @Test

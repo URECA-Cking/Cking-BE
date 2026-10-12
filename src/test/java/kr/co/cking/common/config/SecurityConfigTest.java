@@ -40,6 +40,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +57,7 @@ import static org.springframework.http.HttpHeaders.ORIGIN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +66,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = {MemberController.class, AuthController.class})
 @Import({
         SecurityConfigTest.AdminSecurityTestController.class,
+        SecurityConfigTest.CreatorSpaceProfileImageSecurityTestController.class,
         SecurityConfig.class,
         JwtConfig.class,
         JwtAuthenticationConverterConfig.class,
@@ -132,6 +135,14 @@ class SecurityConfigTest {
     void 팬_응시_API는_인증이_필수다() throws Exception {
         mockMvc.perform(post("/api/creators/1/quizzes/2/attempts")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/creators/1/quizzes/2/my-attempt")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void Creator_Space_프로필_이미지_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(post("/api/creator/space/profile-images"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/creator/space/profile-image"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -511,6 +522,21 @@ class SecurityConfigTest {
         @GetMapping("/api/creators/{creatorId}/quizzes/{quizId}")
         String publicQuizDetail() {
             return "public-quiz";
+        }
+    }
+
+    /** 새 Space 프로필 이미지 경로가 /api/** 공개 규칙보다 먼저 인증을 요구하는지 검증할 최소 endpoint다. */
+    @RestController
+    static class CreatorSpaceProfileImageSecurityTestController {
+
+        @org.springframework.web.bind.annotation.PostMapping("/api/creator/space/profile-images")
+        String upload() {
+            return "uploaded";
+        }
+
+        @PutMapping("/api/creator/space/profile-image")
+        String link() {
+            return "linked";
         }
     }
 
