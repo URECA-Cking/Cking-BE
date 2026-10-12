@@ -50,7 +50,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.reset;
 
 /**
- * 실제 MySQL로 Quiz 보상 실행권 발급의 단일성·롤백과 V62 실행 이력 제약을 확인한다(이슈 #533). CI에서만 실행한다.
+ * 실제 MySQL로 Quiz 보상 실행권 발급의 단일성·롤백과 V63 실행 이력 제약을 확인한다(이슈 #533). CI에서만 실행한다.
  * Redis는 쓰지 않는다. 재시도 가능한 실패 상태는 결과 기록 단계가 아직 없어 SQL로 직접 만든다.
  */
 @DataJpaTest
@@ -248,7 +248,7 @@ class QuizRewardExecutionClaimIntegrationTest {
     }
 
     @Test
-    void V62는_진행_중_실행_중복_실행권_중복_순번_중복_대문자_실행권을_막는다() {
+    void V63는_진행_중_실행_중복_실행권_중복_순번_중복_대문자_실행권을_막는다() {
         QuizRewardCommand command = admitted();
         QuizRewardExecutionClaim first = claimService.claim(command);
         Long requestId = (Long) request(command).get("quiz_reward_request_id");

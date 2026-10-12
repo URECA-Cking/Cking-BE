@@ -35,7 +35,7 @@ class TicketQuizRewardRequestTest {
     }
 
     @Test
-    void 상태는_V60_CHECK와_같은_6개다() {
+    void 상태는_V61_CHECK와_같은_6개다() {
         assertThat(QuizRewardRequestStatus.values()).extracting(Enum::name).containsExactly("RECEIVED", "EXECUTING",
                 "ACCEPTED", "APPLIED", "UNKNOWN", "RETRYABLE_FAILURE");
     }

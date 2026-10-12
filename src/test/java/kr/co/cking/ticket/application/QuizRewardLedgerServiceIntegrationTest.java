@@ -48,7 +48,7 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.reset;
 
 /**
- * 실제 MySQL로 Quiz 보상 EARN 반영(원장·DB 잔액·APPLIED)의 원자성·멱등성과 V61 원장 제약을 확인한다(이슈 #533).
+ * 실제 MySQL로 Quiz 보상 EARN 반영(원장·DB 잔액·APPLIED)의 원자성·멱등성과 V62 원장 제약을 확인한다(이슈 #533).
  * CI에서만 실행한다. Redis는 쓰지 않고, 메시지는 정상 소비와 같은 분기({@link TicketEarnEventDispatcher})로 넣는다.
  * Redis 실행 없이 실행권을 실제로 발급해(요청 EXECUTING, 실행 STARTED) 운영 정책
  * ({@link StoredExecutionQuizRewardExecutionPolicy})으로 원장 반영 동작을 확인한다.

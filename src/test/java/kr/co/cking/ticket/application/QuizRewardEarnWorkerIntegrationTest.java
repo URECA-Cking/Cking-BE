@@ -45,7 +45,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * 실제 MySQL로 Quiz 보상 Worker의 실행권 발급 → (가짜) Redis 실행 → 결과 기록이 V62 제약과 맞고, 결과별 요청 상태가
+ * 실제 MySQL로 Quiz 보상 Worker의 실행권 발급 → (가짜) Redis 실행 → 결과 기록이 V63 제약과 맞고, 결과별 요청 상태가
  * 의도대로 남는지, Balance 키 적재 전 미확정 Quiz 지급 확인이 동작하는지 확인한다(이슈 #533). CI에서만 실행한다.
  * Redis 실행·Balance 적재·키 확인은 mock이다.
  */
@@ -128,7 +128,7 @@ class QuizRewardEarnWorkerIntegrationTest {
     }
 
     @Test
-    void 결과별로_V62_제약을_지키며_실행을_끝내고_요청_상태를_바꾼다() {
+    void 결과별로_V63_제약을_지키며_실행을_끝내고_요청_상태를_바꾼다() {
         record Case(QuizRedisEarnResult result, String requestStatus, boolean notExecuted) {
         }
         List<Case> cases = List.of(

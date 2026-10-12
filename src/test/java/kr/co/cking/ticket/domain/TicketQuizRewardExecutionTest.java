@@ -73,7 +73,7 @@ class TicketQuizRewardExecutionTest {
     }
 
     @Test
-    void 상태는_V62_CHECK와_같은_2개다() {
+    void 상태는_V63_CHECK와_같은_2개다() {
         assertThat(QuizRewardExecutionStatus.values()).extracting(Enum::name).containsExactly("STARTED", "FINISHED");
     }
 }
