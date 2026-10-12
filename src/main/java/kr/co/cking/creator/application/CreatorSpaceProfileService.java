@@ -104,7 +104,7 @@ public class CreatorSpaceProfileService {
      * 버린 이전 slug는 같은 트랜잭션에서 예약해 다른 Creator가 곧바로 가져가지 못하게 한다(이슈 #301).
      *
      * <p>본인이 예약해 둔 이전 slug로 돌아가는 되돌리기는 14일 변경 제한을 받지 않는다. 이미 쓰던 값이므로
-     * 형식·예약어 검사도 다시 하지 않는다. 대신 변경 시각을 갱신하지 않아 새 slug로의 변경 제한은 그대로다.
+     * 형식 검사는 다시 하지 않지만, 이후 예약어가 된 값으로는 되돌릴 수 없다. 대신 변경 시각을 갱신하지 않아 새 slug로의 변경 제한은 그대로다.
      */
     @Transactional
     public CreatorSpaceView changeSlug(Long memberId, String slug) {
@@ -116,6 +116,10 @@ public class CreatorSpaceProfileService {
         }
         LocalDateTime now = LocalDateTime.now(clock);
         boolean revert = slugRegistry.isReservedBy(slug, creatorId, now);
+        if (revert && CreatorSpaceCustomSlug.isReserved(slug)) {
+            // 예약어가 나중에 추가되면 예전에 버린 slug가 예약어가 될 수 있다. 되돌리기도 막는다.
+            throw new BusinessException(CreatorErrorCode.RESERVED_SLUG);
+        }
         if (!revert) {
             validateNewSlug(space, slug, creatorId, now);
         }

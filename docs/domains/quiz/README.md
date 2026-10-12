@@ -13,7 +13,7 @@ AI 생성(`quiz.generation`)은 결과만 반환하며 저장 전에 같은 `Qui
 
 ## 소유 데이터
 
-V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V57의 Judge series·Job·JobCall·result·resultItem을 소유한다.
+V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다.
 
 - **quiz**: Creator 소유. `quiz_id`는 revision이 바뀌어도 그대로다. 원본 YouTube `videoId`, 생성 입력 `content_text`와 그 SHA-256은 생성 후 바꾸지 않는다.
 - **quiz_revision·quiz_question·quiz_option**: INSERT 후 바꾸지 않는다. 수정은 새 revision(`revision_no` + 1)으로 만든다. `question_no`·`option_no`는 0부터의 표시 순서이고 `correct_option_index`는 0-based `option_no`다.
@@ -74,7 +74,7 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 - 각 문항의 `textAnswerCorrect`, `uniqueAnswer`, `evidenceSupportsAnswer`, `questionClarity`, `koreanQuality`, `distractorQuality`, `textFaithfulness`가 모두 pass일 때만 Creator가 승인할 수 있다. reason은 공백 불가, 최대 200자(`String.length()`)이며 설정·저장 snapshot으로 늘릴 수 없다. 원문을 자르지 않는다.
 - 승인 직전 Job SUCCEEDED, Quiz/revision/series 소속, 원문·revision·input·settings·result hash, 문항 번호·7개 항목·집계를 재검증한다. 승인 기록에는 immutable **result ID**와 SHA를 고정한다. Job ID와 다르다.
 - 게시·재게시에는 승인 기록의 정확한 result ID/hash와 저장된 policyVersion을 검증한다. 현재 모델·prompt·pricing 설정 변경으로 과거 근거를 무효화하지 않는다. 이미 승인된 결정 재요청과 같은 revision 게시 중인 요청은 기존 결정을/상태를 반환하는 기존 동작을 유지한다.
-- V57의 `(revision_id, judge_evaluation_id) → result(revision_id, result_id)` composite FK가 다른 revision 근거 연결을 막는다. 거절·게시 취소는 평가 없이 가능하다.
+- V58의 `(revision_id, judge_evaluation_id) → result(revision_id, result_id)` composite FK가 다른 revision 근거 연결을 막는다. 거절·게시 취소는 평가 없이 가능하다.
 
 ### 평가 멱등성과 실패 처리
 

@@ -348,6 +348,17 @@ class CreatorSpaceProfileServiceTest {
         assertErrorCode(() -> service.changeSlug(7L, "iu-2026"), CreatorErrorCode.SLUG_CHANGE_TOO_SOON);
     }
 
+    /** 예약어가 나중에 추가돼 예전에 버린 slug가 예약어가 됐다면 되돌릴 수 없다. */
+    @Test
+    void changeSlugRejectsRevertToSlugThatBecameReserved() {
+        space.changeSlug("iu-official", NOW.minusDays(3));
+        givenOwnSpace();
+        given(reservationRepository.findBySlug("explore"))
+                .willReturn(Optional.of(CreatorSpaceSlugReservation.reserve("explore", 42L, NOW.minusDays(3))));
+
+        assertErrorCode(() -> service.changeSlug(7L, "explore"), CreatorErrorCode.RESERVED_SLUG);
+    }
+
     /** 긴 템플릿 규칙으로 만든 30자 초과 자동 slug도 본인이 버린 것이면 되돌릴 수 있다. */
     @Test
     void changeSlugRevertsToOwnLongAutoSlug() {

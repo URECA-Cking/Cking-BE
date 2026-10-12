@@ -81,6 +81,10 @@ cking:
     max-waiting: 4
     # 대기 4명 중 맨 뒤는 앞의 두 장씩 두 묶음이 끝나야 시작한다. 개발 서버에서 20MP 두 장 동시 처리가 최대 1.61초라 약 3.2초를 기다리고, 예열·GC 튐을 더해 5초.
     acquire-timeout: 5s
+  member:
+    profile-image:
+      # local 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
   verification:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.

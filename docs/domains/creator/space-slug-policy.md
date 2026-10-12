@@ -36,9 +36,10 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 | 운영·계정 | `admin`, `administrator`, `staff`, `manager`, `system`, `root`, `official`, `cking` |
 | 인증·설정 | `api`, `auth`, `login`, `logout`, `signup`, `oauth`, `me`, `my`, `settings`, `help`, `support`, `notice` |
 | 서비스 경로 | `creator`, `creators`, `space`, `spaces`, `mission`, `missions`, `event`, `events`, `ticket`, `tickets`, `winner`, `winners`, `notification`, `notifications` |
+| 프론트엔드 경로 | `explore`, `my-page`, `my-entries`, `my-winners`, `my-calendar`, `studio`, `onboarding`, `assets`, `icons` |
 | 기타 | `null`, `undefined` |
 
-예약어는 정확히 일치할 때만 막는다. `iu-official`처럼 예약어를 포함하는 것은 허용한다. 목록을 바꾸려면 `CreatorSpaceCustomSlug.RESERVED`와 이 표를 함께 고친다.
+예약어는 정확히 일치할 때만 막는다. `iu-official`처럼 예약어를 포함하는 것은 허용한다. FE가 Space 주소를 `/{slug}`로 쓰므로 slug가 FE 최상위 경로와 겹치면 Space 대신 앱 화면이 열린다. FE에 새 최상위 경로가 생기면 이 목록도 갱신한다. 목록을 바꾸려면 `CreatorSpaceCustomSlug.RESERVED`와 이 표를 함께 고친다.
 
 ### 중복
 
@@ -72,7 +73,7 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 
 ### 되돌리기
 
-- **본인이 버린 slug로는 예약 기간 안에 언제든 되돌릴 수 있다.** 14일 변경 간격을 받지 않는다. 이미 쓰던 값이라 형식·예약어 검사도 다시 하지 않는다. 30자를 넘는 긴 자동 slug(관리자가 긴 템플릿 규칙을 쓴 경우)로도 되돌릴 수 있도록, 요청 단계에서는 빈 값과 컬럼 길이(100자)만 검사하고 커스텀 slug 형식은 새 slug일 때만 서비스에서 검사한다.
+- **본인이 버린 slug로는 예약 기간 안에 언제든 되돌릴 수 있다.** 14일 변경 간격을 받지 않는다. 이미 쓰던 값이라 형식 검사는 다시 하지 않는다. 다만 이후 예약어로 추가된 값으로는 되돌릴 수 없다(`RESERVED_SLUG`). 30자를 넘는 긴 자동 slug(관리자가 긴 템플릿 규칙을 쓴 경우)로도 되돌릴 수 있도록, 요청 단계에서는 빈 값과 컬럼 길이(100자)만 검사하고 커스텀 slug 형식은 새 slug일 때만 서비스에서 검사한다.
 - 되돌려도 마지막 변경 시각(`slug_changed_at`)은 바뀌지 않는다. 되돌리기를 이용해 새 slug로 바꾸는 14일 제한을 우회할 수 없다.
   - 예: 9/1 `creator-42` → `iu-official`, 9/4 `creator-42`로 되돌림(가능), 9/5 `iu-2026`으로 변경(거절, 9/15부터 가능)
 - 되돌리면서 버린 slug(위 예의 `iu-official`)도 14일 예약된다. 그 사이 본인은 다시 그 slug로 돌아갈 수 있다.

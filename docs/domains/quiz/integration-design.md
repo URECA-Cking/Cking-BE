@@ -25,7 +25,7 @@ Creator 명시적 승인 → 저장된 평가/해시 검증 → 게시 → Fan �
 
 - 인증·소유권·Job·DB·승인·게시 책임은 BE에 있다. Judge는 contentText 기준이며 원본 영상을 재검증하거나 자동 승인하지 않는다.
 - 서비스 생성은 3·5문항 / 보기 4개이며 정답 index는 0-based다. Core의 일반 입력 범위와 서비스 정책을 구분한다.
-- V55는 Quiz/revision/Creator 결정, V56은 생성 Job, V57은 revision별 Judge series·attempt Job·HTTP 기록·불변 result/item을 저장한다.
+- V55는 Quiz/revision/Creator 결정, V56은 생성 Job, V58은 revision별 Judge series·attempt Job·HTTP 기록·불변 result/item을 저장한다.
 - requestId는 Creator별 UUID다. Judge는 revision당 최초 포함 2 attempts, Creator당 활성 Job 1개를 DB 제약과 행 잠금으로 제한한다. 평가와 생성 Executor는 분리한다.
 - SUCCEEDED는 유효한 평가 저장이며 fail/uncertain도 포함한다. 7개 항목이 모두 pass인 ALL_PASS만 명시적 승인 근거로 사용할 수 있다.
 - 승인 시 immutable result ID/hash를 고정하고 게시·재게시 시 같은 결과를 저장된 정책 버전으로 검증한다. 모델·prompt·pricing 변경과 feature OFF는 기존 유효 근거를 무효화하지 않는다.

@@ -20,7 +20,10 @@ import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
 import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.member.application.MemberProfile;
+import kr.co.cking.member.application.MemberProfileImageUploadService;
+import kr.co.cking.member.application.MemberProfileUpdateService;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.presentation.MemberController;
 import org.junit.jupiter.api.Test;
@@ -92,6 +95,15 @@ class SecurityConfigTest {
     private kr.co.cking.member.application.MemberOnboardingService memberOnboardingService;
 
     @MockitoBean
+    private MemberProfileImageUploadService memberProfileImageUploadService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
+
+    @MockitoBean
+    private MemberProfileUpdateService memberProfileUpdateService;
+
+    @MockitoBean
     private CreatorQueryService creatorQueryService;
 
     @MockitoBean
@@ -143,7 +155,7 @@ class SecurityConfigTest {
     void 유효한_Access_JWT로_현재_사용자를_조회한다() throws Exception {
         when(memberQueryService.getProfile(17L))
                 .thenReturn(new MemberProfile(
-                        17L, "홍길동", null, "hong@example.com", MemberRole.USER, true, null, null));
+                        17L, "홍길동", null, null, "hong@example.com", MemberRole.USER, true, null, null));
         when(creatorQueryService.isCreatorMember(17L)).thenReturn(false);
 
         mockMvc.perform(get("/api/me")

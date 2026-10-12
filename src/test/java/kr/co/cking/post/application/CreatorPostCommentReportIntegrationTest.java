@@ -6,6 +6,7 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.follow.application.CreatorFollowService;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.AdminCommentReportView;
@@ -251,7 +252,10 @@ class CreatorPostCommentReportIntegrationTest {
     }
 
     private Member member(MemberRole role) {
-        Member member = memberRepository.saveAndFlush(new Member("report-" + suffix(), null, null, role));
+        String suffix = suffix();
+        Member member = new Member("report-" + suffix, null, null, role);
+        member.setInitialNickname(MemberNickname.of("report" + suffix));
+        member = memberRepository.saveAndFlush(member);
         members.add(member);
         return member;
     }

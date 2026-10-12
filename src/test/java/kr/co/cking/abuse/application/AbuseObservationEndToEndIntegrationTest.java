@@ -42,6 +42,7 @@ import kr.co.cking.event.application.service.EntrySpendService;
 import kr.co.cking.event.domain.EntryErrorCode;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.CommonMissionRepository;
@@ -131,8 +132,8 @@ class AbuseObservationEndToEndIntegrationTest {
     @BeforeEach
     void setUp() {
         testStartedAt = Instant.now();
-        member = memberRepository.saveAndFlush(new Member("Abuse E2E 회원", null, null, MemberRole.USER));
-        Member owner = memberRepository.saveAndFlush(new Member("Abuse E2E Creator", null, null, MemberRole.USER));
+        member = configuredMember("Abuse E2E 회원", "au");
+        Member owner = configuredMember("Abuse E2E Creator", "ao");
         creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "Abuse E2E Creator"));
         likeMission = missionRepository.saveAndFlush(new Mission(creator.getCreatorId(), MissionType.LIKE, 1, null, null));
         shareMission = missionRepository.saveAndFlush(new Mission(creator.getCreatorId(), MissionType.SHARE, 1, null, null));
@@ -409,6 +410,13 @@ class AbuseObservationEndToEndIntegrationTest {
 
     private EntryCommand entry(UUID requestId, CouponType couponType) {
         return new EntryCommand(member.getMemberId(), requestId, 1, couponType);
+    }
+
+    private Member configuredMember(String name, String nicknamePrefix) {
+        Member candidate = new Member(name, null, null, MemberRole.USER);
+        candidate.setInitialNickname(MemberNickname.of(nicknamePrefix
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 12)));
+        return memberRepository.saveAndFlush(candidate);
     }
 
     private List<kr.co.cking.abuse.domain.AbuseDetection> detections() {

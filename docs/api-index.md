@@ -152,6 +152,8 @@
 | 149 | 외부 | AI Quiz | PUBLIC | GET | `/api/creators/{creatorId}/quizzes/{quizId}` | 게시 Quiz 상세(문항·보기·videoId, 정답·해설 제외) | - |
 | 150 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/generations` | YouTube URL 기반 Quiz 비동기 생성 요청(202, 문항 3·5개·보기 4개, Creator당 진행 중 1개, 기능 꺼짐 시 503) | `requestId` |
 | 151 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/generations/{generationId}` | 내 Quiz 생성 작업 상태(성공 시 quizId·revisionId, 실패 코드) | - |
+| 152 | 외부 | Member | USER | POST | `/api/me/profile-images` | 내 프로필 사진 업로드 후 연결용 imageKey 반환 | - |
+| 153 | 외부 | Member | USER | PUT | `/api/me/profile` | 닉네임 수정·프로필 사진 교체/삭제(키 생략 시 유지) | 상태 기반 |
 | 154 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/judge-evaluations` | GPT Judge 비동기 평가 접수(202, 최대 2 attempts, Creator당 활성 Job 1개) | `requestId` |
 | 155 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/judge-evaluations/{evaluationId}` | 본인 평가 Job 상태와 문항별 판정 조회 | - |
 

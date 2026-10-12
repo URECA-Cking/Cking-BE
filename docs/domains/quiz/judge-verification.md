@@ -8,10 +8,10 @@
 | --- | --- | --- | --- | --- |
 | 1 | Responses strict schema·문항·7개 항목·reason·refusal/incomplete 구분 | `judge/openai/OpenAiQuizJudge`, Parser·Validator·Prompt | OpenAiQuizJudgeTest, QuizJudgeResponseParserTest, QuizJudgeEvaluationValidatorTest | 구현됨, focused 검증 |
 | 2 | 검증된 저장 입력만 전달·무결성 실패 시 0 호출 | QuizRevisionReader, Store.loadInput, Worker | QuizRevisionReaderTest, QuizJudgeEvaluationStoreTest, QuizJudgeWorkerTest | 구현됨, focused 검증 |
-| 3 | series·Job·attempt·result identity/hash 연결 | domain Judge Entity, V57, Store | QuizJudgeEvaluationStoreTest, QuizJudgeEvaluationIntegrationTest | 구현됨 / CI 대기 |
+| 3 | series·Job·attempt·result identity/hash 연결 | domain Judge Entity, V58, Store | QuizJudgeEvaluationStoreTest, QuizJudgeEvaluationIntegrationTest | 구현됨 / CI 대기 |
 | 4 | SUCCEEDED와 집계 분리·fail/uncertain 보존 | JudgeAggregation, Worker·Store | QuizJudgeWorkerTest, QuizJudgeWorkerIntegrationTest | 구현됨 / CI 대기 |
 | 5 | timeout·중단 UNKNOWN·자동 재호출 없음·늦은 결과 차단 | Adapter·Worker, Store.completeRunning | OpenAiQuizJudgeTest, QuizJudgeWorkerTest, StoreTest, WorkerIntegrationTest | 구현됨 / CI 대기 |
-| 6 | requestId replay·활성 Job 1개·잠금 attempt 할당 | Service·Store, V57 UNIQUE | ServiceTest, StoreTest, EvaluationIntegrationTest | 구현됨 / CI 대기 |
+| 6 | requestId replay·활성 Job 1개·잠금 attempt 할당 | Service·Store, V58 UNIQUE | ServiceTest, StoreTest, EvaluationIntegrationTest | 구현됨 / CI 대기 |
 | 7 | 요청·조회 시 stale PENDING/ RUNNING 정리 | Service.refreshed, Store.expireStale | ServiceTest, EvaluationIntegrationTest, WorkerIntegrationTest | 구현됨 / CI 대기 |
 | 8 | 기술적 재평가만·최대 2회·완료/승인 재평가 금지 | Store.create, QuizJudgeSeries | StoreTest, EvaluationIntegrationTest | 구현됨 / CI 대기 |
 | 9 | 모든 항목 pass만 승인·무결성/기준 미달 차단 | StoredJudgeQuizApprovalPolicy, ResultReader | StoredJudgeQuizApprovalPolicyTest, CreatorQuizCommandServiceTest | 구현됨, focused 검증 |
@@ -24,7 +24,7 @@
 | 16 | usage·추정 비용·민감 원문 비노출 | QuizJudgeExecution, Adapter, Job/JobCall | OpenAiQuizJudgeTest, StoreTest, WorkerTest, WorkerIntegrationTest | 구현됨 / CI 대기 |
 | 17 | startup 검증·초기 설정 명시 | OpenAiJudgeProperties, EvaluationProperties·Configuration | OpenAiJudgeConfigurationTest, QuizJudgeEvaluationConfigurationTest, README | 구현됨, focused 검증 |
 | 18 | Fake/Mock·DB 제약·TX·경쟁 검증 | focused 테스트 및 CI 전용 테스트 | EvaluationIntegrationTest, WorkerIntegrationTest, ApprovalFlowIntegrationTest, QuizJudgeFlowIntegrationTest | focused 검증 / CI 대기 |
-| 19 | migration 번호 확인·decision→result FK | V57, composite FK | ApprovalFlowIntegrationTest, EvaluationIntegrationTest | CI/배포 검증 대기 (#527 번호 충돌 해소 필요) |
+| 19 | migration 번호 확인·decision→result FK | V58, composite FK | ApprovalFlowIntegrationTest, EvaluationIntegrationTest | 번호 충돌 해소 / CI·배포 검증 대기 |
 | 20 | API·README·인덱스·설계 상태 갱신 | api.md, judge-api.md, README.md, integration-design.md, 공통 인덱스 | 상대 링크·길이·whitespace 검사 | 문서 갱신 |
 | 21 | 생성→평가→승인→게시 Fake 연결 | GenerationService → EvaluationService → CommandService | QuizJudgeFlowIntegrationTest (모든 Provider Fake) | 작성·컴파일 / CI 대기 |
 
@@ -38,13 +38,13 @@ Judge 계약/Adapter Mock HTTP, Evaluation Service·Store·Worker·Dispatcher·�
 
 ### Migration 선행 조건
 
-현재 #529는 `V57__add_quiz_judge.sql`을 사용한다. PR #527도 현재 V57을 사용하므로 **migration 번호가 충돌한다**. #527 담당자의 migration 번호 변경이 필요하며, 아직 확정되지 않았다. **번호 충돌이 해결되기 전에는 #529를 병합하지 않는다.**
+PR #527은 develop에 병합됐으며 `V57__add_member_profile_image.sql`을 사용한다. #529의 Judge migration은 최신 develop의 최대 버전 V57 다음인 `V58__add_quiz_judge.sql`로 옮겨 번호 충돌을 해소했다. Member migration과 Judge SQL 내용은 변경하지 않았다.
 
-#529를 먼저 배포한 뒤 #527을 병합한다면, #527의 migration 번호는 그 시점에 **배포된 최대 버전보다 커야 한다**. 단순히 현재 로컬의 다음 번호만 보고 정하지 않고 기존 배포 DB의 적용 버전도 확인한다. 번호 충돌과 적용 순서가 확정되고 CI/배포 검증이 끝나기 전까지 완료 조건 19는 **CI/배포 검증 대기**다. 새 CI DB에서 #529의 V57이 통과하는 것만으로 충돌이 해결됐다고 판단하지 않는다.
+병합 전 최신 develop의 migration 번호 중복을 다시 확인한다. 배포 전에는 기존 DB에 V57까지 적용됐는지와 Judge V57이 따로 적용된 이력이 없는지 확인한 뒤 V58을 적용한다. MySQL CI의 migration·FK·CHECK·UNIQUE 검증과 기존 배포 DB 적용 이력 확인이 끝나기 전까지 완료 조건 19는 **CI/배포 검증 대기**다.
 
 ### MySQL 검증
 
-- EvaluationIntegrationTest: V57, FK/UNIQUE/CHECK, attempt·replay 경쟁, rollback, stale/완료 저장 경쟁.
+- EvaluationIntegrationTest: V58, FK/UNIQUE/CHECK, attempt·replay 경쟁, rollback, stale/완료 저장 경쟁.
 - WorkerIntegrationTest: 실제 Executor·DB 경계, deadline 잠금 대기, late execution record, timeout·설정 변경·기능 OFF.
 - ApprovalFlowIntegrationTest: 실제 결과 기반 승인·게시·재게시, 다른 revision FK, 운영 모델·pricing 변경과 OFF.
 - QuizJudgeFlowIntegrationTest: Fake Grounding·Generator·Judge로 생성부터 공개 조회까지 연결, Provider 호출 TX 비활성·중복 호출 없음.

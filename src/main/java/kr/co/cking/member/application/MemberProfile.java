@@ -10,6 +10,7 @@ public record MemberProfile(
         Long memberId,
         String name,
         String nickname,
+        String profileImageUrl,
         String email,
         MemberRole role,
         boolean onboardingCompleted,
@@ -17,9 +18,9 @@ public record MemberProfile(
         String restorableNickname
 ) {
 
-    public static MemberProfile from(Member member, String restorableNickname) {
+    public static MemberProfile from(Member member, String profileImageUrl, String restorableNickname) {
         return new MemberProfile(
-                member.getMemberId(), member.getName(), member.getNickname(), member.getEmail(), member.getRole(),
+                member.getMemberId(), member.getName(), member.getNickname(), profileImageUrl, member.getEmail(), member.getRole(),
                 member.isOnboardingCompleted(), member.nicknameChangeableAt(), restorableNickname);
     }
 }

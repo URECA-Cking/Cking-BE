@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 public enum MemberErrorCode implements ErrorCode {
     NICKNAME_ALREADY_TAKEN(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
     NICKNAME_CHANGE_TOO_SOON(HttpStatus.CONFLICT, "닉네임은 마지막 변경 후 14일이 지나야 바꿀 수 있습니다."),
+    INVALID_PROFILE_IMAGE(HttpStatus.BAD_REQUEST, "프로필 이미지가 유효하지 않습니다."),
+    PROFILE_IMAGE_UNAVAILABLE(HttpStatus.BAD_REQUEST, "사용할 수 없는 프로필 이미지입니다."),
     PROFILE_SETUP_REQUIRED(HttpStatus.CONFLICT, "닉네임 설정을 먼저 완료해 주세요.");
 
     private final HttpStatus status;
