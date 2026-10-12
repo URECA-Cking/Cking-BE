@@ -15,10 +15,11 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.repository.DeadStreamMessageRepository;
 import kr.co.cking.ticket.application.CommonMissionEarnLedgerService;
+import kr.co.cking.ticket.application.TicketEarnEventDispatcher;
+import kr.co.cking.ticket.application.QuizRewardLedgerService;
 import kr.co.cking.ticket.application.TicketEarnLedgerService;
 import kr.co.cking.ticket.application.TicketSpendLedgerService;
 import kr.co.cking.ticket.application.dto.CommonEarnCommand;
-import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.SpendCommand;
 import lombok.RequiredArgsConstructor;
 
@@ -26,15 +27,16 @@ import lombok.RequiredArgsConstructor;
  * 운영자가 Dead Stream으로 이동한 메시지를 확인한 뒤 수동으로 재처리할 때 쓴다
  * (요구사항 v4 FR-14a / RTM FR-P2-020). 보존해 둔 원본 payload를 그대로
  * 재적용하고, 성공하면 RESOLVED로 표시한다 — {@link TicketEarnLedgerService#apply}·
- * {@link TicketSpendLedgerService#apply}·{@link CommonMissionEarnLedgerService#apply}가
- * requestId 기준으로 멱등하므로 중복 replay를 눌러도 안전하다.
+ * {@link QuizRewardLedgerService#apply}·{@link TicketSpendLedgerService#apply}·
+ * {@link CommonMissionEarnLedgerService#apply}가 requestId 기준으로 멱등하므로 중복 replay를 눌러도 안전하다.
+ * EARN 메시지는 정상 소비와 같은 {@link TicketEarnEventDispatcher}로 적립 원인·버전을 나눈다.
  */
 @Service
 @RequiredArgsConstructor
 public class DeadStreamReplayService {
 
     private final DeadStreamMessageRepository deadStreamMessageRepository;
-    private final TicketEarnLedgerService ticketEarnLedgerService;
+    private final TicketEarnEventDispatcher earnEventDispatcher;
     private final TicketSpendLedgerService ticketSpendLedgerService;
     private final CommonMissionEarnLedgerService commonMissionEarnLedgerService;
     private final ObjectMapper objectMapper;
@@ -54,7 +56,8 @@ public class DeadStreamReplayService {
         Map<String, String> fields = readPayload(message.getPayload());
 
         switch (message.getStreamType()) {
-            case EARN -> ticketEarnLedgerService.apply(EarnCommand.fromStreamFields(fields));
+            // 정상 소비와 같은 적립 원인·버전 분기를 쓴다. Quiz 메시지를 Mission으로 바꾸지 않는다.
+            case EARN -> earnEventDispatcher.apply(fields);
             case SPEND -> ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
             case COMMON_EARN -> commonMissionEarnLedgerService.apply(CommonEarnCommand.fromStreamFields(fields));
             // PR #250 리뷰(문구): enum switch 문은 case 누락을 컴파일러가 잡아주지 않는다 -

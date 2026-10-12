@@ -63,6 +63,18 @@ public class TicketQuizRewardRequest {
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
     }
 
+    /**
+     * Ticket 원장·잔액 반영과 같은 Transaction에서 APPLIED로 바꾼다. APPLIED는 끝 상태라 되돌리거나 다시 적용하지
+     * 않는다. 호출자는 행을 잠근 뒤 부른다.
+     */
+    public void markApplied(Instant appliedAt) {
+        if (status == QuizRewardRequestStatus.APPLIED) {
+            throw new IllegalStateException("이미 반영한 Quiz 보상 요청입니다. rewardRequestId=" + rewardRequestId);
+        }
+        this.status = QuizRewardRequestStatus.APPLIED;
+        this.appliedAt = Objects.requireNonNull(appliedAt, "appliedAt");
+    }
+
     /** 같은 fingerprint 규칙과 같은 입력인지. rewardRequestId는 비교하지 않는다. */
     public boolean hasSamePayload(String fingerprintVersion, String payloadFingerprint) {
         return this.fingerprintVersion.equals(fingerprintVersion) && this.payloadFingerprint.equals(payloadFingerprint);
