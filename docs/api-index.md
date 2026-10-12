@@ -160,8 +160,9 @@
 | 157 | 외부 | Creator | CREATOR | PUT | `/api/creator/profile` | 내 Creator 활동명 전체 교체·14일 변경/복귀 정책 적용 | 상태 기반 |
 | 158 | 외부 | Post | ADMIN | POST | `/api/admin/comment-reports/{commentId}/hide` | 신고된 댓글 숨김(접수 신고 일괄 처리 완료, 되돌릴 수 없음) | 상태 기반 |
 | 159 | 외부 | Post | ADMIN | POST | `/api/admin/comment-reports/{commentId}/reject` | 신고된 댓글의 접수 신고 일괄 반려 | 상태 기반 |
-| 160 | 외부 | Creator | CREATOR | POST | `/api/creator/space/profile-images` | Creator Space 프로필 사진 업로드 | - |
-| 161 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/profile-image` | 업로드한 Space 프로필 사진 연결 | - |
-
+| 160 | 외부 | AI Quiz | USER | POST | `/api/creators/{creatorId}/quizzes/{quizId}/attempts` | Fan 답안 제출·서버 채점·동일 요청 replay(200) | `requestId` |
+| 161 | 외부 | AI Quiz | USER | GET | `/api/creators/{creatorId}/quizzes/{quizId}/my-attempt` | 본인 응시 시점 결과 조회(게시 취소 후에도 유지) | - |
+| 162 | 외부 | Creator | CREATOR | POST | `/api/creator/space/profile-images` | Creator Space 프로필 사진 업로드 | - |
+| 163 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/profile-image` | 업로드한 Space 프로필 사진 연결 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
