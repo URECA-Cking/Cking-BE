@@ -20,7 +20,10 @@ import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
 import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.member.application.MemberProfile;
+import kr.co.cking.member.application.MemberProfileImageUploadService;
+import kr.co.cking.member.application.MemberProfileUpdateService;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.presentation.MemberController;
 import org.junit.jupiter.api.Test;
@@ -90,6 +93,15 @@ class SecurityConfigTest {
 
     @MockitoBean
     private kr.co.cking.member.application.MemberOnboardingService memberOnboardingService;
+
+    @MockitoBean
+    private MemberProfileImageUploadService memberProfileImageUploadService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
+
+    @MockitoBean
+    private MemberProfileUpdateService memberProfileUpdateService;
 
     @MockitoBean
     private CreatorQueryService creatorQueryService;
@@ -211,6 +223,31 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/me/creator-recommendations"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** Creator AI Quiz API는 조회·명령 모두 JWT 인증 없이는 호출할 수 없다. */
+    @Test
+    void Creator_Quiz_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(get("/api/creator/quizzes"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/1/revisions/100/approve"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/1/unpublish"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** 게시 Quiz 공개 조회 경로는 인증 없이 Security를 통과한다. */
+    @Test
+    void 공개_Quiz_조회는_인증_없이_호출할_수_있다() throws Exception {
+        mockMvc.perform(get("/api/creators/1/quizzes"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("public-quizzes"));
+        mockMvc.perform(get("/api/creators/1/quizzes/2"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("public-quiz"));
     }
 
     /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
@@ -441,6 +478,18 @@ class SecurityConfigTest {
         @GetMapping("/api/admin/events")
         String accessManagedEventList() {
             return "admin-api";
+        }
+
+        /** 공개 Quiz 목록 경로가 인증 없이 도달하는지 확인한다. */
+        @GetMapping("/api/creators/{creatorId}/quizzes")
+        String publicQuizList() {
+            return "public-quizzes";
+        }
+
+        /** 공개 Quiz 상세 경로가 인증 없이 도달하는지 확인한다. */
+        @GetMapping("/api/creators/{creatorId}/quizzes/{quizId}")
+        String publicQuizDetail() {
+            return "public-quiz";
         }
     }
 

@@ -141,7 +141,16 @@
 | 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V50, 기존 회원은 전원 true) | 상태 기반 |
 | 139 | 외부 | Drawing | ADMIN | GET | `/api/admin/events/{eventId}/drawings/initial` | Event의 INITIAL Drawing 조회 | - |
 | 140 | 외부 | Creator 추천 | USER | POST | `/api/me/creator-recommendation-events` | 실제 노출·클릭 최대 50건 원자 수집, JWT 소유권/후보/신규 이벤트 24시간 검증, 보존 중 승인 재전송은 만료 후 멱등 성공 | eventId 및 요청+Creator+타입 |
-| 141 | 외부 | Member | USER | POST | `/api/me/profile-images` | 내 프로필 사진 업로드 후 연결용 imageKey 반환 | - |
-| 142 | 외부 | Member | USER | PUT | `/api/me/profile` | 닉네임·프로필 사진 전체 교체 | 상태 기반 |
+| 141 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes` | 내 Quiz 목록(최신 revision 제목·검토 상태, 최근 생성 순) | - |
+| 142 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/{quizId}` | 내 Quiz 상세(공개 상태, 게시 revision, revision 목록) | - |
+| 143 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/{quizId}/revisions/{revisionId}` | revision 상세(정답·해설·근거·원본 텍스트 포함) | - |
+| 144 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/approve` | revision 승인(Judge 평가 검증 필수, Judge 연동 전에는 항상 거부) | 상태 기반 |
+| 145 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/reject` | revision 거절(선택 사유) | 상태 기반 |
+| 146 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/publish` | 승인된 최신 revision 게시(Judge 연동 전에는 항상 거부) | 상태 기반 |
+| 147 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/unpublish` | 게시 취소(Judge 상태와 무관) | 상태 기반 |
+| 148 | 외부 | AI Quiz | PUBLIC | GET | `/api/creators/{creatorId}/quizzes` | 게시 Quiz 목록(최근 게시 순) | - |
+| 149 | 외부 | AI Quiz | PUBLIC | GET | `/api/creators/{creatorId}/quizzes/{quizId}` | 게시 Quiz 상세(문항·보기·videoId, 정답·해설 제외) | - |
+| 150 | 외부 | Member | USER | POST | `/api/me/profile-images` | 내 프로필 사진 업로드 후 연결용 imageKey 반환 | - |
+| 151 | 외부 | Member | USER | PUT | `/api/me/profile` | 닉네임·프로필 사진 전체 교체 | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
