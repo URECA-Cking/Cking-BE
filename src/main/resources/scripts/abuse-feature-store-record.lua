@@ -1,7 +1,6 @@
--- KEYS[1..11]: mission request, duplicate mission, entry request, insufficient balance,
---              requestId rotation, last earn, rapid earn-spend, failure, failure type,
---              failure sequence, insufficient balance sequence
--- ARGV[1..13]: action type, result classification, result code, observationId, requestId,
+-- KEYS[1..15]: v1 Mission/Event feature keys followed by YouTube submission,
+--              image reuse, negative decision, negative decision sequence keys
+-- ARGV[1..17]: action type, result classification, result code, observationId, requestId,
 --              each feature window in ms, rapid max delay in ms
 
 local missionRequestKey = KEYS[1]
@@ -15,6 +14,10 @@ local failureKey = KEYS[8]
 local failureTypeKey = KEYS[9]
 local failureSequenceKey = KEYS[10]
 local insufficientBalanceSequenceKey = KEYS[11]
+local youtubeSubmissionKey = KEYS[12]
+local youtubeImageReuseKey = KEYS[13]
+local youtubeNegativeDecisionKey = KEYS[14]
+local youtubeNegativeDecisionSequenceKey = KEYS[15]
 
 local actionType = ARGV[1]
 local resultClassification = ARGV[2]
@@ -29,6 +32,10 @@ local requestIdRotationWindowMs = tonumber(ARGV[10])
 local rapidEarnSpendWindowMs = tonumber(ARGV[11])
 local rapidEarnSpendMaxDelayMs = tonumber(ARGV[12])
 local failureWindowMs = tonumber(ARGV[13])
+local youtubeSubmissionWindowMs = tonumber(ARGV[14])
+local youtubeRequestIdRotationWindowMs = tonumber(ARGV[15])
+local youtubeImageReuseWindowMs = tonumber(ARGV[16])
+local youtubeNegativeDecisionWindowMs = tonumber(ARGV[17])
 local redisTime = redis.call('TIME')
 local observedAtEpochMs = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
 
@@ -82,7 +89,7 @@ local function recordFailureType()
 end
 
 if resultClassification == 'REPLAY' or resultClassification == 'SYSTEM_FAILURE' then
-    return {zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero}
+    return {zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero}
 end
 
 local missionRequestCount = zero
@@ -96,6 +103,43 @@ local rapidEarnSpendPairCreated = zero
 local failureCount = zero
 local failureConsecutiveCount = zero
 local distinctFailureTypeCount = zero
+local youtubeSubmissionCount = zero
+local youtubeImageReuseCount = zero
+local youtubeNegativeDecisionCount = zero
+local youtubeNegativeDecisionConsecutiveCount = zero
+
+if actionType == 'YOUTUBE_SUBSCRIPTION' then
+    -- 실제 PENDING 저장 완료만 제출 수로 센다. 이미지 재사용과 VLM 판정은 한 제출에서
+    -- 파생되는 관측이므로 여기서 함께 세면 제출 burst가 과대 집계된다.
+    if resultCode == 'SUBMISSION_CREATED' then
+        youtubeSubmissionCount = recordWindow(youtubeSubmissionKey, observationId, youtubeSubmissionWindowMs)
+    end
+
+    -- Rotation은 사용자가 제출 API에 보낸 requestId만 대상으로 한다. VLM 판정은
+    -- verificationId에서 만든 내부 식별자를 쓰므로 rotation window에 넣지 않는다.
+    local isVlmDecision = resultCode == 'APPROVED' or resultCode == 'REJECTED' or resultCode == 'RETRY_REQUIRED'
+    if resultCode ~= 'IMAGE_REUSE' and not isVlmDecision then
+        distinctRequestIdCount = recordWindow(requestIdRotationKey, requestId, youtubeRequestIdRotationWindowMs)
+    end
+    if resultCode == 'IMAGE_REUSE' then
+        youtubeImageReuseCount = recordWindow(youtubeImageReuseKey, observationId, youtubeImageReuseWindowMs)
+    end
+    if resultCode == 'REJECTED' or resultCode == 'RETRY_REQUIRED' then
+        youtubeNegativeDecisionCount = recordWindow(
+                youtubeNegativeDecisionKey, observationId, youtubeNegativeDecisionWindowMs)
+        youtubeNegativeDecisionConsecutiveCount = recordSequence(
+                youtubeNegativeDecisionSequenceKey, youtubeNegativeDecisionWindowMs)
+    -- 연속 음성 판정은 실제 VLM 승인에서만 끊긴다. PENDING 제출 저장 성공은
+    -- 이전 VLM 음성 판정을 초기화하지 않는다.
+    elseif resultCode == 'APPROVED' then
+        redis.call('DEL', youtubeNegativeDecisionSequenceKey)
+    end
+    return {
+        zero, zero, zero, zero, zero, distinctRequestIdCount, zero, zero, zero, zero, zero,
+        youtubeSubmissionCount, youtubeImageReuseCount, youtubeNegativeDecisionCount,
+        youtubeNegativeDecisionConsecutiveCount
+    }
+end
 
 if actionType == 'MISSION_COMPLETE' then
     missionRequestCount = recordWindow(missionRequestKey, observationId, missionRequestWindowMs)
@@ -150,5 +194,9 @@ return {
     rapidEarnSpendPairCreated,
     failureCount,
     failureConsecutiveCount,
-    distinctFailureTypeCount
+    distinctFailureTypeCount,
+    youtubeSubmissionCount,
+    youtubeImageReuseCount,
+    youtubeNegativeDecisionCount,
+    youtubeNegativeDecisionConsecutiveCount
 }

@@ -47,13 +47,17 @@ class MissionBusinessKeyFactoryTest {
     }
 
     @Test
-    void 관찰_대상이_아닌_Creator_미션에는_키를_만들지_않는다() {
-        for (MissionType type : new MissionType[] {
-                MissionType.ATTENDANCE, MissionType.YOUTUBE_SUBSCRIPTION
-        }) {
-            assertThatIllegalArgumentException().isThrownBy(() -> factory.forCreator(
-                    type, 17L, 5L, 103L, Instant.parse("2026-10-01T00:00:00Z")));
-        }
+    void Creator_YOUTUBE_SUBSCRIPTION은_날짜와_무관한_ONCE_키를_만든다() {
+        MissionBusinessKey key = factory.forCreator(
+                MissionType.YOUTUBE_SUBSCRIPTION, 17L, 5L, 103L, Instant.parse("2026-10-01T00:00:00Z"));
+
+        assertThat(key).isEqualTo(new MissionBusinessKey("MISSION:CREATOR:ONCE:17:5:103", null));
+    }
+
+    @Test
+    void 관찰_대상이_아닌_Creator_ATTENDANCE에는_키를_만들지_않는다() {
+        assertThatIllegalArgumentException().isThrownBy(() -> factory.forCreator(
+                MissionType.ATTENDANCE, 17L, 5L, 103L, Instant.parse("2026-10-01T00:00:00Z")));
     }
 
     @Test

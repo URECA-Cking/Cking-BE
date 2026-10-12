@@ -16,6 +16,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import kr.co.cking.common.storage.ObjectStorage;
+import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisException;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisFailureType;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPort;
@@ -38,6 +39,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 mock(SubscriptionVerificationRewardService.class);
         ObjectStorage objectStorage = mock(ObjectStorage.class);
         VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
+        SubscriptionVerificationAbuseObserver abuseObserver = mock(SubscriptionVerificationAbuseObserver.class);
         SubscriptionVerificationProcessingExecutorProperties properties =
                 new SubscriptionVerificationProcessingExecutorProperties();
         Clock clock = Clock.fixed(Instant.parse("2026-09-29T00:00:00Z"), ZoneOffset.UTC);
@@ -50,7 +52,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 objectStorage,
                 visionAnalysisPort,
                 properties,
-                clock);
+                clock,
+                abuseObserver);
 
         worker.process(123L);
 
@@ -306,6 +309,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 VisionSubscriptionState.NOT_SUBSCRIBED,
                 true,
                 0.9));
+        given(fixture.completionService.complete(any(), any(), any(), any(), any())).willReturn(true);
 
         fixture.worker.process(123L);
 
@@ -316,6 +320,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 "PLATFORM_MISMATCH",
                 fixture.clock.instant());
         then(fixture.rewardService).shouldHaveNoInteractions();
+        then(fixture.abuseObserver).should().observeDecision(
+                claim, kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus.REJECTED);
     }
 
     @Test
@@ -332,6 +338,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 VisionSubscriptionState.SUBSCRIBED,
                 false,
                 0.9));
+        given(fixture.completionService.complete(any(), any(), any(), any(), any())).willReturn(true);
 
         fixture.worker.process(123L);
 
@@ -342,6 +349,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 "INSUFFICIENT_EVIDENCE",
                 fixture.clock.instant());
         then(fixture.rewardService).shouldHaveNoInteractions();
+        then(fixture.abuseObserver).should().observeDecision(
+                claim, kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus.RETRY_REQUIRED);
     }
 
     private static SubscriptionVerificationProcessingClaim claim() {
@@ -370,6 +379,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 mock(SubscriptionVerificationRewardService.class);
         private final ObjectStorage objectStorage = mock(ObjectStorage.class);
         private final VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
+        private final SubscriptionVerificationAbuseObserver abuseObserver =
+                mock(SubscriptionVerificationAbuseObserver.class);
         private final SubscriptionVerificationProcessingExecutorProperties properties =
                 new SubscriptionVerificationProcessingExecutorProperties();
         private final Clock clock = Clock.fixed(Instant.parse("2026-09-29T00:00:00Z"), ZoneOffset.UTC);
@@ -380,6 +391,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 objectStorage,
                 visionAnalysisPort,
                 properties,
-                clock);
+                clock,
+                abuseObserver);
     }
 }

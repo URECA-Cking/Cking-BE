@@ -74,6 +74,22 @@ cking:
   abuse:
     # Calibration이 완료되고 모든 window/threshold를 주입한 환경에서만 활성화한다.
     enabled: ${CKING_ABUSE_ENABLED:false}
+    youtube-subscription:
+      # 구독 인증은 별도 Calibration 전까지 관측·탐지를 시작하지 않는다.
+      enabled: ${CKING_ABUSE_YOUTUBE_SUBSCRIPTION_ENABLED:false}
+      submission-burst:
+        window: ${CKING_ABUSE_YOUTUBE_SUBMISSION_WINDOW:PT1M}
+        threshold: ${CKING_ABUSE_YOUTUBE_SUBMISSION_THRESHOLD:10}
+      request-id-rotation:
+        window: ${CKING_ABUSE_YOUTUBE_REQUEST_ID_ROTATION_WINDOW:PT5M}
+        distinct-threshold: ${CKING_ABUSE_YOUTUBE_REQUEST_ID_ROTATION_THRESHOLD:5}
+      image-reuse:
+        window: ${CKING_ABUSE_YOUTUBE_IMAGE_REUSE_WINDOW:PT1H}
+        threshold: ${CKING_ABUSE_YOUTUBE_IMAGE_REUSE_THRESHOLD:2}
+      negative-decision-burst:
+        window: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_WINDOW:PT10M}
+        threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_THRESHOLD:5}
+        consecutive-threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_THRESHOLD:3}
   image-processing:
     # 20MP 한 장이 heap 약 80MiB를 쓰고, 동시 4장부터 GCLocker로 OutOfMemoryError가 났다(로컬 측정). CPU 2개라 처리량도 2에서 멈춘다.
     max-concurrent: 2

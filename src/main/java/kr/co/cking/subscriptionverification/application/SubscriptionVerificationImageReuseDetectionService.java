@@ -28,18 +28,22 @@ class SubscriptionVerificationImageReuseDetectionService {
     }
 
     /** hash 잠금 보유 중 이전에 확정된 이력과 재사용 유형을 감사 기록으로 저장한다. */
-    void detectAndRecord(SubscriptionVerification verification, Instant detectedAt) {
+    SubscriptionVerificationImageReuseType detectAndRecord(
+            SubscriptionVerification verification, Instant detectedAt
+    ) {
         SubscriptionVerification previous = verificationRepository
                 .findPreviousByImageSha256(
                         verification.getImageSha256(), verification.getVerificationId(), PageRequest.of(0, 1))
                 .stream()
                 .findFirst()
                 .orElse(null);
+        SubscriptionVerificationImageReuseType reuseType = resolveReuseType(verification, previous);
         imageReuseRepository.save(new SubscriptionVerificationImageReuse(
                 verification.getVerificationId(),
                 previous == null ? null : previous.getVerificationId(),
-                resolveReuseType(verification, previous),
+                reuseType,
                 detectedAt));
+        return reuseType;
     }
 
     /** 이전 제출자와 Creator 관계로 재사용 유형을 결정한다. */
