@@ -135,6 +135,16 @@ cking:
       retry-backoff-max: ${QUIZ_GROUNDING_RETRY_BACKOFF_MAX:PT4S}
       # 비워 두면 요청에 넣지 않고 Provider 기본값을 따른다.
       max-output-tokens: ${QUIZ_GROUNDING_MAX_OUTPUT_TOKENS:}
+    # YouTube URL 기반 Quiz 비동기 생성(이슈 #525). 유료·preview Provider를 쓰므로 기본으로 꺼 둔다.
+    # 오래된 작업 기준 시간과 Executor 크기는 운영 확인 전 초기값이다.
+    generation:
+      enabled: ${QUIZ_GENERATION_ENABLED:false}
+      stale-pending: ${QUIZ_GENERATION_STALE_PENDING:PT10M}
+      stale-running: ${QUIZ_GENERATION_STALE_RUNNING:PT15M}
+      executor:
+        pool-size: ${QUIZ_GENERATION_EXECUTOR_POOL_SIZE:2}
+        queue-capacity: ${QUIZ_GENERATION_EXECUTOR_QUEUE_CAPACITY:10}
+        await-termination-seconds: ${QUIZ_GENERATION_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
   comment-filter:
     # 별도 필터 서비스가 준비될 때까지 꺼 둔다. 꺼져 있으면 댓글은 판정 없이 PENDING으로 남는다.
     enabled: ${COMMENT_FILTER_ENABLED:false}

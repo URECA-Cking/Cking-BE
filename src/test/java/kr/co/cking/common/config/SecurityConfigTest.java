@@ -225,6 +225,12 @@ class SecurityConfigTest {
         mockMvc.perform(post("/api/creator/quizzes/1/unpublish"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/generations"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(get("/api/creator/quizzes/generations/1"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
     /** 게시 Quiz 공개 조회 경로는 인증 없이 Security를 통과한다. */

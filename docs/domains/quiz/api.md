@@ -164,6 +164,56 @@ revision을 거절한다. Judge 평가가 없어도 된다. 본문은 생략할 
 
 게시를 취소한다. 본문은 없다. Judge 상태와 무관하며 revision·결정 기록은 그대로 남는다. 게시 중이 아니면 현재 상태를 반환한다. 응답은 게시와 같은 형식이다. 오류는 Quiz 상세와 같다.
 
+## POST /api/creator/quizzes/generations
+
+YouTube 영상으로 Quiz 생성을 요청한다. 응답 `202`와 생성 작업. 생성은 비동기로 진행되며 아래 상태 조회 API로 확인한다. 성공하면 만들어진 Quiz와 revision을 Quiz 상세·revision 상세 API로 조회한다.
+
+```json
+{ "requestId": "550e8400-e29b-41d4-a716-446655440000", "youtubeUrl": "https://youtu.be/dQw4w9WgXcQ",
+  "title": "물의 순환", "questionCount": 3 }
+```
+
+- `requestId`(UUID)는 필수다. 같은 requestId와 같은 입력(videoId·제목·문항 수)은 기존 작업을 반환한다. URL 표현이 달라도 videoId가 같으면 같은 입력이다. 입력이 다르면 `QUIZ_GENERATION_REQUEST_CONFLICT`다. 기능이 꺼져 있어도 기존 작업 재요청은 같은 응답이다.
+- `youtubeUrl`은 https의 `youtube.com`·`www.youtube.com`·`m.youtube.com`의 `/watch?v=<id>`·`/shorts/<id>`, `youtu.be/<id>`만 받는다. videoId는 11자이며 userinfo·443이 아닌 port·`v` 중복·퍼센트 인코딩된 videoId는 거부한다. 그 밖의 query와 fragment는 무시한다. 서버는 이 URL을 요청하지 않고 videoId만 Grounding에 넘긴다.
+- `title`은 공백일 수 없고 100자 이하다. `questionCount`는 3 또는 5이며 생략하면 3이다. 보기 수는 4로 고정한다.
+- Creator당 진행 중(PENDING·RUNNING) 작업은 하나다. 요청 전에 오래된 작업을 정리한다.
+
+응답(이하 생성 작업):
+
+```json
+{ "generationId": 1, "status": "PENDING", "videoId": "dQw4w9WgXcQ", "title": "물의 순환",
+  "questionCount": 3, "optionCount": 4, "quizId": null, "revisionId": null, "failureCode": null,
+  "requestedAt": "2026-10-12T00:00:00Z", "startedAt": null, "completedAt": null }
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | requestId·URL·제목·문항 수 규칙 위반 |
+| `FORBIDDEN` / `RESOURCE_NOT_FOUND` | 403/404 | Creator가 아님 / Member 없음 |
+| `QUIZ_GENERATION_REQUEST_CONFLICT` | 409 | 같은 requestId로 다른 입력의 작업이 있음 |
+| `QUIZ_GENERATION_IN_PROGRESS` | 409 | 진행 중인 생성 작업이 있음 |
+| `QUIZ_GENERATION_DISABLED` | 503 | 생성 기능이 꺼져 있음(`cking.quiz.generation.enabled`) |
+
+## GET /api/creator/quizzes/generations/{generationId}
+
+본인 생성 작업을 조회한다. 응답은 생성 작업이며, 조회하면서 오래된 작업을 정리한다. 원본 텍스트·생성 문항·Provider 오류 원문은 담지 않는다.
+
+| `status` | 의미 |
+| --- | --- |
+| `PENDING` | 접수됨, Worker 시작 전 |
+| `RUNNING` | Grounding·생성 진행 중 |
+| `SUCCEEDED` | 저장 완료. `quizId`·`revisionId`가 있다 |
+| `FAILED` | 실패. `failureCode`가 있다 |
+| `UNKNOWN` | 시간 초과 등으로 결과를 알 수 없다. `failureCode`가 있고 이후 결과를 저장하지 않는다 |
+
+`failureCode`: `GROUNDING_REJECTED`(비공개 영상 등 Provider 거부), `GROUNDING_INVALID`, `GENERATION_INVALID`, `DRAFT_INVALID`(저장 길이 상한 등), `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`(UNKNOWN), `DISPATCH_REJECTED`(생성 대기열이 가득 참), `STALE_PENDING`, `STALE_RUNNING`(UNKNOWN), `INTERNAL_ERROR`. 실패해도 자동으로 다시 시도하지 않으므로 새 requestId로 다시 요청한다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `FORBIDDEN` | 403 | Creator가 아니거나 다른 Creator의 작업 |
+| `RESOURCE_NOT_FOUND` | 404 | Member 없음 |
+| `QUIZ_GENERATION_NOT_FOUND` | 404 | 작업 없음 |
+
 ## GET /api/creators/{creatorId}/quizzes
 
 게시 중인 Quiz를 최근 게시 순(`publishedAt` 내림차순, tie-breaker `quizId` 내림차순)으로 조회한다. `page`(기본 0), `size`(기본 20, 최대 100). 미게시·게시 취소된 Quiz는 포함하지 않는다. 없는 Creator는 `RESOURCE_NOT_FOUND`다.
