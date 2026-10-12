@@ -6,7 +6,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 
 - Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 이 API는 만들어진 Space의 조회·수정만 다룬다.
 - 공개 조회(`GET /api/creators`, `GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)는 인증 없이 호출할 수 있다.
-- 본인 API(`/api/creator/space`, `/api/creator/space/slug`, `/api/creator/profile`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
+- 본인 API(`/api/creator/space`, `/api/creator/space/slug`, `/api/creator/space/profile-images`, `/api/creator/space/profile-image`, `/api/creator/profile`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 공유 URL은 프론트엔드의 `/space/{slug}` 형식이다. slug는 이 공개 조회의 탐색에만 사용하고, 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용한다. slug를 업무 기록에 저장하지 않는다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
 - 탭(홈·미션·게시물·이벤트) 노출 설정은 없다(이슈 #290). 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다.
@@ -113,6 +113,24 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 | 필드 | 제약 |
 | --- | --- |
 | `introText`, `profileImageUrl`, `bannerImageUrl` | 필수, 공백 불가, 최대 500자 |
+
+기존 URL 기반 수정은 기존 Space 호환을 위해 유지한다. 새 파일 업로드는 아래 두 API를 사용하며, 업로드된 이미지가 연결되면 공개 응답의 `profileImageUrl`은 CDN URL로 갱신된다.
+
+## POST /api/creator/space/profile-images
+
+Creator Space 전용 프로필 사진을 업로드한다. `multipart/form-data`의 `image` part에 실제 JPEG/PNG 5MB 이하, 최소 200×200px 이미지를 보낸다. 공통 정규화 후 JPEG로 저장하며, 24시간 안에 연결하지 않으면 정리 대상이 된다.
+
+```json
+{ "imageKey": "creator-space-profile-images/42/uuid.jpg" }
+```
+
+## PUT /api/creator/space/profile-image
+
+본인이 업로드한 `imageKey`를 현재 Creator Space 프로필 사진으로 연결한다. 다른 Creator의 키, 이미 연결·삭제 대기·존재하지 않는 키는 `VALIDATION_FAILED`(400)다. 이전 연결 이미지는 삭제 대기로 전환되어 정리 작업이 회수한다.
+
+```json
+{ "imageKey": "creator-space-profile-images/42/uuid.jpg" }
+```
 
 ## GET /api/creator/profile
 

@@ -4,6 +4,9 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.creator.application.CreatorSpaceProfileService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageLinkService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageUploadService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.CreatorErrorCode;
@@ -50,6 +53,15 @@ class CreatorSpaceControllerTest {
 
     @MockitoBean
     private CreatorSpaceProfileService profileService;
+
+    @MockitoBean
+    private CreatorSpaceProfileImageUploadService profileImageUploadService;
+
+    @MockitoBean
+    private CreatorSpaceProfileImageLinkService profileImageLinkService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
 
     @MockitoBean
     private MemberRepository memberRepository;

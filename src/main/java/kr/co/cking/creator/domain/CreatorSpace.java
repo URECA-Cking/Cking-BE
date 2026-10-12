@@ -41,6 +41,10 @@ public class CreatorSpace {
     @Column(name = "profile_image_url", nullable = false, length = 500)
     private String profileImageUrl;
 
+    /** 업로드된 Creator Space 프로필 이미지의 내부 Object Storage 키. 기존 URL 기반 Space는 null이다. */
+    @Column(name = "profile_image_key", length = 200)
+    private String profileImageKey;
+
     @Column(name = "banner_image_url", nullable = false, length = 500)
     private String bannerImageUrl;
 
@@ -70,6 +74,11 @@ public class CreatorSpace {
         this.introText = introText;
         this.profileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
+    }
+
+    public void updateProfileImage(String profileImageKey, String profileImageUrl) {
+        this.profileImageKey = profileImageKey;
+        this.profileImageUrl = profileImageUrl;
     }
 
     /** 커스텀 slug로 바꾼다. 형식·예약어·중복·변경 간격 검증은 호출하는 Application이 먼저 한다. */
