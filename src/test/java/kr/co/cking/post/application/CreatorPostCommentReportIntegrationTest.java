@@ -9,10 +9,13 @@ import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.post.application.dto.AdminCommentReportActionView;
 import kr.co.cking.post.application.dto.AdminCommentReportView;
+import kr.co.cking.post.application.dto.CreatorPostCommentView;
 import kr.co.cking.post.application.dto.CommentReportView;
 import kr.co.cking.post.application.dto.CreatorPostFields;
 import kr.co.cking.post.domain.CommentReportReason;
+import kr.co.cking.post.domain.CommentReportStatus;
 import kr.co.cking.post.domain.CreatorPostCommentReport;
 import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
@@ -51,6 +54,8 @@ class CreatorPostCommentReportIntegrationTest {
     private CreatorPostCommentReportService reportService;
     @Autowired
     private AdminCommentReportQueryService adminQueryService;
+    @Autowired
+    private AdminCommentReportCommandService adminCommandService;
     @Autowired
     private CreatorFollowService followService;
     @Autowired
@@ -164,7 +169,7 @@ class CreatorPostCommentReportIntegrationTest {
                 CommentReportReason.OTHER, "위협으로 느껴집니다");
 
         List<AdminCommentReportView> views = adminQueryService.findReportedComments(
-                admin.getMemberId(), PageRequest.of(0, 100)).getContent().stream()
+                admin.getMemberId(), null, PageRequest.of(0, 100)).getContent().stream()
                 .filter(view -> view.commentId().equals(first) || view.commentId().equals(second))
                 .toList();
 
@@ -183,7 +188,7 @@ class CreatorPostCommentReportIntegrationTest {
     void 관리자가_아니면_신고_목록을_조회할_수_없다() {
         Member user = member(MemberRole.USER);
 
-        assertThatThrownBy(() -> adminQueryService.findReportedComments(user.getMemberId(), PageRequest.of(0, 20)))
+        assertThatThrownBy(() -> adminQueryService.findReportedComments(user.getMemberId(), null, PageRequest.of(0, 20)))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.FORBIDDEN));
     }
@@ -227,6 +232,184 @@ class CreatorPostCommentReportIntegrationTest {
 
         assertThat(reportRepository.countByReporterMemberIdAndCreatedAtGreaterThanEqual(
                 reporter.getMemberId(), Instant.EPOCH)).isEqualTo(CreatorPostCommentReportService.REPORT_LIMIT);
+    }
+
+    @Test
+    void 신고는_접수로_저장되고_처리_정보는_비어_있다() {
+        Long commentId = commentOnPublicPost();
+        Member reporter = member(MemberRole.USER);
+
+        reportService.report(
+                reporter.getMemberId(), creator.getCreatorId(), postId, commentId, CommentReportReason.ABUSE, null);
+
+        CreatorPostCommentReport saved = reportRepository
+                .findByCommentIdAndReporterMemberId(commentId, reporter.getMemberId()).orElseThrow();
+        assertThat(saved.getStatus()).isEqualTo(CommentReportStatus.PENDING);
+        assertThat(saved.getHandledBy()).isNull();
+        assertThat(saved.getHandledAt()).isNull();
+    }
+
+    @Test
+    void 숨기면_접수_신고가_처리_완료가_되고_사용자에게는_가려지며_원문_보기도_막히고_새_신고도_막힌다() {
+        Long commentId = commentOnPublicPost();
+        Member reporterA = member(MemberRole.USER);
+        Member reporterB = member(MemberRole.USER);
+        Member stranger = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(reporterA.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+        reportService.report(reporterB.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.SPAM, null);
+
+        AdminCommentReportActionView hidden = adminCommandService.hide(admin.getMemberId(), commentId);
+
+        assertThat(hidden.status()).isEqualTo(CommentReportStatus.RESOLVED);
+        assertThat(hidden.handledReportCount()).isEqualTo(2);
+        CreatorPostCommentReport handled = reportRepository
+                .findByCommentIdAndReporterMemberId(commentId, reporterA.getMemberId()).orElseThrow();
+        assertThat(handled.getStatus()).isEqualTo(CommentReportStatus.RESOLVED);
+        assertThat(handled.getHandledBy()).isEqualTo(admin.getMemberId());
+        assertThat(handled.getHandledAt()).isNotNull();
+
+        // 관리자 목록: 접수 필터에서는 빠지고 처리 완료 필터에 나온다.
+        assertThat(reportedIds(admin, CommentReportStatus.PENDING)).doesNotContain(commentId);
+        AdminCommentReportView row = adminQueryService.findReportedComments(
+                        admin.getMemberId(), CommentReportStatus.RESOLVED, PageRequest.of(0, 100)).getContent().stream()
+                .filter(view -> view.commentId().equals(commentId)).findFirst().orElseThrow();
+        assertThat(row.status()).isEqualTo(CommentReportStatus.RESOLVED);
+        assertThat(row.hiddenByAdmin()).isTrue();
+        assertThat(row.reportCount()).isEqualTo(2);
+        assertThat(row.pendingReportCount()).isZero();
+        assertThat(row.content()).isEqualTo("신고될 댓글");
+
+        // 사용자 목록: 다른 사람에게는 가려지고 원문 보기가 허용되지 않으며 작성자 본인에게는 그대로 보인다.
+        CreatorPostCommentView seenByStranger = commentService.findByPost(
+                creator.getCreatorId(), postId, stranger.getMemberId(), PageRequest.of(0, 50)).getContent().get(0);
+        assertThat(seenByStranger.filtered()).isTrue();
+        assertThat(seenByStranger.revealable()).isFalse();
+        assertThat(seenByStranger.content()).isNull();
+        CreatorPostCommentView seenByAuthor = commentService.findByPost(
+                creator.getCreatorId(), postId, author.getMemberId(), PageRequest.of(0, 50)).getContent().get(0);
+        assertThat(seenByAuthor.filtered()).isFalse();
+        assertThat(seenByAuthor.content()).isEqualTo("신고될 댓글");
+        assertThatThrownBy(() -> commentService.findOriginal(
+                creator.getCreatorId(), postId, commentId, stranger.getMemberId()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(PostErrorCode.COMMENT_NOT_REVEALABLE));
+
+        // 숨긴 댓글에는 새 신고를 받지 않고, 같은 조치는 멱등이며, 다른 조치는 충돌한다.
+        assertThatThrownBy(() -> reportService.report(stranger.getMemberId(), creator.getCreatorId(), postId,
+                commentId, CommentReportReason.ABUSE, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(PostErrorCode.COMMENT_REPORT_ALREADY_FILTERED));
+        assertThat(adminCommandService.hide(admin.getMemberId(), commentId).handledReportCount()).isZero();
+        assertThatThrownBy(() -> adminCommandService.reject(admin.getMemberId(), commentId))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(PostErrorCode.COMMENT_REPORT_ALREADY_HANDLED));
+    }
+
+    @Test
+    void 반려하면_댓글은_보이고_이후_새_신고는_다시_접수된다() {
+        Long commentId = commentOnPublicPost();
+        Member reporterA = member(MemberRole.USER);
+        Member reporterB = member(MemberRole.USER);
+        Member stranger = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(reporterA.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.SPAM, null);
+
+        AdminCommentReportActionView rejected = adminCommandService.reject(admin.getMemberId(), commentId);
+
+        assertThat(rejected.status()).isEqualTo(CommentReportStatus.REJECTED);
+        assertThat(rejected.handledReportCount()).isEqualTo(1);
+        assertThat(reportedIds(admin, CommentReportStatus.REJECTED)).contains(commentId);
+        assertThat(reportedIds(admin, CommentReportStatus.PENDING)).doesNotContain(commentId);
+        assertThat(commentService.findByPost(creator.getCreatorId(), postId, stranger.getMemberId(),
+                PageRequest.of(0, 50)).getContent().get(0).filtered()).isFalse();
+        // 반려한 댓글은 다시 반려해도 성공하지만 접수 신고가 없어 숨길 수는 없다.
+        assertThat(adminCommandService.reject(admin.getMemberId(), commentId).handledReportCount()).isZero();
+        assertThatThrownBy(() -> adminCommandService.hide(admin.getMemberId(), commentId))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(PostErrorCode.COMMENT_REPORT_ALREADY_HANDLED));
+
+        // 반려 뒤 들어온 새 신고는 접수로 쌓이고, 이때는 숨길 수 있다(전에 반려한 신고는 그대로 둔다).
+        reportService.report(reporterB.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+        assertThat(reportedIds(admin, CommentReportStatus.PENDING)).contains(commentId);
+        assertThat(adminCommandService.hide(admin.getMemberId(), commentId).handledReportCount()).isEqualTo(1);
+        assertThat(reportRepository.findByCommentIdAndReporterMemberId(commentId, reporterA.getMemberId())
+                .orElseThrow().getStatus()).isEqualTo(CommentReportStatus.REJECTED);
+        assertThat(reportedIds(admin, CommentReportStatus.RESOLVED)).contains(commentId);
+    }
+
+    @Test
+    void 신고가_없는_댓글과_관리자가_아닌_호출자의_조치는_거부한다() {
+        Long commentId = commentOnPublicPost();
+        Member user = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+
+        assertThatThrownBy(() -> adminCommandService.hide(admin.getMemberId(), commentId))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+        assertThatThrownBy(() -> adminCommandService.reject(admin.getMemberId(), Long.MAX_VALUE))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+        assertThatThrownBy(() -> adminCommandService.hide(user.getMemberId(), commentId))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.FORBIDDEN));
+    }
+
+    @Test
+    void 숨김과_새_신고가_동시에_와도_숨긴_댓글에_접수_신고가_남지_않는다() throws Exception {
+        Long commentId = commentOnPublicPost();
+        Member firstReporter = member(MemberRole.USER);
+        Member lateReporter = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(firstReporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+
+        CyclicBarrier startTogether = new CyclicBarrier(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Throwable> hide = executor.submit(() -> {
+                startTogether.await(10, TimeUnit.SECONDS);
+                try {
+                    adminCommandService.hide(admin.getMemberId(), commentId);
+                    return null;
+                } catch (Throwable failure) {
+                    return failure;
+                }
+            });
+            Future<Throwable> report = executor.submit(() -> {
+                startTogether.await(10, TimeUnit.SECONDS);
+                try {
+                    reportService.report(lateReporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                            CommentReportReason.SPAM, null);
+                    return null;
+                } catch (Throwable failure) {
+                    return failure;
+                }
+            });
+            assertThat(hide.get(30, TimeUnit.SECONDS)).isNull();
+            Throwable reportFailure = report.get(30, TimeUnit.SECONDS);
+            // 신고가 먼저면 숨김이 함께 처리하고, 숨김이 먼저면 새 신고는 거부된다. 어느 쪽이든 접수 신고가 남지 않는다.
+            if (reportFailure != null) {
+                assertThat(reportFailure).isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(PostErrorCode.COMMENT_REPORT_ALREADY_FILTERED));
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(commentRepository.findById(commentId).orElseThrow().isHiddenByAdmin()).isTrue();
+        assertThat(reportRepository.findAll().stream()
+                .filter(saved -> saved.getCommentId().equals(commentId))
+                .filter(saved -> saved.getStatus() == CommentReportStatus.PENDING)).isEmpty();
+    }
+
+    private List<Long> reportedIds(Member admin, CommentReportStatus status) {
+        return adminQueryService.findReportedComments(admin.getMemberId(), status, PageRequest.of(0, 100))
+                .getContent().stream().map(AdminCommentReportView::commentId).toList();
     }
 
     private Throwable failureOfConcurrentReport(CyclicBarrier startTogether, Member reporter, Long commentId)
