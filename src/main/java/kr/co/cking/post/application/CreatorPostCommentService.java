@@ -3,6 +3,9 @@ package kr.co.cking.post.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostCommentOriginalView;
@@ -20,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -43,6 +47,8 @@ public class CreatorPostCommentService {
     private final PostAccessPolicy accessPolicy;
     private final CreatorPostCommentRepository commentRepository;
     private final MemberRepository memberRepository;
+    private final CreatorSpaceRepository spaceRepository;
+    private final ProfileImageUrlResolver profileImageUrlResolver;
     private final Clock clock;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -54,12 +60,16 @@ public class CreatorPostCommentService {
         accessPolicy.requireViewablePost(creator, postId, viewerMemberId);
 
         Page<CreatorPostComment> comments = commentRepository.findByPostIdOldestFirst(postId, pageable);
-        Map<Long, String> authorNames = comments.isEmpty()
+        Map<Long, Member> authors = comments.isEmpty()
                 ? Map.of()
                 : memberRepository.findAllById(comments.map(CreatorPostComment::getMemberId).toSet()).stream()
-                        .collect(Collectors.toMap(Member::getMemberId, Member::publicDisplayName));
+                        .collect(Collectors.toMap(Member::getMemberId, Function.identity()));
+        // Creator 본인의 댓글이 있을 때만 Space 사진을 한 번 읽는다. 댓글마다 조회하지 않는다.
+        String creatorPhotoUrl = comments.stream().anyMatch(comment -> isWrittenByOwner(creator, comment.getMemberId()))
+                ? spaceProfileImageUrl(creator)
+                : null;
         return comments.map(comment ->
-                toView(comment, creator, authorNames.get(comment.getMemberId()), viewerMemberId));
+                toView(comment, creator, authors.get(comment.getMemberId()), creatorPhotoUrl, viewerMemberId));
     }
 
     /**
@@ -95,7 +105,7 @@ public class CreatorPostCommentService {
         CreatorPostComment comment = commentRepository.save(
                 new CreatorPostComment(postId, memberId, validate(content), clock.instant()));
         eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
-        return toView(comment, creator, author.publicDisplayName(), memberId);
+        return toView(comment, creator, author, ownerPhotoUrl(creator, memberId), memberId);
     }
 
     public CreatorPostCommentView update(
@@ -112,7 +122,7 @@ public class CreatorPostCommentService {
 
         comment.update(validate(content), clock.instant());
         eventPublisher.publishEvent(new CommentFilterRequestedEvent(comment.getCommentId()));
-        return toView(comment, creator, author.publicDisplayName(), memberId);
+        return toView(comment, creator, author, ownerPhotoUrl(creator, memberId), memberId);
     }
 
     /** 팔로우와 공개 범위를 보지 않는다. 팔로우를 끊은 작성자도 자기 댓글은 지울 수 있어야 하기 때문이다. */
@@ -155,28 +165,53 @@ public class CreatorPostCommentService {
     }
 
     /**
-     * 필터링(BLOCK)됐거나 관리자가 숨긴 댓글은 작성자 본인이 아닌 조회자에게 원문을 빼고 내려준다. 작성자 본인에게는
-     * 가려졌는지 알리지 않고 원문을 그대로 보여준다. 판정 사유는 응답에 담지 않는다. 관리자가 숨긴 댓글은 원문 보기도 허용하지
-     * 않는다(revealable=false).
+     * 필터링(BLOCK)됐거나 관리자가 숨긴 댓글은 작성자 본인이 아닌 조회자에게 원문과 작성자 이름·프로필 사진을 빼고
+     * 내려준다. 작성자 본인에게는 가려졌는지 알리지 않고 모두 그대로 보여준다. 판정 사유는 응답에 담지 않는다. 관리자가
+     * 숨긴 댓글은 원문 보기도 허용하지 않는다(revealable=false).
      *
+     * <p>Creator 본인의 댓글은 이름이 활동명이고 사진은 Creator Space 프로필 사진이다. 그 밖의 댓글은 회원의 공개 이름과
+     * 프로필 사진이며, 사진을 설정하지 않았거나 회원을 찾지 못하면 null이다.
+     *
+     * @param author 작성 회원. 찾지 못하면 null
+     * @param creatorPhotoUrl Creator 본인 댓글에 쓸 Space 프로필 사진 URL. 그 밖의 댓글에는 쓰지 않는다
      * @param viewerMemberId 비로그인이면 null
      */
     private CreatorPostCommentView toView(
-            CreatorPostComment comment, Creator creator, String authorName, Long viewerMemberId) {
+            CreatorPostComment comment, Creator creator, Member author, String creatorPhotoUrl, Long viewerMemberId) {
         boolean filtered = comment.isConcealed() && !comment.isWrittenBy(viewerMemberId);
-        String publicAuthorName = creator.getMemberId().equals(comment.getMemberId())
+        boolean writtenByCreator = isWrittenByOwner(creator, comment.getMemberId());
+        String authorName = writtenByCreator
                 ? creator.publicDisplayName()
-                : authorName;
+                : (author == null ? null : author.publicDisplayName());
+        String authorPhotoUrl = writtenByCreator
+                ? creatorPhotoUrl
+                : (author == null ? null : profileImageUrlResolver.resolve(author.getProfileImageKey()));
         return new CreatorPostCommentView(
                 comment.getCommentId(),
                 comment.getPostId(),
                 comment.getMemberId(),
-                publicAuthorName,
-                creator.getMemberId().equals(comment.getMemberId()),
+                filtered ? null : authorName,
+                filtered ? null : authorPhotoUrl,
+                writtenByCreator,
                 filtered ? null : comment.getContent(),
                 filtered,
                 filtered && !comment.isBlockedForPrivacy() && !comment.isHiddenByAdmin(),
                 comment.getCreatedAt(),
                 comment.getUpdatedAt());
+    }
+
+    private boolean isWrittenByOwner(Creator creator, Long commentMemberId) {
+        return creator.getMemberId().equals(commentMemberId);
+    }
+
+    /** 작성자가 게시글 Creator 본인이면 Space 프로필 사진 URL을, 아니면 null을 돌려준다. */
+    private String ownerPhotoUrl(Creator creator, Long memberId) {
+        return isWrittenByOwner(creator, memberId) ? spaceProfileImageUrl(creator) : null;
+    }
+
+    private String spaceProfileImageUrl(Creator creator) {
+        return spaceRepository.findByCreatorId(creator.getCreatorId())
+                .map(CreatorSpace::getProfileImageUrl)
+                .orElse(null);
     }
 }
