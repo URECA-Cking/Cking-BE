@@ -7,6 +7,7 @@ import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class CreatorApplicationServiceIntegrationTest {
 
     @Test
     void rejectedApplicantCanSubmitANewApplication() {
-        Member applicant = memberRepository.save(new Member("신청자", null, null, MemberRole.USER));
+        Member applicant = memberRepository.save(configuredApplicant());
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         CreatorApplication first = creatorApplicationService.apply(applicant.getMemberId()).application();
 
@@ -55,7 +56,7 @@ class CreatorApplicationServiceIntegrationTest {
 
     @Test
     void approvingApplicationCreatesOneCreatorAndSpaceForApplicant() {
-        Member applicant = memberRepository.save(new Member("신청자", null, null, MemberRole.USER));
+        Member applicant = memberRepository.save(configuredApplicant());
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
         creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
@@ -70,5 +71,11 @@ class CreatorApplicationServiceIntegrationTest {
                 .orElseThrow();
         assertThat(space.getIntroText()).isEqualTo("소개");
         assertThat(space.getSlug()).isEqualTo("creator-" + creator.orElseThrow().getCreatorId());
+    }
+
+    private Member configuredApplicant() {
+        Member applicant = new Member("신청자", null, null, MemberRole.USER);
+        applicant.setInitialNickname(MemberNickname.of("신청자닉네임"));
+        return applicant;
     }
 }
