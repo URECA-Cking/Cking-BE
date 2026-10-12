@@ -5,16 +5,19 @@ import kr.co.cking.post.application.dto.CreatorPostCommentView;
 import java.time.Instant;
 
 /**
+ * @param authorName 작성자 이름. 원문이 가려진 댓글(filtered)이면 null이다.
+ * @param authorProfileImageUrl 작성자 프로필 사진 URL. 사진이 없거나 원문이 가려진 댓글(filtered)이면 null이다.
  * @param writtenByCreator 게시글을 작성한 Creator 본인이 단 댓글이면 true
- * @param content 필터링된 댓글(filtered)이면 null이다.
- * @param filtered 필터링되어 원문이 가려진 댓글이면 true. 작성자 본인에게는 항상 false다.
- * @param revealable filtered일 때 원문 보기를 눌러도 되는지. 개인정보로 막힌 댓글은 false다.
+ * @param content 원문이 가려진 댓글(filtered)이면 null이다.
+ * @param filtered 필터가 차단했거나 관리자가 숨겨 원문이 가려진 댓글이면 true. 작성자 본인에게는 항상 false다.
+ * @param revealable filtered일 때 원문 보기를 눌러도 되는지. 개인정보로 막힌 댓글과 관리자가 숨긴 댓글은 false다.
  */
 public record CreatorPostCommentResponse(
         Long commentId,
         Long postId,
         Long authorMemberId,
         String authorName,
+        String authorProfileImageUrl,
         boolean writtenByCreator,
         String content,
         boolean filtered,
@@ -29,6 +32,7 @@ public record CreatorPostCommentResponse(
                 view.postId(),
                 view.authorMemberId(),
                 view.authorName(),
+                view.authorProfileImageUrl(),
                 view.writtenByCreator(),
                 view.content(),
                 view.filtered(),
