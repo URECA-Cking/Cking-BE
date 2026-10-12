@@ -6,6 +6,7 @@ import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorActivityName;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceSlugReservation;
@@ -101,7 +102,7 @@ class CreatorSpaceProfileServiceTest {
 
     @Test
     void findPublicSpacesAttachesCreatorNamesAndKeepsRepositoryOrder() {
-        Creator other = new Creator(8L, "다른 크리에이터");
+        Creator other = new Creator(8L, "다른 크리에이터", CreatorActivityName.of("다른크리에이터"));
         ReflectionTestUtils.setField(other, "creatorId", 43L);
         CreatorSpace otherSpace = CreatorSpace.fromTemplate(43L, new CreatorSpaceTemplate(
                 1L, "소개2", "https://img/profile2.png", "https://img/banner2.png", "creator-{creatorId}"
@@ -116,7 +117,7 @@ class CreatorSpaceProfileServiceTest {
         assertThat(result.getTotalElements()).isEqualTo(2);
         assertThat(result.getContent()).extracting(view -> view.space().getCreatorId()).containsExactly(43L, 42L);
         assertThat(result.getContent()).extracting(CreatorSpaceView::creatorName)
-                .containsExactly("다른 크리에이터", "크리에이터");
+                .containsExactly("다른크리에이터", "크리에이터");
     }
 
     @Test

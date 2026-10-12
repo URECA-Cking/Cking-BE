@@ -23,7 +23,7 @@ public interface MemberCalendarEntryRepository extends JpaRepository<MemberCalen
      */
     @Query("""
             select new kr.co.cking.calendar.repository.MemberCalendarScheduleProjection(
-                s.scheduleId, s.creatorId, c.name, s.scheduleType, s.title, s.description,
+                s.scheduleId, s.creatorId, c.activityName, s.scheduleType, s.title, s.description,
                 s.startAt, s.endAt, s.timeZone, s.location, s.imageUrl, s.externalUrl
             )
             from MemberCalendarEntry e

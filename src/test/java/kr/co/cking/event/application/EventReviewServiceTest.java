@@ -1,6 +1,7 @@
 package kr.co.cking.event.application;
 
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorActivityName;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
@@ -43,8 +44,8 @@ class EventReviewServiceTest {
         EventApprovalRequest secondRequest = new EventApprovalRequest(20L, 1, 1L);
         Event firstEvent = event(10L, 100L, "첫 이벤트");
         Event secondEvent = event(20L, 200L, "둘째 이벤트");
-        Creator firstCreator = creator(100L, "첫 크리에이터");
-        Creator secondCreator = creator(200L, "둘째 크리에이터");
+        Creator firstCreator = creator(100L, "첫 크리에이터", "첫크리에이터");
+        Creator secondCreator = creator(200L, "둘째 크리에이터", "둘째크리에이터");
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         given(approvalRequestRepository.findByStatusOrderByRequestedAtAscIdAsc(
                 EventApprovalRequestStatus.PENDING, PageRequest.of(0, 20)))
@@ -58,7 +59,7 @@ class EventReviewServiceTest {
         var result = service.findPending(1L, PageRequest.of(0, 20));
 
         assertThat(result.getContent()).extracting(EventReviewService.PendingEvent::creatorName)
-                .containsExactly("첫 크리에이터", "둘째 크리에이터");
+                .containsExactly("첫크리에이터", "둘째크리에이터");
         verify(eventRepository).findByEventIdIn(List.of(10L, 20L));
         verify(creatorRepository).findByCreatorIdIn(org.mockito.ArgumentMatchers.argThat(
                 ids -> ids.size() == 2 && ids.containsAll(List.of(100L, 200L))));
@@ -77,7 +78,7 @@ class EventReviewServiceTest {
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Event openEvent = event(10L, 100L, "운영 이벤트");
         ReflectionTestUtils.setField(openEvent, "status", kr.co.cking.event.domain.EventStatus.OPEN);
-        Creator creator = creator(100L, "크리에이터");
+        Creator creator = creator(100L, "크리에이터", "크리에이터");
         PageRequest pageable = PageRequest.of(0, 20);
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         given(eventRepository.findManagedEvents(kr.co.cking.event.domain.EventStatus.OPEN, pageable))
@@ -102,8 +103,8 @@ class EventReviewServiceTest {
         return event;
     }
 
-    private Creator creator(Long creatorId, String name) {
-        Creator creator = new Creator(creatorId, name);
+    private Creator creator(Long creatorId, String oauthName, String activityName) {
+        Creator creator = new Creator(creatorId, oauthName, CreatorActivityName.of(activityName));
         ReflectionTestUtils.setField(creator, "creatorId", creatorId);
         return creator;
     }

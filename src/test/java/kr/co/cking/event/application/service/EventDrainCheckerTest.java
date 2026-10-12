@@ -249,7 +249,7 @@ class EventDrainCheckerTest {
     private DeadStreamFixture persistEvent() {
         jdbcClient.sql("INSERT INTO member (name, role) VALUES ('Drain 테스트 사용자', 'USER')").update();
         long memberId = lastInsertId();
-        jdbcClient.sql("INSERT INTO creator (member_id, name) VALUES (:memberId, 'Drain 테스트 Creator')")
+        jdbcClient.sql("INSERT INTO creator (member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (:memberId, 'Drain 테스트 Creator', (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)")
                 .param("memberId", memberId)
                 .update();
         long creatorId = lastInsertId();

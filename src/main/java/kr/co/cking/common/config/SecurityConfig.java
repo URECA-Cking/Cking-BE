@@ -133,6 +133,7 @@ public class SecurityConfig {
                                 "/api/me/calendar/**",
                                 "/api/creator/applications",
                                 "/api/creator/applications/me",
+                                "/api/creator/profile",
                                 "/api/creator/space",
                                 "/api/creator/calendar/**",
                                 "/api/creator/posts",

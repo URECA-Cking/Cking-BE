@@ -66,7 +66,11 @@ class CreatorApplicationServiceIntegrationTest {
 
         assertThat(application.getStatus()).isEqualTo(CreatorApplicationStatus.APPROVED);
         var creator = creatorRepository.findByMemberId(applicant.getMemberId());
-        assertThat(creator).hasValueSatisfying(value -> assertThat(value.getName()).isEqualTo("신청자"));
+        assertThat(creator).hasValueSatisfying(value -> {
+            assertThat(value.getName()).isEqualTo("신청자");
+            assertThat(value.getActivityName()).isEqualTo("신청자닉네임");
+            assertThat(value.isActivityNameConfigured()).isTrue();
+        });
         CreatorSpace space = creatorSpaceRepository.findByCreatorId(creator.orElseThrow().getCreatorId())
                 .orElseThrow();
         assertThat(space.getIntroText()).isEqualTo("소개");

@@ -16,10 +16,16 @@ public interface CreatorRepository extends JpaRepository<Creator, Long> {
     Optional<Creator> findByMemberId(Long memberId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Creator c where c.memberId = :memberId")
+    Optional<Creator> findByMemberIdForUpdate(@Param("memberId") Long memberId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Creator c where c.creatorId = :creatorId")
     Optional<Creator> findByIdForUpdate(@Param("creatorId") Long creatorId);
 
     boolean existsByMemberId(Long memberId);
+
+    boolean existsByActivityNameNormalized(String activityNameNormalized);
 
     List<Creator> findByCreatorIdIn(Collection<Long> creatorIds);
 }

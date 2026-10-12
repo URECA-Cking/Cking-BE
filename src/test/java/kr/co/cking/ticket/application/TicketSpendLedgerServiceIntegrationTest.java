@@ -86,9 +86,9 @@ class TicketSpendLedgerServiceIntegrationTest {
                 OTHER_OWNER_MEMBER_ID, "다른 크리에이터 회원", "USER");
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
                 MEMBER_ID, "응모 대상 회원", "USER");
-        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)",
                 CREATOR_ID, OWNER_MEMBER_ID, "테스트 크리에이터");
-        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)",
                 OTHER_CREATOR_ID, OTHER_OWNER_MEMBER_ID, "다른 테스트 크리에이터");
 
         eventId = insertEvent(CREATOR_ID, OWNER_MEMBER_ID);

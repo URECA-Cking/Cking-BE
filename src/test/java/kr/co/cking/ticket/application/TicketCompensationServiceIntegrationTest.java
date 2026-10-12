@@ -45,7 +45,7 @@ class TicketCompensationServiceIntegrationTest {
                 OWNER_MEMBER_ID, "크리에이터 회원", "USER");
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
                 MEMBER_ID, "보정 대상 회원", "USER");
-        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)",
                 CREATOR_ID, OWNER_MEMBER_ID, "테스트 크리에이터");
         jdbcTemplate.update("INSERT INTO user_ticket_balance (member_id, creator_id, balance) VALUES (?, ?, ?)",
                 MEMBER_ID, CREATOR_ID, 10L);
