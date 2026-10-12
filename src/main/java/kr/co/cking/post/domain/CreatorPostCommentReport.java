@@ -16,8 +16,11 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * 게시글 댓글 신고(이슈 #485). 신고는 댓글의 노출 상태나 필터 판정을 바꾸지 않는다. 같은 신고자는 같은 댓글을 한 번만
+ * 게시글 댓글 신고(이슈 #485). 신고 접수는 댓글의 노출 상태나 필터 판정을 바꾸지 않는다. 같은 신고자는 같은 댓글을 한 번만
  * 신고할 수 있고, 댓글이 삭제되면 DB가 함께 지운다.
+ *
+ * <p>접수된 신고는 {@link CommentReportStatus#PENDING}으로 시작하고, 관리자가 댓글 단위로 숨김(RESOLVED)이나
+ * 반려(REJECTED)로 처리한다(이슈 #499). 처리는 저장소의 일괄 갱신으로 하며 이 엔티티가 상태를 바꾸지 않는다.
  */
 @Entity
 @Table(name = "creator_post_comment_report")
@@ -45,6 +48,16 @@ public class CreatorPostCommentReport {
     @Column(name = "detail", length = MAX_DETAIL_LENGTH)
     private String detail;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private CommentReportStatus status;
+
+    @Column(name = "handled_by")
+    private Long handledBy;
+
+    @Column(name = "handled_at")
+    private Instant handledAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -54,6 +67,7 @@ public class CreatorPostCommentReport {
         this.reporterMemberId = Objects.requireNonNull(reporterMemberId, "reporterMemberId");
         this.reason = Objects.requireNonNull(reason, "reason");
         this.detail = detail;
+        this.status = CommentReportStatus.PENDING;
         this.createdAt = Objects.requireNonNull(now, "now");
     }
 }

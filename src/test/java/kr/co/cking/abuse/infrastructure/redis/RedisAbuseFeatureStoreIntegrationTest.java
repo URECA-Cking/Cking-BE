@@ -208,6 +208,41 @@ class RedisAbuseFeatureStoreIntegrationTest {
         assertThat(redisTemplate.opsForZSet().zCard(AbuseRedisKeys.requestIdRotation(businessKey()))).isEqualTo(1L);
     }
 
+    @Test
+    void 구독_인증의_파생_관측은_제출과_Rotation을_중복_집계하지_않는다() {
+        UUID requestId = UUID.randomUUID();
+        AbuseFeatureSnapshot submitted = record(youtube(
+                "SUBMISSION_CREATED", ResultClassification.NEW_SUCCESS, requestId));
+        AbuseFeatureSnapshot reused = record(youtube(
+                "IMAGE_REUSE", ResultClassification.BUSINESS_FAILURE, requestId));
+        AbuseFeatureSnapshot rejected = record(youtube(
+                "REJECTED", ResultClassification.BUSINESS_FAILURE, UUID.randomUUID()));
+
+        assertThat(submitted.valueOf(AbuseMetric.YOUTUBE_SUBMISSION_COUNT)).isEqualTo(1L);
+        assertThat(submitted.valueOf(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)).isEqualTo(1L);
+        assertThat(reused.valueOf(AbuseMetric.YOUTUBE_SUBMISSION_COUNT)).isZero();
+        assertThat(reused.valueOf(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)).isZero();
+        assertThat(reused.valueOf(AbuseMetric.YOUTUBE_IMAGE_REUSE_COUNT)).isEqualTo(1L);
+        assertThat(rejected.valueOf(AbuseMetric.YOUTUBE_SUBMISSION_COUNT)).isZero();
+        assertThat(rejected.valueOf(AbuseMetric.DISTINCT_REQUEST_ID_COUNT)).isZero();
+        assertThat(rejected.valueOf(AbuseMetric.YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_COUNT)).isEqualTo(1L);
+    }
+
+    @Test
+    void 신규_제출은_음성_VLM_판정_연속_횟수를_초기화하지_않고_승인만_초기화한다() {
+        record(youtube("REJECTED", ResultClassification.BUSINESS_FAILURE, UUID.randomUUID()));
+        record(youtube("SUBMISSION_CREATED", ResultClassification.NEW_SUCCESS, UUID.randomUUID()));
+        AbuseFeatureSnapshot secondRejected = record(youtube(
+                "RETRY_REQUIRED", ResultClassification.BUSINESS_FAILURE, UUID.randomUUID()));
+        record(youtube("APPROVED", ResultClassification.NEW_SUCCESS, UUID.randomUUID()));
+        AbuseFeatureSnapshot rejectedAfterApproval = record(youtube(
+                "REJECTED", ResultClassification.BUSINESS_FAILURE, UUID.randomUUID()));
+
+        assertThat(secondRejected.valueOf(AbuseMetric.YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_COUNT)).isEqualTo(2L);
+        assertThat(rejectedAfterApproval.valueOf(AbuseMetric.YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_COUNT))
+                .isEqualTo(1L);
+    }
+
     /** failure window 경계 밖의 유형은 제거해 distinct failure type count에 포함하지 않는지 검증한다. */
     @Test
     void Failure_Window_밖_유형은_Distinct_Count에서_제외한다() throws InterruptedException {
@@ -267,6 +302,13 @@ class RedisAbuseFeatureStoreIntegrationTest {
                 commonBusinessKey(), observedAt, observedAt);
     }
 
+    private AbuseObservationEvent youtube(String resultCode, ResultClassification classification, UUID requestId) {
+        return new AbuseObservationEvent(
+                UUID.randomUUID(), USER_ID, AbuseActionType.YOUTUBE_SUBSCRIPTION, requestId, resultCode,
+                classification, CREATOR_ID, null, MISSION_ID, null, BalanceScope.creator(CREATOR_ID),
+                youtubeBusinessKey(), BASE_TIME, BASE_TIME);
+    }
+
     /** Creator Event Entry의 유효한 관찰 이벤트를 생성한다. */
     private AbuseObservationEvent entry(String resultCode, ResultClassification classification, Instant observedAt) {
         return entry(resultCode, classification, observedAt, BalanceScope.creator(CREATOR_ID));
@@ -292,6 +334,10 @@ class RedisAbuseFeatureStoreIntegrationTest {
         return "MISSION:COMMON:DAILY:" + USER_ID + ":" + MISSION_ID + ":2026-10-02";
     }
 
+    private String youtubeBusinessKey() {
+        return "MISSION:CREATOR:ONCE:" + USER_ID + ":" + CREATOR_ID + ":" + MISSION_ID;
+    }
+
     /** 테스트가 생성할 수 있는 모든 사용자·business key Redis key를 모아 반환한다. */
     private Set<String> allKeys() {
         Set<String> keys = new HashSet<>();
@@ -314,6 +360,11 @@ class RedisAbuseFeatureStoreIntegrationTest {
         keys.add(AbuseRedisKeys.failureSequence(USER_ID));
         keys.add(AbuseRedisKeys.insufficientBalanceSequence(USER_ID, balanceScope));
         keys.add(AbuseRedisKeys.insufficientBalanceSequence(USER_ID, commonBalanceScope));
+        keys.add(AbuseRedisKeys.youtubeSubmission(USER_ID));
+        keys.add(AbuseRedisKeys.requestIdRotation(youtubeBusinessKey()));
+        keys.add(AbuseRedisKeys.youtubeImageReuse(youtubeBusinessKey()));
+        keys.add(AbuseRedisKeys.youtubeNegativeDecision(youtubeBusinessKey()));
+        keys.add(AbuseRedisKeys.youtubeNegativeDecisionSequence(youtubeBusinessKey()));
         return keys;
     }
 }

@@ -109,7 +109,7 @@ class MissionAbuseObserverTest {
 
     @Test
     void 관찰_Context_생성_오류도_원_업무로_전파하지_않는다() {
-        MissionObservationContext unsupported = creator(MissionType.YOUTUBE_SUBSCRIPTION);
+        MissionObservationContext unsupported = creator(MissionType.ATTENDANCE);
 
         assertThatCode(() -> observer.observeSuccess(unsupported, EarnResultCode.EARN_ACCEPTED))
                 .doesNotThrowAnyException();

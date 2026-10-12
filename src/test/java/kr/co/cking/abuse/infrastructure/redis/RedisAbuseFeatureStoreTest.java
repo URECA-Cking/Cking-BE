@@ -121,7 +121,8 @@ class RedisAbuseFeatureStoreTest {
     private void stubLuaFailure(RuntimeException failure) {
         when(redisTemplate.execute(
                 ArgumentMatchers.<DefaultRedisScript<List>>any(), ArgumentMatchers.<String>anyList(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any()))
                 .thenThrow(failure);
     }
 
@@ -135,7 +136,7 @@ class RedisAbuseFeatureStoreTest {
         ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
         verify(redisTemplate).execute(
                 eq(luaScript), keysCaptor.capture(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
         assertThat(keysCaptor.getValue().get(1)).isEqualTo("abuse:v1:feature-store:unused");
         assertThat(keysCaptor.getValue().get(4)).isEqualTo("abuse:v1:feature-store:unused");
         assertThat(snapshot.valueOf(AbuseMetric.ENTRY_REQUEST_COUNT)).isEqualTo(1L);
@@ -145,7 +146,8 @@ class RedisAbuseFeatureStoreTest {
     private void stubLuaResult(List<?> result) {
         when(redisTemplate.execute(
                 ArgumentMatchers.<DefaultRedisScript<List>>any(), ArgumentMatchers.<String>anyList(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any()))
                 .thenReturn(result);
     }
 

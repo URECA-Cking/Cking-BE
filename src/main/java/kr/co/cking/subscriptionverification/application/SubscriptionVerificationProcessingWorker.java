@@ -3,6 +3,7 @@ package kr.co.cking.subscriptionverification.application;
 import java.time.Clock;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
+import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecision;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionPolicy;
@@ -30,6 +31,7 @@ public class SubscriptionVerificationProcessingWorker {
     private final SubscriptionVerificationDecisionPolicy decisionPolicy;
     private final SubscriptionVerificationProcessingExecutorProperties properties;
     private final Clock clock;
+    private final SubscriptionVerificationAbuseObserver abuseObserver;
     private final Semaphore providerCalls;
 
     /** Claim·완료 Service와 Provider 호출 제한기를 조립한다. */
@@ -40,7 +42,8 @@ public class SubscriptionVerificationProcessingWorker {
             ObjectStorage objectStorage,
             VisionAnalysisPort visionAnalysisPort,
             SubscriptionVerificationProcessingExecutorProperties properties,
-            Clock clock) {
+            Clock clock,
+            SubscriptionVerificationAbuseObserver abuseObserver) {
         this.claimService = claimService;
         this.completionService = completionService;
         this.rewardService = rewardService;
@@ -49,6 +52,7 @@ public class SubscriptionVerificationProcessingWorker {
         this.decisionPolicy = new SubscriptionVerificationDecisionPolicy(CONFIDENCE_THRESHOLD);
         this.properties = properties;
         this.clock = clock;
+        this.abuseObserver = abuseObserver;
         this.providerCalls = new Semaphore(properties.getProviderMaxConcurrentCalls(), true);
     }
 
@@ -96,8 +100,11 @@ public class SubscriptionVerificationProcessingWorker {
                     outcomeOf(decision),
                     decision.reasonCode(),
                     clock.instant());
-            if (completed && decision.status() == SubscriptionVerificationDecisionStatus.APPROVED) {
-                rewardService.reward(claim);
+            if (completed) {
+                abuseObserver.observeDecision(claim, decision.status());
+                if (decision.status() == SubscriptionVerificationDecisionStatus.APPROVED) {
+                    rewardService.reward(claim);
+                }
             }
         } catch (RuntimeException exception) {
             log.warn("구독 인증 판정 결과 저장에 실패해 lease 만료 뒤 복구합니다. verificationId={}",

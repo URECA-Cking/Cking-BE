@@ -12,7 +12,9 @@ public enum PostErrorCode implements ErrorCode {
     COMMENT_FOLLOWERS_ONLY(HttpStatus.FORBIDDEN, "팔로워만 댓글을 작성할 수 있습니다."),
     COMMENT_NOT_REVEALABLE(HttpStatus.FORBIDDEN, "원문을 볼 수 없는 댓글입니다."),
     COMMENT_REPORT_OWN_COMMENT(HttpStatus.FORBIDDEN, "본인 댓글은 신고할 수 없습니다."),
-    COMMENT_REPORT_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "신고를 너무 자주 하고 있습니다. 잠시 후 다시 시도해 주세요.");
+    COMMENT_REPORT_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "신고를 너무 자주 하고 있습니다. 잠시 후 다시 시도해 주세요."),
+    COMMENT_REPORT_ALREADY_FILTERED(HttpStatus.CONFLICT, "이미 필터링된 댓글입니다."),
+    COMMENT_REPORT_ALREADY_HANDLED(HttpStatus.CONFLICT, "이미 다른 조치로 처리된 신고입니다.");
 
     private final HttpStatus status;
     private final String message;

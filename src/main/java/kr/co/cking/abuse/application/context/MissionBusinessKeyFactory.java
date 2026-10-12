@@ -33,11 +33,11 @@ public class MissionBusinessKeyFactory {
                         periodKey
                 );
             }
-            case SHARE -> new MissionBusinessKey(
+            case SHARE, YOUTUBE_SUBSCRIPTION -> new MissionBusinessKey(
                     "MISSION:CREATOR:ONCE:%d:%d:%d".formatted(userId, creatorId, missionId),
                     null
             );
-            case ATTENDANCE, YOUTUBE_SUBSCRIPTION -> throw new IllegalArgumentException(
+            case ATTENDANCE -> throw new IllegalArgumentException(
                     "Abuse v1에서 관찰하지 않는 Creator Mission 유형입니다: " + type);
         };
     }

@@ -160,6 +160,9 @@ public class CompositeRuleEvaluator {
                             && scope.type() == Scope.Type.USER_BALANCE_SCOPE
                             && Objects.equals(scope.balanceScope(), observation.balanceScope());
             case FAILURE_BURST -> scope.type() == Scope.Type.USER;
+            // 구독 인증 Rule은 이 Composite Rule의 입력이 아니며 별도 evaluator에서 완결된다.
+            case YOUTUBE_SUBMISSION_BURST, YOUTUBE_REQUEST_ID_ROTATION, YOUTUBE_IMAGE_REUSE,
+                    YOUTUBE_NEGATIVE_DECISION_BURST -> false;
         };
         if (!valid) {
             throw new IllegalArgumentException("Observation과 다른 범위의 Rule 후보를 조합할 수 없습니다.");
