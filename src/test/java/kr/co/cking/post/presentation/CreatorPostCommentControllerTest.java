@@ -56,6 +56,8 @@ class CreatorPostCommentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].commentId").value(500))
                 .andExpect(jsonPath("$.data.items[0].authorName").value("팬"))
+                .andExpect(jsonPath("$.data.items[0].authorProfileImageUrl")
+                        .value("https://cdn.example.com/member-profile-images/7/a.jpg"))
                 .andExpect(jsonPath("$.data.items[0].writtenByCreator").value(false))
                 .andExpect(jsonPath("$.data.items[0].content").value("응원해요"))
                 .andExpect(jsonPath("$.data.totalElements").value(1));
@@ -137,6 +139,7 @@ class CreatorPostCommentControllerTest {
     }
 
     private CreatorPostCommentView view(Long authorMemberId, String content) {
-        return new CreatorPostCommentView(500L, 100L, authorMemberId, "팬", false, content, false, false, NOW, NOW);
+        return new CreatorPostCommentView(500L, 100L, authorMemberId, "팬", "https://cdn.example.com/member-profile-images/7/a.jpg",
+                false, content, false, false, NOW, NOW);
     }
 }
