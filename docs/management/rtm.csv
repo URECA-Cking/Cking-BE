@@ -309,6 +309,6 @@ FR-AI-035,AI,LLM 공용 fixture를 Java가 그대로 재현한다,성집,Creator
 FR-AI-036,AI,개인화 조회는 모델 API를 호출하지 않고 요청 수에 따른 N+1이 없다,성집,Creator 추천,저장된 활성 세대만 bulk query로 조회,확정,완료,No
 FR-AI-037,AI,개인화 결과가 비어 있으면 팔로워 수 순 인기 Creator로 대체한다,성집,Creator 추천,"개인화 정책의 items가 비면 POPULAR_FALLBACK_V1 반환, 개인화 결과가 하나라도 있으면 대체하지 않음",신설,완료,Yes
 FR-AI-038,AI,인기순은 팔로워 수 내림차순·creatorId 오름차순이며 본인·기팔로우·Space 없는 Creator를 제외한다,성집,Creator 추천,"aggregateScore에 팔로워 수, interestCodes·seedCreatorIds는 빈 배열, size 적용",신설,완료,Yes
-FR-AI-039,AI,세부 관심 주제 85개를 상위 분류체계와 별도 버전 세트로 해시와 함께 등록한다,성집,Creator 추천,interest_subtopic_set·interest_subtopic(V60)과 subtopic-v1 시드 85개(V61) / 해시는 상위 분류체계와 같은 규칙 / 세부 85개 확정 전 초안,신설,개발 중,Yes
+FR-AI-039,AI,세부 관심 주제 85개를 상위 분류체계와 별도 버전 세트로 해시와 함께 등록한다,성집,Creator 추천,interest_subtopic_set·interest_subtopic(V61)과 subtopic-v1 시드 85개(V62) / 해시는 상위 분류체계와 같은 규칙 / 세부 85개 확정 전 초안,신설,개발 중,Yes
 FR-AI-040,AI,GET /api/interests가 세부 주제를 상위 항목 아래에 내려준다,성집,Creator 추천,subtopicVersion·maxSubtopicPerParent·items[].subtopics 추가 / 활성 세부 세트가 없으면 빈 목록(200),신설,개발 중,No
 FR-AI-041,AI,회원이 세부 관심 주제를 상위당 3개까지 조회·저장한다,성집,Creator 추천,GET·PUT /api/me/interests에 subtopicVersion·subtopicCodes 추가 / 생략 시 유지 / 상위 해제 시 연쇄 삭제 / 회원 행 잠금으로 동시 저장 직렬화,신설,개발 중,No
