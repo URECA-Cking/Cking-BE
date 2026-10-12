@@ -36,9 +36,10 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 | 운영·계정 | `admin`, `administrator`, `staff`, `manager`, `system`, `root`, `official`, `cking` |
 | 인증·설정 | `api`, `auth`, `login`, `logout`, `signup`, `oauth`, `me`, `my`, `settings`, `help`, `support`, `notice` |
 | 서비스 경로 | `creator`, `creators`, `space`, `spaces`, `mission`, `missions`, `event`, `events`, `ticket`, `tickets`, `winner`, `winners`, `notification`, `notifications` |
+| 프론트엔드 경로 | `explore`, `my-page`, `my-entries`, `my-winners`, `my-calendar`, `studio`, `onboarding`, `assets`, `icons` |
 | 기타 | `null`, `undefined` |
 
-예약어는 정확히 일치할 때만 막는다. `iu-official`처럼 예약어를 포함하는 것은 허용한다. 목록을 바꾸려면 `CreatorSpaceCustomSlug.RESERVED`와 이 표를 함께 고친다.
+예약어는 정확히 일치할 때만 막는다. `iu-official`처럼 예약어를 포함하는 것은 허용한다. FE가 Space 주소를 `/{slug}`로 쓰므로 slug가 FE 최상위 경로와 겹치면 Space 대신 앱 화면이 열린다. FE에 새 최상위 경로가 생기면 이 목록도 갱신한다. 목록을 바꾸려면 `CreatorSpaceCustomSlug.RESERVED`와 이 표를 함께 고친다.
 
 ### 중복
 
