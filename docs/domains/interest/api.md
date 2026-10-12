@@ -90,6 +90,10 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 - 저장 요청의 `taxonomyVersion`은 **`GET /api/interests` 응답 값**을 보낸다. `GET /api/me/interests`의 버전은 과거에 저장한 선택의 버전이라
   분류체계가 바뀌면 활성 버전과 달라 저장이 400이 된다. 활성 분류체계가 없으면(`taxonomyVersion: null`) 저장할 수 없다.
+- 세부 주제(`subtopics`)도 `GET /api/interests` 응답의 `subtopicVersion`을 보낸다. 세부 필드를 둘 다 생략하면 기존 세부 선택이 유지되고, 상위를 해제하면
+  그 아래 세부 선택은 서버가 같이 지운다. 활성 세부 세트가 없으면(`subtopicVersion: null`) 세부 선택은 저장할 수 없다.
+- **세부 주제를 저장해도 추천 순위는 바뀌지 않는다.** 개인화 추천은 아직 상위 관심 분야와 팔로우만 쓴다. 세부 선택의 추천 반영은 후속 단계이므로
+  "고른 세부 주제가 추천에 반영된다"는 식의 화면 문구는 쓰지 않는다.
 - 400 `VALIDATION_FAILED`는 4개 이상, 중복, 없는 코드, 비활성 버전을 구분하지 않고 필드별 상세도 없다. 최대 선택 수는 응답의 `maxSelection`으로
   FE가 미리 막는다. 선택 해제는 빈 배열 PUT이다.
 - `/api/interests`는 인증이 필요 없지만 유효하지 않거나 만료된 Access JWT를 붙여 보내면 401이 될 수 있다. 기존 401 → refresh → 재시도 흐름이 처리한다.
