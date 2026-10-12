@@ -81,6 +81,47 @@ class CreatorPostCommentReportServiceTest {
     }
 
     @Test
+    void 필터가_차단한_댓글은_새_신고를_받지_않는다() {
+        CreatorPostComment blocked = comment(PUBLIC_POST_ID, AUTHOR_MEMBER_ID);
+        blocked.markFiltered(kr.co.cking.post.domain.CommentFilterAction.BLOCK, java.util.List.of("profanity:test"),
+                "rule-1", "model-1", NOW);
+        given(commentRepository.findByIdForUpdate(COMMENT_ID)).willReturn(Optional.of(blocked));
+
+        assertError(() -> service.report(REPORTER_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, COMMENT_ID,
+                CommentReportReason.ABUSE, null), PostErrorCode.COMMENT_REPORT_ALREADY_FILTERED);
+        verify(reportRepository, never()).save(any());
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글도_새_신고를_받지_않는다() {
+        CreatorPostComment hidden = comment(PUBLIC_POST_ID, AUTHOR_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        given(commentRepository.findByIdForUpdate(COMMENT_ID)).willReturn(Optional.of(hidden));
+
+        assertError(() -> service.report(REPORTER_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, COMMENT_ID,
+                CommentReportReason.SPAM, null), PostErrorCode.COMMENT_REPORT_ALREADY_FILTERED);
+        verify(reportRepository, never()).save(any());
+    }
+
+    @Test
+    void 이미_가려진_댓글이라도_전에_접수한_같은_신고자의_신고는_그대로_돌려준다() {
+        CreatorPostComment hidden = comment(PUBLIC_POST_ID, AUTHOR_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        given(commentRepository.findByIdForUpdate(COMMENT_ID)).willReturn(Optional.of(hidden));
+        CreatorPostCommentReport existing = new CreatorPostCommentReport(
+                COMMENT_ID, REPORTER_MEMBER_ID, CommentReportReason.ABUSE, null, NOW);
+        ReflectionTestUtils.setField(existing, "reportId", 800L);
+        given(reportRepository.findByCommentIdAndReporterMemberId(COMMENT_ID, REPORTER_MEMBER_ID))
+                .willReturn(Optional.of(existing));
+
+        CommentReportView view = service.report(
+                REPORTER_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, COMMENT_ID, CommentReportReason.SPAM, null);
+
+        assertThat(view.reportId()).isEqualTo(800L);
+        verify(reportRepository, never()).save(any());
+    }
+
+    @Test
     void 신고자_행을_먼저_잠가_같은_사용자의_동시_신고를_직렬화한다() {
         service.report(REPORTER_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, COMMENT_ID, CommentReportReason.ABUSE, null);
 
