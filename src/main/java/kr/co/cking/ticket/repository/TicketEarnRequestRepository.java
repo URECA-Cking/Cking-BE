@@ -25,4 +25,21 @@ public interface TicketEarnRequestRepository extends JpaRepository<TicketEarnReq
             @Param("rewardPolicy") String rewardPolicy,
             @Param("createdAt") Instant createdAt
     );
+
+    /**
+     * 같은 requestId가 있으면 무시하지 않고 고유 제약 예외를 낸다. 다른 기록과 한 Transaction으로 선점해야 할 때 쓰며,
+     * 예외가 나면 그 Transaction 전체를 롤백한다. 기존 Mission 선점은 {@link #insertIgnore}를 그대로 쓴다.
+     */
+    @Modifying
+    @Query(value = """
+            INSERT INTO ticket_earn_request
+                (request_id, payload_fingerprint, reward_policy, status, created_at, accepted_at)
+            VALUES (:requestId, :payloadFingerprint, :rewardPolicy, 'PENDING', :createdAt, NULL)
+            """, nativeQuery = true)
+    int insertPending(
+            @Param("requestId") String requestId,
+            @Param("payloadFingerprint") String payloadFingerprint,
+            @Param("rewardPolicy") String rewardPolicy,
+            @Param("createdAt") Instant createdAt
+    );
 }

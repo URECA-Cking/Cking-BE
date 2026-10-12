@@ -1,0 +1,70 @@
+package kr.co.cking.ticket.domain;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/**
+ * Quiz 응시(attempt) 보상 Ticket 지급 요청의 durable 접수 기록(이슈 #533). attempt마다 하나이며 Mission을 참조하지
+ * 않는다. 같은 rewardRequestId는 전역 {@code ticket_earn_request}(reward_policy=QUIZ)에도 같은 Transaction에서 선점한다.
+ * 보상량은 정답 1개당 1장이라 정답 수와 같다.
+ */
+@Entity
+@Table(name = "ticket_quiz_reward_request")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class TicketQuizRewardRequest {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long quizRewardRequestId;
+
+    private String rewardRequestId;
+    private Long attemptId;
+    private Long memberId;
+    private Long creatorId;
+    private int correctCount;
+    private Long amount;
+    private String fingerprintVersion;
+    private String payloadFingerprint;
+
+    @Enumerated(EnumType.STRING)
+    private QuizRewardRequestStatus status;
+
+    private Instant createdAt;
+    private Instant appliedAt;
+
+    /** RECEIVED로 접수한다. 입력 검증과 fingerprint 계산은 호출자가 마친 값이다. */
+    public TicketQuizRewardRequest(String rewardRequestId, Long attemptId, Long memberId, Long creatorId,
+                                   int correctCount, String fingerprintVersion, String payloadFingerprint,
+                                   Instant createdAt) {
+        if (correctCount <= 0) {
+            throw new IllegalArgumentException("Quiz 보상 정답 수는 1 이상이어야 합니다: " + correctCount);
+        }
+        this.rewardRequestId = Objects.requireNonNull(rewardRequestId, "rewardRequestId");
+        this.attemptId = Objects.requireNonNull(attemptId, "attemptId");
+        this.memberId = Objects.requireNonNull(memberId, "memberId");
+        this.creatorId = Objects.requireNonNull(creatorId, "creatorId");
+        this.correctCount = correctCount;
+        this.amount = (long) correctCount;
+        this.fingerprintVersion = Objects.requireNonNull(fingerprintVersion, "fingerprintVersion");
+        this.payloadFingerprint = Objects.requireNonNull(payloadFingerprint, "payloadFingerprint");
+        this.status = QuizRewardRequestStatus.RECEIVED;
+        this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
+    }
+
+    /** 같은 fingerprint 규칙과 같은 입력인지. rewardRequestId는 비교하지 않는다. */
+    public boolean hasSamePayload(String fingerprintVersion, String payloadFingerprint) {
+        return this.fingerprintVersion.equals(fingerprintVersion) && this.payloadFingerprint.equals(payloadFingerprint);
+    }
+}
