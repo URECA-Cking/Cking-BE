@@ -9,11 +9,11 @@ Creator가 YouTube 영상으로 만든 AI Quiz를 저장하고, Creator가 검�
 - 게시된 revision의 공개 조회 (정답·해설·근거 제외)
 - YouTube URL 기반 Quiz 생성 요청 접수와 비동기 생성 작업 (이슈 #525)
 
-AI 생성(`quiz.generation`)은 결과만 반환하며 이 도메인이 저장 전에 같은 `QuizGenerationValidator`로 다시 검증한다. Member·Creator는 읽기만 한다. YouTube URL 기반 생성 요청은 비동기 작업으로 Grounding → Quiz 생성 → 저장을 연결한다(아래 "Quiz 생성 작업"). GPT Judge, 풀이 제출·채점, 응모권 지급, 게시 후 수정은 아직 구현하지 않았다.
+AI 생성(`quiz.generation`)은 결과만 반환하며 저장 전에 같은 `QuizGenerationValidator`로 다시 검증한다. Member·Creator는 읽기만 한다. YouTube 생성 작업은 Grounding → Quiz 생성 → draft 저장을 연결한다. Creator가 별도로 GPT Judge 평가를 요청하고, 유효한 ALL_PASS 평가를 근거로 명시적으로 승인한 뒤 게시한다. 풀이 제출·채점, 응모권 지급, 외부 수정 API는 아직 구현하지 않았다.
 
 ## 소유 데이터
 
-V55의 `quiz`, `quiz_revision`, `quiz_question`, `quiz_option`, `quiz_revision_decision`과 V56의 `quiz_generation`(생성 작업)을 소유한다.
+V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다.
 
 - **quiz**: Creator 소유. `quiz_id`는 revision이 바뀌어도 그대로다. 원본 YouTube `videoId`, 생성 입력 `content_text`와 그 SHA-256은 생성 후 바꾸지 않는다.
 - **quiz_revision·quiz_question·quiz_option**: INSERT 후 바꾸지 않는다. 수정은 새 revision(`revision_no` + 1)으로 만든다. `question_no`·`option_no`는 0부터의 표시 순서이고 `correct_option_index`는 0-based `option_no`다.
@@ -65,14 +65,43 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 
 `published_at`은 현재(게시 취소 상태라면 마지막) 게시가 시작된 시각이고, `unpublished_at`은 그 게시가 취소된 시각이다. 게시하면 `published_at`을 새로 기록하고 `unpublished_at`을 지우므로 `PUBLISHED`일 때 `unpublished_at`은 항상 비어 있다.
 
-## Judge 미연동 승인·게시 차단
+## Judge 평가와 승인 (이슈 #529)
 
-승인과 게시는 `QuizApprovalPolicy`를 통과해야 한다. GPT Judge 평가를 아직 저장하지 않으므로 운영 구현은 항상 거부하는 `JudgeNotIntegratedQuizApprovalPolicy` 하나뿐이며, 승인·게시는 `QUIZ_JUDGE_EVALUATION_REQUIRED`(409)다.
+운영 `StoredJudgeQuizApprovalPolicy`와 `QuizJudgeResultReader`가 저장 평가를 검증한다. 생성 완료만으로 평가·승인·게시되지 않는다. API는 [Judge API](judge-api.md), 요구사항과 검증 범위는 [검증 목록](judge-verification.md)을 따른다.
 
-- 설정 플래그, Profile, 운영 Fake, 관리자 승인처럼 이 정책을 우회하는 경로를 두지 않는다.
-- 테스트용 정책(`FakeQuizApprovalPolicy`)은 `src/test`에만 있다.
-- 거절과 게시 취소는 이 정책을 거치지 않는다.
-- Judge 연동 시 평가 저장소를 검증하는 구현으로 교체하고 deny-all 구현을 지운다. 평가는 revision 해시와 원본 텍스트 해시에 고정해야 한다. 이때 `judge_evaluation_id`에 FK를 추가한다.
+- Creator가 revision 평가를 요청하면 Job 접수 → commit → Judge 전용 Executor → 조건부 claim → 입력·설정 재검증 → OpenAI Responses 호출 → 결과 저장 순서로 실행한다. Provider 호출 중 DB Transaction은 없다.
+- Job의 `SUCCEEDED`는 유효한 평가 저장을 뜻한다. 판정 집계는 `ALL_PASS` / `HAS_FAIL` / `UNCERTAIN_ONLY`이며 fail·uncertain도 SUCCEEDED로 보존하지만 승인하지 않는다.
+- 각 문항의 `textAnswerCorrect`, `uniqueAnswer`, `evidenceSupportsAnswer`, `questionClarity`, `koreanQuality`, `distractorQuality`, `textFaithfulness`가 모두 pass일 때만 Creator가 승인할 수 있다. reason은 공백 불가, 최대 200자(`String.length()`)이며 설정·저장 snapshot으로 늘릴 수 없다. 원문을 자르지 않는다.
+- 승인 직전 Job SUCCEEDED, Quiz/revision/series 소속, 원문·revision·input·settings·result hash, 문항 번호·7개 항목·집계를 재검증한다. 승인 기록에는 immutable **result ID**와 SHA를 고정한다. Job ID와 다르다.
+- 게시·재게시에는 승인 기록의 정확한 result ID/hash와 저장된 policyVersion을 검증한다. 현재 모델·prompt·pricing 설정 변경으로 과거 근거를 무효화하지 않는다. 이미 승인된 결정 재요청과 같은 revision 게시 중인 요청은 기존 결정을/상태를 반환하는 기존 동작을 유지한다.
+- V58의 `(revision_id, judge_evaluation_id) → result(revision_id, result_id)` composite FK가 다른 revision 근거 연결을 막는다. 거절·게시 취소는 평가 없이 가능하다.
+
+### 평가 멱등성과 실패 처리
+
+- series는 revision당 하나이고 최초 입력·설정 identity와 attempt 수를 유지한다. 최초 포함 **최대 2 attempts**이며 series 잠금 안에서 할당한다. 설정 변경으로 한도를 초기화하지 않는다.
+- `UNIQUE(creator_id, request_id)`로 같은 대상 replay는 기존 Job을 stale 정리 후 다시 읽는다. 다른 대상이면 409다. 새 접수만 dispatch한다. Creator당 활성(PENDING/RUNNING) Judge Job은 generated nullable column의 UNIQUE로 하나만 허용한다.
+- 기술적 FAILED/UNKNOWN만 새 UUID로 명시적 재평가할 수 있다. semantic fail/uncertain 완료와 승인된 revision은 재평가하지 않는다. 기존 series와 현재 settings fingerprint가 다르면 접수 전에 409이며 attempt를 쓰지 않는다. 실행 직전에도 다시 비교한다.
+- PENDING → RUNNING·FAILED, RUNNING → SUCCEEDED·FAILED·UNKNOWN. timeout·interrupt는 UNKNOWN, 그 밖의 Provider·형식·저장 실패는 FAILED다. 자동 logical retry·Scheduler·재시작 replay는 없다.
+- 요청·조회 때 stale PENDING(기본 15분)은 FAILED, stale RUNNING(기본 5분)은 UNKNOWN으로 정리한다. 늦은 Worker는 terminal 상태를 바꾸거나 결과를 저장하지 않고 관측 실행 기록만 추가할 수 있다.
+- Worker의 같은 monotonic deadline을 Store에 전달한다. Quiz → series → Job 잠금과 검증 후 첫 result INSERT 전에 deadline/interrupt를 재검사한다. 초과·중단은 결과 없이 UNKNOWN과 실행 기록을 같은 Transaction에 저장한다.
+
+### 설정·실행 기록과 한계
+
+`cking.quiz.judge.enabled` 기본값은 **false**다. OFF는 신규 평가·technical attempt만 막는다. 기존 조회·replay·유효 평가에 따른 승인·게시·거절·게시 취소는 가능하다. `OPENAI_API_KEY`가 없어도 기동하지만 신규 요청은 호출 전에 503이다.
+
+| 설정 | 기본값(운영 검증 전 초기값) |
+| --- | --- |
+| 모델 / reasoning | gpt-6.1-sol / medium, fallback 없음 |
+| 출력 한도 | 3문항 8192 / 5문항 12288 |
+| connect / read / 전체 deadline | 2초 / 60초 / 150초 |
+| HTTP retry | 429·5xx만 최대 1회, 기본 1초 대기; 유효한 Retry-After(초 또는 HTTP 날짜)가 5초를 넘으면 retry 안 함. 없거나 잘못된 값은 기본 대기 |
+| Executor | 별도 pool 1 / queue 4 / AbortPolicy / shutdown 대기 30초 |
+
+strict JSON Schema, `store:false`, tools/background/이전 대화 연결 없음. timeout·기타 4xx·refusal·incomplete·schema 실패는 HTTP retry하지 않는다. `store:false`가 Provider의 모든 보관을 끈다는 뜻은 아니다.
+
+JobCall은 HTTP 요청마다 response ID/model과 nullable usage(input/output/total/cached/reasoning tokens)를 저장한다. reasoning tokens는 output에 포함되므로 다시 합산하지 않는다. 단가·버전 미설정은 비용 null, 일부 요청만 계산한 금액은 `costComplete=false`다. API key·Provider 오류/전체 응답 원문은 저장·로그·API에 남기지 않는다.
+
+Judge는 contentText 기준 평가이며 원본 영상의 사실성을 검증하지 않는다. 모델 접근 권한·quota·실제 비용·최대 입력 latency·평가 품질과 실제 Provider E2E는 미검증이다. DB 저장 자체가 실패하면 실행·비용 기록도 남지 않을 수 있으며 stale 정리는 그 기록을 복원하지 않는다. DB 제약·잠금·전체 Fake 연결은 CI MySQL 테스트에서 확인한다.
 
 ## revision 해시
 
@@ -91,7 +120,7 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 
 ## 영상 Grounding (이슈 #524)
 
-`VideoGrounder.ground(videoId)`가 YouTube 영상을 Gemini Interactions API(`POST /v1beta/interactions`)로 분석해 Quiz 생성 입력(contentText)과 근거(facts)를 돌려준다. 생성 요청·비동기 작업과의 연결은 #525에서 한다.
+`VideoGrounder.ground(videoId)`가 YouTube 영상을 Gemini Interactions API(`POST /v1beta/interactions`)로 분석해 Quiz 생성 입력(contentText)과 근거(facts)를 돌려준다. #525 생성 Worker가 이를 호출한다.
 
 - 입력: 11자 videoId만 받고 `https://www.youtube.com/watch?v=<videoId>`로 다시 만들어 보낸다. 사용자 URL을 그대로 보내지 않는다.
 - 요청: 영상과 prompt(`GroundingPrompt`, 버전 `quiz-grounding-v1`), `response_format`(JSON schema), `store: false`. `store: false`는 Interaction 객체를 나중에 조회할 수 있게 저장하지 않도록 요청할 뿐 Provider의 모든 데이터 보관을 끈다는 뜻이 아니다.

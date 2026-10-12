@@ -102,6 +102,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/winners/*/history").authenticated()
+                        .requestMatchers("/api/creator/quizzes/*/revisions/*/judge-evaluations",
+                                "/api/creator/quizzes/*/revisions/*/judge-evaluations/*").authenticated()
                         .requestMatchers(
                                 "/api/creators/*/missions",
                                 "/api/creators/*/missions/*/complete",

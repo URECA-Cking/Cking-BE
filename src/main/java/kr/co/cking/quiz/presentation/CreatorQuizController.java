@@ -66,8 +66,7 @@ public class CreatorQuizController {
 
     @Operation(
             summary = "Quiz revision 승인",
-            description = "Judge 평가 검증을 통과한 revision만 승인할 수 있습니다. Judge 평가가 연동되기 전에는 항상 "
-                    + "QUIZ_JUDGE_EVALUATION_REQUIRED입니다. 이미 승인한 revision은 기존 결정을 반환합니다."
+            description = "저장된 Judge 평가가 모든 항목 pass인 revision만 승인할 수 있습니다. 이미 승인한 revision은 기존 결정을 반환합니다."
     )
     @PostMapping("/api/creator/quizzes/{quizId}/revisions/{revisionId}/approve")
     public ApiResponse<CreatorQuizResponse.Decision> approve(
@@ -97,8 +96,7 @@ public class CreatorQuizController {
 
     @Operation(
             summary = "Quiz 게시",
-            description = "승인된 최신 revision을 게시합니다. 게시 직전에 저장 내용과 Judge 승인 근거를 다시 검증하며, Judge "
-                    + "평가가 연동되기 전에는 항상 QUIZ_JUDGE_EVALUATION_REQUIRED입니다. 이미 같은 revision을 게시 중이면 "
+            description = "승인된 최신 revision을 게시합니다. 게시 직전에 저장 내용과 Judge 승인 근거를 다시 검증합니다. 이미 같은 revision을 게시 중이면 "
                     + "현재 상태를 반환합니다."
     )
     @PostMapping("/api/creator/quizzes/{quizId}/publish")

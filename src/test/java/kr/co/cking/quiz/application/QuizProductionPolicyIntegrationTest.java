@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 운영 Bean 구성(테스트 Fake 미주입)에서 Judge 미연동 차단과 DB 제약을 실제 MySQL로 확인한다.
+ * 운영 승인 Bean 구성에서 평가가 없거나 기준 미달일 때의 차단과 DB 제약을 실제 MySQL로 확인한다.
  */
 @SpringBootTest
 class QuizProductionPolicyIntegrationTest {
@@ -64,10 +64,10 @@ class QuizProductionPolicyIntegrationTest {
     }
 
     @Test
-    void 운영_승인_정책은_Judge_미연동_구현_하나뿐이다() {
+    void 운영_승인_정책은_저장된_평가를_검증하는_구현_하나뿐이다() {
         assertThat(context.getBeansOfType(QuizApprovalPolicy.class).values())
                 .singleElement()
-                .isInstanceOf(JudgeNotIntegratedQuizApprovalPolicy.class);
+                .isInstanceOf(StoredJudgeQuizApprovalPolicy.class);
     }
 
     @Test
@@ -80,6 +80,7 @@ class QuizProductionPolicyIntegrationTest {
 
     @Test
     void 운영_구성에서_승인_기록이_있어도_게시는_차단된다() {
+        draft = new QuizJudgeIntegrationFixture(context).draft(creator);
         insertApproval(draft.revisionId());
 
         assertThatThrownBy(() -> commandService.publish(creator.getMemberId(), draft.quizId(), draft.revisionId()))
@@ -90,6 +91,7 @@ class QuizProductionPolicyIntegrationTest {
 
     @Test
     void 운영_구성에서도_게시_취소와_거절은_허용된다() {
+        draft = new QuizJudgeIntegrationFixture(context).draft(creator);
         insertApproval(draft.revisionId());
         jdbcTemplate.update("UPDATE quiz SET publication_status = 'PUBLISHED', published_revision_id = ?, "
                 + "published_at = UTC_TIMESTAMP(6) WHERE quiz_id = ?", draft.revisionId(), draft.quizId());
@@ -154,6 +156,7 @@ class QuizProductionPolicyIntegrationTest {
 
     @Test
     void 같은_revision에_두_번째_결정은_DB가_거부한다() {
+        draft = new QuizJudgeIntegrationFixture(context).draft(creator);
         commandService.reject(creator.getMemberId(), draft.quizId(), draft.revisionId(), null);
 
         assertThatThrownBy(() -> insertApproval(draft.revisionId()))
@@ -161,9 +164,11 @@ class QuizProductionPolicyIntegrationTest {
     }
 
     private void insertApproval(Long revisionId) {
+        var result = new QuizJudgeIntegrationFixture(context).saveResult(creator, draft,
+                kr.co.cking.quiz.judge.JudgeVerdict.FAIL);
         jdbcTemplate.update("INSERT INTO quiz_revision_decision (revision_id, decision, decided_by_member_id, "
-                + "judge_evaluation_id, judge_evaluation_sha256, decided_at) VALUES (?, 'APPROVED', ?, 1, ?, UTC_TIMESTAMP(6))",
-                revisionId, creator.getMemberId(), "e".repeat(64));
+                + "judge_evaluation_id, judge_evaluation_sha256, decided_at) VALUES (?, 'APPROVED', ?, ?, ?, UTC_TIMESTAMP(6))",
+                revisionId, creator.getMemberId(), result.getResultId(), result.getResultSha256());
     }
 
     private String publicationStatus() {

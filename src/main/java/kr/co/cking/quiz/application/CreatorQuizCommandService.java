@@ -25,7 +25,7 @@ import java.util.Optional;
  *
  * <p>모든 명령은 Quiz 행을 쓰기 잠금으로 읽어 같은 Quiz의 명령을 직렬화한다. 잠금 순서는 Quiz → revision →
  * 결정이다. 승인과 게시는 저장 내용을 revision 해시로 검증한 뒤 {@link QuizApprovalPolicy}를 통과해야 하며,
- * 운영 구현은 Judge 연동 전까지 항상 거부한다. 거절과 게시 취소는 이 정책을 거치지 않는다.
+ * 운영 구현은 저장된 Judge 결과를 검증한다. 거절과 게시 취소는 이 정책을 거치지 않는다.
  *
  * <p>현재 상태가 이미 요청 결과와 같으면 기존 상태를 그대로 반환한다(같은 결정 재요청, 같은 revision 재게시,
  * 게시 중이 아닌 Quiz의 게시 취소). 이미 다른 결정이 있는 revision은 {@code QUIZ_REVISION_ALREADY_DECIDED}다.

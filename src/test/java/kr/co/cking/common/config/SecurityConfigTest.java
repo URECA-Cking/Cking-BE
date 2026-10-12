@@ -228,6 +228,10 @@ class SecurityConfigTest {
     /** Creator AI Quiz API는 조회·명령 모두 JWT 인증 없이는 호출할 수 없다. */
     @Test
     void Creator_Quiz_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(post("/api/creator/quizzes/1/revisions/100/judge-evaluations"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/creator/quizzes/1/revisions/100/judge-evaluations/40"))
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/creator/quizzes"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));

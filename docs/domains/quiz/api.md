@@ -7,9 +7,9 @@
 - `/api/creator/quizzes/**`는 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다. 없는 Member는 `RESOURCE_NOT_FOUND`(404), Creator가 아니거나 다른 Creator의 Quiz면 `FORBIDDEN`(403)이다.
 - `GET /api/creators/{creatorId}/quizzes/**`(공개 조회)는 인증이 필요 없다.
 
-## Judge 미연동 상태
+## Judge 평가와 승인
 
-GPT Judge 평가가 연동되기 전까지 승인과 게시는 항상 `QUIZ_JUDGE_EVALUATION_REQUIRED`(409)다. 따라서 현재 공개 조회에 나오는 Quiz는 없다. 거절·게시 취소·조회는 사용할 수 있다.
+Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가하고, 모든 문항의 7개 항목이 pass인 저장 결과를 근거로 명시적으로 승인한다. SUCCEEDED는 실행 성공이며 ALL_PASS와 다르다. 평가 기능 기본 OFF는 신규 접수만 막고 기존 유효 평가의 승인·게시·조회는 유지한다.
 
 ## 공통 값
 
@@ -98,7 +98,8 @@ GPT Judge 평가가 연동되기 전까지 승인과 게시는 항상 `QUIZ_JUDG
     {
       "questionNo": 0,
       "question": "물이 증발하면 무엇이 되나요?",
-      "options": [ { "optionNo": 0, "text": "구름" }, { "optionNo": 1, "text": "돌" } ],
+      "options": [ { "optionNo": 0, "text": "구름" }, { "optionNo": 1, "text": "돌" },
+        { "optionNo": 2, "text": "흙" }, { "optionNo": 3, "text": "모래" } ],
       "correctOptionIndex": 0,
       "explanation": "증발한 물은 구름이 됩니다.",
       "sourceEvidence": "물은 증발해 구름이 되고"
@@ -119,7 +120,8 @@ revision을 승인한다. 본문은 없다. 저장 내용을 revision 해시로 
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
-| `QUIZ_JUDGE_EVALUATION_REQUIRED` | 409 | Judge 평가 검증을 통과하지 못함. Judge 연동 전에는 항상 |
+| `QUIZ_JUDGE_EVALUATION_REQUIRED` | 409 | 평가 없음·진행 중·실패·UNKNOWN 또는 fail/uncertain 판정 |
+| `QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED` | 500 | 저장 평가의 소속·hash·정책 버전 검증 실패 |
 | `QUIZ_REVISION_ALREADY_DECIDED` | 409 | 이미 거절한 revision |
 | `QUIZ_REVISION_INTEGRITY_FAILED` | 500 | 저장 내용이 revision 해시와 다름 |
 | `FORBIDDEN` / `RESOURCE_NOT_FOUND` / `QUIZ_NOT_FOUND` / `QUIZ_REVISION_NOT_FOUND` | 403/404 | 위와 같음 |
@@ -156,7 +158,8 @@ revision을 거절한다. Judge 평가가 없어도 된다. 본문은 생략할 
 | `VALIDATION_FAILED` | 400 | `revisionId` 없음 |
 | `QUIZ_REVISION_NOT_LATEST` | 409 | 최신 revision이 아님 |
 | `QUIZ_REVISION_NOT_APPROVED` | 409 | 검토 대기 또는 거절된 revision |
-| `QUIZ_JUDGE_EVALUATION_REQUIRED` | 409 | 승인 근거가 유효하지 않음. Judge 연동 전에는 항상 |
+| `QUIZ_JUDGE_EVALUATION_REQUIRED` | 409 | 승인 근거의 판정이 ALL_PASS가 아님 |
+| `QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED` | 500 | 승인 당시 result ID/hash 또는 저장 평가 무결성 실패 |
 | `QUIZ_REVISION_INTEGRITY_FAILED` | 500 | 저장 내용이 revision 해시와 다름 |
 | `FORBIDDEN` / `RESOURCE_NOT_FOUND` / `QUIZ_NOT_FOUND` / `QUIZ_REVISION_NOT_FOUND` | 403/404 | 위와 같음 |
 
@@ -221,7 +224,7 @@ YouTube 영상으로 Quiz 생성을 요청한다. 응답 `202`와 생성 작업.
 ```json
 {
   "items": [
-    { "quizId": 1, "revisionId": 100, "title": "물의 순환", "questionCount": 2, "publishedAt": "2026-10-12T01:00:00Z" }
+    { "quizId": 1, "revisionId": 100, "title": "물의 순환", "questionCount": 3, "publishedAt": "2026-10-12T01:00:00Z" }
   ],
   "page": 0, "size": 20, "totalElements": 1, "totalPages": 1, "hasNext": false
 }
@@ -241,7 +244,8 @@ YouTube 영상으로 Quiz 생성을 요청한다. 응답 `202`와 생성 작업.
   "publishedAt": "2026-10-12T01:00:00Z",
   "questions": [
     { "questionNo": 0, "question": "물이 증발하면 무엇이 되나요?",
-      "options": [ { "optionNo": 0, "text": "구름" }, { "optionNo": 1, "text": "돌" } ] }
+      "options": [ { "optionNo": 0, "text": "구름" }, { "optionNo": 1, "text": "돌" },
+        { "optionNo": 2, "text": "흙" }, { "optionNo": 3, "text": "모래" } ] }
   ]
 }
 ```
