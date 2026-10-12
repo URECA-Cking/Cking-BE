@@ -6,7 +6,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 
 - Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 이 API는 만들어진 Space의 조회·수정만 다룬다.
 - 공개 조회(`GET /api/creators`, `GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)는 인증 없이 호출할 수 있다.
-- 본인 API(`/api/creator/space`, `/api/creator/space/slug`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
+- 본인 API(`/api/creator/space`, `/api/creator/space/slug`, `/api/creator/profile`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 공유 URL은 프론트엔드의 `/space/{slug}` 형식이다. slug는 이 공개 조회의 탐색에만 사용하고, 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용한다. slug를 업무 기록에 저장하지 않는다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
 - 탭(홈·미션·게시물·이벤트) 노출 설정은 없다(이슈 #290). 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다.
@@ -17,7 +17,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 | 필드 | 설명 |
 | --- | --- |
 | `creatorId` | Creator ID. 앱 안 이동과 업무 기록의 기준이다 |
-| `creatorName` | Creator 이름 |
+| `creatorName` | Creator 공개 활동명. OAuth 원본 이름은 노출하지 않는다 |
 | `slug` | 공유 링크(`/space/{slug}`)에 쓰는 식별 문자열. 승인 시 자동으로 만들어지고 Creator가 바꿀 수 있다 |
 | `introText` | 소개 문구 |
 | `profileImageUrl`, `bannerImageUrl` | 프로필·배너 이미지 URL |
@@ -114,6 +114,31 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 | --- | --- |
 | `introText`, `profileImageUrl`, `bannerImageUrl` | 필수, 공백 불가, 최대 500자 |
 
+## GET /api/creator/profile
+
+Creator 본인의 활동명 설정 상태를 조회한다. 활동명은 Space 편집 화면에서 이 API와 `PUT`을 사용해 따로 관리한다.
+
+```json
+{
+  "creatorId": 42,
+  "activityName": "cking_creator",
+  "activityNameConfigured": true,
+  "activityNameChangeableAt": "2026-10-26T00:00:00Z",
+  "restorableActivityName": "old_creator"
+}
+```
+
+## PUT /api/creator/profile
+
+Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 닉네임과 같고, Creator 활동명 namespace 안에서만 중복 불가다.
+최초 설정은 즉시 가능하며, 이후 실제 변경은 14일 간격이다. 유효한 이전 활동명으로의 복귀는 예약 기간 안에 즉시 가능하다.
+
+```json
+{
+  "activityName": "cking_creator"
+}
+```
+
 ## PATCH /api/creator/space/slug
 
 호출자 본인의 Creator Space slug를 커스텀 slug로 바꾼다. 응답은 바뀐 Space이며 위 본인 API 응답이다. 지금 slug와 같은 값이면 아무것도 바꾸지 않고 성공한다. 마지막 변경 후 14일이 지나야 다시 바꿀 수 있으며, 첫 변경(자동 slug → 커스텀)은 바로 된다. 버린 이전 slug는 14일 동안 예약돼 다른 Creator가 쓸 수 없고, 본인은 그 기간 안에 14일 제한 없이 되돌릴 수 있다([space-slug-policy.md](space-slug-policy.md#되돌리기)).
@@ -143,3 +168,6 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 - slug가 예약어면 `RESERVED_SLUG`(400)다.
 - slug를 다른 Space가 쓰고 있거나 다른 Creator가 예약 중이면 `SLUG_ALREADY_TAKEN`(409)다.
 - 마지막 slug 변경 후 14일이 지나지 않았으면 `SLUG_CHANGE_TOO_SOON`(409)이다. 다시 바꿀 수 있는 시각은 조회 응답의 `slugChangeableAt`으로 확인한다.
+- 활동명 형식이 맞지 않으면 `VALIDATION_FAILED`(400), 다른 Creator가 사용·예약 중이면 `ACTIVITY_NAME_ALREADY_TAKEN`(409),
+  변경 간격 안이면 `ACTIVITY_NAME_CHANGE_TOO_SOON`(409)이다.
+- 기존 이관 Creator가 활동명 설정 전에 게시글·Event를 생성하면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)다.

@@ -47,6 +47,7 @@ public class CreatorPostService {
      */
     public CreatorPostView create(Long memberId, CreatorPostFields fields) {
         Creator creator = authorLookup.requireCreator(memberId);
+        creator.requireActivityNameConfigured();
         List<String> imageKeys = validate(fields);
         Instant now = clock.instant();
 

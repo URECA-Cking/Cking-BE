@@ -56,6 +56,8 @@
 
 내가 팔로우한 크리에이터를 최근 팔로우 순(`followedAt` 내림차순, tie-breaker 팔로우 ID 내림차순)으로 조회한다. `page`(기본 0), `size`(기본 20, 최대 100)는 공통 페이지네이션을 따른다.
 
+`creatorName`은 Creator의 현재 공개 활동명이며 OAuth 원본 이름을 노출하지 않는다.
+
 ```json
 {
   "items": [

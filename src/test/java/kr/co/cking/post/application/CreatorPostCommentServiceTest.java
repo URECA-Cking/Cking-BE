@@ -95,7 +95,7 @@ class CreatorPostCommentServiceTest {
 
         assertThat(comments).extracting(CreatorPostCommentView::commentId).containsExactly(1L, 2L);
         assertThat(comments).extracting(CreatorPostCommentView::authorName)
-                .containsExactly("member-" + FAN_MEMBER_ID, "member-" + OWNER_MEMBER_ID);
+                .containsExactly("member-" + FAN_MEMBER_ID, "creator-" + CREATOR_ID);
         assertThat(comments).extracting(CreatorPostCommentView::writtenByCreator).containsExactly(false, true);
     }
 

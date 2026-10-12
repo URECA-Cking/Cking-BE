@@ -34,6 +34,7 @@ public class CreatorApplicationService {
     private final CreatorApplicationLockManager lockManager;
     private final MissionInitializationService missionInitializationService;
     private final CreatorSpaceService creatorSpaceService;
+    private final CreatorActivityNameService activityNameService;
 
     public ApplyResult apply(Long memberId) {
         return lockManager.execute("creator-application:member:" + memberId, () -> applyLocked(memberId));
@@ -89,9 +90,8 @@ public class CreatorApplicationService {
             throw new BusinessException(CreatorErrorCode.INVALID_STATE);
         }
         application.approve(adminId);
-        Creator creator = creatorRepository.save(
-                new Creator(application.getMemberId(), applicant.getName())
-        );
+        Creator creator = creatorRepository.save(new Creator(
+                application.getMemberId(), applicant.getName(), activityNameService.initialAvailableName(applicant.getNickname())));
         missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
         creatorSpaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId());
         return application;
