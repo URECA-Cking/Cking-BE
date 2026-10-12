@@ -95,17 +95,29 @@ public class SubscriptionVerificationSubmissionService {
                     UUID.randomUUID().toString()));
         } catch (DataIntegrityViolationException exception) {
             deleteQuietly(objectKey);
-            Optional<SubscriptionVerification> concurrentExisting = validator.validateRequest(
-                    command.memberId(),
-                    command.creatorId(),
-                    command.missionId(),
-                    requestId,
-                    fingerprint,
-                    submittedAt);
-            if (concurrentExisting.isPresent()) {
-                abuseObserver.observeReplay(concurrentExisting.get());
-                return new SubscriptionVerificationSubmissionResult(concurrentExisting.get(), false);
+            try {
+                Optional<SubscriptionVerification> concurrentExisting = validator.validateRequest(
+                        command.memberId(),
+                        command.creatorId(),
+                        command.missionId(),
+                        requestId,
+                        fingerprint,
+                        submittedAt);
+                if (concurrentExisting.isPresent()) {
+                    abuseObserver.observeReplay(concurrentExisting.get());
+                    return new SubscriptionVerificationSubmissionResult(concurrentExisting.get(), false);
+                }
+            } catch (BusinessException revalidationFailure) {
+                abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                        command.requestId(), revalidationFailure.getErrorCode().code(), submittedAt);
+                throw revalidationFailure;
+            } catch (RuntimeException revalidationFailure) {
+                abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                        command.requestId(), submittedAt);
+                throw revalidationFailure;
             }
+            abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), submittedAt);
             throw exception;
         } catch (BusinessException exception) {
             deleteQuietly(objectKey);

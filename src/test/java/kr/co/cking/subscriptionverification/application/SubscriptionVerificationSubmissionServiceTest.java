@@ -185,6 +185,39 @@ class SubscriptionVerificationSubmissionServiceTest {
         then(objectStorage).should().delete(any());
     }
 
+    @Test
+    void DB_UNIQUE_경쟁_재검증의_업무_거절은_BUSINESS_FAILURE로_관측한다() {
+        BusinessException rejection = new BusinessException(
+                SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS);
+        given(persistenceService.create(any()))
+                .willThrow(new DataIntegrityViolationException("request unique"));
+        given(validator.validateRequest(any(), any(), any(), any(), any(), any()))
+                .willReturn(Optional.empty())
+                .willThrow(rejection);
+
+        assertThatThrownBy(() -> service.submit(command())).isSameAs(rejection);
+
+        then(abuseObserver).should().observeBusinessFailure(
+                MEMBER_ID,
+                CREATOR_ID,
+                MISSION_ID,
+                REQUEST_ID,
+                SubscriptionVerificationErrorCode.VERIFICATION_IN_PROGRESS.code(),
+                NOW);
+        then(abuseObserver).should(never()).observeSystemFailure(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void DB_UNIQUE_경쟁_뒤_기존_인증을_찾지_못하면_SYSTEM_FAILURE로_관측한다() {
+        DataIntegrityViolationException conflict = new DataIntegrityViolationException("request unique");
+        given(persistenceService.create(any())).willThrow(conflict);
+
+        assertThatThrownBy(() -> service.submit(command())).isSameAs(conflict);
+
+        then(abuseObserver).should().observeSystemFailure(
+                MEMBER_ID, CREATOR_ID, MISSION_ID, REQUEST_ID, NOW);
+    }
+
     private SubscriptionVerificationSubmissionService service() {
         return new SubscriptionVerificationSubmissionService(
                 imageProcessor,
