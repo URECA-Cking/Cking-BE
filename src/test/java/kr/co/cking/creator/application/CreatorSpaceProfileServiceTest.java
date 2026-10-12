@@ -201,6 +201,18 @@ class CreatorSpaceProfileServiceTest {
     }
 
     @Test
+    void updateMineKeepsConnectedStorageProfileImage() {
+        space.updateProfileImage("creator-space-profile-images/42/current.jpg", "https://cdn/current.jpg");
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+
+        service.updateMine(7L, NEW_PROFILE);
+
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://cdn/current.jpg");
+        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/b2.png");
+    }
+
+    @Test
     void updateMineThrowsForbiddenWhenCallerIsNotCreator() {
         given(creatorRepository.findByMemberId(8L)).willReturn(Optional.empty());
 

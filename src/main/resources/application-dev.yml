@@ -48,6 +48,10 @@ cking:
     profile-image:
       # member-profile-images/*만 공개하는 개발 CloudFront 주소다. 비밀값이 아니므로 환경변수 주입 없이 고정한다.
       public-base-url: https://dev-images.cking.co.kr
+  creator:
+    space-profile-image:
+      # creator-space-profile-images/* 공개 behavior가 연결되는 개발 CloudFront 주소다.
+      public-base-url: https://dev-images.cking.co.kr
   verification:
     youtube-subscription:
       submission-enabled: false

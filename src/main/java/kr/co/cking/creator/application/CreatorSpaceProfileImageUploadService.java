@@ -10,6 +10,7 @@ import kr.co.cking.common.image.InvalidImageException;
 import kr.co.cking.common.image.NormalizedImage;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpaceProfileImage;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
@@ -29,7 +30,9 @@ public class CreatorSpaceProfileImageUploadService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
         NormalizedImage image;
         try { image = imageNormalizer.normalize(bytes, POLICY); }
-        catch (InvalidImageException exception) { throw new BusinessException(CommonErrorCode.VALIDATION_FAILED); }
+        catch (InvalidImageException exception) {
+            throw new BusinessException(CreatorErrorCode.INVALID_SPACE_PROFILE_IMAGE);
+        }
         String key = "creator-space-profile-images/%d/%s.jpg".formatted(creator.getCreatorId(), UUID.randomUUID());
         imageRepository.save(CreatorSpaceProfileImage.uploading(key, creator.getCreatorId(), clock.instant()));
         objectStorage.put(key, image.normalizedImageBytes(), "image/jpeg");

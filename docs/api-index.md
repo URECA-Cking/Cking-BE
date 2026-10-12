@@ -157,11 +157,11 @@
 | 154 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/judge-evaluations` | GPT Judge 비동기 평가 접수(202, 최대 2 attempts, Creator당 활성 Job 1개) | `requestId` |
 | 155 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/judge-evaluations/{evaluationId}` | 본인 평가 Job 상태와 문항별 판정 조회 | - |
 | 156 | 외부 | Creator | CREATOR | GET | `/api/creator/profile` | 내 Creator 활동명·설정 상태 조회 | - |
-| 157 | 외부 | Creator | CREATOR | POST | `/api/creator/space/profile-images` | Creator Space 프로필 사진 업로드 | - |
-| 158 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/profile-image` | 업로드한 Space 프로필 사진 연결 | - |
 | 157 | 외부 | Creator | CREATOR | PUT | `/api/creator/profile` | 내 Creator 활동명 전체 교체·14일 변경/복귀 정책 적용 | 상태 기반 |
 | 158 | 외부 | Post | ADMIN | POST | `/api/admin/comment-reports/{commentId}/hide` | 신고된 댓글 숨김(접수 신고 일괄 처리 완료, 되돌릴 수 없음) | 상태 기반 |
 | 159 | 외부 | Post | ADMIN | POST | `/api/admin/comment-reports/{commentId}/reject` | 신고된 댓글의 접수 신고 일괄 반려 | 상태 기반 |
+| 160 | 외부 | Creator | CREATOR | POST | `/api/creator/space/profile-images` | Creator Space 프로필 사진 업로드 | - |
+| 161 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/profile-image` | 업로드한 Space 프로필 사진 연결 | - |
 
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
