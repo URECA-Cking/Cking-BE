@@ -14,7 +14,10 @@ import java.time.Instant;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -206,7 +209,8 @@ class TicketAdminServiceTest {
 
     /** Redis 통신 장애는 키 미존재 응답과 달리 전용 오류로 반환하는지 검증한다. */
     @Test
-    void Redis_통신_장애는_전용_오류다() {
+    @ExtendWith(OutputCaptureExtension.class)
+    void Redis_통신_장애는_전용_오류와_원인_로그를_남긴다(CapturedOutput output) {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("ticket:balance:common:2"))
                 .thenThrow(new RedisConnectionFailureException("unavailable"));
@@ -215,11 +219,13 @@ class TicketAdminServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(TicketErrorCode.REDIS_BALANCE_QUERY_FAILED);
+        assertThat(output).contains("redisKey=ticket:balance:common:2", "RedisConnectionFailureException", "unavailable");
     }
 
     /** Redis 잔액 값이 숫자가 아니면 잘못된 잔액을 반환하지 않고 조회 실패로 처리한다. */
     @Test
-    void Redis_잔액_형식_오류도_조회_실패다() {
+    @ExtendWith(OutputCaptureExtension.class)
+    void Redis_잔액_형식_오류도_원인을_로그에_남긴다(CapturedOutput output) {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("ticket:balance:common:2")).thenReturn("invalid");
 
@@ -227,6 +233,7 @@ class TicketAdminServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(TicketErrorCode.REDIS_BALANCE_QUERY_FAILED);
+        assertThat(output).contains("redisKey=ticket:balance:common:2", "NumberFormatException", "invalid");
     }
 
     /** 종류별 creatorId 규약과 ADMIN 재검증을 저장소 접근 전에 적용하는지 검증한다. */

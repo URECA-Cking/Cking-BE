@@ -8,6 +8,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
@@ -29,6 +30,7 @@ import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TicketAdminService {
 
     private final MemberQueryService memberQueryService;
@@ -92,6 +94,7 @@ public class TicketAdminService {
             String value = redisTemplate.opsForValue().get(redisKey);
             return value == null ? Optional.empty() : Optional.of(Long.parseLong(value));
         } catch (DataAccessException | NumberFormatException e) {
+            log.warn("Redis 응모권 잔액 조회에 실패했습니다. redisKey={}", redisKey, e);
             throw new BusinessException(TicketErrorCode.REDIS_BALANCE_QUERY_FAILED);
         }
     }
