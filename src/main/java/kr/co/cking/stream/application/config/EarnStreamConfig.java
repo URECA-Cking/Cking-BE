@@ -5,10 +5,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
-import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.stream.StreamMessageListenerContainer;
@@ -54,11 +52,7 @@ public class EarnStreamConfig {
 
         // PEL 재수신(XCLAIM)·Dead Stream 승격은 EarnStreamPelRecoveryScheduler가 별도로
         // 주기 실행한다(이슈 #43).
-        container.receive(
-                Consumer.from(consumerGroup, CONSUMER_NAME),
-                StreamOffset.create(streamKey, ReadOffset.lastConsumed()),
-                earnStreamListener
-        );
+        container.register(StreamReadRequests.keepAlive(streamKey, consumerGroup, CONSUMER_NAME), earnStreamListener);
 
         return container;
     }
