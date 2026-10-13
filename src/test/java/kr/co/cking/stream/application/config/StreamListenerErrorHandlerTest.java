@@ -1,8 +1,11 @@
 package kr.co.cking.stream.application.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
+import java.time.Duration;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -48,12 +51,34 @@ class StreamListenerErrorHandlerTest {
     void 정상_실행_중_연결_종료는_ERROR로_기록한다() {
         ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
         when(shutdownState.isShuttingDown()).thenReturn(false);
-        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState);
+        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState, Duration.ZERO);
 
         errorHandler.handleError(new RedisException("Connection closed"));
 
         assertThat(logAppender.list)
                 .anyMatch(event -> event.getLevel().equals(Level.ERROR));
+    }
+
+    @Test
+    void 정상_실행_중_오류_뒤에는_다음_폴링_전에_쉰다() {
+        ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
+        when(shutdownState.isShuttingDown()).thenReturn(false);
+        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState, Duration.ofMillis(200));
+
+        long startedAt = System.nanoTime();
+        errorHandler.handleError(new RedisException("Command timed out"));
+
+        assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isGreaterThanOrEqualTo(Duration.ofMillis(200));
+    }
+
+    @Test
+    void 종료_중에는_오류_뒤에도_쉬지_않는다() {
+        ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
+        when(shutdownState.isShuttingDown()).thenReturn(true);
+        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState, Duration.ofSeconds(5));
+
+        assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> errorHandler.handleError(new RedisException("Command timed out")));
     }
 
     @Test
