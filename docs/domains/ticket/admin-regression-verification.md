@@ -22,5 +22,5 @@
 로컬 MySQL·Redis 컨테이너가 실행 중인 상태에서 다음 명령을 사용한다.
 
 ```powershell
-.\gradlew.bat test --tests 'kr.co.cking.ticket.*' --tests 'kr.co.cking.stream.application.UnappliedBalanceMessageCheckerTest' --tests 'kr.co.cking.event.application.service.EntrySpendServiceIntegrationTest' --tests 'kr.co.cking.event.application.service.EntrySpendLoadTest'
+.\gradlew.bat test --tests 'kr.co.cking.ticket.*' --tests 'kr.co.cking.stream.application.UnappliedBalanceMessageCheckerTest' --tests 'kr.co.cking.event.application.service.EntrySpendServiceIntegrationTest'
 ```

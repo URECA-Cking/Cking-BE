@@ -207,8 +207,12 @@ class TicketAdminRegressionIntegrationTest {
                 .andExpect(jsonPath("$.code").value("CONCURRENT_COMMAND"));
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID)))
                 .isEqualTo("other-token");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM ticket_ledger WHERE member_id = ?", Integer.class, MEMBER_ID))
+                .isZero();
+        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isEqualTo("3");
         redisTemplate.delete(TicketRedisKeys.maintenance(CREATOR_ID, MEMBER_ID));
 
+        redisTemplate.opsForValue().set(CommonTicketRedisKeys.balance(MEMBER_ID), "2");
         jdbcTemplate.update("INSERT INTO dead_stream_message (source_stream_id, stream_type, payload, retry_count, resolution_status) VALUES ('tc07-common-1', 'COMMON_EARN', ?, 1, 'UNRESOLVED')",
                 "{\"userId\":\"%d\"}".formatted(MEMBER_ID));
         mockMvc.perform(post("/api/admin/tickets/common/resync")
@@ -219,7 +223,7 @@ class TicketAdminRegressionIntegrationTest {
                 .andExpect(jsonPath("$.code").value("INVALID_STATE"));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM common_ticket_ledger WHERE member_id = ?", Integer.class, MEMBER_ID))
                 .isZero();
-        assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).isEqualTo("3");
+        assertThat(redisTemplate.opsForValue().get(CommonTicketRedisKeys.balance(MEMBER_ID))).isEqualTo("2");
     }
 
     /** 테스트용 Member 역할에 맞는 서명된 Access JWT를 Bearer 헤더로 만든다. */
