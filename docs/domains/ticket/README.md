@@ -5,6 +5,7 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 ## 문서
 
 - [외부 API](api.md): 잔액·Ledger 이력 조회 및 관리자 보정 API 계약
+- [관리자 API·보정 회귀 검증](admin-regression-verification.md): TC-07 테스트 범위와 실행 방법
 - [EARN Lua 원자 처리](lua-api.md): 미션 적립의 멱등성·일일 중복 방지·Stream 발행 계약, Quiz 보상 Lua
 
 ## EARN과 Stream 반영
