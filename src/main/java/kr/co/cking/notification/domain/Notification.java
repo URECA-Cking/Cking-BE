@@ -14,7 +14,10 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 당첨 결과를 사용자에게 전달하는 인앱 알림을 표현한다. */
+/**
+ * 사용자에게 전달하는 인앱 알림을 표현한다. 당첨 알림은 {@code eventId}·{@code drawingId}·{@code winnerId}를 모두 갖고,
+ * 제재 알림(이슈 #572)은 이 셋이 모두 비고 {@code sanctionId}를 갖는다. 세 값은 모두 있거나 모두 없어야 한다(DB CHECK).
+ */
 @Entity
 @Table(name = "notification")
 @Getter
@@ -29,14 +32,17 @@ public class Notification {
     @Column(name = "member_id", nullable = false, updatable = false)
     private Long memberId;
 
-    @Column(name = "event_id", nullable = false, updatable = false)
+    @Column(name = "event_id", updatable = false)
     private Long eventId;
 
-    @Column(name = "drawing_id", nullable = false, updatable = false)
+    @Column(name = "drawing_id", updatable = false)
     private Long drawingId;
 
-    @Column(name = "winner_id", nullable = false, updatable = false)
+    @Column(name = "winner_id", updatable = false)
     private Long winnerId;
+
+    @Column(name = "sanction_id", updatable = false)
+    private Long sanctionId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, updatable = false, length = 30)
@@ -71,6 +77,18 @@ public class Notification {
                         NotificationType type, String title, String body, Instant createdAt) {
         this(memberId, eventId, drawingId, winnerId, type, title, body);
         this.createdAt = createdAt;
+    }
+
+    /** 제재(댓글 작성 제한) 시작·해제를 알리는 Notification을 만든다. 이벤트·추첨·당첨 값은 비운다. */
+    public static Notification forSanction(
+            Long memberId, Long sanctionId, NotificationType type, String title, String body) {
+        Notification notification = new Notification();
+        notification.memberId = memberId;
+        notification.sanctionId = sanctionId;
+        notification.type = type;
+        notification.title = title;
+        notification.body = body;
+        return notification;
     }
 
     /** 저장 직전에 생성 시각이 비어 있으면 현재 시각을 설정한다. */
