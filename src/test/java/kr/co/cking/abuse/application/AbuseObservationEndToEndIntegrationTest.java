@@ -169,7 +169,7 @@ class AbuseObservationEndToEndIntegrationTest {
         when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
                 .thenReturn(EntrySpendResult.ofBalance(EntrySpendResultCode.INSUFFICIENT_BALANCE, 0L));
 
-        assertThat(creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+        assertThat(creatorMissionService.completeVerifiedLike(creator.getCreatorId(), likeMission.getMissionId(),
                 command(UUID.randomUUID())).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThatThrownBy(() -> entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.COMMON)))
                 .isInstanceOf(BusinessException.class)
@@ -191,7 +191,7 @@ class AbuseObservationEndToEndIntegrationTest {
                 .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.SUCCESS, "1-0", 0L));
 
         for (int i = 0; i < 2; i++) {
-            assertThatThrownBy(() -> creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+            assertThatThrownBy(() -> creatorMissionService.completeVerifiedLike(creator.getCreatorId(), likeMission.getMissionId(),
                     command(UUID.randomUUID())))
                     .isInstanceOf(BusinessException.class)
                     .extracting(error -> ((BusinessException) error).getErrorCode())
@@ -212,12 +212,12 @@ class AbuseObservationEndToEndIntegrationTest {
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
         UUID first = UUID.randomUUID();
 
-        assertThat(creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+        assertThat(creatorMissionService.completeVerifiedLike(creator.getCreatorId(), likeMission.getMissionId(),
                 command(first)).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
-        assertThat(creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+        assertThat(creatorMissionService.completeVerifiedLike(creator.getCreatorId(), likeMission.getMissionId(),
                 command(first)).code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
         assertThat(detections()).isEmpty();
-        assertThat(creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+        assertThat(creatorMissionService.completeVerifiedLike(creator.getCreatorId(), likeMission.getMissionId(),
                 command(UUID.randomUUID())).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
 
         var detection = only(AbuseType.MISSION_REQUEST_BURST);
@@ -235,7 +235,7 @@ class AbuseObservationEndToEndIntegrationTest {
                 });
         assertThat(redisTemplate.opsForZSet().zCard(AbuseRedisKeys.missionRequest(member.getMemberId())))
                 .isEqualTo(2L);
-        creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(), command(UUID.randomUUID()));
+        creatorMissionService.completeVerifiedLike(creator.getCreatorId(), likeMission.getMissionId(), command(UUID.randomUUID()));
         assertThat(detections()).hasSize(1); // 같은 USER scope의 Cooldown은 새 row를 만들지 않는다.
     }
 
@@ -247,7 +247,7 @@ class AbuseObservationEndToEndIntegrationTest {
                 .thenReturn(new EarnResult(EarnResultCode.DUPLICATE_MISSION));
 
         for (int i = 0; i < 2; i++) {
-            assertThatThrownBy(() -> creatorMissionService.complete(
+            assertThatThrownBy(() -> creatorMissionService.completeVerifiedLike(
                     creator.getCreatorId(), likeMission.getMissionId(), command(UUID.randomUUID())))
                     .isInstanceOf(BusinessException.class);
         }
@@ -276,7 +276,7 @@ class AbuseObservationEndToEndIntegrationTest {
         when(ticketEarnService.earn(any()))
                 .thenReturn(new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED));
 
-        assertThatThrownBy(() -> creatorMissionService.complete(
+        assertThatThrownBy(() -> creatorMissionService.completeVerifiedLike(
                 creator.getCreatorId(), likeMission.getMissionId(), command(UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting(error -> ((BusinessException) error).getErrorCode())
@@ -391,7 +391,7 @@ class AbuseObservationEndToEndIntegrationTest {
         assertThat(shareMissionService.complete(creator.getCreatorId(), command(UUID.randomUUID())).code())
                 .isEqualTo(EarnResultCode.EARN_ACCEPTED);
         entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.CREATOR));
-        assertThat(creatorMissionService.complete(creator.getCreatorId(), likeMission.getMissionId(),
+        assertThat(creatorMissionService.completeVerifiedLike(creator.getCreatorId(), likeMission.getMissionId(),
                 command(UUID.randomUUID())).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         entryService.apply(eventId, entry(UUID.randomUUID(), CouponType.CREATOR));
 

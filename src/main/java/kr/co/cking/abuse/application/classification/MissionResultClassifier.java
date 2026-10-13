@@ -43,7 +43,7 @@ public class MissionResultClassifier {
                     Optional.of(ResultClassification.BUSINESS_FAILURE);
             case EARN_PROCESSING_FAILED, EARN_STATUS_UNKNOWN, BALANCE_MAINTENANCE ->
                     Optional.of(ResultClassification.SYSTEM_FAILURE);
-            case MISSION_NOT_FOUND, MISSION_REQUIRES_VERIFICATION -> Optional.empty();
+            case MISSION_NOT_FOUND, MISSION_REQUIRES_VERIFICATION, MISSION_REQUIRES_POST_LIKE -> Optional.empty();
         };
     }
 }

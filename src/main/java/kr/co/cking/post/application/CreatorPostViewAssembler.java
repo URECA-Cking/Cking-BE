@@ -2,6 +2,7 @@ package kr.co.cking.post.application;
 
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.post.application.dto.CreatorPostView;
+import kr.co.cking.post.application.dto.PostEngagement;
 import kr.co.cking.post.domain.CreatorPost;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,7 @@ public class CreatorPostViewAssembler {
      * @param imageKeys 표시 순서대로 정렬된 이미지 key
      * @param locked    true면 본문과 이미지 주소를 넣지 않는다
      */
-    public CreatorPostView assemble(CreatorPost post, List<String> imageKeys, boolean locked) {
+    public CreatorPostView assemble(CreatorPost post, List<String> imageKeys, boolean locked, PostEngagement engagement) {
         List<CreatorPostView.Image> images = locked
                 ? List.of()
                 : imageKeys.stream().map(key -> new CreatorPostView.Image(key, imageUrl(key))).toList();
@@ -41,6 +42,9 @@ public class CreatorPostViewAssembler {
                 locked ? null : post.getContent(),
                 imageKeys.size(),
                 images,
+                engagement.likeCount(),
+                engagement.liked(),
+                engagement.commentCount(),
                 post.getCreatedAt(),
                 post.getUpdatedAt());
     }

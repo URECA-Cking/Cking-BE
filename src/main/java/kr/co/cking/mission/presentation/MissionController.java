@@ -39,7 +39,7 @@ public class MissionController {
     @PostMapping("/api/creators/{creatorId}/missions/{missionId}/complete")
     @Operation(
             summary = "Creator 좋아요 미션 완료",
-            description = "인증된 사용자의 LIKE 미션 완료를 requestId로 멱등 처리합니다. SHARE는 Creator Space 공유 완료 처리에서만 보상하며, 구독 미션은 별도 인증 API를 사용합니다."
+            description = "이미 성공한 requestId의 재전송 결과를 멱등하게 돌려줍니다. 신규 LIKE 보상은 게시글 좋아요 API 성공 시에만 지급하며 이 API로 새로 완료할 수 없습니다(MISSION_REQUIRES_POST_LIKE). SHARE는 Creator Space 공유 완료 처리에서만 보상하며, 구독 미션은 별도 인증 API를 사용합니다."
     )
     public ResponseEntity<ApiResponse<MissionCompleteResponse>> complete(
             @PathVariable @Positive Long creatorId,

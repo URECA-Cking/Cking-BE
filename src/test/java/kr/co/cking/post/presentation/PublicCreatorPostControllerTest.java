@@ -42,7 +42,7 @@ class PublicCreatorPostControllerTest {
     void 비로그인도_목록을_조회하고_잠긴_게시글은_본문_없이_받는다() throws Exception {
         PageRequest pageable = PageRequest.of(0, 20);
         given(postQueryService.findByCreator(1L, null, pageable)).willReturn(new PageImpl<>(List.of(
-                new CreatorPostView(101L, 1L, PostVisibility.FOLLOWERS, true, null, 2, List.of(), NOW, NOW)),
+                new CreatorPostView(101L, 1L, PostVisibility.FOLLOWERS, true, null, 2, List.of(), 5, false, 4, NOW, NOW)),
                 pageable, 1));
 
         mockMvc.perform(get("/api/creators/1/posts"))
@@ -52,6 +52,9 @@ class PublicCreatorPostControllerTest {
                 .andExpect(jsonPath("$.data.items[0].content").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].imageCount").value(2))
                 .andExpect(jsonPath("$.data.items[0].images").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].likeCount").value(5))
+                .andExpect(jsonPath("$.data.items[0].liked").value(false))
+                .andExpect(jsonPath("$.data.items[0].commentCount").value(4))
                 .andExpect(jsonPath("$.data.totalElements").value(1));
     }
 

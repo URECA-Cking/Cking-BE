@@ -11,7 +11,10 @@ public final class CreatorPostResponse {
     private CreatorPostResponse() {
     }
 
-    /** 게시글. 잠금 상태면 {@code content}는 null, {@code images}는 빈 배열이다. */
+    /**
+     * 게시글. 잠금 상태면 {@code content}는 null, {@code images}는 빈 배열이다. {@code likeCount}·{@code commentCount}는
+     * 잠금과 무관하게 내려가고, {@code liked}는 로그인한 조회자의 좋아요 여부다(비로그인은 false).
+     */
     public record Detail(
             Long postId,
             Long creatorId,
@@ -20,6 +23,9 @@ public final class CreatorPostResponse {
             String content,
             int imageCount,
             List<Image> images,
+            long likeCount,
+            boolean liked,
+            long commentCount,
             Instant createdAt,
             Instant updatedAt
     ) {
@@ -33,6 +39,9 @@ public final class CreatorPostResponse {
                     view.content(),
                     view.imageCount(),
                     view.images().stream().map(image -> new Image(image.imageKey(), image.url())).toList(),
+                    view.likeCount(),
+                    view.liked(),
+                    view.commentCount(),
                     view.createdAt(),
                     view.updatedAt());
         }

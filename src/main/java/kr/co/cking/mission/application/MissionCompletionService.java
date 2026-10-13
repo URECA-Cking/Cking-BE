@@ -22,8 +22,10 @@ import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * Creator별 LIKE 미션 완료 처리 + 크리에이터별 EARN 연동(FR-P1-005~008, 014~016).
@@ -55,8 +57,45 @@ public class MissionCompletionService {
     private final Clock clock;
     private final MissionAbuseObserver abuseObserver;
 
-    /** Creator별 일반 미션을 일 단위 Business Key와 EARN 처리로 완료한다. */
+    /**
+     * 일반 완료 API. LIKE는 게시글 좋아요를 서버가 확인한 경로({@link #completeByPostLike})로만 새로 완료할 수 있으므로
+     * 이 경로는 신규 완료를 허용하지 않고, 이미 성공한 requestId의 replay만 기존 결과로 돌려준다(이슈 #554).
+     * 클라이언트가 좋아요 없이 버튼만 눌러 보상을 받는 우회를 막기 위함이며, 신규 요청은
+     * 안내 문구를 줄 수 있도록 {@code MISSION_REQUIRES_POST_LIKE}(409)다.
+     */
     public MissionCompleteOutcome complete(Long creatorId, Long missionId, MissionCompleteCommand command) {
+        return complete(creatorId, missionId, command, clock.instant(), false);
+    }
+
+    /**
+     * 게시글 좋아요가 성공한 뒤 호출하는 LIKE 미션 완료(이슈 #554). Creator의 LIKE 미션을 찾아 사용자·미션·UTC 날짜로
+     * 정한 requestId로 {@link #completeVerifiedLike}를 수행한다. 같은 날의 반복 호출(재좋아요, 취소 후 재좋아요,
+     * 재시도)은 같은 requestId라 {@code ALREADY_PROCESSED}가 되고, 날짜가 바뀌면 새 requestId라 다시 적립된다.
+     *
+     * @throws BusinessException Creator에 LIKE 미션이 없으면 {@code MISSION_NOT_FOUND}. 그 밖의 실패는
+     *                           {@link #completeVerifiedLike}와 같다.
+     */
+    public MissionCompleteOutcome completeByPostLike(Long creatorId, Long memberId) {
+        Mission mission = missionRepository.findByCreatorIdAndType(creatorId, MissionType.LIKE)
+                .orElseThrow(() -> new BusinessException(MissionErrorCode.MISSION_NOT_FOUND));
+        // requestId의 날짜와 EARN의 periodKey가 같은 시각에서 나오도록 한 번만 읽는다(자정 경계 불일치 방지).
+        Instant now = clock.instant();
+        UUID requestId = postLikeRequestId(memberId, mission.getMissionId(), periodKeyOf(now));
+        return complete(creatorId, mission.getMissionId(), new MissionCompleteCommand(memberId, requestId), now, true);
+    }
+
+    /**
+     * 게시글 좋아요를 확인한 호출자 전용. 일반 완료 API와 달리 LIKE를 새로 완료할 수 있다. 호출자는 좋아요가 실제로
+     * 성공했음을 보장해야 하며, 클라이언트 요청을 이 메서드로 곧바로 연결하지 않는다.
+     */
+    public MissionCompleteOutcome completeVerifiedLike(Long creatorId, Long missionId, MissionCompleteCommand command) {
+        return complete(creatorId, missionId, command, clock.instant(), true);
+    }
+
+    /** Creator별 일반 미션을 일 단위 Business Key와 EARN 처리로 완료한다. */
+    private MissionCompleteOutcome complete(
+            Long creatorId, Long missionId, MissionCompleteCommand command, Instant now, boolean newCompletionAllowed
+    ) {
         memberRepository.findById(command.userId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
@@ -72,7 +111,6 @@ public class MissionCompletionService {
             throw new BusinessException(MissionErrorCode.MISSION_NOT_FOUND);
         }
 
-        Instant now = clock.instant();
         // 레거시 Creator ATTENDANCE는 신규 완료 대상이 아니므로 LIKE만 관찰한다.
         MissionObservationContext observation = mission.getType() == MissionType.LIKE
                 ? MissionObservationContext.creator(
@@ -80,7 +118,7 @@ public class MissionCompletionService {
                 : null;
         MissionCompleteOutcome outcome;
         try {
-            outcome = completeValidated(creatorId, missionId, command, mission, now);
+            outcome = completeValidated(creatorId, missionId, command, mission, now, newCompletionAllowed);
         } catch (BusinessException exception) {
             if (observation != null) {
                 abuseObserver.observeFailure(observation, exception.getErrorCode());
@@ -100,7 +138,8 @@ public class MissionCompletionService {
 
     /** 리소스 검증 이후의 기존 EARN·replay 계약을 변경하지 않고 수행한다. */
     private MissionCompleteOutcome completeValidated(
-            Long creatorId, Long missionId, MissionCompleteCommand command, Mission mission, Instant now
+            Long creatorId, Long missionId, MissionCompleteCommand command, Mission mission, Instant now,
+            boolean newCompletionAllowed
     ) {
         String periodKey = periodKeyOf(now);
         EarnCommand earnCommand = new EarnCommand(
@@ -131,6 +170,10 @@ public class MissionCompletionService {
         // 위 findExisting() 결과를 그대로 반환해 기존 멱등성 계약을 보존한다.
         if (mission.getType() != MissionType.LIKE) {
             throw new BusinessException(MissionErrorCode.MISSION_NOT_FOUND);
+        }
+        // LIKE 신규 완료는 게시글 좋아요를 확인한 경로(completeByPostLike)만 허용한다(이슈 #554).
+        if (!newCompletionAllowed) {
+            throw new BusinessException(MissionErrorCode.MISSION_REQUIRES_POST_LIKE);
         }
 
         if (!mission.isActiveAt(now)) {
@@ -173,5 +216,11 @@ public class MissionCompletionService {
      */
     private String missionKeyOf(Mission mission, Long creatorId) {
         return "%s:%d".formatted(mission.getType().name().toLowerCase(Locale.ROOT), creatorId);
+    }
+
+    /** 사용자·미션·UTC 날짜가 같으면 항상 같은 requestId. 게시글 좋아요 보상의 멱등성을 서버가 보장한다. */
+    private UUID postLikeRequestId(Long memberId, Long missionId, String periodKey) {
+        return UUID.nameUUIDFromBytes(
+                "post-like:%d:%d:%s".formatted(memberId, missionId, periodKey).getBytes(StandardCharsets.UTF_8));
     }
 }

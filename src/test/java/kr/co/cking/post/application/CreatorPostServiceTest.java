@@ -11,6 +11,7 @@ import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
+import kr.co.cking.post.repository.CreatorPostLikeRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InOrder;
@@ -62,7 +63,9 @@ class CreatorPostServiceTest {
     private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final CreatorPostService service = new CreatorPostService(
             authorLookup, postRepository, imageRepository, commentRepository, eventPublisher,
-            new CreatorPostViewAssembler(objectStorage), Clock.fixed(NOW, ZoneOffset.UTC));
+            new CreatorPostViewAssembler(objectStorage),
+            new PostEngagementReader(mock(CreatorPostLikeRepository.class), commentRepository),
+            Clock.fixed(NOW, ZoneOffset.UTC));
 
     @BeforeEach
     void setUp() {

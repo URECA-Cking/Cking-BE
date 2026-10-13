@@ -18,6 +18,9 @@
 | `locked` | 팔로워 공개 게시글을 볼 권한이 없으면 true. 이때 `content`는 null, `images`는 빈 배열 |
 | `content` | 본문 (최대 2000자, 이미지만 있는 게시글은 빈 문자열) |
 | `imageCount` | 잠금 여부와 무관한 이미지 수 |
+| `likeCount` | 게시글 좋아요 수. 잠긴 게시글도 포함한다 |
+| `liked` | 조회자가 좋아요했는지. 비로그인은 false |
+| `commentCount` | 댓글 수. 필터 차단·관리자 숨김 댓글도 센다(댓글은 하드 삭제라 삭제된 댓글은 세지 않는다) |
 | `images[]` | 표시 순서대로 `imageKey`와 `url`(유효 시간 10분). 주소 발급에 실패한 이미지는 `url`이 null이며 다시 조회하면 된다 |
 | `createdAt`, `updatedAt` | UTC Instant |
 
@@ -32,6 +35,9 @@
   "images": [
     { "imageKey": "post-images/1/0d5c…e2.jpg", "url": "https://…" }
   ],
+  "likeCount": 12,
+  "liked": true,
+  "commentCount": 3,
   "createdAt": "2026-09-29T01:00:00Z",
   "updatedAt": "2026-09-29T01:00:00Z"
 }
@@ -107,3 +113,27 @@
 일반 Member와 Creator가 다른 Creator Space에 팬으로 작성한 댓글은 Member 닉네임을 표시한다. Space 소유 Creator가
 자신의 Space에 작성한 댓글만 Creator의 현재 공개 활동명을 표시한다. 댓글은 이름을 snapshot하지 않으므로 활동명 변경 후
 기존 소유 Creator 댓글도 새 활동명으로 조회된다.
+
+## 게시글 좋아요
+
+`POST /api/creators/{creatorId}/posts/{postId}/likes`(좋아요), `DELETE` 같은 경로(취소). 둘 다 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 회원은 게시글마다 한 번만 좋아요할 수 있고(`creator_post_like`의 `(post_id, member_id)` PK), 둘 다 멱등하다.
+
+- 좋아요: 이미 좋아요한 게시글에 다시 요청해도 성공한다. 팔로워 공개 게시글은 팔로워와 작성 Creator 본인만 좋아요할 수 있다. 작성 Creator 본인도 좋아요할 수 있지만 미션 보상은 받지 않는다.
+- 취소: 좋아요하지 않은 게시글에 요청해도 성공한다. 공개 범위와 팔로우를 보지 않으므로 팔로우를 끊은 뒤에도 자기 좋아요를 취소할 수 있다. 이미 지급한 미션 응모권은 회수하지 않는다.
+- 응답은 `200`이고 요청 뒤의 상태를 담는다.
+
+```json
+{
+  "postId": 100,
+  "liked": true,
+  "likeCount": 13,
+  "missionAwarded": true
+}
+```
+
+- `missionAwarded`: 이번 좋아요로 해당 Creator의 LIKE 미션 응모권 적립이 새로 접수되면 true다. 취소 응답은 항상 false다. 보상 규칙은 [Mission API](../mission/api.md#게시글-좋아요-보상)를 따른다. 이전 날에 누른 좋아요를 유지한 채 다시 보내는 중복 요청은 새 좋아요가 아니므로 `missionAwarded`가 false다. 미션 보상이 실패하거나 대상이 아니어도 좋아요는 성공하며 `missionAwarded`만 false다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `POST_FOLLOWERS_ONLY` | 403 | (좋아요) 팔로워 공개 게시글이고 팔로워·작성 Creator 본인이 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | Member·Creator·게시글 없음, 다른 Creator의 게시글 |

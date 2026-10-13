@@ -164,5 +164,7 @@
 | 161 | 외부 | AI Quiz | USER | GET | `/api/creators/{creatorId}/quizzes/{quizId}/my-attempt` | 본인 응시 시점 결과 조회(게시 취소 후에도 유지) | - |
 | 162 | 외부 | Creator | CREATOR | POST | `/api/creator/space/profile-images` | Creator Space 프로필 사진 업로드 | - |
 | 163 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/profile-image` | 업로드한 Space 프로필 사진 연결 | - |
+| 164 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/likes` | 게시글 좋아요(팔로워 공개는 팔로워·작성 Creator 본인). 성공 시 해당 Creator의 LIKE 미션 보상 요청 | 회원+게시글당 1건(재요청은 현재 상태 반환) |
+| 165 | 외부 | Post | USER | DELETE | `/api/creators/{creatorId}/posts/{postId}/likes` | 게시글 좋아요 취소(응모권 회수 없음) | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

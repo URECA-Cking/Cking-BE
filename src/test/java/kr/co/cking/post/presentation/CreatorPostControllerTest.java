@@ -185,6 +185,6 @@ class CreatorPostControllerTest {
     private CreatorPostView view() {
         Instant now = Instant.parse("2026-09-29T00:00:00Z");
         return new CreatorPostView(100L, 1L, PostVisibility.FOLLOWERS, false, "첫 게시글", 1,
-                List.of(new CreatorPostView.Image("post-images/1/a.jpg", "https://storage.test/a")), now, now);
+                List.of(new CreatorPostView.Image("post-images/1/a.jpg", "https://storage.test/a")), 3, true, 2, now, now);
     }
 }

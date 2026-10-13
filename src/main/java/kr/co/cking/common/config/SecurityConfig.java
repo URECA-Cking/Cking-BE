@@ -151,6 +151,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/comments").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/creators/*/posts/*/comments/*").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/creators/*/posts/*/comments/*").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/likes").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/creators/*/posts/*/likes").authenticated()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/creators/*/calendar/schedules",
