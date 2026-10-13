@@ -17,6 +17,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -187,6 +189,19 @@ class AdminCommentReportCommandServiceTest {
         order.verify(commentRepository).findByIdForUpdate(COMMENT_ID);
         order.verify(reportRepository).markHandled(COMMENT_ID, CommentReportStatus.RESOLVED, ADMIN_ID, LATER);
         order.verify(sanctionService).recordCommentHide(AUTHOR_ID, COMMENT_ID, ADMIN_ID, LATER);
+    }
+
+    /**
+     * 작성자 행 잠금보다 앞선 일반 조회가 REPEATABLE READ 스냅샷을 고정하면 잠금 이후 경고 집계가 앞선 경고를 못 본다.
+     * 격리 수준 자체는 단위 테스트로 동작을 볼 수 없어 선언을 고정해 두고, 동작은 MySQL 통합 테스트가 확인한다.
+     */
+    @Test
+    void 숨김은_잠금_이후_최신_커밋을_읽도록_READ_COMMITTED로_실행한다() throws Exception {
+        Transactional transactional = AdminCommentReportCommandService.class
+                .getMethod("hide", Long.class, Long.class).getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.isolation()).isEqualTo(Isolation.READ_COMMITTED);
     }
 
     @Test

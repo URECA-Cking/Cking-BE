@@ -13,6 +13,7 @@ import kr.co.cking.post.repository.CreatorPostRepository;
 import kr.co.cking.sanction.application.SanctionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -39,6 +40,11 @@ import java.time.Instant;
  * 단계라 같은 작성자의 처리를 직렬화해야 하므로, 숨김은 작성자 행을 가장 먼저 쓰기 잠금으로 읽는다. 잠금 순서는 작성자
  * → 게시글 → 댓글로 신고 접수({@link CreatorPostCommentReportService})와 같아 교착이 생기지 않는다. 이미 숨긴 댓글을
  * 다시 숨기는 요청은 경고를 새로 쌓지 않는다.
+ *
+ * <p>숨김은 {@code READ_COMMITTED}로 실행한다. 관리자 검증과 작성자 조회(일반 조회)가 작성자 행 잠금보다 먼저 있어서
+ * REPEATABLE READ에서는 그 시점에 스냅샷이 고정되고, 잠금에서 기다렸다가 풀려도 경고 집계가 앞선 요청이 커밋한 경고를
+ * 못 본다. 같은 작성자의 서로 다른 댓글을 동시에 숨기면 두 제한이 모두 1일로 저장되는 식으로 과소 집계된다.
+ * READ_COMMITTED에서는 문장마다 최신 커밋을 읽으므로 잠금 이후의 집계가 앞선 경고를 센다.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,6 +58,7 @@ public class AdminCommentReportCommandService {
     private final SanctionService sanctionService;
     private final Clock clock;
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public AdminCommentReportActionView hide(Long adminId, Long commentId) {
         memberQueryService.validateAdmin(adminId);
         Long authorId = commentRepository.findMemberIdByCommentId(commentId)

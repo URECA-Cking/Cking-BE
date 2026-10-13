@@ -33,6 +33,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -475,6 +476,68 @@ class CreatorPostCommentReportIntegrationTest {
 
         assertThat(commentRepository.findAll().stream().filter(c -> c.getPostId().equals(postId)).count())
                 .isEqualTo(commentsBefore);
+    }
+
+    /**
+     * 같은 작성자의 서로 다른 댓글을 동시에 숨기면 두 번째 요청이 작성자 행 잠금에서 기다렸다가 첫 요청이 커밋한 경고를
+     * 세어 3일 제한을 만들어야 한다. 숨김이 REPEATABLE READ면 잠금 전 일반 조회가 스냅샷을 고정해 경고를 0회로 읽고
+     * 두 제한이 모두 1일이 된다.
+     */
+    @Test
+    void 같은_작성자의_서로_다른_댓글을_동시에_숨겨도_경고가_과소_집계되지_않아_1일_3일_제한이_생긴다() throws Exception {
+        Long firstCommentId = commentOnPublicPost();
+        Long secondCommentId = commentService.create(
+                author.getMemberId(), creator.getCreatorId(), postId, "두 번째로 신고될 댓글").commentId();
+        Member reporter = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(reporter.getMemberId(), creator.getCreatorId(), postId, firstCommentId,
+                CommentReportReason.ABUSE, null);
+        reportService.report(reporter.getMemberId(), creator.getCreatorId(), postId, secondCommentId,
+                CommentReportReason.SPAM, null);
+
+        CountDownLatch firstHidden = new CountDownLatch(1);
+        CountDownLatch mayCommit = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            // 첫 숨김은 작성자 행 잠금과 경고 저장을 끝낸 채 커밋하지 않고 붙잡아 둔다.
+            Future<?> firstHide = executor.submit(() ->
+                    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                        adminCommandService.hide(admin.getMemberId(), firstCommentId);
+                        firstHidden.countDown();
+                        try {
+                            mayCommit.await(30, TimeUnit.SECONDS);
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }));
+            assertThat(firstHidden.await(30, TimeUnit.SECONDS)).isTrue();
+
+            Future<Throwable> secondHide = executor.submit(() -> {
+                try {
+                    adminCommandService.hide(admin.getMemberId(), secondCommentId);
+                    return null;
+                } catch (Throwable failure) {
+                    return failure;
+                }
+            });
+            // 두 번째 숨김은 작성자 행 잠금에서 첫 숨김의 커밋을 기다려야 한다.
+            Thread.sleep(700);
+            assertThat(secondHide.isDone()).isFalse();
+
+            mayCommit.countDown();
+            firstHide.get(30, TimeUnit.SECONDS);
+            assertThat(secondHide.get(30, TimeUnit.SECONDS)).isNull();
+        } finally {
+            mayCommit.countDown();
+            executor.shutdownNow();
+        }
+
+        List<Duration> durations = sanctionRepository.findAll().stream()
+                .filter(sanction -> sanction.getMemberId().equals(author.getMemberId()))
+                .map(sanction -> Duration.between(sanction.getStartedAt(), sanction.getEndsAt()))
+                .sorted()
+                .toList();
+        assertThat(durations).containsExactly(Duration.ofDays(1), Duration.ofDays(3));
     }
 
     private List<Long> reportedIds(Member admin, CommentReportStatus status) {
