@@ -18,6 +18,8 @@ import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
+import kr.co.cking.sanction.application.SanctionQueryService;
+import kr.co.cking.sanction.domain.SanctionErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -41,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -65,10 +68,11 @@ class CreatorPostCommentServiceTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
     private final ProfileImageUrlResolver profileImageUrlResolver = mock(ProfileImageUrlResolver.class);
+    private final SanctionQueryService sanctionQueryService = mock(SanctionQueryService.class);
     private final CreatorPostCommentService service = new CreatorPostCommentService(
             new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
             commentRepository, memberRepository, spaceRepository, profileImageUrlResolver,
-            Clock.fixed(LATER, ZoneOffset.UTC), mock(ApplicationEventPublisher.class));
+            Clock.fixed(LATER, ZoneOffset.UTC), mock(ApplicationEventPublisher.class), sanctionQueryService);
 
     @BeforeEach
     void setUp() {
@@ -80,7 +84,7 @@ class CreatorPostCommentServiceTest {
         }
         given(followQueryService.isFollowing(FAN_MEMBER_ID, CREATOR_ID)).willReturn(true);
         for (Long memberId : List.of(OWNER_MEMBER_ID, FAN_MEMBER_ID, STRANGER_MEMBER_ID)) {
-            given(memberRepository.findById(memberId)).willReturn(Optional.of(member(memberId)));
+            given(memberRepository.findByIdForUpdate(memberId)).willReturn(Optional.of(member(memberId)));
         }
         given(commentRepository.save(any(CreatorPostComment.class))).willAnswer(invocation -> {
             CreatorPostComment saved = invocation.getArgument(0);
@@ -124,6 +128,61 @@ class CreatorPostCommentServiceTest {
         assertThat(created.writtenByCreator()).isFalse();
         assertThat(created.content()).isEqualTo("응원해요");
         assertThat(created.createdAt()).isEqualTo(LATER);
+    }
+
+    @Test
+    void 댓글_작성_제한_중인_회원은_작성과_수정이_COMMENT_RESTRICTED로_막히고_삭제는_할_수_있다() {
+        willThrow(new BusinessException(SanctionErrorCode.COMMENT_RESTRICTED))
+                .given(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID);
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
+
+        assertError(() -> service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요"),
+                SanctionErrorCode.COMMENT_RESTRICTED);
+        assertError(() -> service.update(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L, "수정"),
+                SanctionErrorCode.COMMENT_RESTRICTED);
+        verify(commentRepository, never()).save(any(CreatorPostComment.class));
+
+        service.delete(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L);
+
+        verify(commentRepository).delete(any(CreatorPostComment.class));
+    }
+
+    @Test
+    void 작성과_수정은_작성자_행을_잠근_다음_제한을_확인하고_그_다음_게시글_댓글_순으로_읽는다() {
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
+
+        service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요");
+        service.update(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L, "수정");
+
+        InOrder order = inOrder(memberRepository, sanctionQueryService, postRepository, commentRepository);
+        order.verify(memberRepository).findByIdForUpdate(FAN_MEMBER_ID);
+        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID);
+        order.verify(postRepository).findByIdForShare(PUBLIC_POST_ID);
+        order.verify(commentRepository).save(any(CreatorPostComment.class));
+        order.verify(memberRepository).findByIdForUpdate(FAN_MEMBER_ID);
+        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID);
+        order.verify(postRepository).findByIdForShare(PUBLIC_POST_ID);
+        order.verify(commentRepository).findByIdForUpdate(1L);
+    }
+
+    @Test
+    void 삭제는_작성자_행을_잠그지도_제한을_확인하지도_않는다() {
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
+
+        service.delete(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L);
+
+        verify(memberRepository, never()).findByIdForUpdate(any());
+        verify(sanctionQueryService, never()).requireCommentWriteAllowed(any());
+    }
+
+    @Test
+    void 제한은_다른_회원의_작성을_막지_않는다() {
+        willThrow(new BusinessException(SanctionErrorCode.COMMENT_RESTRICTED))
+                .given(sanctionQueryService).requireCommentWriteAllowed(STRANGER_MEMBER_ID);
+
+        CreatorPostCommentView created = service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요");
+
+        assertThat(created.commentId()).isEqualTo(500L);
     }
 
     @Test
@@ -539,7 +598,7 @@ class CreatorPostCommentServiceTest {
     void 작성과_수정_응답에도_작성자_사진이_담긴다() {
         Member fan = member(FAN_MEMBER_ID);
         fan.updateProfileImageKey("member-profile-images/20/a.jpg");
-        given(memberRepository.findById(FAN_MEMBER_ID)).willReturn(Optional.of(fan));
+        given(memberRepository.findByIdForUpdate(FAN_MEMBER_ID)).willReturn(Optional.of(fan));
         given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
                 .willReturn("https://cdn.example.com/member-profile-images/20/a.jpg");
         given(commentRepository.findByIdForUpdate(500L))

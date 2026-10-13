@@ -168,4 +168,7 @@
 | 164 | 외부 | Ticket | ADMIN | GET | `/api/admin/tickets/balance` | 지정 회원의 Redis·MySQL 응모권 잔액 관측·차이 조회 | - |
 | 165 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/likes` | 게시글 좋아요(팔로워 공개는 팔로워·작성 Creator 본인). 성공 시 해당 Creator의 LIKE 미션 보상 요청 | 회원+게시글당 1건(재요청은 현재 상태 반환) |
 | 166 | 외부 | Post | USER | DELETE | `/api/creators/{creatorId}/posts/{postId}/likes` | 게시글 좋아요 취소(응모권 회수 없음) | 상태 기반 |
+| 167 | 외부 | Sanction | ADMIN | GET | `/api/admin/sanctions` | 회원 제재 목록(자동 경고·수동 제한, 시작 최신순, `memberId`·`active` 필터) | - |
+| 168 | 외부 | Sanction | ADMIN | POST | `/api/admin/sanctions` | 회원에게 댓글 작성 제한을 수동으로 설정(경고 횟수에 세지 않음) | 상태 기반 |
+| 169 | 외부 | Sanction | ADMIN | POST | `/api/admin/sanctions/{sanctionId}/release` | 유효한 제한 해제(이미 끝났거나 해제된 제한은 그대로 성공) | 상태 기반 |
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

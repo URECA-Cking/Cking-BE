@@ -30,6 +30,10 @@ public interface CreatorPostCommentRepository extends JpaRepository<CreatorPostC
     @Query("select c.postId from CreatorPostComment c where c.commentId = :commentId")
     Optional<Long> findPostIdByCommentId(@Param("commentId") Long commentId);
 
+    /** 댓글 작성자 회원 ID. 엔티티를 올리지 않는 값 조회라, 이어서 잠금으로 읽는 댓글이 최신 상태이게 한다. */
+    @Query("select c.memberId from CreatorPostComment c where c.commentId = :commentId")
+    Optional<Long> findMemberIdByCommentId(@Param("commentId") Long commentId);
+
     /** 한 페이지 게시글의 댓글 수를 한 번에 센다. 댓글이 없는 게시글은 결과에 없다. 필터·관리자 숨김 댓글도 센다. */
     @Query("select c.postId as postId, count(c) as total from CreatorPostComment c where c.postId in :postIds group by c.postId")
     List<PostCount> countByPostIds(@Param("postIds") Collection<Long> postIds);
