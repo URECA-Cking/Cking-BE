@@ -34,6 +34,7 @@
 - [Redraw API](domains/redraw/api.md): 관리자 재추첨 요청 생성 API 계약
 - [Event](domains/event/README.md): 이벤트 조회·응모·마감의 외부 API와 내부 마감 계약
 - [Ticket](domains/ticket/README.md): 응모권 조회·EARN·정합성 보정 계약
+- [관리자 응모권 회귀 검증](domains/ticket/admin-regression-verification.md): TC-07 관리자 API·보정 검증 범위와 실행 방법
 - [Stream](domains/stream/README.md): EARN·SPEND Consumer, PEL 회수, Dead Stream replay 계약
 - [Stream API](domains/stream/api.md): 관리자 Dead Stream 목록 조회와 수동 replay API 계약
 - [Winner](domains/winner/README.md): Winner 불변 원본과 운영 상태 전이·동시성 계약
