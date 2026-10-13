@@ -1,7 +1,7 @@
 services:
   mysql:
     # 개발 RDS와 같은 8.4 LTS 계열을 쓴다.
-    image: mysql:8.4.9@sha256:c36050afdca850f23cef85703f84c7531a5ae155a11b5ee1c60acb09937c4084
+    image: mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6
     container_name: cking-mysql
     ports:
       - "3306:3306"
@@ -23,7 +23,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7.2.16-alpine@sha256:ccd6aa8d45ff3f033d6fa15b8cc1a50579f65c89f38cf9bb607a954c4f2128ed
+    image: redis:7.2.16-alpine@sha256:29e8589c3f9ba699b5f7aa4b3c7733c58852a3626439e619aa0ee78de08c6ca0
     container_name: cking-redis
     ports:
       - "6379:6379"
