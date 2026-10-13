@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.ticket.application.TicketAdminService;
+import kr.co.cking.ticket.application.dto.AdminTicketLedgerPage;
 import kr.co.cking.ticket.application.dto.AdminTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
@@ -27,10 +30,29 @@ import kr.co.cking.ticket.presentation.dto.TicketResyncRequest;
 @RestController
 @RequiredArgsConstructor
 @Validated
-@Tag(name = "관리자 응모권", description = "응모권 잔액 관측과 수동 보정")
+@Tag(name = "관리자 응모권", description = "응모권 이력 조회·잔액 관측·수동 보정 API")
 public class TicketAdminController {
 
     private final TicketAdminService ticketAdminService;
+
+    /** 인증된 관리자가 지정한 회원의 응모권 변동 이력을 조회한다. */
+    @Operation(
+            summary = "회원 응모권 이력 조회",
+            description = "ADMIN 권한으로 지정한 회원의 Creator 전용 또는 공용 응모권 이력을 기존 cursor 기반 페이지네이션으로 조회합니다. "
+                    + "CREATOR 조회에는 creatorId가 필요하고 COMMON 조회에는 사용할 수 없습니다. "
+                    + "size의 기본값은 20, 범위는 1~100입니다."
+    )
+    @GetMapping("/api/admin/tickets/history")
+    public ApiResponse<AdminTicketLedgerPage> getHistory(
+            @CurrentMemberId Long adminId,
+            @RequestParam @Min(1) Long memberId,
+            @RequestParam CouponType couponType,
+            @RequestParam(required = false) Long creatorId,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) String cursor
+    ) {
+        return ApiResponse.success(ticketAdminService.getHistory(adminId, memberId, couponType, creatorId, size, cursor));
+    }
 
     /** 관리자가 대상 회원의 Redis·MySQL 응모권 잔액을 종류별로 관측한다. */
     @Operation(

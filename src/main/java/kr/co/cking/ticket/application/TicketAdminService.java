@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.ticket.application.dto.AdminTicketLedgerPage;
 import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.application.dto.AdminTicketBalanceResponse;
@@ -40,9 +41,36 @@ public class TicketAdminService {
     private final UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
     private final CommonTicketCompensationService commonTicketCompensationService;
     private final CommonTicketBalanceQueryService commonTicketBalanceQueryService;
+    private final TicketQueryService ticketQueryService;
+    private final CommonTicketQueryService commonTicketQueryService;
     private final StringRedisTemplate redisTemplate;
 
-    /** 관리자 권한을 확인한 뒤 크리에이터 응모권 Redis 잔액을 DB 기준으로 보정한다. */
+    /** 관리자가 지정한 회원의 Creator 전용 또는 공용 응모권 이력을 조회한다. */
+    public AdminTicketLedgerPage getHistory(Long adminId, Long memberId, CouponType couponType,
+                                            Long creatorId, int size, String cursor) {
+        memberQueryService.validateAdmin(adminId);
+        return switch (couponType) {
+            case CREATOR -> AdminTicketLedgerPage.from(ticketQueryService.getLedger(
+                    requireCreatorId(creatorId), memberId, size, cursor));
+            case COMMON -> {
+                if (creatorId != null) {
+                    throw new BusinessException(CommonErrorCode.VALIDATION_FAILED,
+                            "creatorId: COMMON 응모권 조회에는 사용할 수 없습니다.");
+                }
+                yield AdminTicketLedgerPage.from(commonTicketQueryService.getLedger(memberId, size, cursor));
+            }
+        };
+    }
+
+    /** Creator 전용 이력 조회에 필요한 creatorId가 전달됐는지 검증한다. */
+    private Long requireCreatorId(Long creatorId) {
+        if (creatorId == null || creatorId <= 0) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED, "creatorId: CREATOR 응모권 조회에는 creatorId가 필요합니다.");
+        }
+        return creatorId;
+    }
+
+    /** 관리자가 지정한 Creator 전용 응모권 잔액을 DB 기준으로 재동기화한다. */
     public TicketBalanceResponse resync(Long adminId, Long memberId, Long creatorId, String reason) {
         memberQueryService.validateAdmin(adminId);
         if (userTicketBalanceRepository.findByMemberIdAndCreatorId(memberId, creatorId).isEmpty()) {
@@ -52,7 +80,7 @@ public class TicketAdminService {
         return ticketBalanceQueryService.getBalanceDetail(creatorId, memberId);
     }
 
-    /** 공용 응모권(이슈 #256) 수동 재동기화. */
+    /** 관리자가 지정한 공용 응모권 잔액을 DB 기준으로 재동기화한다. */
     public CommonTicketBalanceResponse resyncCommon(Long adminId, Long memberId, String reason) {
         memberQueryService.validateAdmin(adminId);
         if (!userCommonTicketBalanceRepository.existsById(memberId)) {

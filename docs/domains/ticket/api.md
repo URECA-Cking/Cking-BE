@@ -41,6 +41,47 @@ Query: 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범�
 
 cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDATION_FAILED`다.
 
+## GET /api/admin/tickets/history
+
+- 권한: `ADMIN` Bearer Access JWT 필수. `/api/admin/**`의 Spring Security 1차 인가 뒤에도
+  `TicketAdminService`가 호출자의 ADMIN 역할을 재검증한다. JWT의 `@CurrentMemberId`는 관리자 업무
+  식별자이고, `memberId`는 조회 대상이다.
+- Query: `memberId`(필수, 대상 회원 ID), `couponType`(필수, `CREATOR` 또는 `COMMON`),
+  `creatorId`(`couponType=CREATOR`일 때 필수, `COMMON`일 때 전달 금지), `cursor`(선택),
+  `size`(선택, 기본 20, 1~100).
+- Creator 전용 이력은 `TicketQueryService`, 공용 이력은 `CommonTicketQueryService`의 기존
+  `createdAt DESC, ledgerId DESC` cursor 조회를 그대로 사용한다. `cursor`는 두 종류 모두 기존
+  URL-safe Base64 `(createdAt, ledgerId)` 형식이다.
+- `EARN`, `SPEND`, `COMPENSATE` 항목에 발생 시각, 증감량, 유형, 관련 미션·이벤트, 사유를 포함한다.
+  공용 응모권은 `creatorId`가 `null`이다.
+
+```json
+{
+  "memberId": 1,
+  "couponType": "CREATOR",
+  "creatorId": 2,
+  "items": [{
+    "ledgerId": 10,
+    "deltaAmount": -3,
+    "type": "SPEND",
+    "missionId": null,
+    "eventId": 5,
+    "reason": null,
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-09-18T00:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | 필수 query 누락·형식 오류, `CREATOR`의 `creatorId` 누락·0 이하, `COMMON`의 `creatorId` 전달, 잘못된 cursor, size 범위 초과 |
+| `UNAUTHORIZED` | Bearer Access JWT 없음·만료·변조·형식 오류 |
+| `FORBIDDEN` | USER JWT이거나 호출자 Member의 역할이 ADMIN이 아님 |
+| `RESOURCE_NOT_FOUND` | JWT 호출자 Member가 존재하지 않음 |
+
 ## GET /api/admin/tickets/balance
 
 - 권한: Bearer Access JWT의 `ADMIN`. Security의 1차 인가 뒤 Service가 호출자 `memberId`의 ADMIN 역할을 재검증한다.
