@@ -89,7 +89,7 @@ class GeminiVisionAnalysisAdapterTest {
         assertThat(generationConfig).containsEntry("thinkingConfig", Map.of("thinkingLevel", "minimal"));
         Map<String, Object> responseFormat = map(generationConfig.get("responseFormat"));
         Map<String, Object> textFormat = map(responseFormat.get("text"));
-        assertThat(textFormat).containsEntry("mimeType", "application/json");
+        assertThat(textFormat).containsEntry("mimeType", "APPLICATION_JSON");
         assertThat(map(textFormat.get("schema"))).containsEntry("additionalProperties", false);
     }
 
