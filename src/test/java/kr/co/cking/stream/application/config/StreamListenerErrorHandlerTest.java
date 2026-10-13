@@ -6,6 +6,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -37,9 +41,8 @@ class StreamListenerErrorHandlerTest {
 
     @Test
     void 종료_중_연결_종료는_ERROR로_기록하지_않는다() {
-        ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
-        when(shutdownState.isShuttingDown()).thenReturn(true);
-        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState);
+        StreamListenerErrorHandler errorHandler =
+                new StreamListenerErrorHandler(shutdownState(true), () -> true, Duration.ZERO);
 
         errorHandler.handleError(new RedisException("Connection closed"));
 
@@ -48,10 +51,20 @@ class StreamListenerErrorHandlerTest {
     }
 
     @Test
+    void 컨테이너가_멈춘_뒤의_연결_종료는_ERROR로_기록하지_않는다() {
+        StreamListenerErrorHandler errorHandler =
+                new StreamListenerErrorHandler(shutdownState(false), () -> false, Duration.ZERO);
+
+        errorHandler.handleError(new RedisException("Connection is already closed"));
+
+        assertThat(logAppender.list)
+                .noneMatch(event -> event.getLevel().equals(Level.ERROR));
+    }
+
+    @Test
     void 정상_실행_중_연결_종료는_ERROR로_기록한다() {
-        ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
-        when(shutdownState.isShuttingDown()).thenReturn(false);
-        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState, Duration.ZERO);
+        StreamListenerErrorHandler errorHandler =
+                new StreamListenerErrorHandler(shutdownState(false), () -> true, Duration.ZERO);
 
         errorHandler.handleError(new RedisException("Connection closed"));
 
@@ -61,9 +74,8 @@ class StreamListenerErrorHandlerTest {
 
     @Test
     void 정상_실행_중_오류_뒤에는_다음_폴링_전에_쉰다() {
-        ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
-        when(shutdownState.isShuttingDown()).thenReturn(false);
-        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState, Duration.ofMillis(200));
+        StreamListenerErrorHandler errorHandler =
+                new StreamListenerErrorHandler(shutdownState(false), () -> true, Duration.ofMillis(200));
 
         long startedAt = System.nanoTime();
         errorHandler.handleError(new RedisException("Command timed out"));
@@ -73,12 +85,36 @@ class StreamListenerErrorHandlerTest {
 
     @Test
     void 종료_중에는_오류_뒤에도_쉬지_않는다() {
-        ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
-        when(shutdownState.isShuttingDown()).thenReturn(true);
-        StreamListenerErrorHandler errorHandler = new StreamListenerErrorHandler(shutdownState, Duration.ofSeconds(5));
+        StreamListenerErrorHandler errorHandler =
+                new StreamListenerErrorHandler(shutdownState(true), () -> true, Duration.ofSeconds(5));
 
         assertTimeoutPreemptively(Duration.ofSeconds(1),
                 () -> errorHandler.handleError(new RedisException("Command timed out")));
+    }
+
+    @Test
+    void 컨테이너가_멈춘_뒤에는_오류_뒤에도_쉬지_않는다() {
+        StreamListenerErrorHandler errorHandler =
+                new StreamListenerErrorHandler(shutdownState(false), () -> false, Duration.ofSeconds(5));
+
+        assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> errorHandler.handleError(new RedisException("Command timed out")));
+    }
+
+    @Test
+    void 쉬는_도중_컨테이너가_멈추면_바로_끝낸다() {
+        AtomicBoolean running = new AtomicBoolean(true);
+        StreamListenerErrorHandler errorHandler =
+                new StreamListenerErrorHandler(shutdownState(false), running::get, Duration.ofSeconds(5));
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        try {
+            scheduler.schedule(() -> running.set(false), 100, TimeUnit.MILLISECONDS);
+
+            assertTimeoutPreemptively(Duration.ofSeconds(1),
+                    () -> errorHandler.handleError(new RedisException("Command timed out")));
+        } finally {
+            scheduler.shutdownNow();
+        }
     }
 
     @Test
@@ -88,5 +124,11 @@ class StreamListenerErrorHandlerTest {
         shutdownState.onApplicationEvent(new ContextClosedEvent(mock(ConfigurableApplicationContext.class)));
 
         assertThat(shutdownState.isShuttingDown()).isTrue();
+    }
+
+    private static ApplicationShutdownState shutdownState(boolean shuttingDown) {
+        ApplicationShutdownState shutdownState = mock(ApplicationShutdownState.class);
+        when(shutdownState.isShuttingDown()).thenReturn(shuttingDown);
+        return shutdownState;
     }
 }

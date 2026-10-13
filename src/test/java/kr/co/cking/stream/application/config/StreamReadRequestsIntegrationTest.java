@@ -29,7 +29,8 @@ import org.springframework.data.redis.stream.Subscription;
 
 /**
  * Consumer Group을 지워 XREADGROUP이 NOGROUP으로 실패하게 만든 뒤,
- * 기본 구독은 취소되고 keepAlive 구독은 그룹이 다시 생기면 이어서 소비하는지 확인한다(이슈 #555).
+ * 기본 구독은 취소되고 keepAlive 구독은 그룹이 다시 생기면 이어서 소비하는지,
+ * 오류 대기 중 컨테이너를 멈췄다 켜도 소비가 이어지는지 확인한다(이슈 #555).
  */
 @SpringBootTest
 class StreamReadRequestsIntegrationTest {
@@ -102,6 +103,35 @@ class StreamReadRequestsIntegrationTest {
         redisTemplate.opsForStream().destroyGroup(STREAM_KEY, CONSUMER_GROUP);
 
         assertThat(waitUntil(() -> !subscription.isActive())).isTrue();
+    }
+
+    @Test
+    void 오류로_쉬는_도중_컨테이너를_멈췄다_다시_켜도_이어서_소비한다() throws InterruptedException {
+        StreamMessageListenerContainer<String, MapRecord<String, String, String>> restartable =
+                StreamListenerContainers.create(
+                        connectionFactory, new ApplicationShutdownState(), Duration.ofMillis(100), Duration.ofSeconds(3));
+        restartable.start();
+        try {
+            Subscription subscription = restartable.register(
+                    StreamReadRequests.keepAlive(STREAM_KEY, CONSUMER_GROUP, "restart-consumer"),
+                    message -> received.add(message.getValue().get("n")));
+            assertThat(subscription.await(WAIT)).isTrue();
+
+            // 읽기가 NOGROUP으로 실패해 오류 처리기가 3초 대기에 들어간 상태에서,
+            // 테스트 컨텍스트 일시정지처럼 컨테이너를 잠깐 멈췄다 다시 켠다.
+            redisTemplate.opsForStream().destroyGroup(STREAM_KEY, CONSUMER_GROUP);
+            sleep(Duration.ofMillis(500));
+            restartable.stop();
+            sleep(Duration.ofMillis(200));
+            restartable.start();
+
+            createGroup();
+            add("after-restart");
+
+            assertThat(received.poll(WAIT.toMillis(), TimeUnit.MILLISECONDS)).isEqualTo("after-restart");
+        } finally {
+            restartable.stop();
+        }
     }
 
     private void createGroup() {

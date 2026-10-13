@@ -10,10 +10,8 @@ import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.stream.StreamMessageListenerContainer;
-import org.springframework.data.redis.stream.StreamMessageListenerContainer.StreamMessageListenerContainerOptions;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 
 import kr.co.cking.stream.presentation.CommonEarnStreamListener;
 
@@ -41,14 +39,8 @@ public class CommonEarnStreamConfig {
     ) {
         ensureConsumerGroup(redisTemplate);
 
-        StreamMessageListenerContainerOptions<String, MapRecord<String, String, String>> options =
-                StreamMessageListenerContainerOptions.builder()
-                        .pollTimeout(Duration.ofSeconds(2))
-                        .errorHandler(new StreamListenerErrorHandler(shutdownState))
-                        .build();
-
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> container =
-                StreamMessageListenerContainer.create(connectionFactory, options);
+                StreamListenerContainers.create(connectionFactory, shutdownState);
 
         container.register(StreamReadRequests.keepAlive(streamKey, consumerGroup, CONSUMER_NAME), commonEarnStreamListener);
 
