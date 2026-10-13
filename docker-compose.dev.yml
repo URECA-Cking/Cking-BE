@@ -54,6 +54,11 @@ services:
       ADMIN_ACCOUNT_PASSWORD: ${ADMIN_ACCOUNT_PASSWORD:?ADMIN_ACCOUNT_PASSWORD가 지정되지 않았습니다}
       IMAGE_TAG: ${IMAGE_TAG}
       REDIS_HOST: redis
+      # 상한을 걸면 JVM이 힙(상한의 25%)과 GC를 다시 고르므로 상한 전 값(힙 460MiB, G1)을 고정한다.
+      JDK_JAVA_OPTIONS: "-Xmx460m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+    # memswap_limit을 mem_limit과 같게 두어 컨테이너가 swap을 쓰지 않게 한다.
+    mem_limit: 1000m
+    memswap_limit: 1000m
     logging:
       driver: json-file
       options:
