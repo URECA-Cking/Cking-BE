@@ -218,6 +218,20 @@ class SecurityConfigTest {
                 .andExpect(content().string("admin-api"));
     }
 
+    /** 새 관리자 잔액 조회 경로에 기존 ADMIN 1차 인가 규칙이 적용되는지 검증한다. */
+    @Test
+    void 관리자_응모권_잔액_조회는_ADMIN_JWT가_필요하다() throws Exception {
+        mockMvc.perform(get("/api/admin/tickets/balance"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(content().string("ticket-balance"));
+    }
+
     /** USER·ADMIN 공용 Winner 이력 API도 JWT 인증 없이는 호출할 수 없다. */
     @Test
     void Winner_상태_이력_API는_미인증_요청을_401로_거절한다() throws Exception {
@@ -510,6 +524,12 @@ class SecurityConfigTest {
         @GetMapping("/api/admin/events")
         String accessManagedEventList() {
             return "admin-api";
+        }
+
+        /** 관리자 잔액 조회 경로의 Security 통과 여부를 확인할 응답을 제공한다. */
+        @GetMapping("/api/admin/tickets/balance")
+        String accessTicketBalance() {
+            return "ticket-balance";
         }
 
         /** 공개 Quiz 목록 경로가 인증 없이 도달하는지 확인한다. */
