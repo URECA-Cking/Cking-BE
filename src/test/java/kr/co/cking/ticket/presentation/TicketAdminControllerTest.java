@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -61,10 +63,52 @@ class TicketAdminControllerTest {
     }
 
     @Test
+    void 관리자가_공용_이력을_조회한다() throws Exception {
+        TicketLedgerItemResponse item = new TicketLedgerItemResponse(
+                11L, -2L, "SPEND", null, 7L, null, "request-2", Instant.parse("2026-10-13T00:00:00Z"));
+        when(ticketAdminService.getHistory(1L, 2L, CouponType.COMMON, null, 20, null))
+                .thenReturn(new AdminTicketLedgerPage(2L, CouponType.COMMON, null, java.util.List.of(item), "next", true));
+
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", "2")
+                        .queryParam("couponType", "COMMON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.memberId").value(2))
+                .andExpect(jsonPath("$.data.couponType").value("COMMON"))
+                .andExpect(jsonPath("$.data.creatorId").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].type").value("SPEND"))
+                .andExpect(jsonPath("$.data.nextCursor").value("next"))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+    }
+
+    @Test
     void 이력_조회_필수_파라미터가_없으면_400이다() throws Exception {
         mockMvc.perform(get("/api/admin/tickets/history").queryParam("couponType", "COMMON"))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/admin/tickets/history").queryParam("memberId", "2"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(ticketAdminService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1"})
+    void 이력_조회_memberId가_0_이하이면_400이다(String memberId) throws Exception {
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", memberId)
+                        .queryParam("couponType", "COMMON"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(ticketAdminService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "101"})
+    void 이력_조회_size가_범위를_벗어나면_400이다(String size) throws Exception {
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", "2")
+                        .queryParam("couponType", "COMMON")
+                        .queryParam("size", size))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(ticketAdminService);

@@ -14,6 +14,9 @@ import java.time.Instant;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 
 import kr.co.cking.common.exception.BusinessException;
@@ -91,9 +94,11 @@ class TicketAdminServiceTest {
         verify(commonTicketQueryService).getLedger(MEMBER_ID, 20, "cursor");
     }
 
-    @Test
-    void Creator_전용_조회에_creatorId가_없으면_400이고_조회하지_않는다() {
-        assertThatThrownBy(() -> service.getHistory(ADMIN_ID, MEMBER_ID, CouponType.CREATOR, null, 20, null))
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void Creator_전용_조회에_creatorId가_유효하지_않으면_400이고_조회하지_않는다(Long creatorId) {
+        assertThatThrownBy(() -> service.getHistory(ADMIN_ID, MEMBER_ID, CouponType.CREATOR, creatorId, 20, null))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
