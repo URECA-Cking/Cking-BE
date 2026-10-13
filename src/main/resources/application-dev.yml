@@ -54,7 +54,7 @@ cking:
       public-base-url: https://dev-images.cking.co.kr
   verification:
     youtube-subscription:
-      submission-enabled: false
+      submission-enabled: true 
 
 info:
   image:
