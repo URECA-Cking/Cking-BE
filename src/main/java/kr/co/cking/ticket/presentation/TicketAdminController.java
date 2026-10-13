@@ -39,7 +39,8 @@ public class TicketAdminController {
     @Operation(
             summary = "회원 응모권 이력 조회",
             description = "ADMIN 권한으로 지정한 회원의 Creator 전용 또는 공용 응모권 이력을 기존 cursor 기반 페이지네이션으로 조회합니다. "
-                    + "CREATOR 조회에는 creatorId가 필요하며 size의 기본값은 20, 범위는 1~100입니다."
+                    + "CREATOR 조회에는 creatorId가 필요하고 COMMON 조회에는 사용할 수 없습니다. "
+                    + "size의 기본값은 20, 범위는 1~100입니다."
     )
     @GetMapping("/api/admin/tickets/history")
     public ApiResponse<AdminTicketLedgerPage> getHistory(
@@ -53,7 +54,6 @@ public class TicketAdminController {
         return ApiResponse.success(ticketAdminService.getHistory(adminId, memberId, couponType, creatorId, size, cursor));
     }
 
-    /** 인증된 관리자가 대상 Member의 Creator 전용 응모권 잔액을 DB 기준으로 재동기화한다. */
     /** 관리자가 대상 회원의 Redis·MySQL 응모권 잔액을 종류별로 관측한다. */
     @Operation(
             summary = "회원 응모권 잔액 비교 조회",

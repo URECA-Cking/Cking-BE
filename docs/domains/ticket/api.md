@@ -47,7 +47,8 @@ cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDA
   `TicketAdminService`가 호출자의 ADMIN 역할을 재검증한다. JWT의 `@CurrentMemberId`는 관리자 업무
   식별자이고, `memberId`는 조회 대상이다.
 - Query: `memberId`(필수, 대상 회원 ID), `couponType`(필수, `CREATOR` 또는 `COMMON`),
-  `creatorId`(`couponType=CREATOR`일 때 필수), `cursor`(선택), `size`(선택, 기본 20, 1~100).
+  `creatorId`(`couponType=CREATOR`일 때 필수, `COMMON`일 때 전달 금지), `cursor`(선택),
+  `size`(선택, 기본 20, 1~100).
 - Creator 전용 이력은 `TicketQueryService`, 공용 이력은 `CommonTicketQueryService`의 기존
   `createdAt DESC, ledgerId DESC` cursor 조회를 그대로 사용한다. `cursor`는 두 종류 모두 기존
   URL-safe Base64 `(createdAt, ledgerId)` 형식이다.
@@ -76,7 +77,7 @@ cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDA
 
 | 코드 | 조건 |
 | --- | --- |
-| `VALIDATION_FAILED` | 필수 query 누락·형식 오류, `CREATOR`인데 `creatorId` 누락·0 이하, 잘못된 cursor, size 범위 초과 |
+| `VALIDATION_FAILED` | 필수 query 누락·형식 오류, `CREATOR`의 `creatorId` 누락·0 이하, `COMMON`의 `creatorId` 전달, 잘못된 cursor, size 범위 초과 |
 | `UNAUTHORIZED` | Bearer Access JWT 없음·만료·변조·형식 오류 |
 | `FORBIDDEN` | USER JWT이거나 호출자 Member의 역할이 ADMIN이 아님 |
 | `RESOURCE_NOT_FOUND` | JWT 호출자 Member가 존재하지 않음 |

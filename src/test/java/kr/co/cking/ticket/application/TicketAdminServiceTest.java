@@ -119,6 +119,17 @@ class TicketAdminServiceTest {
                 org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any());
     }
 
+    /** COMMON 이력 조회에 Creator ID가 있으면 원장 조회 전에 거부한다. */
+    @Test
+    void 공용_이력_조회에_creatorId가_있으면_거부한다() {
+        assertThatThrownBy(() -> service.getHistory(ADMIN_ID, MEMBER_ID, CouponType.COMMON, CREATOR_ID, 20, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+
+        verify(commonTicketQueryService, never()).getLedger(MEMBER_ID, 20, null);
+    }
+
     @Test
     void ADMIN이_아니면_이력을_조회하지_않는다() {
         doThrow(new BusinessException(CommonErrorCode.FORBIDDEN)).when(memberQueryService).validateAdmin(ADMIN_ID);

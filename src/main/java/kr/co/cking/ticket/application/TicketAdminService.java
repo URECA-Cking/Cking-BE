@@ -52,7 +52,13 @@ public class TicketAdminService {
         return switch (couponType) {
             case CREATOR -> AdminTicketLedgerPage.from(ticketQueryService.getLedger(
                     requireCreatorId(creatorId), memberId, size, cursor));
-            case COMMON -> AdminTicketLedgerPage.from(commonTicketQueryService.getLedger(memberId, size, cursor));
+            case COMMON -> {
+                if (creatorId != null) {
+                    throw new BusinessException(CommonErrorCode.VALIDATION_FAILED,
+                            "creatorId: COMMON 응모권 조회에는 사용할 수 없습니다.");
+                }
+                yield AdminTicketLedgerPage.from(commonTicketQueryService.getLedger(memberId, size, cursor));
+            }
         };
     }
 

@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -81,6 +82,72 @@ class TicketAdminControllerTest {
                 .andExpect(jsonPath("$.data.items[0].type").value("SPEND"))
                 .andExpect(jsonPath("$.data.nextCursor").value("next"))
                 .andExpect(jsonPath("$.data.hasNext").value(true));
+    }
+
+    /** 공용 이력에 Creator ID가 전달되면 업무 입력 오류를 HTTP 400으로 반환한다. */
+    @Test
+    void 공용_이력에_creatorId가_있으면_400이다() throws Exception {
+        when(ticketAdminService.getHistory(1L, 2L, CouponType.COMMON, 3L, 20, null))
+                .thenThrow(new BusinessException(CommonErrorCode.VALIDATION_FAILED));
+
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", "2")
+                        .queryParam("couponType", "COMMON")
+                        .queryParam("creatorId", "3"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 잘못된 cursor의 조회 오류를 HTTP 400으로 전달한다. */
+    @Test
+    void 이력_조회_cursor가_잘못되면_400이다() throws Exception {
+        when(ticketAdminService.getHistory(1L, 2L, CouponType.CREATOR, 3L, 20, "invalid"))
+                .thenThrow(new BusinessException(CommonErrorCode.VALIDATION_FAILED));
+
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", "2")
+                        .queryParam("couponType", "CREATOR")
+                        .queryParam("creatorId", "3")
+                        .queryParam("cursor", "invalid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 첫 응답의 nextCursor를 다시 전달해 다음 페이지를 조회한다. */
+    @Test
+    void 이력_조회_nextCursor로_다음_페이지를_조회한다() throws Exception {
+        TicketLedgerItemResponse firstItem = new TicketLedgerItemResponse(
+                10L, 1L, "EARN", 5L, null, null, "request-1", Instant.parse("2026-10-13T02:00:00Z"));
+        TicketLedgerItemResponse nextItem = new TicketLedgerItemResponse(
+                9L, -1L, "SPEND", null, 7L, null, "request-2", Instant.parse("2026-10-13T01:00:00Z"));
+        when(ticketAdminService.getHistory(1L, 2L, CouponType.CREATOR, 3L, 1, null))
+                .thenReturn(new AdminTicketLedgerPage(2L, CouponType.CREATOR, 3L,
+                        java.util.List.of(firstItem), "next-cursor", true));
+        when(ticketAdminService.getHistory(1L, 2L, CouponType.CREATOR, 3L, 1, "next-cursor"))
+                .thenReturn(new AdminTicketLedgerPage(2L, CouponType.CREATOR, 3L,
+                        java.util.List.of(nextItem), null, false));
+
+        var firstPage = mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", "2")
+                        .queryParam("couponType", "CREATOR")
+                        .queryParam("creatorId", "3")
+                        .queryParam("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].ledgerId").value(10))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andReturn();
+        String nextCursor = JsonPath.read(firstPage.getResponse().getContentAsString(), "$.data.nextCursor");
+
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", "2")
+                        .queryParam("couponType", "CREATOR")
+                        .queryParam("creatorId", "3")
+                        .queryParam("size", "1")
+                        .queryParam("cursor", nextCursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].ledgerId").value(9))
+                .andExpect(jsonPath("$.data.nextCursor").doesNotExist())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
     }
 
     @Test
