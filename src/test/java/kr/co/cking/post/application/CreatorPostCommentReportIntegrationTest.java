@@ -9,6 +9,8 @@ import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.notification.domain.NotificationType;
+import kr.co.cking.notification.repository.NotificationRepository;
 import kr.co.cking.post.application.dto.AdminCommentReportActionView;
 import kr.co.cking.post.application.dto.AdminCommentReportView;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
@@ -22,6 +24,8 @@ import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CreatorPostCommentReportRepository;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
+import kr.co.cking.sanction.application.SanctionService;
+import kr.co.cking.sanction.domain.SanctionSource;
 import kr.co.cking.sanction.domain.SanctionErrorCode;
 import kr.co.cking.sanction.repository.MemberSanctionRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -35,6 +39,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -77,6 +83,10 @@ class CreatorPostCommentReportIntegrationTest {
     @Autowired
     private MemberSanctionRepository sanctionRepository;
     @Autowired
+    private NotificationRepository notificationRepository;
+    @Autowired
+    private SanctionService sanctionService;
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     private final List<Member> members = new ArrayList<>();
@@ -95,6 +105,10 @@ class CreatorPostCommentReportIntegrationTest {
         }
         // 관리자가 댓글을 숨기면 작성자에게 제재가 생기고 회원 FK(대상·처리 관리자)가 걸리므로 회원보다 먼저 지운다.
         List<Long> memberIds = members.stream().map(Member::getMemberId).toList();
+        // 제재 알림은 회원과 제재를 FK로 참조하므로 제재보다 먼저 지운다.
+        notificationRepository.deleteAll(notificationRepository.findAll().stream()
+                .filter(notification -> memberIds.contains(notification.getMemberId()))
+                .toList());
         sanctionRepository.deleteAll(sanctionRepository.findAll().stream()
                 .filter(sanction -> memberIds.contains(sanction.getMemberId())
                         || memberIds.contains(sanction.getCreatedBy())
@@ -538,6 +552,55 @@ class CreatorPostCommentReportIntegrationTest {
                 .sorted()
                 .toList();
         assertThat(durations).containsExactly(Duration.ofDays(1), Duration.ofDays(3));
+    }
+
+    @Test
+    void 숨기면_작성자에게_제한_시작_알림이_저장되고_다시_숨겨도_늘지_않는다() {
+        Long commentId = commentOnPublicPost();
+        Member reporter = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(reporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+
+        adminCommandService.hide(admin.getMemberId(), commentId);
+        adminCommandService.hide(admin.getMemberId(), commentId);
+
+        List<kr.co.cking.notification.domain.Notification> notifications = notificationRepository.findAll().stream()
+                .filter(notification -> notification.getMemberId().equals(author.getMemberId()))
+                .toList();
+        assertThat(notifications).hasSize(1);
+        assertThat(notifications.get(0).getType()).isEqualTo(NotificationType.COMMENT_RESTRICTION_STARTED);
+        assertThat(notifications.get(0).getSanctionId()).isNotNull();
+        assertThat(notifications.get(0).getBody()).contains("경고 1회");
+        // 신고자·관리자에게는 알림이 가지 않는다.
+        assertThat(notificationRepository.findAll().stream()
+                .filter(notification -> notification.getMemberId().equals(reporter.getMemberId())
+                        || notification.getMemberId().equals(admin.getMemberId()))).isEmpty();
+    }
+
+    /** 기존에 더 오래가는 수동 제한이 있으면 경고 알림은 새 1일 제한이 아니라 실제로 풀리는 시각을 안내해야 한다. */
+    @Test
+    void 이미_30일_수동_제한이_있으면_숨김_알림은_30일_뒤_시각을_안내한다() {
+        Long commentId = commentOnPublicPost();
+        Member reporter = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(reporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+        sanctionService.createManual(admin.getMemberId(), author.getMemberId(), 30, "반복 욕설");
+        Instant manualEndsAt = sanctionRepository.findAll().stream()
+                .filter(sanction -> sanction.getMemberId().equals(author.getMemberId()))
+                .filter(sanction -> sanction.getSource() == SanctionSource.MANUAL)
+                .findFirst().orElseThrow().getEndsAt();
+        String expectedUntil = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
+                .withZone(ZoneOffset.UTC).format(manualEndsAt);
+
+        adminCommandService.hide(admin.getMemberId(), commentId);
+
+        kr.co.cking.notification.domain.Notification warningNotification = notificationRepository.findAll().stream()
+                .filter(notification -> notification.getMemberId().equals(author.getMemberId()))
+                .filter(notification -> notification.getBody().contains("경고 1회"))
+                .findFirst().orElseThrow();
+        assertThat(warningNotification.getBody()).contains(expectedUntil + "까지");
     }
 
     private List<Long> reportedIds(Member admin, CommentReportStatus status) {
