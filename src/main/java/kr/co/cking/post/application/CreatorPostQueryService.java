@@ -2,6 +2,7 @@ package kr.co.cking.post.application;
 
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.post.application.dto.CreatorPostView;
+import kr.co.cking.post.application.dto.PostEngagement;
 import kr.co.cking.post.domain.CreatorPost;
 import kr.co.cking.post.domain.CreatorPostImage;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
@@ -21,7 +22,8 @@ import java.util.stream.Collectors;
  *
  * <p>팔로워 공개(FOLLOWERS) 게시글은 팔로워와 작성한 Creator 본인에게만 본문·이미지를 제공한다. 목록에서는 잠금
  * 상태로 노출하고, 상세는 {@code POST_FOLLOWERS_ONLY}(403)다. 이미지는 권한을 확인한 뒤에만 유효 시간 10분의
- * 조회 주소를 발급한다.
+ * 조회 주소를 발급한다. 좋아요 수·내 좋아요 여부·댓글 수(이슈 #554)는 잠금과 무관하게 한 페이지를 일괄 집계해
+ * 함께 내려준다.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,6 +34,7 @@ public class CreatorPostQueryService {
     private final CreatorPostRepository postRepository;
     private final CreatorPostImageRepository imageRepository;
     private final CreatorPostViewAssembler viewAssembler;
+    private final PostEngagementReader engagementReader;
 
     /** @param viewerMemberId 비로그인이면 null */
     public Page<CreatorPostView> findByCreator(Long creatorId, Long viewerMemberId, Pageable pageable) {
@@ -48,10 +51,14 @@ public class CreatorPostQueryService {
                                 CreatorPostImage::getPostId,
                                 Collectors.mapping(CreatorPostImage::getObjectKey, Collectors.toList())));
 
+        Map<Long, PostEngagement> engagements = engagementReader.read(
+                posts.map(CreatorPost::getPostId).toList(), viewerMemberId);
+
         return posts.map(post -> viewAssembler.assemble(
                 post,
                 imageKeysByPost.getOrDefault(post.getPostId(), List.of()),
-                accessPolicy.isLocked(post, followerOrOwner)));
+                accessPolicy.isLocked(post, followerOrOwner),
+                engagements.get(post.getPostId())));
     }
 
     /** @param viewerMemberId 비로그인이면 null */
@@ -61,6 +68,6 @@ public class CreatorPostQueryService {
         List<String> imageKeys = imageRepository.findByPostIdOrderByDisplayOrderAsc(postId).stream()
                 .map(CreatorPostImage::getObjectKey)
                 .toList();
-        return viewAssembler.assemble(post, imageKeys, false);
+        return viewAssembler.assemble(post, imageKeys, false, engagementReader.read(postId, viewerMemberId));
     }
 }

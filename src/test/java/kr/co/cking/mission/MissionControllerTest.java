@@ -88,6 +88,20 @@ class MissionControllerTest {
     }
 
     @Test
+    void 게시글_좋아요가_필요한_좋아요_미션은_409와_안내_코드를_반환한다() throws Exception {
+        MissionCompleteRequest request = new MissionCompleteRequest(UUID.randomUUID());
+        when(missionCompletionService.complete(eq(10L), eq(100L), any()))
+                .thenThrow(new BusinessException(MissionErrorCode.MISSION_REQUIRES_POST_LIKE));
+
+        mockMvc.perform(post("/api/creators/10/missions/100/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MISSION_REQUIRES_POST_LIKE"))
+                .andExpect(jsonPath("$.message").value("게시글에 좋아요를 누르면 완료할 수 있는 미션입니다."));
+    }
+
+    @Test
     @org.springframework.security.test.context.support.WithAnonymousUser
     void JWT가_없으면_401과_UNAUTHORIZED를_반환한다() throws Exception {
         mockMvc.perform(post("/api/creators/10/missions/100/complete")

@@ -9,8 +9,11 @@ import kr.co.cking.post.application.dto.CreatorPostView;
 import kr.co.cking.post.domain.CreatorPost;
 import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
+import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
+import kr.co.cking.post.repository.CreatorPostLikeRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
+import kr.co.cking.post.repository.PostCount;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
@@ -33,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 class CreatorPostQueryServiceTest {
@@ -47,9 +51,12 @@ class CreatorPostQueryServiceTest {
     private final CreatorPostImageRepository imageRepository = mock(CreatorPostImageRepository.class);
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final ObjectStorage objectStorage = mock(ObjectStorage.class);
+    private final CreatorPostLikeRepository likeRepository = mock(CreatorPostLikeRepository.class);
+    private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final CreatorPostQueryService service = new CreatorPostQueryService(
             new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
-            postRepository, imageRepository, new CreatorPostViewAssembler(objectStorage));
+            postRepository, imageRepository, new CreatorPostViewAssembler(objectStorage),
+            new PostEngagementReader(likeRepository, commentRepository));
 
     private final CreatorPost publicPost = post(100L, CREATOR_ID, PostVisibility.PUBLIC);
     private final CreatorPost followersPost = post(101L, CREATOR_ID, PostVisibility.FOLLOWERS);
@@ -65,6 +72,69 @@ class CreatorPostQueryServiceTest {
                 linkedImage("followers-1", CREATOR_ID, 101L, 1)));
         given(objectStorage.presignedGetUrl(anyString(), eq(Duration.ofMinutes(10))))
                 .willAnswer(invocation -> URI.create("https://storage.test/" + invocation.getArgument(0)));
+    }
+
+    @Test
+    void 목록은_좋아요_수와_내_좋아요_댓글_수를_한_페이지_단위로_집계하고_잠긴_게시글에도_수치를_준다() {
+        given(followQueryService.isFollowing(VIEWER_MEMBER_ID, CREATOR_ID)).willReturn(false);
+        given(likeRepository.countByPostIds(List.of(101L, 100L))).willReturn(List.of(count(101L, 7), count(100L, 2)));
+        given(commentRepository.countByPostIds(List.of(101L, 100L))).willReturn(List.of(count(100L, 3)));
+        given(likeRepository.findLikedPostIds(VIEWER_MEMBER_ID, List.of(101L, 100L))).willReturn(List.of(100L));
+
+        List<CreatorPostView> posts = service.findByCreator(CREATOR_ID, VIEWER_MEMBER_ID, PAGE).getContent();
+
+        CreatorPostView locked = posts.get(0);
+        assertThat(locked.locked()).isTrue();
+        assertThat(locked.likeCount()).isEqualTo(7);
+        assertThat(locked.liked()).isFalse();
+        assertThat(locked.commentCount()).isZero();
+        CreatorPostView open = posts.get(1);
+        assertThat(open.likeCount()).isEqualTo(2);
+        assertThat(open.liked()).isTrue();
+        assertThat(open.commentCount()).isEqualTo(3);
+        verify(likeRepository, times(1)).countByPostIds(any());
+        verify(commentRepository, times(1)).countByPostIds(any());
+        verify(likeRepository, times(1)).findLikedPostIds(anyLong(), any());
+    }
+
+    @Test
+    void 비로그인은_내_좋아요를_조회하지_않고_liked는_false이다() {
+        given(likeRepository.countByPostIds(List.of(101L, 100L))).willReturn(List.of(count(100L, 2)));
+
+        CreatorPostView open = service.findByCreator(CREATOR_ID, null, PAGE).getContent().get(1);
+
+        assertThat(open.likeCount()).isEqualTo(2);
+        assertThat(open.liked()).isFalse();
+        verify(likeRepository, never()).findLikedPostIds(anyLong(), any());
+    }
+
+    @Test
+    void 상세는_해당_게시글의_수치를_담는다() {
+        given(postRepository.findById(100L)).willReturn(Optional.of(publicPost));
+        given(imageRepository.findByPostIdOrderByDisplayOrderAsc(100L)).willReturn(List.of());
+        given(likeRepository.countByPostIds(List.of(100L))).willReturn(List.of(count(100L, 4)));
+        given(commentRepository.countByPostIds(List.of(100L))).willReturn(List.of(count(100L, 1)));
+        given(likeRepository.findLikedPostIds(VIEWER_MEMBER_ID, List.of(100L))).willReturn(List.of(100L));
+
+        CreatorPostView detail = service.findDetail(CREATOR_ID, 100L, VIEWER_MEMBER_ID);
+
+        assertThat(detail.likeCount()).isEqualTo(4);
+        assertThat(detail.liked()).isTrue();
+        assertThat(detail.commentCount()).isEqualTo(1);
+    }
+
+    private static PostCount count(Long postId, long total) {
+        return new PostCount() {
+            @Override
+            public Long getPostId() {
+                return postId;
+            }
+
+            @Override
+            public long getTotal() {
+                return total;
+            }
+        };
     }
 
     @Test

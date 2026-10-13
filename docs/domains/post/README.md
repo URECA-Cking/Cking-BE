@@ -8,6 +8,7 @@ Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계�
 - 공개 범위(PUBLIC·FOLLOWERS)에 따른 게시글 공개 조회
 - 게시글 이미지 업로드 기록으로 소유자·연결 검증과 저장소 정리
 - 게시글 댓글 조회·작성·수정·삭제
+- 게시글 좋아요·취소와 좋아요 수·내 좋아요·댓글 수 집계, 좋아요 성공 뒤 Mission 보상 요청(이슈 #554)
 - 댓글 필터 판정 요청·결과 저장과 필터링된 댓글의 원문 가림·원문 보기
 - 댓글 신고 접수와 관리자의 신고된 댓글 조회, 숨김·반려 처리
 
@@ -15,7 +16,7 @@ Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `Cr
 
 ## 소유 데이터
 
-V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. V46이 댓글에 필터 판정 컬럼(`filter_status`·`filter_action`·`filter_reasons`·`filter_rule_version`·`filter_model_version`·`filtered_at`)을 더했다. V49의 `creator_post_comment_report`(댓글 신고)도 소유한다. V60이 신고에 처리 상태(`status`·`handled_by`·`handled_at`)를, 댓글에 관리자 숨김(`admin_hidden_at`·`admin_hidden_by`)을 더했다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다. 신고는 댓글 FK의 `ON DELETE CASCADE`로 댓글과 함께 지워진다.
+V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. V46이 댓글에 필터 판정 컬럼(`filter_status`·`filter_action`·`filter_reasons`·`filter_rule_version`·`filter_model_version`·`filtered_at`)을 더했다. V69의 `creator_post_like`(게시글 좋아요, `(post_id, member_id)` PK, 게시글 삭제 시 `ON DELETE CASCADE`)도 소유한다. V49의 `creator_post_comment_report`(댓글 신고)도 소유한다. V60이 신고에 처리 상태(`status`·`handled_by`·`handled_at`)를, 댓글에 관리자 숨김(`admin_hidden_at`·`admin_hidden_by`)을 더했다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다. 신고는 댓글 FK의 `ON DELETE CASCADE`로 댓글과 함께 지워진다.
 
 ## 댓글 권한
 
@@ -106,3 +107,12 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 2. `DELETE_PENDING`이 된 지 10분이 지난 기록을 최대 100건씩 저장소에서 지우고 기록을 삭제한다. 유예 시간은 방금 Commit된 수정·삭제의 AFTER_COMMIT 삭제와 겹치지 않게 하기 위함이다. 실패한 기록은 `status_changed_at`을 현재 시각으로 미뤄 대기열 뒤로 보내고 유예 시간 뒤 다시 시도한다. 계속 실패하는 기록이 앞 100건을 차지해 뒤의 기록이 처리되지 않는 일을 막기 위함이다. 저장소 delete는 없는 key도 성공하므로 여러 번 실행돼도 안전하다.
 
 임시 저장 기능이 생기면 미연결 보관 시간(24시간)을 다시 정한다.
+
+## 게시글 좋아요 (이슈 #554)
+
+외부 계약은 [Post API](api.md#게시글-좋아요)를 따른다.
+
+- **Transaction 경계**: DB 변경은 `PostLikeWriter`가 한 Transaction(READ_COMMITTED)에서 끝내고, `PostLikeService`가 Commit 뒤 Transaction 밖에서 Mission 보상을 요청한다. 보상 호출이 Redis·Ticket 처리를 하는 동안 DB 잠금을 쥐지 않기 위함이다.
+- **멱등·동시성**: `ON DUPLICATE KEY` insert로 같은 쌍의 동시 요청을 하나만 남긴다. 새 좋아요인지는 insert의 영향 행 수로 판단하지 않는다. Connector/J는 기본(`useAffectedRows=false`)에서 중복 insert에도 1을 돌려주므로(실제 드라이버로 확인), 저장된 `created_at`을 읽어 오늘(UTC) 눌린 좋아요인지로 판단한다. 게시글 행은 공유 잠금(`FOR SHARE`)으로 읽어 동시에 진행 중인 게시글 삭제가 끝난 뒤 404로 응답한다(댓글 작성과 같은 방식).
+- **집계**: 목록·상세의 좋아요 수·내 좋아요·댓글 수는 `PostEngagementReader`가 한 페이지를 일괄 집계한다(쿼리 3개 이하). 잠긴 게시글도 수치를 내려준다.
+- **미션 보상은 부가 효과**: 보상 호출이 실패하거나 예외가 나도 좋아요는 롤백하지 않고 응답은 성공이다. 보상은 **오늘(UTC) 누른 좋아요**일 때만 요청한다. 오늘 누른 좋아요에 같은 POST가 다시 오면 같은 날 같은 `requestId`로 재시도하므로 이전 실패가 회복되고, 이전 날에 누른 좋아요를 유지한 채 날짜만 바뀐 중복 POST는 새 좋아요가 아니므로 보상하지 않는다(좋아요 행의 `created_at`의 UTC 날짜로 판단하며, 취소 뒤 다시 누르면 새 좋아요다). 이 판정에 쓴 시각(`decidedAt`)을 Mission 호출에 그대로 넘겨 보상 날짜를 같은 값으로 맞춘다.

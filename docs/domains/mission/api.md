@@ -36,7 +36,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 - Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
 - Path Variable `creatorId`: 필수, 양수 Long.
 - Path Variable `missionId`: 필수, 양수 Long.
-- 신규 완료 지원 유형: `LIKE`.
+- 이 API는 **신규 완료를 지원하는 유형이 없다.** `LIKE` 신규 완료는 게시글 좋아요를 서버가 확인한 경로(아래 "게시글 좋아요 보상")로만 가능하고, 이 API로 새로 요청하면 `MISSION_REQUIRES_POST_LIKE`(409)로 차단한다. 클라이언트는 이 코드를 받으면 게시글 좋아요를 안내한다. 이미 성공한 `requestId`의 replay는 기존 결과(`ALREADY_PROCESSED`)를 돌려준다(이슈 #554).
 - `SHARE`는 Creator Space 공유 완료 처리(Issue #311)에서만 보상한다. 이 API로 요청하면 `MISSION_NOT_FOUND`로 차단한다.
 - 레거시 Creator `ATTENDANCE`는 기존 성공 `requestId` replay만 허용하며, 신규 출석 완료는 공용 API를 사용한다.
 - `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 필요한 유형이므로 이 API에서 완료할 수 없다. 제출·상태 조회 계약은 [YouTube 구독 인증 API](../subscription-verification/api.md)를 따른다.
@@ -75,7 +75,7 @@ Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 
 3. `YOUTUBE_SUBSCRIPTION`이면 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 이 경우 Ticket EARN 조회나 적립을 호출하지 않는다.
 4. SHARE면 `TicketEarnService` 조회·적립 전에 `MISSION_NOT_FOUND`로 차단한다. Creator별 ATTENDANCE 신규 완료는 공용 API를 사용한다.
 5. `TicketEarnService#findExisting()`으로 동일 `requestId`의 기존 처리 결과를 조회한다(활성 검증보다 먼저 — 아래 "종료 후 동일 requestId 재시도" 참고).
-6. 기존 결과가 없고 Mission 유형이 `LIKE`가 아니면 `MISSION_NOT_FOUND`로 신규 완료를 차단한다.
+6. 기존 결과가 없으면 신규 완료를 차단한다(일반 완료 API는 replay 전용). LIKE는 `MISSION_REQUIRES_POST_LIKE`, 그 밖의 유형은 `MISSION_NOT_FOUND`다. 게시글 좋아요 경로는 아래 7~8단계를 이어 수행한다.
 7. `Mission.isActiveAt(now)`로 LIKE 미션의 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
 8. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
 
@@ -117,6 +117,7 @@ Creator Space 공유 완료를 Creator별 SHARE 미션 보상으로 처리한다
 | `MISSION_NOT_FOUND` | 404 | 존재하지 않는 Mission |
 | `MISSION_INACTIVE` | 409 | 활성 기간이 아닌 미션에 대한 신규 요청 |
 | `MISSION_REQUIRES_VERIFICATION` | 409 | 별도 이미지 인증이 필요한 미션을 일반 완료 API로 요청함 |
+| `MISSION_REQUIRES_POST_LIKE` | 409 | 게시글 좋아요로만 완료할 수 있는 LIKE 미션을 일반 완료 API로 새로 요청함. 클라이언트는 게시글 좋아요를 안내한다 |
 | `DUPLICATE_MISSION` | 409 | 같은 `periodKey`에 이미 완료함 |
 | `REQUEST_ID_CONFLICT` | 409 | 동일 `requestId`로 다른 요청 내용이 전달됨 |
 | `EARN_PROCESSING_FAILED` | 503 | 응모권 적립 처리 실패(재시도 필요) |
@@ -153,3 +154,15 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 처리 순서는 위와 동일하되 3~5단계가 `CommonTicketEarnService#findExisting()`/`#earn()`을 사용하고, Redis 키에 `creatorId` 축이 없다(`ticket:balance:common:{userId}`, `mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd}`).
 
 **`BALANCE_MAINTENANCE`는 아직 발생하지 않는다** — 공용 응모권의 수동 보정(`TicketCompensationService` 대응) 기능이 아직 없다(이슈 #219 범위 밖, 후속 작업).
+
+## 게시글 좋아요 보상
+
+LIKE 미션은 게시글 좋아요가 성공해야 완료된다(이슈 #554). 클라이언트가 좋아요 없이 일반 완료 API로 보상을 받을 수 없다.
+
+- **호출 경로**: `POST /api/creators/{creatorId}/posts/{postId}/likes`가 성공한 뒤 Post의 `PostLikeService`가 `MissionCompletionService#completeByPostLike(creatorId, memberId)`를 호출한다. 이 메서드는 Creator의 LIKE 미션을 찾아 위 처리 순서의 7~8단계(활성 검증, EARN)를 수행한다. 클라이언트가 이 경로를 직접 호출하는 외부 API는 없다.
+- **requestId**: 서버가 `post-like:{memberId}:{missionId}:{UTC 날짜}`로 만든 결정적 UUID(name-based)를 쓴다. 같은 날의 반복 호출(재좋아요, 취소 후 재좋아요, 재시도)은 같은 `requestId`라 `ALREADY_PROCESSED`이고, 날짜가 바뀌면 새 `requestId`라 다시 적립될 수 있다. 호출 자체는 Post가 **오늘(UTC) 눌린 좋아요**일 때만 하므로, 이전 날에 눌러 둔 좋아요에 날짜만 바뀐 중복 POST로 그날 보상을 받을 수 없다. `requestId`의 날짜, EARN `periodKey`, 활성 검증, 관찰 시각은 이 서비스의 시계를 다시 읽지 않고 **호출자(Post)가 좋아요 자격을 판정한 시각**(`decidedAt`) 하나로 정한다. 판정과 지급 사이에 UTC 자정을 넘겨도 판정한 날짜의 보상으로 처리되므로, 이전 날 좋아요에 날짜만 바뀐 중복 요청이 다음 날 보상을 받을 수 없다.
+- **지급 규칙**: 기존과 같다. 사용자·Creator·미션·UTC 날짜 기준 하루 1회이며 Redis EARN Guard가 먼저 막고 `mission_completion.uk_completion_business`가 마지막으로 보장한다. 같은 날 미션 버튼 방식으로 이미 받은 보상이 있으면(구 클라이언트) 가드가 막는다.
+- **제외**: 이전 날에 누른 좋아요를 유지한 채 날짜만 바뀐 중복 POST는 보상을 요청하지 않는다(좋아요 행의 생성 날짜(UTC)가 오늘이 아님). 작성 Creator 본인이 자기 게시글에 한 좋아요는 보상을 요청하지 않는다. Creator에 LIKE 미션이 없거나 비활성이면 좋아요만 성공한다.
+- **실패 처리**: 미션 호출의 실패(`MISSION_*`, `EARN_*`, 예기치 못한 예외)는 좋아요를 되돌리지 않는다. 좋아요 응답의 `missionAwarded`는 이번 요청으로 `EARN_ACCEPTED`가 나왔을 때만 true다.
+- **취소**: 좋아요 취소는 미션을 호출하지 않으며 지급된 응모권도 회수하지 않는다(FR-P1-012). 취소 후 같은 날 재좋아요는 같은 `requestId`라 추가 적립되지 않는다(FR-P1-013).
+- **Abuse 관찰**: 기존 LIKE와 같은 `MissionAbuseObserver` 관찰을 그대로 수행한다.
