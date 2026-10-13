@@ -47,6 +47,8 @@ Fan Quiz 응시(attempt) 보상은 Mission과 다른 적립 원인이다. 정답
 
 ## 정합성 검증과 수동 보정
 
+관리자는 `GET /api/admin/tickets/balance`로 CREATOR·COMMON 응모권의 Redis와 MySQL 잔액을 직접 관측할 수 있다. 키·행 미존재와 조회 실패, 차이 계산의 계약은 [Ticket API](api.md#get-apiadminticketsbalance)를 따른다. 조회는 보정을 수행하지 않는다.
+
 `TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니다). Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
 
 ### 키 유실 시 자동 적재(FR-P2-056, 이슈 #275)
