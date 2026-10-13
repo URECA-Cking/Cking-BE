@@ -164,5 +164,6 @@
 | 161 | 외부 | AI Quiz | USER | GET | `/api/creators/{creatorId}/quizzes/{quizId}/my-attempt` | 본인 응시 시점 결과 조회(게시 취소 후에도 유지) | - |
 | 162 | 외부 | Creator | CREATOR | POST | `/api/creator/space/profile-images` | Creator Space 프로필 사진 업로드 | - |
 | 163 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/profile-image` | 업로드한 Space 프로필 사진 연결 | - |
+| 164 | 외부 | Ticket | ADMIN | GET | `/api/admin/tickets/balance` | 지정 회원의 Redis·MySQL 응모권 잔액 관측·차이 조회 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

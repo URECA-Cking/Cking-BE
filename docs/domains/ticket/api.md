@@ -41,6 +41,44 @@ Query: 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범�
 
 cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDATION_FAILED`다.
 
+## GET /api/admin/tickets/balance
+
+- 권한: Bearer Access JWT의 `ADMIN`. Security의 1차 인가 뒤 Service가 호출자 `memberId`의 ADMIN 역할을 재검증한다.
+- 조회 대상은 query의 `memberId`이며 호출자와 다르다. `memberId`와 `couponType`은 필수다. `couponType=CREATOR`이면 양수 `creatorId`가 필수이고, `COMMON`이면 `creatorId`를 보내지 않는다.
+- CREATOR는 `user_ticket_balance`와 `ticket:balance:{creatorId}:{memberId}`, COMMON은 `user_common_ticket_balance`와 `ticket:balance:common:{memberId}`를 읽는다. 잔액을 변경하거나 키를 적재하지 않는다.
+- Redis 키 또는 MySQL 행이 없으면 해당 잔액은 `null`, 존재 여부는 `false`다. 두 값이 모두 있을 때만 `balanceDifference = redisBalance - mysqlBalance`를 계산한다. 0이면 일치, 0 이외면 불일치다.
+- `observedAt`은 두 조회가 끝난 시각(UTC)이다. 두 저장소는 원자적 스냅샷이 아니며, Redis Stream 비동기 반영 지연으로 차이가 날 수 있다. 차이만으로 장애를 확정하거나 자동 보정하지 않는다.
+
+```http
+GET /api/admin/tickets/balance?memberId=1&couponType=CREATOR&creatorId=2
+```
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {
+    "memberId": 1,
+    "creatorId": 2,
+    "couponType": "CREATOR",
+    "redisBalance": 8,
+    "mysqlBalance": 5,
+    "redisKeyExists": true,
+    "mysqlBalanceRowExists": true,
+    "balanceDifference": 3,
+    "observedAt": "2026-10-13T01:00:00Z"
+  },
+  "message": null
+}
+```
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` (400) | 필수값 누락·잘못된 종류·0 이하 ID·`creatorId` 조건 위반 |
+| `UNAUTHORIZED` (401) | Access JWT 없음·무효 |
+| `FORBIDDEN` (403) | 호출자에게 ADMIN 역할이 없음 |
+| `RESOURCE_NOT_FOUND` (404) | 호출자 Member가 없음. 대상 Balance 행 미존재는 정상 응답으로 구분 |
+| `REDIS_BALANCE_QUERY_FAILED` (503) | Redis 통신·명령 오류 또는 잔액 값 파싱 실패. 키 미존재는 정상 응답으로 구분 |
+
 ## POST /api/admin/tickets/common/resync
 
 - 권한: `ADMIN`
