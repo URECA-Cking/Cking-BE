@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,7 +22,10 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.ticket.application.TicketAdminService;
 import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
+import kr.co.cking.ticket.application.dto.AdminTicketLedgerPage;
+import kr.co.cking.ticket.application.dto.TicketLedgerItemResponse;
 import kr.co.cking.ticket.application.dto.TicketBalanceResponse;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.ticket.domain.TicketErrorCode;
 
 @WebMvcTest(TicketAdminController.class)
@@ -37,6 +41,34 @@ class TicketAdminControllerTest {
     private static final String BODY = """
             {"memberId":2,"creatorId":3,"reason":"정합성 배치 지속 불일치"}
             """;
+
+    @Test
+    void 관리자가_Creator_전용_이력을_조회한다() throws Exception {
+        TicketLedgerItemResponse item = new TicketLedgerItemResponse(
+                10L, 3L, "EARN", 5L, null, "출석", "request-1", Instant.parse("2026-10-13T00:00:00Z"));
+        when(ticketAdminService.getHistory(1L, 2L, CouponType.CREATOR, 3L, 20, null))
+                .thenReturn(new AdminTicketLedgerPage(2L, CouponType.CREATOR, 3L, java.util.List.of(item), null, false));
+
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .queryParam("memberId", "2")
+                        .queryParam("couponType", "CREATOR")
+                        .queryParam("creatorId", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.memberId").value(2))
+                .andExpect(jsonPath("$.data.couponType").value("CREATOR"))
+                .andExpect(jsonPath("$.data.creatorId").value(3))
+                .andExpect(jsonPath("$.data.items[0].type").value("EARN"));
+    }
+
+    @Test
+    void 이력_조회_필수_파라미터가_없으면_400이다() throws Exception {
+        mockMvc.perform(get("/api/admin/tickets/history").queryParam("couponType", "COMMON"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/admin/tickets/history").queryParam("memberId", "2"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(ticketAdminService);
+    }
 
     @Test
     void 재동기화_성공시_현재_잔액을_반환한다() throws Exception {
