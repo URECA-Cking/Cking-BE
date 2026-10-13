@@ -66,7 +66,7 @@
 | 62 | 외부 | Stream | ADMIN | GET | `/api/admin/dead-streams` | Dead Stream 목록 조회 | - |
 | 63 | 외부 | Stream | ADMIN | POST | `/api/admin/dead-streams/{id}/replay` | Dead Stream 수동 replay | 상태 기반 |
 | 64 | 외부 | Ticket | ADMIN | POST | `/api/admin/tickets/resync` | 잔액 수동 재동기화(Redis를 DB 기준으로) | 상태 기반 |
-| 164 | 외부 | Ticket | ADMIN | GET | `/api/admin/tickets/history` | 회원별 Creator 전용·공용 응모권 Ledger 이력 조회(cursor) | - |
+| 165 | 외부 | Ticket | ADMIN | GET | `/api/admin/tickets/history` | 회원별 Creator 전용·공용 응모권 Ledger 이력 조회(cursor) | - |
 | 65 | 외부 | Entry | USER | GET | `/api/events/{eventId}/entry-status` | 실시간 응모 현황(참여자 수·누적 응모권) 조회 | - |
 | 66 | 외부 | Mission | USER | GET | `/api/missions` | 공용 미션 조회(크리에이터 무관) | - |
 | 67 | 외부 | Mission | USER | POST | `/api/missions/{missionId}/complete` | 공용 미션 완료 | `requestId` |
@@ -165,5 +165,6 @@
 | 161 | 외부 | AI Quiz | USER | GET | `/api/creators/{creatorId}/quizzes/{quizId}/my-attempt` | 본인 응시 시점 결과 조회(게시 취소 후에도 유지) | - |
 | 162 | 외부 | Creator | CREATOR | POST | `/api/creator/space/profile-images` | Creator Space 프로필 사진 업로드 | - |
 | 163 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/profile-image` | 업로드한 Space 프로필 사진 연결 | - |
+| 164 | 외부 | Ticket | ADMIN | GET | `/api/admin/tickets/balance` | 지정 회원의 Redis·MySQL 응모권 잔액 관측·차이 조회 | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

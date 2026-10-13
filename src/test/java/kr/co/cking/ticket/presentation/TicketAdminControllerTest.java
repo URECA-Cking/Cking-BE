@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 
@@ -23,6 +24,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.security.WithMockJwt;
 import kr.co.cking.ticket.application.TicketAdminService;
+import kr.co.cking.ticket.application.dto.AdminTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.AdminTicketLedgerPage;
 import kr.co.cking.ticket.application.dto.TicketLedgerItemResponse;
@@ -209,5 +211,65 @@ class TicketAdminControllerTest {
                         .content("{\"memberId\":2,\"reason\":\"\"}"))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(ticketAdminService);
+    }
+
+    /** 관리자 잔액 조회가 대상 ID와 종류를 서비스에 전달하고 관측값을 응답하는지 검증한다. */
+    @Test
+    void 관리자_응모권_잔액을_조회한다() throws Exception {
+        when(ticketAdminService.getBalance(1L, 2L, CouponType.CREATOR, 3L))
+                .thenReturn(new AdminTicketBalanceResponse(2L, 3L, CouponType.CREATOR,
+                        8L, 5L, true, true, 3L, Instant.parse("2026-10-13T01:00:00Z")));
+
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .param("memberId", "2").param("couponType", "CREATOR").param("creatorId", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.memberId").value(2))
+                .andExpect(jsonPath("$.data.redisBalance").value(8))
+                .andExpect(jsonPath("$.data.mysqlBalance").value(5))
+                .andExpect(jsonPath("$.data.balanceDifference").value(3));
+    }
+
+    /** 공용 잔액 조회에서 MySQL 행 미존재를 오류가 아닌 응답 필드로 구분하는지 검증한다. */
+    @Test
+    void 공용_잔액의_MySQL_행_미존재를_표시한다() throws Exception {
+        when(ticketAdminService.getBalance(1L, 2L, CouponType.COMMON, null))
+                .thenReturn(new AdminTicketBalanceResponse(2L, null, CouponType.COMMON,
+                        4L, null, true, false, null, Instant.parse("2026-10-13T01:00:00Z")));
+
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .param("memberId", "2").param("couponType", "COMMON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").isEmpty())
+                .andExpect(jsonPath("$.data.mysqlBalanceRowExists").value(false))
+                .andExpect(jsonPath("$.data.mysqlBalance").isEmpty())
+                .andExpect(jsonPath("$.data.balanceDifference").isEmpty())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .contains("\"creatorId\":null", "\"mysqlBalance\":null", "\"balanceDifference\":null"));
+    }
+
+    /** 필수값·종류·양수 ID를 컨트롤러에서 거부하는지 검증한다. */
+    @Test
+    void 잔액_조회_입력_오류는_400이다() throws Exception {
+        mockMvc.perform(get("/api/admin/tickets/balance").param("couponType", "COMMON"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .param("memberId", "0").param("couponType", "COMMON"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .param("memberId", "2").param("couponType", "OTHER"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(ticketAdminService);
+    }
+
+    /** Redis 조회 실패를 키 미존재와 다른 503 오류로 전달하는지 검증한다. */
+    @Test
+    void Redis_조회_실패는_503이다() throws Exception {
+        when(ticketAdminService.getBalance(1L, 2L, CouponType.COMMON, null))
+                .thenThrow(new BusinessException(TicketErrorCode.REDIS_BALANCE_QUERY_FAILED));
+
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .param("memberId", "2").param("couponType", "COMMON"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("REDIS_BALANCE_QUERY_FAILED"));
     }
 }
