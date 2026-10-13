@@ -3,7 +3,7 @@
 
 services:
   redis:
-    image: redis:7.2-alpine
+    image: redis:7.2.16-alpine@sha256:ccd6aa8d45ff3f033d6fa15b8cc1a50579f65c89f38cf9bb607a954c4f2128ed
     container_name: cking-redis
     restart: unless-stopped
     # maxmemory: 인프라 명세 3.4의 초기 배분값. noeviction은 한도가 있어야 동작한다.

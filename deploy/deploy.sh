@@ -52,7 +52,7 @@ export CKING_RECOMMENDATION_API_KEY_HASHES="$recommendation_key_hashes"
 export IMAGE_TAG="$TAG"
 
 echo "[3/4] 이미지 pull 및 기동: $IMAGE_TAG"
-# app만 pull한다. redis는 떠다니는 태그라 전체 pull 시 패치 버전이 조용히 바뀔 수 있다.
+# app만 pull한다. redis는 digest로 고정돼 있어, 고정값이 바뀌면 up -d가 그 이미지를 받아 컨테이너를 다시 만든다.
 docker compose pull app
 docker compose up -d
 
