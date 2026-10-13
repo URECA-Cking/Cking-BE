@@ -101,6 +101,7 @@
 | `VALIDATION_FAILED` | 400 | 본문이 비었거나 500자 초과 |
 | `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
 | `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로워도 작성 Creator 본인도 아님 (전체 공개 게시글 포함) |
+| `COMMENT_RESTRICTED` | 403 | 관리자의 댓글 숨김 경고 누적이나 수동 설정으로 댓글 작성이 제한됨. 메시지에 해제 시각(UTC)이 들어간다 ([Sanction](../sanction/README.md)) |
 | `RESOURCE_NOT_FOUND` | 404 | Member·Creator·게시글 없음 |
 
 ## PATCH /api/creators/{creatorId}/posts/{postId}/comments/{commentId}
@@ -113,6 +114,7 @@
 | `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
 | `FORBIDDEN` | 403 | 다른 사람의 댓글 (게시글 작성 Creator 포함) |
 | `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로우를 끊은 작성자 |
+| `COMMENT_RESTRICTED` | 403 | 댓글 작성이 제한된 작성자. 메시지에 해제 시각(UTC)이 들어간다. 삭제는 제한 중에도 할 수 있다 |
 | `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음 |
 
 ## DELETE /api/creators/{creatorId}/posts/{postId}/comments/{commentId}
@@ -213,7 +215,8 @@
 - 숨김은 필터 판정과 별개로 저장하며(`admin_hidden_at`, `admin_hidden_by`) 되돌리지 않는다. 숨긴 댓글은 사용자 목록에서 가려지고 원문 보기도 허용하지 않는다([필터링](#필터링)).
 - `handledReportCount`는 이번 요청으로 처리한 접수 신고 수다. **이미 숨긴 댓글을 다시 숨기면 아무것도 바꾸지 않고 성공**하며(멱등) 0이다.
 - 신고는 있지만 접수 신고가 모두 이미 반려된 댓글(숨기지도 않음)은 서로 모순되는 조치라 `COMMENT_REPORT_ALREADY_HANDLED`(409)다. 반려 뒤 새 신고가 접수되면(숨기기 전까지는 새 신고를 받는다) 다시 숨길 수 있다.
-- 잠금 순서는 게시글 공유 잠금 → 댓글 쓰기 잠금이며 같은 댓글에 동시에 들어오는 신고 접수와 직렬화된다. 숨김이 끝난 뒤에는 새 신고를 받지 않으므로 숨긴 댓글에 접수 신고가 남지 않는다.
+- **작성자에게 경고가 쌓인다**(이슈 #569). 처음 숨길 때 작성자에게 경고 1회가 기록되고, 최근 90일 안의 경고 횟수에 따라 댓글 작성이 1일·3일·7일 제한된다. 이미 숨긴 댓글을 다시 숨기면 경고를 새로 쌓지 않는다. 정책은 [Sanction](../sanction/README.md)을 따른다.
+- 잠금 순서는 작성자 행 → 게시글 공유 잠금 → 댓글 쓰기 잠금이다. 같은 작성자의 서로 다른 댓글을 동시에 숨겨도 경고 횟수가 겹쳐 읽히지 않고, 같은 댓글에 동시에 들어오는 신고 접수와도 직렬화된다. 숨김이 끝난 뒤에는 새 신고를 받지 않으므로 숨긴 댓글에 접수 신고가 남지 않는다.
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
