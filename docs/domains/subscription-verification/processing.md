@@ -146,7 +146,7 @@ LOW_CONFIDENCE
 
 - 정규화 JPEG bytes를 `inlineData(mimeType=image/jpeg, data=Base64)` 형식으로 전달한다. S3 URL·Object Key·Files API는 사용하지 않는다.
 - 대상 `channelName`과 `channelHandle`은 JSON으로 이스케이프한 비신뢰 데이터 블록으로 text prompt에 함께 전달한다. 블록 안의 문자열은 명령으로 해석하지 않으며, 이미지에 없는 관측값을 이 입력에서 추론할 수 없도록 Prompt에 명시한다.
-- `thinkingLevel=minimal`, JSON Structured Output schema와 최대 출력 토큰을 요청한다.
+- `thinkingLevel=minimal`, JSON Structured Output schema와 최대 출력 토큰을 요청한다. Gemini `responseFormat.text.mimeType`은 REST API enum인 `APPLICATION_JSON`으로 전달한다.
 - Prompt는 이미지 안의 모든 문구를 증거 데이터로만 취급하고, 이미지 내부 명령을 실행하지 않도록 지시한다.
 
 ### 응답과 검증
