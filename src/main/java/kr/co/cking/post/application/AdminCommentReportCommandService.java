@@ -10,6 +10,7 @@ import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.repository.CreatorPostCommentReportRepository;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
+import kr.co.cking.sanction.application.SanctionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,11 @@ import java.time.Instant;
  * <p>잠금 순서는 신고 접수·댓글 작성·수정·삭제와 같은 게시글 공유 잠금 → 댓글 쓰기 잠금이다(관리자는 신고자 행을
  * 잠그지 않는다). 댓글 행을 잠근 채 숨김 여부와 접수 신고를 읽고 바꾸므로, 같은 댓글에 들어오는 신고 접수와 직렬화돼
  * 숨김 직후 새 신고가 접수 상태로 남는 일이 없다.
+ *
+ * <p>숨김은 작성자에게 경고로 기록되고 경고 횟수에 따라 댓글 작성 제한이 생긴다(이슈 #569). 경고를 센 뒤 저장하는 두
+ * 단계라 같은 작성자의 처리를 직렬화해야 하므로, 숨김은 작성자 행을 가장 먼저 쓰기 잠금으로 읽는다. 잠금 순서는 작성자
+ * → 게시글 → 댓글로 신고 접수({@link CreatorPostCommentReportService})와 같아 교착이 생기지 않는다. 이미 숨긴 댓글을
+ * 다시 숨기는 요청은 경고를 새로 쌓지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,10 +49,15 @@ public class AdminCommentReportCommandService {
     private final CreatorPostRepository postRepository;
     private final CreatorPostCommentRepository commentRepository;
     private final CreatorPostCommentReportRepository reportRepository;
+    private final SanctionService sanctionService;
     private final Clock clock;
 
     public AdminCommentReportActionView hide(Long adminId, Long commentId) {
-        CreatorPostComment comment = lockReportedComment(adminId, commentId);
+        memberQueryService.validateAdmin(adminId);
+        Long authorId = commentRepository.findMemberIdByCommentId(commentId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        sanctionService.lockSubject(authorId);
+        CreatorPostComment comment = lockReportedComment(commentId);
         if (comment.isHiddenByAdmin()) {
             return new AdminCommentReportActionView(commentId, CommentReportStatus.RESOLVED, 0);
         }
@@ -57,11 +68,13 @@ public class AdminCommentReportCommandService {
             throw new BusinessException(PostErrorCode.COMMENT_REPORT_ALREADY_HANDLED);
         }
         comment.hideByAdmin(adminId, now);
+        sanctionService.recordCommentHide(comment.getMemberId(), commentId, adminId, now);
         return new AdminCommentReportActionView(commentId, CommentReportStatus.RESOLVED, handled);
     }
 
     public AdminCommentReportActionView reject(Long adminId, Long commentId) {
-        CreatorPostComment comment = lockReportedComment(adminId, commentId);
+        memberQueryService.validateAdmin(adminId);
+        CreatorPostComment comment = lockReportedComment(commentId);
         if (comment.isHiddenByAdmin()) {
             throw new BusinessException(PostErrorCode.COMMENT_REPORT_ALREADY_HANDLED);
         }
@@ -71,11 +84,10 @@ public class AdminCommentReportCommandService {
     }
 
     /**
-     * 관리자를 검증하고 게시글 공유 잠금 다음에 댓글을 쓰기 잠금으로 읽는다. 댓글이 없거나 신고가 하나도 없으면 404다.
+     * 게시글 공유 잠금 다음에 댓글을 쓰기 잠금으로 읽는다. 댓글이 없거나 신고가 하나도 없으면 404다.
      * 게시글 ID는 엔티티를 영속성 컨텍스트에 올리지 않는 값 조회로 읽어, 잠금을 잡은 뒤 읽는 댓글이 최신 상태이게 한다.
      */
-    private CreatorPostComment lockReportedComment(Long adminId, Long commentId) {
-        memberQueryService.validateAdmin(adminId);
+    private CreatorPostComment lockReportedComment(Long commentId) {
         Long postId = commentRepository.findPostIdByCommentId(commentId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         postRepository.findByIdForShare(postId)

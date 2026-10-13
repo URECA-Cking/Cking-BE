@@ -22,17 +22,22 @@ import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CreatorPostCommentReportRepository;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
+import kr.co.cking.sanction.domain.SanctionErrorCode;
+import kr.co.cking.sanction.repository.MemberSanctionRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,6 +73,10 @@ class CreatorPostCommentReportIntegrationTest {
     private MemberRepository memberRepository;
     @Autowired
     private CreatorRepository creatorRepository;
+    @Autowired
+    private MemberSanctionRepository sanctionRepository;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private final List<Member> members = new ArrayList<>();
     private Creator creator;
@@ -83,6 +92,13 @@ class CreatorPostCommentReportIntegrationTest {
                     .forEach(post -> postService.delete(creator.getMemberId(), post.getPostId()));
             creatorRepository.delete(creator);
         }
+        // 관리자가 댓글을 숨기면 작성자에게 제재가 생기고 회원 FK(대상·처리 관리자)가 걸리므로 회원보다 먼저 지운다.
+        List<Long> memberIds = members.stream().map(Member::getMemberId).toList();
+        sanctionRepository.deleteAll(sanctionRepository.findAll().stream()
+                .filter(sanction -> memberIds.contains(sanction.getMemberId())
+                        || memberIds.contains(sanction.getCreatedBy())
+                        || memberIds.contains(sanction.getReleasedBy()))
+                .toList());
         memberRepository.deleteAll(members);
     }
 
@@ -405,6 +421,60 @@ class CreatorPostCommentReportIntegrationTest {
         assertThat(reportRepository.findAll().stream()
                 .filter(saved -> saved.getCommentId().equals(commentId))
                 .filter(saved -> saved.getStatus() == CommentReportStatus.PENDING)).isEmpty();
+    }
+
+    /**
+     * 관리자의 숨김이 커밋되기 전에 시작한 작성자의 댓글 작성은 작성자 행 잠금에서 기다렸다가, 숨김 커밋 뒤의 제재를 보고
+     * 거부돼야 한다. 잠금 없이 일반 조회로 시작하면 숨김 커밋 전 스냅샷에 묶여 제한을 못 보고 댓글이 저장된다.
+     */
+    @Test
+    void 관리자가_숨기는_중에_시작한_작성은_숨김이_끝난_뒤_제한을_보고_거부된다() throws Exception {
+        Long commentId = commentOnPublicPost();
+        Member reporter = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(reporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+        long commentsBefore = commentRepository.findAll().stream().filter(c -> c.getPostId().equals(postId)).count();
+
+        CountDownLatch hiddenButNotCommitted = new CountDownLatch(1);
+        CountDownLatch mayCommit = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> hideTransaction = executor.submit(() ->
+                    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                        adminCommandService.hide(admin.getMemberId(), commentId);
+                        hiddenButNotCommitted.countDown();
+                        try {
+                            mayCommit.await(30, TimeUnit.SECONDS);
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }));
+            assertThat(hiddenButNotCommitted.await(30, TimeUnit.SECONDS)).isTrue();
+
+            Future<Throwable> write = executor.submit(() -> {
+                try {
+                    commentService.create(author.getMemberId(), creator.getCreatorId(), postId, "제한 직전에 쓴 댓글");
+                    return null;
+                } catch (Throwable failure) {
+                    return failure;
+                }
+            });
+            // 작성자 행 잠금을 숨김 트랜잭션이 쥐고 있으므로 작성은 끝나지 않고 기다려야 한다.
+            Thread.sleep(700);
+            assertThat(write.isDone()).isFalse();
+
+            mayCommit.countDown();
+            hideTransaction.get(30, TimeUnit.SECONDS);
+            assertThat(write.get(30, TimeUnit.SECONDS)).isInstanceOfSatisfying(BusinessException.class,
+                    exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.COMMENT_RESTRICTED));
+        } finally {
+            mayCommit.countDown();
+            executor.shutdownNow();
+        }
+
+        assertThat(commentRepository.findAll().stream().filter(c -> c.getPostId().equals(postId)).count())
+                .isEqualTo(commentsBefore);
     }
 
     private List<Long> reportedIds(Member admin, CommentReportStatus status) {

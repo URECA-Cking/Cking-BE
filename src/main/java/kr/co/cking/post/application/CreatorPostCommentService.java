@@ -14,6 +14,7 @@ import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.filter.CommentFilterRequestedEvent;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
+import kr.co.cking.sanction.application.SanctionQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -38,6 +39,12 @@ import java.util.stream.Collectors;
  * <p>작성·수정·삭제는 게시글 행을 공유 잠금으로 읽어 동시에 진행 중인 게시글 삭제와 직렬화한다. 삭제가 먼저 끝나면
  * FK 오류 대신 404가 된다. 수정·삭제는 이어서 댓글 행을 쓰기 잠금으로 읽어 같은 댓글의 동시 수정·삭제도 직렬화한다.
  * 잠금 순서는 항상 게시글 → 댓글이며, 게시글 삭제도 같은 순서라 교착이 생기지 않는다.
+ *
+ * <p>작성·수정은 댓글 작성 제한 중인 회원을 {@code COMMENT_RESTRICTED}(403)로 막는다(이슈 #569). 삭제는 막지 않는다.
+ * 제한 확인은 <b>작성자 행을 쓰기 잠금으로 읽은 뒤</b> 한다. 일반 조회로 시작하면 MySQL 기본 REPEATABLE READ가 그 시점의
+ * 스냅샷을 고정해, 그 사이 관리자가 댓글을 숨기거나 수동 제한을 확정해도 이 요청은 제한을 못 보고 댓글을 저장할 수 있다.
+ * 잠금 읽기는 최신 커밋을 읽고 스냅샷은 잠금 이후 첫 일반 조회에서 만들어지므로, 제재 처리(작성자 행 잠금)가 끝날 때까지
+ * 기다린 뒤 그 결과를 본다. 잠금 순서는 작성자 → 게시글 → 댓글로 숨김 처리·신고 접수와 같다.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,6 +58,7 @@ public class CreatorPostCommentService {
     private final ProfileImageUrlResolver profileImageUrlResolver;
     private final Clock clock;
     private final ApplicationEventPublisher eventPublisher;
+    private final SanctionQueryService sanctionQueryService;
 
     /** @param viewerMemberId 비로그인이면 null */
     @Transactional(readOnly = true)
@@ -98,6 +106,7 @@ public class CreatorPostCommentService {
     public CreatorPostCommentView create(Long memberId, Long creatorId, Long postId, String content) {
         Member author = requireMember(memberId);
         author.requireProfileConfigured();
+        sanctionQueryService.requireCommentWriteAllowed(memberId);
         Creator creator = accessPolicy.requireCreator(creatorId);
         accessPolicy.requireViewablePostForCommentWrite(creator, postId, memberId);
         requireCanComment(creator, memberId);
@@ -112,6 +121,7 @@ public class CreatorPostCommentService {
             Long memberId, Long creatorId, Long postId, Long commentId, String content) {
         Member author = requireMember(memberId);
         author.requireProfileConfigured();
+        sanctionQueryService.requireCommentWriteAllowed(memberId);
         Creator creator = accessPolicy.requireCreator(creatorId);
         accessPolicy.requireViewablePostForCommentWrite(creator, postId, memberId);
         CreatorPostComment comment = requireCommentForUpdate(postId, commentId);
@@ -136,8 +146,12 @@ public class CreatorPostCommentService {
         commentRepository.delete(comment);
     }
 
+    /**
+     * 작성·수정하는 회원을 쓰기 잠금으로 읽는다. 이 호출이 트랜잭션의 첫 DB 접근이어야 제재 확인이 잠금 이후의 상태를 본다.
+     * 같은 회원의 제재 처리(숨김·수동 제한)와 직렬화된다.
+     */
     private Member requireMember(Long memberId) {
-        return memberRepository.findById(memberId)
+        return memberRepository.findByIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 
