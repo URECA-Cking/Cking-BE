@@ -500,12 +500,10 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
-        serviceWith(Clock.fixed(Instant.parse("2026-10-13T00:00:01Z"), ZoneOffset.UTC))
-                .completeByPostLike(CREATOR_ID, USER_ID);
-        serviceWith(Clock.fixed(Instant.parse("2026-10-13T23:59:59Z"), ZoneOffset.UTC))
-                .completeByPostLike(CREATOR_ID, USER_ID);
-        serviceWith(Clock.fixed(Instant.parse("2026-10-14T00:00:01Z"), ZoneOffset.UTC))
-                .completeByPostLike(CREATOR_ID, USER_ID);
+        MissionCompletionService service = serviceWith(Clock.systemUTC());
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-13T00:00:01Z"));
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-13T23:59:59Z"));
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-14T00:00:01Z"));
 
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
         verify(ticketEarnService, org.mockito.Mockito.times(3)).earn(captor.capture());
@@ -518,6 +516,38 @@ class MissionCompletionServiceTest {
         assertThat(commands.get(0).userId()).isEqualTo(USER_ID);
     }
 
+    /**
+     * 자격 판정과 지급 사이에 UTC 자정을 넘긴 경우: 이 서비스의 시계가 이미 다음 날이어도 호출자가 판정한 시각(D)의 날짜로
+     * requestId·periodKey를 만든다. 시계를 다시 읽으면 D 판정이 D+1 보상으로 처리되어, 이전 날 좋아요에 날짜만 바뀐 중복 요청이
+     * 새 좋아요 없이 다음 날 보상을 받는다.
+     */
+    @Test
+    void 게시글_좋아요_보상은_판정_시각의_날짜를_쓰고_서비스_시계가_자정을_넘겨도_바뀌지_않는다() {
+        Mission like = likeMission();
+        org.springframework.test.util.ReflectionTestUtils.setField(like, "missionId", MISSION_ID);
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.of(like));
+        stubMemberAndMission(like);
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        Instant decidedBeforeMidnight = Instant.parse("2026-10-13T23:59:59.999Z");
+        MissionCompletionService afterMidnight =
+                serviceWith(Clock.fixed(Instant.parse("2026-10-14T00:00:00.050Z"), ZoneOffset.UTC));
+        MissionCompletionService beforeMidnight =
+                serviceWith(Clock.fixed(decidedBeforeMidnight, ZoneOffset.UTC));
+
+        beforeMidnight.completeByPostLike(CREATOR_ID, USER_ID, decidedBeforeMidnight);
+        afterMidnight.completeByPostLike(CREATOR_ID, USER_ID, decidedBeforeMidnight);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(1).periodKey()).isEqualTo("2026-10-13");
+        assertThat(commands.get(1).requestId()).isEqualTo(commands.get(0).requestId());
+        var observation = org.mockito.ArgumentCaptor.forClass(MissionObservationContext.class);
+        verify(abuseObserver, org.mockito.Mockito.times(2)).observeSuccess(observation.capture(), any());
+        assertThat(observation.getAllValues().get(1).requestedAt()).isEqualTo(decidedBeforeMidnight);
+    }
+
     @Test
     void 게시글_좋아요_보상은_다른_사용자와_다른_requestId를_쓴다() {
         Mission like = likeMission();
@@ -527,11 +557,11 @@ class MissionCompletionServiceTest {
         when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID)).thenReturn(Optional.of(like));
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
-        MissionCompletionService service =
-                serviceWith(Clock.fixed(Instant.parse("2026-10-13T00:00:01Z"), ZoneOffset.UTC));
+        MissionCompletionService service = serviceWith(Clock.systemUTC());
+        Instant decidedAt = Instant.parse("2026-10-13T00:00:01Z");
 
-        service.completeByPostLike(CREATOR_ID, USER_ID);
-        service.completeByPostLike(CREATOR_ID, USER_ID + 1);
+        service.completeByPostLike(CREATOR_ID, USER_ID, decidedAt);
+        service.completeByPostLike(CREATOR_ID, USER_ID + 1, decidedAt);
 
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
         verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
@@ -542,7 +572,7 @@ class MissionCompletionServiceTest {
     void 게시글_좋아요_보상은_Creator에_좋아요_미션이_없으면_MISSION_NOT_FOUND다() {
         when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> serviceWith(Clock.systemUTC()).completeByPostLike(CREATOR_ID, USER_ID))
+        assertThatThrownBy(() -> serviceWith(Clock.systemUTC()).completeByPostLike(CREATOR_ID, USER_ID, Instant.now()))
                 .isInstanceOfSatisfying(BusinessException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(MissionErrorCode.MISSION_NOT_FOUND));
         verify(ticketEarnService, never()).earn(any());

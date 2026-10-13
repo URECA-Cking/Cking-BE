@@ -54,7 +54,7 @@ public class PostLikeService {
             return false;
         }
         try {
-            MissionCompleteOutcome outcome = missionCompletionService.completeByPostLike(creatorId, memberId);
+            MissionCompleteOutcome outcome = missionCompletionService.completeByPostLike(creatorId, memberId, result.decidedAt());
             return outcome.code() == EarnResultCode.EARN_ACCEPTED;
         } catch (BusinessException exception) {
             // 미션이 없거나 기간 밖인 것은 정상 운영 상태라 낮은 수준으로만 남긴다.

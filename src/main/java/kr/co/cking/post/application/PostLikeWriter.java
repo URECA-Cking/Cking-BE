@@ -46,7 +46,7 @@ class PostLikeWriter {
         // insert의 영향 행 수로 새 좋아요를 판단하지 않는다(드라이버 설정에 따라 기존 행에도 1이 온다). DB에 있는 생성
         // 시각을 읽어 오늘 눌린 좋아요인지 판단한다. 새로 넣었으면 방금 넣은 시각, 이미 있었으면 그때의 시각이다.
         Instant likedAt = likeRepository.findCreatedAt(post.getPostId(), memberId).orElse(null);
-        return new Result(creator, isSameUtcDay(likedAt, now), likeRepository.countByPostId(post.getPostId()));
+        return new Result(creator, isSameUtcDay(likedAt, now), now, likeRepository.countByPostId(post.getPostId()));
     }
 
     /** 공개 범위와 팔로우를 보지 않는다. 팔로우를 끊은 뒤에도 자기 좋아요는 취소할 수 있다. */
@@ -55,7 +55,7 @@ class PostLikeWriter {
         Creator creator = accessPolicy.requireCreator(creatorId);
         CreatorPost post = accessPolicy.requirePostOfForCommentWrite(creator, postId);
         likeRepository.deleteByPostIdAndMemberId(post.getPostId(), memberId);
-        return new Result(creator, false, likeRepository.countByPostId(post.getPostId()));
+        return new Result(creator, false, clock.instant(), likeRepository.countByPostId(post.getPostId()));
     }
 
     private void requireMember(Long memberId) {
@@ -76,7 +76,9 @@ class PostLikeWriter {
     /**
      * @param likedToday (좋아요) 현재 좋아요가 오늘(UTC) 눌린 것인지. 새로 추가했거나 오늘 눌러 둔 좋아요면 true,
      *                   이전 날에 눌러 둔 좋아요면 false. 취소 결과에서는 항상 false
+     * @param decidedAt  {@code likedToday}를 판정한 시각. 미션 보상은 이 시각의 날짜로 지급해, 판정과 지급 사이에
+     *                   UTC 자정을 넘겨도 두 날짜가 어긋나지 않게 한다
      */
-    record Result(Creator creator, boolean likedToday, long likeCount) {
+    record Result(Creator creator, boolean likedToday, Instant decidedAt, long likeCount) {
     }
 }

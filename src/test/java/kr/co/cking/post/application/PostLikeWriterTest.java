@@ -65,6 +65,7 @@ class PostLikeWriterTest {
 
         verify(likeRepository).insertIfAbsent(PUBLIC_POST_ID, MEMBER_ID, NOW);
         assertThat(result.likedToday()).isTrue();
+        assertThat(result.decidedAt()).isEqualTo(NOW);
         assertThat(result.likeCount()).isEqualTo(3L);
     }
 

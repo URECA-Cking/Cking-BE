@@ -72,16 +72,20 @@ public class MissionCompletionService {
      * 정한 requestId로 {@link #completeVerifiedLike}를 수행한다. 같은 날의 반복 호출(재좋아요, 취소 후 재좋아요,
      * 재시도)은 같은 requestId라 {@code ALREADY_PROCESSED}가 되고, 날짜가 바뀌면 새 requestId라 다시 적립된다.
      *
+     * <p>이 서비스의 시계를 다시 읽지 않고 {@code decidedAt}을 쓴다. 호출자가 "오늘 누른 좋아요"라고 판정한 시각과 보상
+     * 날짜(requestId·periodKey·활성 검증·관찰 시각)가 같은 값이어야 하기 때문이다. 판정과 이 호출 사이에 UTC 자정을 넘겨도
+     * 판정한 날짜의 보상으로 처리되므로, 이전 날 좋아요에 날짜만 바뀐 중복 요청이 다음 날 보상을 받을 수 없다.
+     *
+     * @param decidedAt 호출자가 좋아요 자격을 판정한 시각
      * @throws BusinessException Creator에 LIKE 미션이 없으면 {@code MISSION_NOT_FOUND}. 그 밖의 실패는
      *                           {@link #completeVerifiedLike}와 같다.
      */
-    public MissionCompleteOutcome completeByPostLike(Long creatorId, Long memberId) {
+    public MissionCompleteOutcome completeByPostLike(Long creatorId, Long memberId, Instant decidedAt) {
         Mission mission = missionRepository.findByCreatorIdAndType(creatorId, MissionType.LIKE)
                 .orElseThrow(() -> new BusinessException(MissionErrorCode.MISSION_NOT_FOUND));
-        // requestId의 날짜와 EARN의 periodKey가 같은 시각에서 나오도록 한 번만 읽는다(자정 경계 불일치 방지).
-        Instant now = clock.instant();
-        UUID requestId = postLikeRequestId(memberId, mission.getMissionId(), periodKeyOf(now));
-        return complete(creatorId, mission.getMissionId(), new MissionCompleteCommand(memberId, requestId), now, true);
+        UUID requestId = postLikeRequestId(memberId, mission.getMissionId(), periodKeyOf(decidedAt));
+        return complete(
+                creatorId, mission.getMissionId(), new MissionCompleteCommand(memberId, requestId), decidedAt, true);
     }
 
     /**

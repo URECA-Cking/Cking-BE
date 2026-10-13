@@ -160,7 +160,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 LIKE 미션은 게시글 좋아요가 성공해야 완료된다(이슈 #554). 클라이언트가 좋아요 없이 일반 완료 API로 보상을 받을 수 없다.
 
 - **호출 경로**: `POST /api/creators/{creatorId}/posts/{postId}/likes`가 성공한 뒤 Post의 `PostLikeService`가 `MissionCompletionService#completeByPostLike(creatorId, memberId)`를 호출한다. 이 메서드는 Creator의 LIKE 미션을 찾아 위 처리 순서의 7~8단계(활성 검증, EARN)를 수행한다. 클라이언트가 이 경로를 직접 호출하는 외부 API는 없다.
-- **requestId**: 서버가 `post-like:{memberId}:{missionId}:{UTC 날짜}`로 만든 결정적 UUID(name-based)를 쓴다. 같은 날의 반복 호출(재좋아요, 취소 후 재좋아요, 재시도)은 같은 `requestId`라 `ALREADY_PROCESSED`이고, 날짜가 바뀌면 새 `requestId`라 다시 적립될 수 있다. 호출 자체는 Post가 **오늘(UTC) 눌린 좋아요**일 때만 하므로, 이전 날에 눌러 둔 좋아요에 날짜만 바뀐 중복 POST로 그날 보상을 받을 수 없다. `requestId`의 날짜와 EARN `periodKey`는 같은 시각에서 한 번만 계산한다.
+- **requestId**: 서버가 `post-like:{memberId}:{missionId}:{UTC 날짜}`로 만든 결정적 UUID(name-based)를 쓴다. 같은 날의 반복 호출(재좋아요, 취소 후 재좋아요, 재시도)은 같은 `requestId`라 `ALREADY_PROCESSED`이고, 날짜가 바뀌면 새 `requestId`라 다시 적립될 수 있다. 호출 자체는 Post가 **오늘(UTC) 눌린 좋아요**일 때만 하므로, 이전 날에 눌러 둔 좋아요에 날짜만 바뀐 중복 POST로 그날 보상을 받을 수 없다. `requestId`의 날짜, EARN `periodKey`, 활성 검증, 관찰 시각은 이 서비스의 시계를 다시 읽지 않고 **호출자(Post)가 좋아요 자격을 판정한 시각**(`decidedAt`) 하나로 정한다. 판정과 지급 사이에 UTC 자정을 넘겨도 판정한 날짜의 보상으로 처리되므로, 이전 날 좋아요에 날짜만 바뀐 중복 요청이 다음 날 보상을 받을 수 없다.
 - **지급 규칙**: 기존과 같다. 사용자·Creator·미션·UTC 날짜 기준 하루 1회이며 Redis EARN Guard가 먼저 막고 `mission_completion.uk_completion_business`가 마지막으로 보장한다. 같은 날 미션 버튼 방식으로 이미 받은 보상이 있으면(구 클라이언트) 가드가 막는다.
 - **제외**: 이전 날에 누른 좋아요를 유지한 채 날짜만 바뀐 중복 POST는 보상을 요청하지 않는다(좋아요 행의 생성 날짜(UTC)가 오늘이 아님). 작성 Creator 본인이 자기 게시글에 한 좋아요는 보상을 요청하지 않는다. Creator에 LIKE 미션이 없거나 비활성이면 좋아요만 성공한다.
 - **실패 처리**: 미션 호출의 실패(`MISSION_*`, `EARN_*`, 예기치 못한 예외)는 좋아요를 되돌리지 않는다. 좋아요 응답의 `missionAwarded`는 이번 요청으로 `EARN_ACCEPTED`가 나왔을 때만 true다.
