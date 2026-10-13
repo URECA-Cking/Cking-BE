@@ -33,13 +33,15 @@ public class MemberInterestController {
     @PutMapping("/api/me/interests")
     @Operation(
             summary = "내 관심 분야 저장(전체 교체)",
-            description = "기존 선택 전체를 요청 목록으로 교체합니다. 같은 요청을 반복해도 결과가 같고, 빈 배열은 전체 해제입니다."
+            description = "기존 선택 전체를 요청 목록으로 교체합니다. 같은 요청을 반복해도 결과가 같고, 빈 배열은 전체 해제입니다. "
+                    + "세부 주제(subtopicVersion·subtopicCodes)는 둘 다 생략하면 유지하고, 보내면 전체를 교체합니다."
     )
     public ApiResponse<MemberInterestResponse> replace(
             @CurrentMemberId Long memberId,
             @Valid @RequestBody MemberInterestRequest.Replace request
     ) {
         return ApiResponse.success(MemberInterestResponse.from(
-                service.replace(memberId, request.taxonomyVersion(), request.interestCodes())));
+                service.replace(memberId, request.taxonomyVersion(), request.interestCodes(),
+                        request.subtopicVersion(), request.subtopicCodes())));
     }
 }
