@@ -41,6 +41,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -591,8 +592,12 @@ class CreatorPostCommentReportIntegrationTest {
                 .filter(sanction -> sanction.getMemberId().equals(author.getMemberId()))
                 .filter(sanction -> sanction.getSource() == SanctionSource.MANUAL)
                 .findFirst().orElseThrow().getEndsAt();
+        // 알림은 초 이하를 버리지 않고 다음 분으로 올려 안내한다.
+        Instant manualEndsAtCeiledToMinute = manualEndsAt.truncatedTo(ChronoUnit.MINUTES).equals(manualEndsAt)
+                ? manualEndsAt
+                : manualEndsAt.truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES);
         String expectedUntil = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
-                .withZone(ZoneOffset.UTC).format(manualEndsAt);
+                .withZone(ZoneOffset.UTC).format(manualEndsAtCeiledToMinute);
 
         adminCommandService.hide(admin.getMemberId(), commentId);
 
