@@ -36,7 +36,7 @@ class QuizTest {
     void 게시하면_게시_상태와_포인터가_함께_바뀌고_취소하면_함께_비워진다() {
         Quiz quiz = QuizFixtures.quiz(1L, 10L);
 
-        quiz.publish(100L, LATER);
+        quiz.publish(100L, QuizFixtures.revisionSha256(), LATER);
         assertThat(quiz.getPublicationStatus()).isEqualTo(QuizPublicationStatus.PUBLISHED);
         assertThat(quiz.getPublishedRevisionId()).isEqualTo(100L);
         assertThat(quiz.isPublishing(100L)).isTrue();
@@ -52,10 +52,10 @@ class QuizTest {
     @Test
     void 재게시하면_게시_시각을_갱신하고_게시_취소_시각을_지운다() {
         Quiz quiz = QuizFixtures.quiz(1L, 10L);
-        quiz.publish(100L, LATER);
+        quiz.publish(100L, QuizFixtures.revisionSha256(), LATER);
         quiz.unpublish(LATER.plusSeconds(1));
 
-        quiz.publish(100L, LATER.plusSeconds(2));
+        quiz.publish(100L, QuizFixtures.revisionSha256(), LATER.plusSeconds(2));
 
         assertThat(quiz.getPublicationStatus()).isEqualTo(QuizPublicationStatus.PUBLISHED);
         assertThat(quiz.getPublishedRevisionId()).isEqualTo(100L);
@@ -76,5 +76,48 @@ class QuizTest {
 
         assertThat(quiz.isOwnedBy(10L)).isTrue();
         assertThat(quiz.isOwnedBy(11L)).isFalse();
+    }
+
+    @Test
+    void 첫_게시가_내용을_잠그고_게시_revision과_해시를_고정하며_게시_취소해도_남는다() {
+        Quiz quiz = QuizFixtures.quiz(1L, 10L);
+        String sha = QuizFixtures.revisionSha256();
+        assertThat(quiz.isContentLocked()).isFalse();
+
+        quiz.publish(100L, sha, LATER);
+        quiz.unpublish(LATER.plusSeconds(1));
+
+        assertThat(quiz.isContentLocked()).isTrue();
+        assertThat(quiz.getLockedRevisionId()).isEqualTo(100L);
+        assertThat(quiz.getLockedRevisionSha256()).isEqualTo(sha);
+        assertThat(quiz.getPublishedRevisionId()).isNull();
+    }
+
+    @Test
+    void 잠긴_뒤에는_고정한_revision과_해시만_다시_게시할_수_있다() {
+        Quiz quiz = QuizFixtures.quiz(1L, 10L);
+        String sha = QuizFixtures.revisionSha256();
+        quiz.publish(100L, sha, LATER);
+        quiz.unpublish(LATER.plusSeconds(1));
+
+        assertThat(quiz.canPublish(101L, sha)).isFalse();
+        assertThat(quiz.canPublish(100L, "f".repeat(64))).isFalse();
+        assertThatThrownBy(() -> quiz.publish(101L, sha, LATER)).isInstanceOf(IllegalStateException.class);
+        assertThat(quiz.getPublicationStatus()).isEqualTo(QuizPublicationStatus.UNPUBLISHED);
+
+        quiz.publish(100L, sha, LATER.plusSeconds(2));
+        assertThat(quiz.isPublishing(100L)).isTrue();
+        assertThat(quiz.getLockedRevisionId()).isEqualTo(100L);
+    }
+
+    @Test
+    void 과거_게시_revision을_확인하지_못한_잠긴_Quiz는_어떤_revision도_게시할_수_없다() {
+        Quiz quiz = QuizFixtures.quiz(1L, 10L);
+        ReflectionTestUtils.setField(quiz, "publicationStatus", QuizPublicationStatus.UNPUBLISHED);
+        ReflectionTestUtils.setField(quiz, "contentLocked", true);
+
+        assertThat(quiz.canPublish(100L, QuizFixtures.revisionSha256())).isFalse();
+        assertThatThrownBy(() -> quiz.publish(100L, QuizFixtures.revisionSha256(), LATER))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

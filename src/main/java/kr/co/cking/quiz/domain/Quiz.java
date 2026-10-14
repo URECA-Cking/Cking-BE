@@ -19,6 +19,10 @@ import java.util.Objects;
  * Creator가 소유한 AI Quiz. 원본 videoId·contentText는 바꾸지 않고, 문항은 {@link QuizRevision}에 둔다.
  *
  * <p>공개 상태와 게시 revision 포인터는 함께 바뀐다. {@code PUBLISHED}일 때만 {@code publishedRevisionId}가 있다.
+ *
+ * <p>첫 게시 때 내용을 잠그고(content_locked) 게시한 revision ID·해시를 고정한다. 게시 취소해도 지우지 않으며, 이후에는
+ * 고정한 revision만 다시 게시할 수 있다. 과거 게시 revision을 확인할 수 없는 기존 Quiz는 잠금만 있고 고정 revision이 없어
+ * 다시 게시할 수 없다.
  */
 @Entity
 @Table(name = "quiz")
@@ -56,6 +60,15 @@ public class Quiz {
     @Column(name = "unpublished_at")
     private Instant unpublishedAt;
 
+    @Column(name = "content_locked", nullable = false)
+    private boolean contentLocked;
+
+    @Column(name = "locked_revision_id")
+    private Long lockedRevisionId;
+
+    @Column(name = "locked_revision_sha256", length = 64)
+    private String lockedRevisionSha256;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -89,13 +102,29 @@ public class Quiz {
         return QuizRevisionFingerprint.contentTextSha256(contentText).equals(contentTextSha256);
     }
 
+    /** 잠기지 않았거나 이 revision·해시로 고정돼 있어 게시할 수 있는지. */
+    public boolean canPublish(Long revisionId, String revisionSha256) {
+        return !contentLocked || (lockedRevisionId != null && lockedRevisionId.equals(revisionId)
+                && lockedRevisionSha256.equals(revisionSha256));
+    }
+
     /**
-     * 게시 조건 검증은 호출자가 마친 뒤 부른다. 이미 게시 중이면 게시 revision만 바꾼다.
+     * 게시 조건 검증은 호출자가 마친 뒤 부른다. 첫 게시면 내용을 잠그고 이 revision·해시를 고정한다. 잠긴 뒤에는 고정한
+     * revision만 게시할 수 있다.
      *
      * <p>{@code publishedAt}은 현재 게시가 시작된 시각이고 {@code unpublishedAt}은 그 게시가 취소된 시각이므로,
      * 게시하면 이전 게시 취소 시각을 지운다.
      */
-    public void publish(Long revisionId, Instant now) {
+    public void publish(Long revisionId, String revisionSha256, Instant now) {
+        Objects.requireNonNull(revisionSha256, "revisionSha256");
+        if (!canPublish(revisionId, revisionSha256)) {
+            throw new IllegalStateException("고정한 revision만 게시할 수 있습니다.");
+        }
+        if (!contentLocked) {
+            this.contentLocked = true;
+            this.lockedRevisionId = revisionId;
+            this.lockedRevisionSha256 = revisionSha256;
+        }
         this.publicationStatus = QuizPublicationStatus.PUBLISHED;
         this.publishedRevisionId = Objects.requireNonNull(revisionId, "revisionId");
         this.publishedAt = Objects.requireNonNull(now, "now");

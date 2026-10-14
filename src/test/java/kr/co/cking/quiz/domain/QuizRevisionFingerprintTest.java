@@ -83,4 +83,71 @@ class QuizRevisionFingerprintTest {
         return QuizRevisionFingerprint.revisionSha256(CONTENT_SHA, QuizFixtures.TITLE, QuizFixtures.PROMPT_VERSION,
                 questions);
     }
+
+    // quiz-revision-v2 (Creator가 구성한 revision)
+
+    private static final String PARENT_SHA = "2619d1bec536bc03c35b76e5096709ddb26a6aba192fd17c3bb6c28b67bdaf2b";
+
+    /** 원본 그대로·수정(근거 비움)·추가 문항. 기대값은 문서의 v2 규칙을 Java와 별도로 구현해 계산했다. */
+    private static List<QuizRevisionFingerprint.ComposedQuestion> composedQuestions() {
+        List<QuizRevisionFingerprint.Question> ai = QuizFixtures.fingerprintQuestions();
+        QuizRevisionFingerprint.Question second = ai.get(1);
+        return List.of(
+                new QuizRevisionFingerprint.ComposedQuestion(QuizQuestionChangeType.AI_UNCHANGED, 1000L, 1000L, ai.get(0)),
+                new QuizRevisionFingerprint.ComposedQuestion(QuizQuestionChangeType.CREATOR_EDITED, 1001L, 1001L,
+                        new QuizRevisionFingerprint.Question(second.question(), second.options(),
+                                second.correctOptionIndex(), "구름이 비가 되어 내립니다.", "")),
+                new QuizRevisionFingerprint.ComposedQuestion(QuizQuestionChangeType.CREATOR_ADDED, null, null,
+                        new QuizRevisionFingerprint.Question("증발한 물은 무엇이 되나요?", List.of("구름", "돌"), 0,
+                                "증발하면 구름이 됩니다.", "")));
+    }
+
+    private String v2Sha(Long parentId, String parentSha, List<QuizRevisionFingerprint.ComposedQuestion> questions) {
+        return QuizRevisionFingerprint.revisionSha256V2(CONTENT_SHA, QuizFixtures.TITLE, QuizFixtures.PROMPT_VERSION,
+                parentId, parentSha, questions);
+    }
+
+    @Test
+    void v2는_문서화한_규칙의_고정_해시와_같고_같은_입력이면_같은_해시다() {
+        assertThat(v2Sha(100L, PARENT_SHA, composedQuestions()))
+                .isEqualTo("f3524d3ebefb82a8c06424b66ddb370cc8ae0f4ea65a2a2f8215692571b4a132")
+                .isEqualTo(v2Sha(100L, PARENT_SHA, new ArrayList<>(composedQuestions())));
+    }
+
+    @Test
+    void v2는_같은_문항_내용이어도_v1과_다른_해시다() {
+        List<QuizRevisionFingerprint.ComposedQuestion> unchanged = QuizFixtures.fingerprintQuestions().stream()
+                .map(question -> new QuizRevisionFingerprint.ComposedQuestion(QuizQuestionChangeType.AI_UNCHANGED,
+                        1L, 1L, question))
+                .toList();
+
+        assertThat(v2Sha(100L, PARENT_SHA, unchanged)).isNotEqualTo(revisionSha(QuizFixtures.fingerprintQuestions()));
+    }
+
+    @Test
+    void v2는_선택_순서_계보_부모_내용이_바뀌면_해시가_바뀐다() {
+        String original = v2Sha(100L, PARENT_SHA, composedQuestions());
+        List<QuizRevisionFingerprint.ComposedQuestion> base = composedQuestions();
+        QuizRevisionFingerprint.ComposedQuestion first = base.get(0);
+        List<UnaryOperator<QuizRevisionFingerprint.ComposedQuestion>> changes = List.of(
+                q -> new QuizRevisionFingerprint.ComposedQuestion(QuizQuestionChangeType.CREATOR_EDITED,
+                        q.originQuestionId(), q.previousQuestionId(), q.content()),
+                q -> new QuizRevisionFingerprint.ComposedQuestion(q.changeType(), 999L, q.previousQuestionId(), q.content()),
+                q -> new QuizRevisionFingerprint.ComposedQuestion(q.changeType(), q.originQuestionId(), 999L, q.content()),
+                q -> new QuizRevisionFingerprint.ComposedQuestion(q.changeType(), q.originQuestionId(),
+                        q.previousQuestionId(), new QuizRevisionFingerprint.Question(q.content().question(),
+                        q.content().options(), 1, q.content().explanation(), q.content().sourceEvidence())),
+                q -> new QuizRevisionFingerprint.ComposedQuestion(q.changeType(), q.originQuestionId(),
+                        q.previousQuestionId(), new QuizRevisionFingerprint.Question(q.content().question(),
+                        q.content().options(), q.content().correctOptionIndex(), q.content().explanation(), "")));
+        for (UnaryOperator<QuizRevisionFingerprint.ComposedQuestion> change : changes) {
+            List<QuizRevisionFingerprint.ComposedQuestion> questions = new ArrayList<>(base);
+            questions.set(0, change.apply(first));
+            assertThat(v2Sha(100L, PARENT_SHA, questions)).isNotEqualTo(original);
+        }
+        assertThat(v2Sha(100L, PARENT_SHA, List.of(base.get(1), base.get(0), base.get(2)))).isNotEqualTo(original);
+        assertThat(v2Sha(100L, PARENT_SHA, base.subList(0, 2))).isNotEqualTo(original);
+        assertThat(v2Sha(101L, PARENT_SHA, base)).isNotEqualTo(original);
+        assertThat(v2Sha(100L, "f".repeat(64), base)).isNotEqualTo(original);
+    }
 }

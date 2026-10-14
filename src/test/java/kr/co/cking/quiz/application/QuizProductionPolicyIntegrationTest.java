@@ -94,7 +94,9 @@ class QuizProductionPolicyIntegrationTest {
         draft = new QuizJudgeIntegrationFixture(context).draft(creator);
         insertApproval(draft.revisionId());
         jdbcTemplate.update("UPDATE quiz SET publication_status = 'PUBLISHED', published_revision_id = ?, "
-                + "published_at = UTC_TIMESTAMP(6) WHERE quiz_id = ?", draft.revisionId(), draft.quizId());
+                + "published_at = UTC_TIMESTAMP(6), content_locked = TRUE, locked_revision_id = ?, "
+                + "locked_revision_sha256 = (SELECT revision_sha256 FROM quiz_revision WHERE revision_id = ?) "
+                + "WHERE quiz_id = ?", draft.revisionId(), draft.revisionId(), draft.revisionId(), draft.quizId());
 
         QuizPublicationView view = commandService.unpublish(creator.getMemberId(), draft.quizId());
 
@@ -138,9 +140,12 @@ class QuizProductionPolicyIntegrationTest {
 
     @Test
     void DB는_Judge_근거_없는_승인과_포인터_없는_게시를_거부한다() {
+        // 정책·승인 해시는 유효하게 두고 Judge 근거만 뺀다.
         assertThatThrownBy(() -> jdbcTemplate.update("INSERT INTO quiz_revision_decision "
-                + "(revision_id, decision, decided_by_member_id, decided_at) VALUES (?, 'APPROVED', ?, UTC_TIMESTAMP(6))",
-                draft.revisionId(), creator.getMemberId()))
+                + "(revision_id, decision, decided_by_member_id, approval_policy, approved_revision_sha256, decided_at) "
+                + "VALUES (?, 'APPROVED', ?, 'LEGACY_JUDGE_V1', "
+                + "(SELECT revision_sha256 FROM quiz_revision WHERE revision_id = ?), UTC_TIMESTAMP(6))",
+                draft.revisionId(), creator.getMemberId(), draft.revisionId()))
                 .isInstanceOf(DataAccessException.class)
                 .hasMessageContaining("ck_quiz_revision_decision_judge");
         assertThatThrownBy(() -> jdbcTemplate.update(
@@ -150,7 +155,9 @@ class QuizProductionPolicyIntegrationTest {
 
         QuizDraft other = data.draft(creator);
         assertThatThrownBy(() -> jdbcTemplate.update("UPDATE quiz SET publication_status = 'PUBLISHED', "
-                + "published_revision_id = ? WHERE quiz_id = ?", other.revisionId(), draft.quizId()))
+                + "published_revision_id = ?, content_locked = TRUE, locked_revision_id = ?, locked_revision_sha256 = "
+                + "(SELECT revision_sha256 FROM quiz_revision WHERE revision_id = ?) WHERE quiz_id = ?",
+                other.revisionId(), other.revisionId(), other.revisionId(), draft.quizId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -167,8 +174,10 @@ class QuizProductionPolicyIntegrationTest {
         var result = new QuizJudgeIntegrationFixture(context).saveResult(creator, draft,
                 kr.co.cking.quiz.judge.JudgeVerdict.FAIL);
         jdbcTemplate.update("INSERT INTO quiz_revision_decision (revision_id, decision, decided_by_member_id, "
-                + "judge_evaluation_id, judge_evaluation_sha256, decided_at) VALUES (?, 'APPROVED', ?, ?, ?, UTC_TIMESTAMP(6))",
-                revisionId, creator.getMemberId(), result.getResultId(), result.getResultSha256());
+                + "judge_evaluation_id, judge_evaluation_sha256, approval_policy, approved_revision_sha256, decided_at) "
+                + "VALUES (?, 'APPROVED', ?, ?, ?, 'LEGACY_JUDGE_V1', "
+                + "(SELECT revision_sha256 FROM quiz_revision WHERE revision_id = ?), UTC_TIMESTAMP(6))",
+                revisionId, creator.getMemberId(), result.getResultId(), result.getResultSha256(), revisionId);
     }
 
     private String publicationStatus() {

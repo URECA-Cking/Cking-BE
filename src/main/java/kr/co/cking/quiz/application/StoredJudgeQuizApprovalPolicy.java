@@ -1,6 +1,7 @@
 package kr.co.cking.quiz.application;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.quiz.domain.QuizApprovalPolicyType;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizRevisionDecision;
 import kr.co.cking.quiz.domain.QuizJudgeStoredResult;
@@ -26,9 +27,15 @@ public class StoredJudgeQuizApprovalPolicy implements QuizApprovalPolicy {
         return new Basis(result.getResultId(), result.getResultSha256());
     }
 
+    /**
+     * {@link QuizApprovalPolicyType#LEGACY_JUDGE_V1} 승인만 검증한다. 다른 정책의 승인, 다른 revision의 승인, 승인 당시
+     * 해시와 다른 revision은 무결성 오류다.
+     */
     @Override
     public void requireStillApproved(Target target, QuizRevisionDecision approval) {
         if (!approval.isApproved() || !target.revisionId().equals(approval.getRevisionId())
+                || approval.getApprovalPolicy() != QuizApprovalPolicyType.LEGACY_JUDGE_V1
+                || !target.revisionSha256().equals(approval.getApprovedRevisionSha256())
                 || approval.getJudgeEvaluationId() == null) {
             throw invalid();
         }

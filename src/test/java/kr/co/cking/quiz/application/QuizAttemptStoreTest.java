@@ -35,11 +35,16 @@ class QuizAttemptStoreTest {
         when(members.existsById(7L)).thenReturn(true);when(quizzes.findByIdForUpdate(2L)).thenReturn(Optional.of(quiz));
         when(creators.findById(1L)).thenReturn(Optional.of(new Creator(8L,"creator")));
         when(revisions.findById(100L)).thenReturn(Optional.of(revision));
-        quiz.publish(100L,QuizFixtures.NOW);
+        quiz.publish(100L,revision.getRevisionSha256(),QuizFixtures.NOW);
         when(reader.readVerified(quiz,revision)).thenReturn(QuizFixtures.questions().stream().map(q -> new QuizQuestionContent(QuizFixtures.questions().indexOf(q),q.question(),q.options(),q.correctOptionIndex(),q.explanation(),q.sourceEvidence())).toList());
         when(attempts.saveAndFlush(any())).thenAnswer(i->{saved=i.getArgument(0);ReflectionTestUtils.setField(saved,"attemptId",10L);return saved;});
         when(answers.saveAllAndFlush(any())).thenAnswer(i->{savedAnswers=i.getArgument(0);return savedAnswers;});
         when(answers.findByAttemptIdOrderByQuestionNoAsc(10L)).thenAnswer(i->savedAnswers);
+    }
+    /** 게시 고정 이전 데이터처럼 다른 revision이 게시돼 있는 상태. */
+    private void publishedAs(Long revisionId) {
+        ReflectionTestUtils.setField(quiz,"publicationStatus",kr.co.cking.quiz.domain.QuizPublicationStatus.PUBLISHED);
+        ReflectionTestUtils.setField(quiz,"publishedRevisionId",revisionId);
     }
     private void error(Runnable action, QuizErrorCode code) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.getErrorCode()).isEqualTo(code));
@@ -59,7 +64,7 @@ class QuizAttemptStoreTest {
         clearInvocations(reader);assertThat(store.findExisting(command)).contains(result);assertThat(store.findMine(7L,1L,2L)).isEqualTo(result);verifyNoInteractions(reader);
     }
     @Test void revision_교체후_기존_결과를_재채점하지_않는다() {
-        var command=command(0,1);var result=store.submit(command);quiz.publish(101L,QuizFixtures.NOW);
+        var command=command(0,1);var result=store.submit(command);publishedAs(101L);
         when(attempts.findByMemberIdAndRequestId(7L,command.requestId().toString())).thenReturn(Optional.of(saved));
         assertThat(store.findExisting(command)).contains(result);
     }
@@ -71,7 +76,7 @@ class QuizAttemptStoreTest {
     }
     @Test void 게시_취소와_revision_불일치_신규_제출을_막는다() {
         quiz.unpublish(QuizFixtures.NOW);error(()->store.submit(command(0,1)),QuizErrorCode.QUIZ_NOT_FOUND);
-        quiz.publish(101L,QuizFixtures.NOW);error(()->store.submit(command(0,1)),QuizErrorCode.QUIZ_PUBLISHED_REVISION_CHANGED);verify(attempts,never()).saveAndFlush(any());
+        publishedAs(101L);error(()->store.submit(command(0,1)),QuizErrorCode.QUIZ_PUBLISHED_REVISION_CHANGED);verify(attempts,never()).saveAndFlush(any());
     }
     @Test void Creator_본인과_ADMIN_본인은_역할에_상관없이_거부한다() {
         when(creators.findById(1L)).thenReturn(Optional.of(new Creator(7L,"self")));

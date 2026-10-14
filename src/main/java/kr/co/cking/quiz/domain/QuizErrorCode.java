@@ -16,6 +16,7 @@ public enum QuizErrorCode implements ErrorCode {
     QUIZ_JUDGE_EVALUATION_REQUIRED(HttpStatus.CONFLICT, "Judge 평가 검증을 통과한 revision만 승인·게시할 수 있습니다."),
     QUIZ_REVISION_NOT_APPROVED(HttpStatus.CONFLICT, "승인된 revision만 게시할 수 있습니다."),
     QUIZ_REVISION_NOT_LATEST(HttpStatus.CONFLICT, "최신 revision만 게시할 수 있습니다."),
+    QUIZ_CONTENT_LOCKED(HttpStatus.CONFLICT, "게시한 적 있는 Quiz는 처음 게시한 revision만 다시 게시할 수 있습니다."),
     QUIZ_REVISION_INTEGRITY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Quiz 데이터를 확인할 수 없습니다."),
     /** 내부 생성 결과 저장에서만 쓴다. 외부 API로 반환하지 않는다. */
     QUIZ_DRAFT_INVALID(HttpStatus.BAD_REQUEST, "저장할 수 없는 Quiz 생성 결과입니다."),

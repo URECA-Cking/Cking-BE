@@ -13,11 +13,11 @@ AI 생성(`quiz.generation`)은 결과만 반환하며 저장 전에 같은 `Qui
 
 ## 소유 데이터
 
-V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다.
+V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다. V73이 revision 계보·승인 정책·게시 고정 컬럼과 제약을 더한다([Creator 편집 기반](#creator-편집-revision과-책임-승인-기반-이슈-581)).
 
 - **quiz**: Creator 소유. `quiz_id`는 revision이 바뀌어도 그대로다. 원본 YouTube `videoId`, 생성 입력 `content_text`와 그 SHA-256은 생성 후 바꾸지 않는다.
 - **quiz_revision·quiz_question·quiz_option**: INSERT 후 바꾸지 않는다. 수정은 새 revision(`revision_no` + 1)으로 만든다. `question_no`·`option_no`는 0부터의 표시 순서이고 `correct_option_index`는 0-based `option_no`다.
-- **quiz_revision_decision**: revision 하나에 Creator 결정 하나(`UNIQUE(revision_id)`). 바꾸지 않는다. 승인은 Judge 평가 근거(`judge_evaluation_id`·`judge_evaluation_sha256`)가 있어야 DB에 들어간다.
+- **quiz_revision_decision**: revision 하나에 Creator 결정 하나(`UNIQUE(revision_id)`). 바꾸지 않는다. 승인은 정책(`approval_policy`)과 승인한 revision 해시를 고정한다. 기존 승인(`LEGACY_JUDGE_V1`)은 Judge 평가 근거(`judge_evaluation_id`·`judge_evaluation_sha256`)가 있어야 DB에 들어간다.
 
 어떤 행도 삭제하지 않는다. 이후 풀이 기록은 `quiz_id`·`revision_id`를 참조하고 `(member_id, quiz_id)`로 1회 제출을 보장하면 되며, 수정·게시 취소가 풀이·응모권 기록을 지우지 않는다.
 
@@ -58,10 +58,10 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 | --- | --- | --- |
 | 승인 | 결정 없음, 저장 내용이 revision 해시와 같음, 승인 정책 통과 | 이미 승인: 기존 결정 반환. 이미 거절: `QUIZ_REVISION_ALREADY_DECIDED` |
 | 거절 | 결정 없음 | 이미 거절: 기존 결정 반환. 이미 승인: `QUIZ_REVISION_ALREADY_DECIDED` |
-| 게시 | 최신 revision, 승인됨, 저장 내용이 revision 해시와 같음, 승인 정책의 재검증 통과 | 같은 revision 게시 중: 현재 상태 반환 |
+| 게시 | 게시한 적 있으면 고정 revision만(아니면 `QUIZ_CONTENT_LOCKED`), 최신 revision, 승인됨, 저장 내용이 revision 해시와 같음, 승인 정책의 재검증 통과 | 같은 revision 게시 중: 현재 상태 반환 |
 | 게시 취소 | 언제나(Judge 상태와 무관) | 게시 중이 아님: 현재 상태 반환 |
 
-게시 취소 후에는 승인 근거가 여전히 유효한 최신 revision을 재승인 없이 다시 게시할 수 있다. 결정은 되돌리지 않는다.
+게시 취소 후에는 처음 게시해 고정한 revision을, 승인 근거가 여전히 유효하면 재승인 없이 다시 게시할 수 있다. 다른 revision은 게시할 수 없다. 결정은 되돌리지 않는다.
 
 `published_at`은 현재(게시 취소 상태라면 마지막) 게시가 시작된 시각이고, `unpublished_at`은 그 게시가 취소된 시각이다. 게시하면 `published_at`을 새로 기록하고 `unpublished_at`을 지우므로 `PUBLISHED`일 때 `unpublished_at`은 항상 비어 있다.
 
@@ -105,7 +105,7 @@ Judge는 contentText 기준 평가이며 원본 영상의 사실성을 검증하
 
 ## revision 해시
 
-`revision_sha256`은 아래 값을 순서대로 이어 붙인 UTF-8 바이트의 SHA-256(소문자 hex)이다(`QuizRevisionFingerprint`, 버전 `quiz-revision-v1`). 각 값은 `<UTF-8 바이트 길이>:<값>`으로 적고 구분자는 없다. 정수는 10진수 문자열이고, 문자열은 정규화하지 않는다.
+AI 생성 revision의 `revision_sha256`은 아래 값을 순서대로 이어 붙인 UTF-8 바이트의 SHA-256(소문자 hex)이다(`QuizRevisionFingerprint`, 버전 `quiz-revision-v1`, `hash_version`에 기록). 각 값은 `<UTF-8 바이트 길이>:<값>`으로 적고 구분자는 없다. 정수는 10진수 문자열이고, 문자열은 정규화하지 않는다.
 
 1. `quiz-revision-v1`
 2. 원본 텍스트 SHA-256 (`content_text`의 UTF-8 바이트, 소문자 hex)
@@ -113,6 +113,42 @@ Judge는 contentText 기준 평가이며 원본 영상의 사실성을 검증하
 4. 문항마다 순서대로: 질문, 보기 수, 보기(순서대로), 정답 index, 해설, sourceEvidence
 
 승인과 게시 직전에 원본 텍스트 해시와 저장된 문항·보기로 다시 계산해 생성 시 값과 다르면 `QUIZ_REVISION_INTEGRITY_FAILED`(500)로 막는다. 해시에 들어가지 않는 저장 번호도 함께 확인한다. 문항 번호는 0부터 문항 수-1까지, 문항마다 보기 번호는 0부터 이어져야 하고, 보기 수는 revision의 보기 수와 같아야 한다. `QuizRevisionFingerprintTest`가 이 규칙을 별도로 구현해 계산한 고정값으로 검증한다. 규칙을 바꾸면 버전을 올리고 기존 revision은 기존 규칙으로 검증한다.
+
+Creator가 구성한 revision은 `quiz-revision-v2`다. 같은 길이 접두어 방식으로 다음을 이어 붙인다. v1 행의 해시는 다시 계산하거나 저장하지 않는다.
+
+1. `quiz-revision-v2`
+2. 원본 텍스트 SHA-256, 제목, promptVersion
+3. 부모 revision ID, 부모 revision 해시, 문항 수
+4. 문항마다 순서대로: 변경 유형, 원본 문항 ID, 직전 문항 ID(없으면 빈 문자열), 질문, 보기 수, 보기(순서대로), 정답 index, 해설, sourceEvidence
+
+문항 선택·순서·내용·정답·근거·계보 중 하나라도 바뀌면 해시가 달라진다. v2 revision은 해시와 함께 계보도 검증한다([Creator 편집 기반](#creator-편집-revision과-책임-승인-기반-이슈-581)).
+
+## Creator 편집 revision과 책임 승인 기반 (이슈 #581)
+
+Creator가 AI 문항을 선택·수정·추가한 최종 집합을 책임 승인하기 위한 데이터 기반이다. 편집·책임 승인 API는 아직 없다(후속 이슈). 기존 승인·게시 API의 의미는 바뀌지 않으며 게시 고정만 추가된다.
+
+- **revision 계보**: `origin`이 `AI_GENERATED`(v1, 부모 없음) 또는 `CREATOR_COMPOSED`(v2, 부모 revision ID·해시, 편집 Member·시각, 1~5문항·4지선다)다. `fk_quiz_revision_parent`가 같은 Quiz의 부모를, `fk_quiz_revision_parent_hash`가 부모의 실제 해시를 강제한다. AI 원본 revision·문항·Judge 결과는 바꾸지 않는다.
+- **문항 계보**: 구성 revision의 문항은 `change_type`(`AI_UNCHANGED`·`CREATOR_EDITED`·`CREATOR_ADDED`)과 원본 AI 문항·부모 revision의 직전 문항 참조를 가진다. 변경 유형은 Creator 주장이 아니라 원본과 질문·보기·정답·해설·근거를 비교해 정한다(같으면 `AI_UNCHANGED`). 수정 문항은 Judge 재평가 전(NOT_REVALIDATED), 추가 문항은 평가 대상 아님(NOT_EVALUATED)이며 원본 Judge 결과를 현재 결과로 재사용하지 않는다. 직전 문항이 부모 revision에 속하는지, 원본이 같은 Quiz의 AI 원본 문항인지, 변경 유형이 내용과 맞는지는 `QuizRevisionReader`가 승인·게시·응시 전에 검증한다.
+- **빈 근거**: Creator가 수정·추가한 문항의 sourceEvidence는 선택이며 null·공백이면 빈 문자열로 저장한다(근거 없음). 부모 근거를 상속하지 않는다. `AI_UNCHANGED`는 원본 근거를 그대로 둔다. `quiz_question`·`quiz_attempt_answer`의 NOT NULL은 유지하며, 응시 snapshot 해시는 빈 문자열(`0:`)과 null(`-1:`)을 구분한다.
+- **승인 정책**: `LEGACY_JUDGE_V1`은 기존 승인 API와 `StoredJudgeQuizApprovalPolicy`로 ALL_PASS·고정 result ID/hash를 검증한다. `CREATOR_REVIEW_V1`은 Judge 근거 없이(`judge_evaluation_*` NULL) 책임 확인(`responsibility_confirmed`)과 최종 revision 해시를 고정한다. 둘 다 `approved_revision_sha256`을 기록하며 `fk_quiz_revision_decision_revision_hash`가 그 revision의 실제 해시인지 강제한다. `ck_quiz_revision_decision_judge`는 같은 이름으로 정책별 조건이 됐고, V58의 result FK는 그대로다. 기존 Judge 정책은 다른 정책의 승인이나 해시가 다른 승인으로 게시하지 않는다.
+- **게시 고정**: 첫 게시 때 `content_locked`와 `locked_revision_id`·`locked_revision_sha256`을 같은 Transaction에서 기록하고 게시 취소로 지우지 않는다. `ck_quiz_lock_*`가 "게시 중 ⇒ 고정 revision = 게시 revision", "게시 취소 ⇒ 잠김", "미게시 ⇒ 고정 revision 없음, `published_at`이 없으면 잠기지 않음"을, FK가 같은 Quiz의 실제 revision 해시를 강제한다.
+
+V73 적용 순서와 기존 데이터:
+
+1. revision·문항·결정·Quiz에 컬럼을 더한다. 기존 revision은 `AI_GENERATED`·`quiz-revision-v1`이고 `revision_sha256`은 바꾸지 않는다.
+2. 기존 승인 행에 실제 revision 해시와 `LEGACY_JUDGE_V1`을 채운 뒤 승인 CHECK를 정책별 조건으로 바꾼다.
+3. 미게시(`NOT_PUBLISHED`)가 아니거나 `published_at`이 있는 Quiz를 잠그고 상태는 바꾸지 않는다. V55가 허용한 `NOT_PUBLISHED`·`published_at` 있음 행은 게시 revision을 확인할 수 없어 고정하지 않는다. `published_at`이 없는 미게시 Quiz는 잠그지 않는다. `PUBLISHED`는 현재 게시 revision으로 고정한다. `UNPUBLISHED`는 게시 사실이 저장 기록으로 직접 확인될 때만 고정한다. 그 revision으로 제출된 Fan 응시가 있고(응시는 그 revision이 게시 중일 때만 저장된다) 그 Quiz의 revision이 그것 하나뿐이어서 다른 revision이 먼저 게시됐을 수 없을 때다. revision 수·승인 여부만으로 고정하거나 최신 승인 revision으로 추정하지 않는다.
+4. 고정 revision을 확인하지 못한 Quiz는 잠금만 남아 재게시가 `QUIZ_CONTENT_LOCKED`로 막힌다. 배포 후 `SELECT quiz_id FROM quiz WHERE content_locked = TRUE AND locked_revision_id IS NULL`로 확인 대상을 조회한다. 공개 포인터·응시 snapshot은 바꾸지 않는다.
+5. 정책별 CHECK는 nullable 값에 `IS NOT NULL`을 함께 건다. MySQL CHECK는 FALSE만 거부하고 NULL 비교 결과(UNKNOWN)는 통과시키기 때문이다.
+
+MySQL DDL은 문장마다 암묵적으로 커밋되므로 V73은 원자적으로 적용되지 않고, 실패해도 자동으로 rollback되지 않는다. 중간에 실패하면 앞 문장의 컬럼·제약·UPDATE가 남고 Flyway 이력에 실패로 기록돼 이후 migrate가 거부된다. `flyway repair`는 실패 이력만 지우며 수동으로 적용한 SQL을 성공 이력으로 등록하지 않는다. 기본 복구 절차:
+
+1. 실패한 문장과 이미 적용된 DDL·UPDATE를 확인한다.
+2. 부분 적용된 변경을 적용 전 상태로 되돌린다. 남은 컬럼·제약·데이터를 보고 되돌릴 수 있는지 먼저 확인한다.
+3. `flyway repair`를 실행한다.
+4. `flyway migrate`를 다시 실행해 V73 전체를 적용한다.
+
+이관 결과와 실패 시 부분 적용은 `QuizCreatorRevisionMigrationTest`(별도 MySQL 컨테이너, Docker 필요)가 확인한다.
 
 ## 동시성
 

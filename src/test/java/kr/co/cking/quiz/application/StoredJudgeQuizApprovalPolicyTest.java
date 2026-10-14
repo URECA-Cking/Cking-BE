@@ -151,14 +151,22 @@ class StoredJudgeQuizApprovalPolicyTest {
     }
     @Test void 게시에는_승인시_고정한_ID와_hash를_사용하며_최신_평가를_찾지_않는다() {
         policy.requireStillApproved(target, QuizRevisionDecision.approve(100L, 7L, 50L,
-                result.getResultSha256(), QuizFixtures.NOW));
+                result.getResultSha256(), target.revisionSha256(), QuizFixtures.NOW));
         verify(results, never()).findByRevisionId(any());
+    }
+    @Test void Creator_책임_승인이나_승인시와_다른_revision_해시는_기존_Judge_정책으로_게시할_수_없다() {
+        error(() -> policy.requireStillApproved(target, QuizRevisionDecision.approveByCreatorReview(100L, 7L,
+                target.revisionSha256(), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
+        error(() -> policy.requireStillApproved(target, QuizRevisionDecision.approve(100L, 7L, 50L,
+                result.getResultSha256(), "f".repeat(64), QuizFixtures.NOW)),
+                QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
+        verify(results, never()).findById(any());
     }
     @Test void 승인_근거_ID_hash_revision이_바뀌면_게시를_차단한다() {
         error(() -> policy.requireStillApproved(target, QuizRevisionDecision.approve(100L, 7L, 50L,
-                "f".repeat(64), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
+                "f".repeat(64), target.revisionSha256(), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
         error(() -> policy.requireStillApproved(target, QuizRevisionDecision.approve(999L, 7L, 50L,
-                result.getResultSha256(), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
+                result.getResultSha256(), target.revisionSha256(), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
     }
     @Test void 승인_result_ID가_다른_revision_결과나_없는_ID로_바뀌면_게시를_차단한다() {
         String approvedSha = result.getResultSha256();
@@ -190,7 +198,7 @@ class StoredJudgeQuizApprovalPolicyTest {
         assertThat(reader.read(other).target().revisionId()).isEqualTo(101L);
         for (Long id : List.of(51L, 999L)) {
             error(() -> policy.requireStillApproved(target, QuizRevisionDecision.approve(100L, 7L, id,
-                    approvedSha, QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
+                    approvedSha, target.revisionSha256(), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
         }
     }
     private void error(Runnable call, QuizErrorCode code) {
@@ -204,7 +212,7 @@ class StoredJudgeQuizApprovalPolicyTest {
             assertThat(readerSettingsMatch()).isTrue();
             error(() -> policy.requireApprovable(target), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
             error(() -> policy.requireStillApproved(target, QuizRevisionDecision.approve(100L, 7L, 50L,
-                    result.getResultSha256(), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
+                    result.getResultSha256(), target.revisionSha256(), QuizFixtures.NOW)), QuizErrorCode.QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED);
         }
     }
 
@@ -247,6 +255,6 @@ class StoredJudgeQuizApprovalPolicyTest {
         setVerdict(JudgeVerdict.PASS);
         var basis = policy.requireApprovable(target);
         policy.requireStillApproved(target, QuizRevisionDecision.approve(100L, 7L, basis.judgeEvaluationId(),
-                basis.judgeEvaluationSha256(), QuizFixtures.NOW));
+                basis.judgeEvaluationSha256(), target.revisionSha256(), QuizFixtures.NOW));
     }
 }

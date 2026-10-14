@@ -56,7 +56,8 @@ public class CreatorQuizCommandService {
         revisionReader.readVerified(quiz, revision);
         QuizApprovalPolicy.Basis basis = approvalPolicy.requireApprovable(target(quiz, revision));
         QuizRevisionDecision decision = decisionRepository.save(QuizRevisionDecision.approve(
-                revisionId, memberId, basis.judgeEvaluationId(), basis.judgeEvaluationSha256(), clock.instant()));
+                revisionId, memberId, basis.judgeEvaluationId(), basis.judgeEvaluationSha256(),
+                revision.getRevisionSha256(), clock.instant()));
         return QuizDecisionView.of(quizId, decision);
     }
 
@@ -79,13 +80,16 @@ public class CreatorQuizCommandService {
 
     /**
      * 최신 revision이 승인돼 있고, 저장 내용이 revision 해시와 같고, 승인 근거가 여전히 유효할 때 게시한다.
-     * 다른 revision을 게시 중이면 게시 revision을 바꾼다.
+     * 한 번 게시한 Quiz는 처음 게시해 고정한 revision만 다시 게시할 수 있다({@code QUIZ_CONTENT_LOCKED}).
      */
     public QuizPublicationView publish(Long memberId, Long quizId, Long revisionId) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
         QuizRevision revision = requireRevision(quiz, revisionId);
         if (quiz.isPublishing(revisionId)) {
             return QuizPublicationView.of(quiz);
+        }
+        if (!quiz.canPublish(revisionId, revision.getRevisionSha256())) {
+            throw new BusinessException(QuizErrorCode.QUIZ_CONTENT_LOCKED);
         }
         QuizRevision latest = revisionRepository.findTopByQuizIdOrderByRevisionNoDesc(quizId)
                 .orElseThrow(() -> new IllegalStateException("revision이 없는 Quiz입니다. quizId=" + quizId));
@@ -97,7 +101,7 @@ public class CreatorQuizCommandService {
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_REVISION_NOT_APPROVED));
         revisionReader.readVerified(quiz, revision);
         approvalPolicy.requireStillApproved(target(quiz, revision), approval);
-        quiz.publish(revisionId, clock.instant());
+        quiz.publish(revisionId, revision.getRevisionSha256(), clock.instant());
         return QuizPublicationView.of(quiz);
     }
 

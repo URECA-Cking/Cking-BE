@@ -209,9 +209,11 @@ class QuizApprovalFlowIntegrationTest {
         var other = fixture.draft(creator);
         var otherResult = fixture.saveResult(creator, other, kr.co.cking.quiz.judge.JudgeVerdict.PASS);
         assertThatThrownBy(() -> jdbcTemplate.update("INSERT INTO quiz_revision_decision "
-                + "(revision_id, decision, decided_by_member_id, judge_evaluation_id, judge_evaluation_sha256, decided_at) "
-                + "VALUES (?, 'APPROVED', ?, ?, ?, UTC_TIMESTAMP(6))", draft.revisionId(), creator.getMemberId(),
-                otherResult.getResultId(), otherResult.getResultSha256()))
+                + "(revision_id, decision, decided_by_member_id, judge_evaluation_id, judge_evaluation_sha256, "
+                + "approval_policy, approved_revision_sha256, decided_at) VALUES (?, 'APPROVED', ?, ?, ?, 'LEGACY_JUDGE_V1', "
+                + "(SELECT revision_sha256 FROM quiz_revision WHERE revision_id = ?), UTC_TIMESTAMP(6))",
+                draft.revisionId(), creator.getMemberId(), otherResult.getResultId(), otherResult.getResultSha256(),
+                draft.revisionId()))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThat(data.decisionCount(draft.revisionId())).isZero();
     }
