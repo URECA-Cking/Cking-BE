@@ -173,6 +173,6 @@ class CreatorCommentBlockControllerTest {
 
     private static SpaceCommentBlockView view(Long id, boolean active, Instant releasedAt) {
         return new SpaceCommentBlockView(
-                id, 20L, "차단된팬", STARTED_AT, STARTED_AT.plusSeconds(86_400), releasedAt, active);
+                id, 20L, "차단된팬", 5L, 10L, STARTED_AT, STARTED_AT.plusSeconds(86_400), releasedAt, active);
     }
 }

@@ -83,6 +83,31 @@ public interface MemberSanctionRepository extends JpaRepository<MemberSanction, 
             @Param("now") Instant now,
             Pageable pageable);
 
+    /** 관리자용 스페이스 차단 목록. creatorId·memberId가 null이면 거르지 않고, 최신 시작 순이다. */
+    @Query(value = """
+            select s from MemberSanction s
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE
+              and (:creatorId is null or s.spaceCreatorId = :creatorId)
+              and (:memberId is null or s.memberId = :memberId)
+              and (:activeOnly = false
+                   or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
+            order by s.startedAt desc, s.sanctionId desc
+            """,
+            countQuery = """
+            select count(s) from MemberSanction s
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE
+              and (:creatorId is null or s.spaceCreatorId = :creatorId)
+              and (:memberId is null or s.memberId = :memberId)
+              and (:activeOnly = false
+                   or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
+            """)
+    Page<MemberSanction> searchSpaceBlocksForAdmin(
+            @Param("creatorId") Long creatorId,
+            @Param("memberId") Long memberId,
+            @Param("activeOnly") boolean activeOnly,
+            @Param("now") Instant now,
+            Pageable pageable);
+
     /** 관리자 목록. 최신 시작 순이며 memberId를 주면 그 회원의 제재만, activeOnly면 지금 유효한 제재만 돌려준다. */
     @Query(value = """
             select s from MemberSanction s

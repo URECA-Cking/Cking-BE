@@ -70,6 +70,8 @@ class CreatorPostCommentReportIntegrationTest {
     @Autowired
     private AdminCommentReportCommandService adminCommandService;
     @Autowired
+    private AdminCommentDeleteService adminDeleteService;
+    @Autowired
     private CreatorFollowService followService;
     @Autowired
     private CreatorPostCommentReportRepository reportRepository;
@@ -158,6 +160,48 @@ class CreatorPostCommentReportIntegrationTest {
                 CommentReportReason.ABUSE, null))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Test
+    void 관리자는_신고가_없는_댓글도_삭제하고_작성자에게_경고도_알림도_남기지_않는다() {
+        Long commentId = commentOnPublicPost();
+        Member admin = member(MemberRole.ADMIN);
+
+        adminDeleteService.delete(admin.getMemberId(), commentId);
+
+        assertThat(commentRepository.findById(commentId)).isEmpty();
+        assertThat(sanctionRepository.findAll().stream()
+                .filter(sanction -> author.getMemberId().equals(sanction.getMemberId()))).isEmpty();
+        assertThat(notificationRepository.findAll().stream()
+                .filter(notification -> author.getMemberId().equals(notification.getMemberId()))).isEmpty();
+    }
+
+    @Test
+    void 관리자가_신고된_댓글을_삭제하면_신고도_함께_삭제되고_없는_댓글은_404다() {
+        Long commentId = commentOnPublicPost();
+        Member reporter = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(
+                reporter.getMemberId(), creator.getCreatorId(), postId, commentId, CommentReportReason.ABUSE, null);
+
+        adminDeleteService.delete(admin.getMemberId(), commentId);
+
+        assertThat(commentRepository.findById(commentId)).isEmpty();
+        assertThat(reportRepository.findByCommentIdAndReporterMemberId(commentId, reporter.getMemberId())).isEmpty();
+        assertThatThrownBy(() -> adminDeleteService.delete(admin.getMemberId(), commentId))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Test
+    void 관리자가_아니면_댓글을_삭제할_수_없다() {
+        Long commentId = commentOnPublicPost();
+        Member notAdmin = member(MemberRole.USER);
+
+        assertThatThrownBy(() -> adminDeleteService.delete(notAdmin.getMemberId(), commentId))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.FORBIDDEN));
+        assertThat(commentRepository.findById(commentId)).isPresent();
     }
 
     @Test
