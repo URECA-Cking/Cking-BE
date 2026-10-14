@@ -133,7 +133,7 @@ class CreatorPostCommentServiceTest {
     @Test
     void 댓글_작성_제한_중인_회원은_작성과_수정이_COMMENT_RESTRICTED로_막히고_삭제는_할_수_있다() {
         willThrow(new BusinessException(SanctionErrorCode.COMMENT_RESTRICTED))
-                .given(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID);
+                .given(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID, CREATOR_ID);
         given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
 
         assertError(() -> service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요"),
@@ -156,11 +156,11 @@ class CreatorPostCommentServiceTest {
 
         InOrder order = inOrder(memberRepository, sanctionQueryService, postRepository, commentRepository);
         order.verify(memberRepository).findByIdForUpdate(FAN_MEMBER_ID);
-        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID);
+        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID, CREATOR_ID);
         order.verify(postRepository).findByIdForShare(PUBLIC_POST_ID);
         order.verify(commentRepository).save(any(CreatorPostComment.class));
         order.verify(memberRepository).findByIdForUpdate(FAN_MEMBER_ID);
-        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID);
+        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID, CREATOR_ID);
         order.verify(postRepository).findByIdForShare(PUBLIC_POST_ID);
         order.verify(commentRepository).findByIdForUpdate(1L);
     }
@@ -172,13 +172,13 @@ class CreatorPostCommentServiceTest {
         service.delete(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L);
 
         verify(memberRepository, never()).findByIdForUpdate(any());
-        verify(sanctionQueryService, never()).requireCommentWriteAllowed(any());
+        verify(sanctionQueryService, never()).requireCommentWriteAllowed(any(), any());
     }
 
     @Test
     void 제한은_다른_회원의_작성을_막지_않는다() {
         willThrow(new BusinessException(SanctionErrorCode.COMMENT_RESTRICTED))
-                .given(sanctionQueryService).requireCommentWriteAllowed(STRANGER_MEMBER_ID);
+                .given(sanctionQueryService).requireCommentWriteAllowed(STRANGER_MEMBER_ID, CREATOR_ID);
 
         CreatorPostCommentView created = service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요");
 
