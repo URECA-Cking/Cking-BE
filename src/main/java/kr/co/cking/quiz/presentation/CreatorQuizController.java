@@ -10,6 +10,7 @@ import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.quiz.application.CreatorQuizCommandService;
+import kr.co.cking.quiz.application.QuizCompositionMetadataReader;
 import kr.co.cking.quiz.application.CreatorQuizQueryService;
 import kr.co.cking.quiz.presentation.dto.CreatorQuizRequest;
 import kr.co.cking.quiz.presentation.dto.CreatorQuizResponse;
@@ -32,6 +33,7 @@ public class CreatorQuizController {
 
     private final CreatorQuizQueryService queryService;
     private final CreatorQuizCommandService commandService;
+    private final QuizCompositionMetadataReader metadataReader;
 
     @Operation(summary = "내 Quiz 목록 조회", description = "최근 생성 순으로 페이지 조회합니다. 제목과 검토 상태는 최신 revision 기준입니다.")
     @GetMapping("/api/creator/quizzes")
@@ -50,7 +52,9 @@ public class CreatorQuizController {
             @CurrentMemberId Long memberId,
             @PathVariable @Positive Long quizId
     ) {
-        return ApiResponse.success(CreatorQuizResponse.Detail.from(queryService.findDetail(memberId, quizId)));
+        var view = queryService.findDetail(memberId, quizId);
+        var m = view.revisions().isEmpty() ? null : metadataReader.read(quizId, view.revisions().getLast().revisionId());
+        return ApiResponse.success(CreatorQuizResponse.Detail.from(view, m));
     }
 
     @Operation(summary = "Quiz revision 상세 조회", description = "검토용으로 정답, 해설, 근거, 원본 텍스트를 함께 반환합니다.")
@@ -61,7 +65,7 @@ public class CreatorQuizController {
             @PathVariable @Positive Long revisionId
     ) {
         return ApiResponse.success(CreatorQuizResponse.Revision.from(
-                queryService.findRevision(memberId, quizId, revisionId)));
+                queryService.findRevision(memberId, quizId, revisionId), metadataReader.read(quizId, revisionId)));
     }
 
     @Operation(

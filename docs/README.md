@@ -70,6 +70,7 @@
 - [Post Comment API](domains/post/comment-api.md): 게시글 댓글 조회·작성·수정·삭제 API 계약
 - [AI Quiz](domains/quiz/README.md): 비동기 생성·GPT Judge 평가, 불변 revision·결과, Creator 승인·게시와 해시 검증
 - [AI Quiz API](domains/quiz/api.md): Creator Quiz 조회·승인·거절·게시·게시 취소와 공개 조회 API 계약
+- [Creator 문항 구성](domains/quiz/composition-api.md): 선택·수동 편집·책임 승인, 멱등성·계보 계약
 - [Fan Quiz 응시](domains/quiz/attempt-api.md): JWT 답안 제출·서버 채점·본인 결과·보상 연동 경계
 - [Quiz Judge API](domains/quiz/judge-api.md): Creator 평가 요청·조회, attempt·멱등성·실패 코드
 - [Quiz Judge 검증 목록](domains/quiz/judge-verification.md): #529 완료 조건별 구현·테스트와 로컬/CI 검증 경계

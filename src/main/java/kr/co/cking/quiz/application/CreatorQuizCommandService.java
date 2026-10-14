@@ -6,6 +6,7 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.quiz.application.dto.QuizDecisionView;
 import kr.co.cking.quiz.application.dto.QuizPublicationView;
 import kr.co.cking.quiz.domain.Quiz;
+import kr.co.cking.quiz.domain.QuizApprovalPolicyType;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizRevision;
 import kr.co.cking.quiz.domain.QuizRevisionDecision;
@@ -49,6 +50,9 @@ public class CreatorQuizCommandService {
     public QuizDecisionView approve(Long memberId, Long quizId, Long revisionId) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
         QuizRevision revision = requireRevision(quiz, revisionId);
+        if (revision.isCreatorComposed()) {
+            throw new BusinessException(QuizErrorCode.QUIZ_REVISION_CONFLICT);
+        }
         Optional<QuizRevisionDecision> existing = decisionRepository.findByRevisionId(revisionId);
         if (existing.isPresent()) {
             return replayOrConflict(quiz, existing.get(), true);
@@ -100,9 +104,45 @@ public class CreatorQuizCommandService {
                 .filter(QuizRevisionDecision::isApproved)
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_REVISION_NOT_APPROVED));
         revisionReader.readVerified(quiz, revision);
-        approvalPolicy.requireStillApproved(target(quiz, revision), approval);
+        if (approval.getApprovalPolicy() == QuizApprovalPolicyType.CREATOR_REVIEW_V1) {
+            if (!revision.isCreatorComposed() || !Boolean.TRUE.equals(approval.getResponsibilityConfirmed())
+                    || approval.getJudgeEvaluationId() != null || approval.getJudgeEvaluationSha256() != null
+                    || !revision.getRevisionSha256().equals(approval.getApprovedRevisionSha256())) {
+                throw new BusinessException(QuizErrorCode.QUIZ_REVISION_INTEGRITY_FAILED);
+            }
+        } else {
+            approvalPolicy.requireStillApproved(target(quiz, revision), approval);
+        }
         quiz.publish(revisionId, revision.getRevisionSha256(), clock.instant());
         return QuizPublicationView.of(quiz);
+    }
+
+    /** 최종 Creator revision을 hash와 책임 확인에 묶어 승인한다. Judge는 참고 정보이며 호출하지 않는다. */
+    public QuizDecisionView approveByCreator(Long memberId, Long quizId, Long revisionId, String hash, boolean responsibility) {
+        if (!responsibility || hash == null || !hash.matches("[0-9a-f]{64}")) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        QuizRevision revision = requireRevision(quiz, revisionId);
+        if (!revision.isCreatorComposed() || !revision.getRevisionSha256().equals(hash)) {
+            throw new BusinessException(QuizErrorCode.QUIZ_REVISION_CONFLICT);
+        }
+        revisionReader.readVerified(quiz, revision);
+        var existing = decisionRepository.findByRevisionId(revisionId);
+        if (existing.isPresent()) {
+            var decision = existing.get();
+            if (!decision.isApproved() || decision.getApprovalPolicy() != QuizApprovalPolicyType.CREATOR_REVIEW_V1
+                    || !hash.equals(decision.getApprovedRevisionSha256()) || !Boolean.TRUE.equals(decision.getResponsibilityConfirmed())) {
+                throw new BusinessException(QuizErrorCode.QUIZ_REVISION_ALREADY_DECIDED);
+            }
+            return QuizDecisionView.of(quizId, decision);
+        }
+        if (quiz.isContentLocked()) throw new BusinessException(QuizErrorCode.QUIZ_CONTENT_LOCKED);
+        var latest = revisionRepository.findTopByQuizIdOrderByRevisionNoDesc(quizId)
+                .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_REVISION_NOT_FOUND));
+        if (!latest.getRevisionId().equals(revisionId)) throw new BusinessException(QuizErrorCode.QUIZ_REVISION_CONFLICT);
+        return QuizDecisionView.of(quizId, decisionRepository.save(
+                QuizRevisionDecision.approveByCreatorReview(revisionId, memberId, hash, clock.instant())));
     }
 
     /** Judge 상태와 무관하게 게시를 취소한다. revision과 결정 기록은 그대로 둔다. */

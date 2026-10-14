@@ -9,6 +9,9 @@
 
 ## Judge 평가와 승인
 
+Creator 문항 선택·수정·추가와 별도 책임 승인 계약은 [문항 구성 API](composition-api.md)를 따른다.
+기존 `/approve`는 AI 원본의 ALL_PASS 정책을 유지하며 Creator 구성본은 `creator-approval`을 사용한다.
+
 Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가하고, 모든 문항의 7개 항목이 pass인 저장 결과를 근거로 명시적으로 승인한다. SUCCEEDED는 실행 성공이며 ALL_PASS와 다르다. 평가 기능 기본 OFF는 신규 접수만 막고 기존 유효 평가의 승인·게시·조회는 유지한다.
 
 ## 공통 값

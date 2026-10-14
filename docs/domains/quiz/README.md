@@ -9,7 +9,7 @@ Creator가 YouTube 영상으로 만든 AI Quiz를 저장하고, Creator가 검�
 - 게시된 revision의 공개 조회 (정답·해설·근거 제외)
 - YouTube URL 기반 Quiz 생성 요청 접수와 비동기 생성 작업 (이슈 #525)
 
-AI 생성(`quiz.generation`)은 결과만 반환하며 저장 전에 같은 `QuizGenerationValidator`로 다시 검증한다. Member·Creator는 읽기만 한다. YouTube 생성 작업은 Grounding → Quiz 생성 → draft 저장을 연결한다. Creator가 별도로 GPT Judge 평가를 요청하고, 유효한 ALL_PASS 평가를 근거로 명시적으로 승인한 뒤 게시한다. 풀이 제출·채점, 응모권 지급, 외부 수정 API는 아직 구현하지 않았다.
+AI 생성(`quiz.generation`)은 결과만 반환하며 저장 전에 같은 `QuizGenerationValidator`로 다시 검증한다. Member·Creator는 읽기만 한다. YouTube 생성 작업은 Grounding → Quiz 생성 → draft 저장을 연결한다. Creator가 별도로 GPT Judge 평가를 요청하고, 유효한 ALL_PASS 평가를 근거로 명시적으로 승인한 뒤 게시한다. Fan 응시·보상은 응시 API, Creator 문항 선택·수정·추가·책임 승인은 [문항 구성 API](composition-api.md)를 따른다.
 
 ## 소유 데이터
 
@@ -70,7 +70,7 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 운영 `StoredJudgeQuizApprovalPolicy`와 `QuizJudgeResultReader`가 저장 평가를 검증한다. 생성 완료만으로 평가·승인·게시되지 않는다. API는 [Judge API](judge-api.md), 요구사항과 검증 범위는 [검증 목록](judge-verification.md)을 따른다.
 
 - Creator가 revision 평가를 요청하면 Job 접수 → commit → Judge 전용 Executor → 조건부 claim → 입력·설정 재검증 → OpenAI Responses 호출 → 결과 저장 순서로 실행한다. Provider 호출 중 DB Transaction은 없다.
-- Job의 `SUCCEEDED`는 유효한 평가 저장을 뜻한다. 판정 집계는 `ALL_PASS` / `HAS_FAIL` / `UNCERTAIN_ONLY`이며 fail·uncertain도 SUCCEEDED로 보존하지만 승인하지 않는다.
+- Job의 `SUCCEEDED`는 유효한 평가 저장을 뜻한다. 판정 집계는 `ALL_PASS` / `HAS_FAIL` / `UNCERTAIN_ONLY`이며 fail·uncertain도 SUCCEEDED로 보존하지만 기존 Judge 승인에서는 통과시키지 않는다. Creator 책임 승인은 원본 판정을 보존한 채 별도 정책으로 수행한다.
 - 각 문항의 `textAnswerCorrect`, `uniqueAnswer`, `evidenceSupportsAnswer`, `questionClarity`, `koreanQuality`, `distractorQuality`, `textFaithfulness`가 모두 pass일 때만 Creator가 승인할 수 있다. reason은 공백 불가, 최대 200자(`String.length()`)이며 설정·저장 snapshot으로 늘릴 수 없다. 원문을 자르지 않는다.
 - 승인 직전 Job SUCCEEDED, Quiz/revision/series 소속, 원문·revision·input·settings·result hash, 문항 번호·7개 항목·집계를 재검증한다. 승인 기록에는 immutable **result ID**와 SHA를 고정한다. Job ID와 다르다.
 - 게시·재게시에는 승인 기록의 정확한 result ID/hash와 저장된 policyVersion을 검증한다. 현재 모델·prompt·pricing 설정 변경으로 과거 근거를 무효화하지 않는다. 이미 승인된 결정 재요청과 같은 revision 게시 중인 요청은 기존 결정을/상태를 반환하는 기존 동작을 유지한다.
@@ -125,7 +125,7 @@ Creator가 구성한 revision은 `quiz-revision-v2`다. 같은 길이 접두어 
 
 ## Creator 편집 revision과 책임 승인 기반 (이슈 #581)
 
-Creator가 AI 문항을 선택·수정·추가한 최종 집합을 책임 승인하기 위한 데이터 기반이다. 편집·책임 승인 API는 아직 없다(후속 이슈). 기존 승인·게시 API의 의미는 바뀌지 않으며 게시 고정만 추가된다.
+Creator가 AI 문항을 선택·수정·추가한 최종 집합을 책임 승인하기 위한 데이터 기반이다. [문항 구성·책임 승인 API](composition-api.md)는 #582에서 이 기반을 재사용한다. 기존 Judge 승인 의미와 공개 API는 유지한다.
 
 - **revision 계보**: `origin`이 `AI_GENERATED`(v1, 부모 없음) 또는 `CREATOR_COMPOSED`(v2, 부모 revision ID·해시, 편집 Member·시각, 1~5문항·4지선다)다. `fk_quiz_revision_parent`가 같은 Quiz의 부모를, `fk_quiz_revision_parent_hash`가 부모의 실제 해시를 강제한다. AI 원본 revision·문항·Judge 결과는 바꾸지 않는다.
 - **문항 계보**: 구성 revision의 문항은 `change_type`(`AI_UNCHANGED`·`CREATOR_EDITED`·`CREATOR_ADDED`)과 원본 AI 문항·부모 revision의 직전 문항 참조를 가진다. 변경 유형은 Creator 주장이 아니라 원본과 질문·보기·정답·해설·근거를 비교해 정한다(같으면 `AI_UNCHANGED`). 수정 문항은 Judge 재평가 전(NOT_REVALIDATED), 추가 문항은 평가 대상 아님(NOT_EVALUATED)이며 원본 Judge 결과를 현재 결과로 재사용하지 않는다. 직전 문항이 부모 revision에 속하는지, 원본이 같은 Quiz의 AI 원본 문항인지, 변경 유형이 내용과 맞는지는 `QuizRevisionReader`가 승인·게시·응시 전에 검증한다.

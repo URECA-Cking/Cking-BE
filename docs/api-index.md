@@ -178,4 +178,6 @@
 | 174 | 외부 | Sanction | ADMIN | GET | `/api/admin/comment-blocks` | 모든 스페이스의 차단 목록(시작 최신순, `creatorId`·`memberId`·`active` 필터) | - |
 | 175 | 외부 | Sanction | ADMIN | POST | `/api/admin/comment-blocks/{sanctionId}/release` | 크리에이터나 관리자가 건 스페이스 차단 해제(이미 끝났거나 해제된 차단은 그대로 성공) | 상태 기반 |
 | 176 | 외부 | Post | ADMIN | DELETE | `/api/admin/comments/{commentId}` | 신고 여부와 상관없이 댓글 물리 삭제(204, 신고도 함께 삭제, 경고·알림 없음) | 상태 기반 |
+| 177 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions` | 최종 문항 선택·수정·추가 저장(신규201/replay200) | Quiz/requestId |
+| 178 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/creator-approval` | 최종 Revision hash와 명시적 책임 승인 | 상태 기반 |
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
