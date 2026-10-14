@@ -180,4 +180,6 @@
 | 176 | 외부 | Post | ADMIN | DELETE | `/api/admin/comments/{commentId}` | 신고 여부와 상관없이 댓글 물리 삭제(204, 신고도 함께 삭제, 경고·알림 없음) | 상태 기반 |
 | 177 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions` | 최종 문항 선택·수정·추가 저장(신규201/replay200) | Quiz/requestId |
 | 178 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/revisions/{revisionId}/creator-approval` | 최종 Revision hash와 명시적 책임 승인 | 상태 기반 |
+| 179 | 외부 | Creator | CREATOR | POST | `/api/creator/space/banner-images` | Creator Space 배너 이미지 업로드(JPEG/PNG 5MB 이하, 최소 600×200px, 프로필 사진과 같은 저장 경로) | - |
+| 180 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/banner-image` | 업로드한 Space 배너 이미지 연결(같은 key 재요청은 멱등) | - |
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
