@@ -28,9 +28,8 @@ import org.springframework.data.redis.stream.StreamMessageListenerContainer.Stre
 import org.springframework.data.redis.stream.Subscription;
 
 /**
- * Consumer Group을 지워 XREADGROUP이 NOGROUP으로 실패하게 만든 뒤,
- * 기본 구독은 취소되고 keepAlive 구독은 그룹이 다시 생기면 이어서 소비하는지,
- * 오류 대기 중 컨테이너를 멈췄다 켜도 소비가 이어지는지 확인한다(이슈 #555).
+ * 읽기를 실패시켜 기본 구독은 취소되고, keepAlive 구독은 Consumer Group이 사라져도 스스로 다시 만들어 이어서
+ * 소비하며, 오류 대기 중 컨테이너를 멈췄다 켜도 소비가 이어지는지 확인한다(이슈 #555).
  */
 @SpringBootTest
 class StreamReadRequestsIntegrationTest {
@@ -73,22 +72,21 @@ class StreamReadRequestsIntegrationTest {
     }
 
     @Test
-    void keepAlive_구독은_읽기_오류_뒤에도_유지되어_다시_소비한다() throws InterruptedException {
+    void keepAlive_구독은_Consumer_Group이_사라져도_다시_만들고_이어서_소비한다() throws InterruptedException {
         Subscription subscription = container.register(
-                StreamReadRequests.keepAlive(STREAM_KEY, CONSUMER_GROUP, "keep-alive-consumer"),
+                StreamReadRequests.keepAlive(container, STREAM_KEY, CONSUMER_GROUP, "keep-alive-consumer",
+                        () -> createGroup(ReadOffset.from("0"))),
                 message -> received.add(message.getValue().get("n")));
         assertThat(subscription.await(WAIT)).isTrue();
 
         add("1");
         assertThat(received.poll(WAIT.toMillis(), TimeUnit.MILLISECONDS)).isEqualTo("1");
 
+        // 그룹을 처음부터 다시 만들므로 이미 처리한 "1"이 다시 올 수 있다. 원장 반영은 멱등이다.
         redisTemplate.opsForStream().destroyGroup(STREAM_KEY, CONSUMER_GROUP);
-        assertThat(waitUntil(() -> errors.get() > 0)).isTrue();
-
-        createGroup();
         add("2");
 
-        assertThat(received.poll(WAIT.toMillis(), TimeUnit.MILLISECONDS)).isEqualTo("2");
+        assertThat(waitUntil(() -> received.contains("2"))).isTrue();
         assertThat(subscription.isActive()).isTrue();
     }
 
@@ -108,35 +106,52 @@ class StreamReadRequestsIntegrationTest {
     @Test
     void 오류로_쉬는_도중_컨테이너를_멈췄다_다시_켜도_이어서_소비한다() throws InterruptedException {
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> restartable =
-                StreamListenerContainers.create(
-                        connectionFactory, new ApplicationShutdownState(), Duration.ofMillis(100), Duration.ofSeconds(3));
+                StreamMessageListenerContainer.create(connectionFactory,
+                        StreamMessageListenerContainerOptions.builder().pollTimeout(Duration.ofMillis(100)).build());
+        AtomicInteger observed = new AtomicInteger();
+        KeepAliveErrorHandler keepAlive = new KeepAliveErrorHandler(restartable::isRunning, () -> { }, Duration.ofSeconds(3));
         restartable.start();
         try {
             Subscription subscription = restartable.register(
-                    StreamReadRequests.keepAlive(STREAM_KEY, CONSUMER_GROUP, "restart-consumer"),
+                    StreamReadRequests.keepAlive(STREAM_KEY, CONSUMER_GROUP, "restart-consumer", error -> {
+                        observed.incrementAndGet();
+                        keepAlive.handleError(error);
+                    }),
                     message -> received.add(message.getValue().get("n")));
             assertThat(subscription.await(WAIT)).isTrue();
 
-            // 읽기가 NOGROUP으로 실패해 오류 처리기가 3초 대기에 들어간 상태에서,
+            // 키를 문자열로 바꿔 읽기가 WRONGTYPE으로 실패하게 하고, 오류 처리기가 3초 대기에 들어간 것을 확인한 뒤
             // 테스트 컨텍스트 일시정지처럼 컨테이너를 잠깐 멈췄다 다시 켠다.
-            redisTemplate.opsForStream().destroyGroup(STREAM_KEY, CONSUMER_GROUP);
-            sleep(Duration.ofMillis(500));
+            redisTemplate.delete(STREAM_KEY);
+            redisTemplate.opsForValue().set(STREAM_KEY, "not-a-stream");
+            assertThat(waitUntil(() -> observed.get() > 0)).isTrue();
             restartable.stop();
             sleep(Duration.ofMillis(200));
             restartable.start();
 
+            redisTemplate.delete(STREAM_KEY);
             createGroup();
             add("after-restart");
 
-            assertThat(received.poll(WAIT.toMillis(), TimeUnit.MILLISECONDS)).isEqualTo("after-restart");
+            assertThat(received.poll(WAIT.toMillis() * 2, TimeUnit.MILLISECONDS)).isEqualTo("after-restart");
         } finally {
             restartable.stop();
         }
     }
 
     private void createGroup() {
-        redisTemplate.execute((RedisCallback<String>) connection -> connection.streamCommands().xGroupCreate(
-                STREAM_KEY.getBytes(StandardCharsets.UTF_8), CONSUMER_GROUP, ReadOffset.latest(), true));
+        createGroup(ReadOffset.latest());
+    }
+
+    private void createGroup(ReadOffset offset) {
+        try {
+            redisTemplate.execute((RedisCallback<String>) connection -> connection.streamCommands().xGroupCreate(
+                    STREAM_KEY.getBytes(StandardCharsets.UTF_8), CONSUMER_GROUP, offset, true));
+        } catch (RuntimeException e) {
+            if (e.getMessage() == null || !e.getMessage().contains("BUSYGROUP")) {
+                throw e;
+            }
+        }
     }
 
     private void add(String n) {
