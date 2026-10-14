@@ -13,9 +13,17 @@ public interface CreatorSpaceProfileImageRepository extends JpaRepository<Creato
     @Transactional @Modifying
     @Query("update CreatorSpaceProfileImage i set i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.UPLOADED, i.statusChangedAt = :now where i.objectKey = :key and i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.UPLOADING")
     int markUploaded(@Param("key") String key, @Param("now") Instant now);
+
+    /** 프로필 사진으로 올린 이미지만 연결한다. 배너로 올린 키는 연결되지 않는다(0건). */
     @Transactional @Modifying
-    @Query("update CreatorSpaceProfileImage i set i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.LINKED, i.statusChangedAt = :now where i.objectKey = :key and i.creatorId = :creatorId and i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.UPLOADED")
+    @Query("update CreatorSpaceProfileImage i set i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.LINKED, i.statusChangedAt = :now where i.objectKey = :key and i.creatorId = :creatorId and i.imageKind = kr.co.cking.creator.domain.CreatorSpaceImageKind.PROFILE and i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.UPLOADED")
     int link(@Param("key") String key, @Param("creatorId") Long creatorId, @Param("now") Instant now);
+
+    /** 배너로 올린 이미지만 연결한다. 프로필 사진으로 올린 키는 연결되지 않는다(0건). */
+    @Transactional @Modifying
+    @Query("update CreatorSpaceProfileImage i set i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.LINKED, i.statusChangedAt = :now where i.objectKey = :key and i.creatorId = :creatorId and i.imageKind = kr.co.cking.creator.domain.CreatorSpaceImageKind.BANNER and i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.UPLOADED")
+    int linkBanner(@Param("key") String key, @Param("creatorId") Long creatorId, @Param("now") Instant now);
+
     @Transactional @Modifying
     @Query("update CreatorSpaceProfileImage i set i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.DELETE_PENDING, i.statusChangedAt = :now where i.objectKey = :key and i.creatorId = :creatorId and i.status = kr.co.cking.creator.domain.CreatorSpaceProfileImageStatus.LINKED")
     int markDeletePending(@Param("key") String key, @Param("creatorId") Long creatorId, @Param("now") Instant now);

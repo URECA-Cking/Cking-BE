@@ -116,6 +116,30 @@ public class CreatorSpaceController {
         return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.findMine(memberId)));
     }
 
+    @Operation(
+            summary = "Creator Space 배너 이미지 업로드",
+            description = "이미지를 올리고 Space 배너 연결에 사용할 imageKey를 반환합니다. 24시간 안에 연결하지 않으면 정리됩니다."
+    )
+    @PostMapping(value = "/api/creator/space/banner-images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<CreatorSpaceProfileImageResponse>> uploadBannerImage(
+            @CurrentMemberId Long memberId, @RequestPart(value = "image", required = false) MultipartFile image
+    ) {
+        String key = imageProcessingLimiter.admit(() -> profileImageUploadService.uploadBanner(memberId, readBytes(image)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(new CreatorSpaceProfileImageResponse(key)));
+    }
+
+    @Operation(
+            summary = "Creator Space 배너 이미지 연결",
+            description = "본인이 배너로 업로드한 imageKey를 현재 Creator Space 배너로 연결합니다. 같은 키 재요청은 멱등 성공합니다."
+    )
+    @PutMapping("/api/creator/space/banner-image")
+    public ApiResponse<CreatorSpaceResponse.Mine> linkBannerImage(
+            @CurrentMemberId Long memberId, @Valid @RequestBody CreatorSpaceProfileImageRequest request
+    ) {
+        profileImageLinkService.linkBanner(memberId, request.imageKey());
+        return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.findMine(memberId)));
+    }
+
     private byte[] readBytes(MultipartFile image) {
         if (image == null) throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         try { return image.getBytes(); }
@@ -135,7 +159,8 @@ public class CreatorSpaceController {
     ) {
         CreatorSpaceProfileFields fields = new CreatorSpaceProfileFields(
                 request.introText(), request.profileImageUrl(), request.bannerImageUrl(),
-                request.profileImageKey(), request.profileImageKeyProvided());
+                request.profileImageKey(), request.profileImageKeyProvided(),
+                request.bannerImageKey(), request.bannerImageKeyProvided());
         return ApiResponse.success(CreatorSpaceResponse.Mine.from(profileService.updateMine(memberId, fields)));
     }
 

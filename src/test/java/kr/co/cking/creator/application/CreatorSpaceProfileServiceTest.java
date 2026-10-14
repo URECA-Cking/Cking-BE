@@ -239,6 +239,43 @@ class CreatorSpaceProfileServiceTest {
     }
 
     @Test
+    void updateMinePassesBannerImageKeyToImageManager() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+
+        service.updateMine(7L, new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, false,
+                "creator-space-profile-images/42/banner/new.jpg", true));
+
+        then(profileImageManager).should().apply(creator, space, null, false);
+        then(profileImageManager).should().applyBanner(creator, space, "creator-space-profile-images/42/banner/new.jpg", true);
+    }
+
+    @Test
+    void updateMineKeepsDefaultBannerWhenExplicitNullBannerKeyRestoresIt() {
+        space.updateBannerImage("creator-space-profile-images/42/banner/current.jpg", "https://cdn/current.jpg");
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        CreatorSpaceProfileImageRepository imageRepository = mock(CreatorSpaceProfileImageRepository.class);
+        CreatorSpaceProfileImageManager realImageManager = new CreatorSpaceProfileImageManager(
+                imageRepository,
+                new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
+                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+        CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
+                creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
+
+        // 클라이언트가 현재 배너 URL(업로드 이미지)을 그대로 보내도 기본 배너로 저장되지 않아야 한다.
+        serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://cdn/current.jpg", null, false, null, true));
+
+        assertThat(space.getBannerImageKey()).isNull();
+        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/banner.png");
+        then(imageRepository).should().markDeletePending(
+                "creator-space-profile-images/42/banner/current.jpg", 42L, NOW.toInstant(ZoneOffset.UTC));
+    }
+
+    @Test
     void updateMineThrowsForbiddenWhenCallerIsNotCreator() {
         given(creatorRepository.findByMemberId(8L)).willReturn(Optional.empty());
 

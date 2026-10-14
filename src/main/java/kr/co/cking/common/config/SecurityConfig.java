@@ -147,7 +147,9 @@ public class SecurityConfig {
                                 "/api/creator/youtube-channel",
                                 "/api/creator/space/slug",
                                 "/api/creator/space/profile-images",
-                                "/api/creator/space/profile-image"
+                                "/api/creator/space/profile-image",
+                                "/api/creator/space/banner-images",
+                                "/api/creator/space/banner-image"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/comments").authenticated()
