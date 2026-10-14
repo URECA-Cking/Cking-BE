@@ -29,7 +29,9 @@ public class SanctionNotificationService {
 
     private static final String STARTED_TITLE = "댓글 작성 제한 안내";
     private static final String RELEASED_TITLE = "댓글 작성 제한 해제 안내";
-    private static final String RELEASED_BODY = "댓글 작성 제한이 해제되었습니다. 다시 댓글을 작성할 수 있습니다.";
+    private static final String SPACE_STARTED_TITLE = "스페이스 댓글 작성 제한 안내";
+    private static final String SPACE_RELEASED_TITLE = "스페이스 댓글 작성 제한 해제 안내";
+    private static final String RELEASED_BODY = "댓글 작성 제한이 해제되었습니다.";
 
     private final NotificationRepository notificationRepository;
 
@@ -55,6 +57,22 @@ public class SanctionNotificationService {
     /** 댓글 작성 제한이 모두 풀렸음을 알린다. 다른 제한이 남아 있으면 호출하지 않는다. */
     public void createCommentRestrictionReleased(Long memberId, Long sanctionId) {
         save(memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_RELEASED, RELEASED_TITLE, RELEASED_BODY);
+    }
+
+    /**
+     * 크리에이터가 자기 스페이스에서 댓글 작성을 막았음을 알린다. 알림 종류는 플랫폼 제한과 같고 본문으로 구분한다. 차단 사유는
+     * 담지 않고, {@code endsAt}은 이 차단이 풀리는 시각이다.
+     */
+    public void createSpaceCommentBlockStarted(Long memberId, Long sanctionId, String creatorName, Instant endsAt) {
+        String body = creatorName + "의 스페이스에서 댓글 작성이 제한되었습니다. "
+                + ENDS_AT_FORMAT.format(ceilToMinute(endsAt)) + "까지 이 스페이스에서 댓글을 작성하거나 수정할 수 없습니다.";
+        save(memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, SPACE_STARTED_TITLE, body);
+    }
+
+    /** 크리에이터가 스페이스 댓글 작성 차단을 풀었음을 알린다. */
+    public void createSpaceCommentBlockReleased(Long memberId, Long sanctionId, String creatorName) {
+        String body = creatorName + "의 스페이스에서 댓글 작성 제한이 해제되었습니다.";
+        save(memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_RELEASED, SPACE_RELEASED_TITLE, body);
     }
 
     private String startedTail(Instant endsAt) {

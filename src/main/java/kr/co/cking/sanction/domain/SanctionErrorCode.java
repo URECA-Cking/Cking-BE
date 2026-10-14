@@ -6,7 +6,13 @@ import org.springframework.http.HttpStatus;
 
 @RequiredArgsConstructor
 public enum SanctionErrorCode implements ErrorCode {
-    COMMENT_RESTRICTED(HttpStatus.FORBIDDEN, "댓글 작성이 제한되었습니다.");
+    COMMENT_RESTRICTED(HttpStatus.FORBIDDEN, "댓글 작성이 제한되었습니다."),
+    /** 크리에이터가 자기 스페이스에서 건 차단. 다른 스페이스에서는 쓸 수 있다. */
+    SPACE_COMMENT_BLOCKED(HttpStatus.FORBIDDEN, "이 스페이스에서 댓글 작성이 제한되었습니다."),
+    /** 크리에이터가 자기 자신을 차단하려는 요청. */
+    CANNOT_BLOCK_SELF(HttpStatus.BAD_REQUEST, "자기 자신은 차단할 수 없습니다."),
+    /** 크리에이터가 관리자를 차단하려는 요청. */
+    CANNOT_BLOCK_ADMIN(HttpStatus.BAD_REQUEST, "관리자는 차단할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

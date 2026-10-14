@@ -35,6 +35,10 @@ public class MemberSanction {
     @Column(name = "member_id", nullable = false, updatable = false)
     private Long memberId;
 
+    /** {@link SanctionScope#SPACE}일 때 차단을 건 스페이스의 주인(Creator). 플랫폼 범위는 null */
+    @Column(name = "space_creator_id", updatable = false)
+    private Long spaceCreatorId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "scope", nullable = false, updatable = false, length = 20)
     private SanctionScope scope;
@@ -69,10 +73,11 @@ public class MemberSanction {
     private Long releasedBy;
 
     private MemberSanction(
-            Long memberId, SanctionSource source, Long causeCommentId, String reason,
-            Instant startedAt, Duration duration, Long createdBy) {
+            Long memberId, SanctionScope scope, Long spaceCreatorId, SanctionSource source, Long causeCommentId,
+            String reason, Instant startedAt, Duration duration, Long createdBy) {
         this.memberId = memberId;
-        this.scope = SanctionScope.PLATFORM;
+        this.spaceCreatorId = spaceCreatorId;
+        this.scope = scope;
         this.type = SanctionType.COMMENT_RESTRICTION;
         this.source = source;
         this.causeCommentId = causeCommentId;
@@ -85,13 +90,29 @@ public class MemberSanction {
     /** 관리자가 댓글을 숨겨 자동으로 만들어지는 경고 겸 댓글 작성 제한. */
     public static MemberSanction automatic(
             Long memberId, Long causeCommentId, Long adminId, Instant startedAt, Duration duration) {
-        return new MemberSanction(memberId, SanctionSource.AUTOMATIC, causeCommentId, null, startedAt, duration, adminId);
+        return new MemberSanction(
+                memberId, SanctionScope.PLATFORM, null, SanctionSource.AUTOMATIC, causeCommentId, null, startedAt, duration,
+                adminId);
     }
 
     /** 관리자가 직접 거는 댓글 작성 제한. 경고 횟수에 세지 않는다. */
     public static MemberSanction manual(
             Long memberId, Long adminId, String reason, Instant startedAt, Duration duration) {
-        return new MemberSanction(memberId, SanctionSource.MANUAL, null, reason, startedAt, duration, adminId);
+        return new MemberSanction(
+                memberId, SanctionScope.PLATFORM, null, SanctionSource.MANUAL, null, reason, startedAt, duration, adminId);
+    }
+
+    /**
+     * 크리에이터가 자기 스페이스에서 회원의 댓글 작성·수정을 막는다. 경고 횟수에 세지 않는다.
+     *
+     * @param spaceCreatorId  차단을 거는 스페이스의 주인(Creator ID)
+     * @param creatorMemberId 차단을 건 크리에이터의 Member ID
+     */
+    public static MemberSanction spaceBlock(
+            Long memberId, Long spaceCreatorId, Long creatorMemberId, Instant startedAt, Duration duration) {
+        return new MemberSanction(
+                memberId, SanctionScope.SPACE, spaceCreatorId, SanctionSource.MANUAL, null, null, startedAt, duration,
+                creatorMemberId);
     }
 
     public boolean isActiveAt(Instant now) {
@@ -99,11 +120,11 @@ public class MemberSanction {
     }
 
     /** 유효한 제한을 지금 해제한다. 이미 끝났거나 해제된 제한은 바꾸지 않는다(멱등). */
-    public void release(Long adminId, Instant now) {
+    public void release(Long releasedBy, Instant now) {
         if (!isActiveAt(now)) {
             return;
         }
         this.releasedAt = now;
-        this.releasedBy = adminId;
+        this.releasedBy = releasedBy;
     }
 }

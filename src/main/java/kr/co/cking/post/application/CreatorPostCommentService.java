@@ -106,7 +106,7 @@ public class CreatorPostCommentService {
     public CreatorPostCommentView create(Long memberId, Long creatorId, Long postId, String content) {
         Member author = requireMember(memberId);
         author.requireProfileConfigured();
-        sanctionQueryService.requireCommentWriteAllowed(memberId);
+        sanctionQueryService.requireCommentWriteAllowed(memberId, creatorId);
         Creator creator = accessPolicy.requireCreator(creatorId);
         accessPolicy.requireViewablePostForCommentWrite(creator, postId, memberId);
         requireCanComment(creator, memberId);
@@ -121,7 +121,7 @@ public class CreatorPostCommentService {
             Long memberId, Long creatorId, Long postId, Long commentId, String content) {
         Member author = requireMember(memberId);
         author.requireProfileConfigured();
-        sanctionQueryService.requireCommentWriteAllowed(memberId);
+        sanctionQueryService.requireCommentWriteAllowed(memberId, creatorId);
         Creator creator = accessPolicy.requireCreator(creatorId);
         accessPolicy.requireViewablePostForCommentWrite(creator, postId, memberId);
         CreatorPostComment comment = requireCommentForUpdate(postId, commentId);

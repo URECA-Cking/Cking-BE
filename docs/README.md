@@ -40,8 +40,8 @@
 - [Winner](domains/winner/README.md): Winner 불변 원본과 운영 상태 전이·동시성 계약
 - [Winner API](domains/winner/api.md): 공개 Winner 조회 API 계약
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
-- [Sanction](domains/sanction/README.md): 댓글 숨김 경고 누적과 기간제 댓글 작성 제한 정책
-- [Sanction API](domains/sanction/api.md): 관리자 제재 목록·수동 제한·해제 API 계약
+- [Sanction](domains/sanction/README.md): 댓글 숨김 경고 누적과 기간제 댓글 작성 제한, 크리에이터의 스페이스 댓글 차단 정책
+- [Sanction API](domains/sanction/api.md): 관리자 제재 목록·수동 제한·해제와 크리에이터 스페이스 댓글 차단 API 계약
 - [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계
 - [Mission API](domains/mission/api.md): 미션 완료 API 계약
 - [YouTube 구독 인증](domains/subscription-verification/README.md): 채널 설정, 이미지 제출, ONCE 인증과 보상 경계

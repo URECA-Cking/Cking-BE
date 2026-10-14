@@ -33,6 +33,7 @@ class SanctionQueryServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-10-13T00:00:00Z");
     private static final Long MEMBER_ID = 20L;
+    private static final Long CREATOR_ID = 5L;
     private static final Pageable PAGE = PageRequest.of(0, 20);
 
     private final MemberQueryService memberQueryService = mock(MemberQueryService.class);
@@ -46,7 +47,7 @@ class SanctionQueryServiceTest {
         given(sanctionRepository.findActiveEndsAt(MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
                 .willReturn(Optional.of(endsAt));
 
-        assertThatThrownBy(() -> service.requireCommentWriteAllowed(MEMBER_ID))
+        assertThatThrownBy(() -> service.requireCommentWriteAllowed(MEMBER_ID, CREATOR_ID))
                 .isInstanceOfSatisfying(BusinessException.class, exception -> {
                     assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.COMMENT_RESTRICTED);
                     assertThat(exception.getMessage()).contains(endsAt.toString());
@@ -58,7 +59,42 @@ class SanctionQueryServiceTest {
         given(sanctionRepository.findActiveEndsAt(MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
                 .willReturn(Optional.empty());
 
-        service.requireCommentWriteAllowed(MEMBER_ID);
+        service.requireCommentWriteAllowed(MEMBER_ID, CREATOR_ID);
+    }
+
+    @Test
+    void 그_스페이스의_차단이_유효하면_해제_시각을_담아_SPACE_COMMENT_BLOCKED로_막는다() {
+        Instant endsAt = NOW.plus(Duration.ofDays(7));
+        given(sanctionRepository.findActiveEndsAt(MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
+                .willReturn(Optional.empty());
+        given(sanctionRepository.findActiveSpaceBlockEndsAt(CREATOR_ID, MEMBER_ID, NOW)).willReturn(Optional.of(endsAt));
+
+        assertThatThrownBy(() -> service.requireCommentWriteAllowed(MEMBER_ID, CREATOR_ID))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.SPACE_COMMENT_BLOCKED);
+                    assertThat(exception.getMessage()).contains(endsAt.toString());
+                });
+    }
+
+    @Test
+    void 다른_스페이스의_차단은_이_스페이스의_작성을_막지_않는다() {
+        given(sanctionRepository.findActiveEndsAt(MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
+                .willReturn(Optional.empty());
+        given(sanctionRepository.findActiveSpaceBlockEndsAt(CREATOR_ID, MEMBER_ID, NOW)).willReturn(Optional.empty());
+
+        service.requireCommentWriteAllowed(MEMBER_ID, CREATOR_ID);
+    }
+
+    @Test
+    void 플랫폼_제한과_스페이스_차단이_함께_있으면_플랫폼_제한을_먼저_알린다() {
+        given(sanctionRepository.findActiveEndsAt(MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
+                .willReturn(Optional.of(NOW.plus(Duration.ofDays(1))));
+        given(sanctionRepository.findActiveSpaceBlockEndsAt(CREATOR_ID, MEMBER_ID, NOW))
+                .willReturn(Optional.of(NOW.plus(Duration.ofDays(7))));
+
+        assertThatThrownBy(() -> service.requireCommentWriteAllowed(MEMBER_ID, CREATOR_ID))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.COMMENT_RESTRICTED));
     }
 
     @Test
