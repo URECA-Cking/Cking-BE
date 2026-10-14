@@ -38,17 +38,64 @@ public interface MemberSanctionRepository extends JpaRepository<MemberSanction, 
             @Param("type") SanctionType type,
             @Param("now") Instant now);
 
-    /** 관리자 목록. 최신 시작 순이며 memberId를 주면 그 회원의 제재만, activeOnly면 지금 유효한 제재만 돌려준다. */
+    /** 한 스페이스에서 그 회원에게 지금 유효한 차단 중 가장 늦게 끝나는 시각. 유효한 차단이 없으면 비어 있다. */
+    @Query("""
+            select max(s.endsAt) from MemberSanction s
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE
+              and s.type = kr.co.cking.sanction.domain.SanctionType.COMMENT_RESTRICTION
+              and s.spaceCreatorId = :creatorId and s.memberId = :memberId
+              and s.startedAt <= :now and s.endsAt > :now
+              and (s.releasedAt is null or s.releasedAt > :now)
+            """)
+    Optional<Instant> findActiveSpaceBlockEndsAt(
+            @Param("creatorId") Long creatorId, @Param("memberId") Long memberId, @Param("now") Instant now);
+
+    /** 한 스페이스에서 그 회원에게 지금 유효한 차단. 같은 쌍에는 유효한 차단을 하나만 둔다. */
+    @Query("""
+            select s from MemberSanction s
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE
+              and s.type = kr.co.cking.sanction.domain.SanctionType.COMMENT_RESTRICTION
+              and s.spaceCreatorId = :creatorId and s.memberId = :memberId
+              and s.startedAt <= :now and s.endsAt > :now
+              and (s.releasedAt is null or s.releasedAt > :now)
+            order by s.endsAt desc, s.sanctionId desc
+            """)
+    java.util.List<MemberSanction> findActiveSpaceBlocks(
+            @Param("creatorId") Long creatorId, @Param("memberId") Long memberId, @Param("now") Instant now);
+
+    /** 크리에이터의 차단 목록. 최신 시작 순이며 activeOnly면 지금 유효한 차단만 돌려준다. */
     @Query(value = """
             select s from MemberSanction s
-            where (:memberId is null or s.memberId = :memberId)
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE and s.spaceCreatorId = :creatorId
               and (:activeOnly = false
                    or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
             order by s.startedAt desc, s.sanctionId desc
             """,
             countQuery = """
             select count(s) from MemberSanction s
-            where (:memberId is null or s.memberId = :memberId)
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE and s.spaceCreatorId = :creatorId
+              and (:activeOnly = false
+                   or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
+            """)
+    Page<MemberSanction> searchSpaceBlocks(
+            @Param("creatorId") Long creatorId,
+            @Param("activeOnly") boolean activeOnly,
+            @Param("now") Instant now,
+            Pageable pageable);
+
+    /** 관리자 목록. 최신 시작 순이며 memberId를 주면 그 회원의 제재만, activeOnly면 지금 유효한 제재만 돌려준다. */
+    @Query(value = """
+            select s from MemberSanction s
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.PLATFORM
+              and (:memberId is null or s.memberId = :memberId)
+              and (:activeOnly = false
+                   or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
+            order by s.startedAt desc, s.sanctionId desc
+            """,
+            countQuery = """
+            select count(s) from MemberSanction s
+            where s.scope = kr.co.cking.sanction.domain.SanctionScope.PLATFORM
+              and (:memberId is null or s.memberId = :memberId)
               and (:activeOnly = false
                    or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
             """)
