@@ -36,15 +36,13 @@ public class CommonEarnStreamConfig {
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> commonEarnStreamListenerContainer(
             RedisConnectionFactory connectionFactory,
             StringRedisTemplate redisTemplate,
-            CommonEarnStreamListener commonEarnStreamListener,
-            ApplicationShutdownState shutdownState
+            CommonEarnStreamListener commonEarnStreamListener
     ) {
         ensureConsumerGroup(redisTemplate);
 
         StreamMessageListenerContainerOptions<String, MapRecord<String, String, String>> options =
                 StreamMessageListenerContainerOptions.builder()
                         .pollTimeout(Duration.ofSeconds(2))
-                        .errorHandler(new StreamListenerErrorHandler(shutdownState))
                         .build();
 
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> container =

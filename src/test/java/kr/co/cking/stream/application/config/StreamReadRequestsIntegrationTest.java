@@ -109,7 +109,8 @@ class StreamReadRequestsIntegrationTest {
                 StreamMessageListenerContainer.create(connectionFactory,
                         StreamMessageListenerContainerOptions.builder().pollTimeout(Duration.ofMillis(100)).build());
         AtomicInteger observed = new AtomicInteger();
-        KeepAliveErrorHandler keepAlive = new KeepAliveErrorHandler(restartable::isRunning, () -> { }, Duration.ofSeconds(3));
+        KeepAliveErrorHandler keepAlive =
+                new KeepAliveErrorHandler(restartable::isRunning, () -> { }, Duration.ofSeconds(3), Duration.ofMinutes(1));
         restartable.start();
         try {
             Subscription subscription = restartable.register(

@@ -24,6 +24,8 @@ import org.springframework.data.redis.RedisSystemException;
 
 class KeepAliveErrorHandlerTest {
 
+    private static final Duration LOG_INTERVAL = Duration.ofMinutes(1);
+
     private ListAppender<ILoggingEvent> logAppender;
 
     @BeforeEach
@@ -39,19 +41,21 @@ class KeepAliveErrorHandlerTest {
     }
 
     @Test
-    void 정상_실행_중_오류_뒤에는_다음_폴링_전에_쉰다() {
-        KeepAliveErrorHandler errorHandler = new KeepAliveErrorHandler(() -> true, () -> { }, Duration.ofMillis(200));
+    void 정상_실행_중에는_연결이_닫혀도_ERROR로_남기고_다음_폴링_전에_쉰다() {
+        KeepAliveErrorHandler errorHandler =
+                new KeepAliveErrorHandler(() -> true, () -> { }, Duration.ofMillis(200), LOG_INTERVAL);
 
         long startedAt = System.nanoTime();
-        errorHandler.handleError(new RedisException("Command timed out"));
+        errorHandler.handleError(new RedisException("Connection closed"));
 
         assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isGreaterThanOrEqualTo(Duration.ofMillis(200));
         assertThat(logAppender.list).anyMatch(event -> event.getLevel().equals(Level.ERROR));
     }
 
     @Test
-    void 컨테이너가_멈춘_뒤의_오류는_쉬지_않고_ERROR로_기록하지_않는다() {
-        KeepAliveErrorHandler errorHandler = new KeepAliveErrorHandler(() -> false, () -> { }, Duration.ofSeconds(5));
+    void 멈추는_중_연결_종료는_쉬지_않고_ERROR로_남기지_않는다() {
+        KeepAliveErrorHandler errorHandler =
+                new KeepAliveErrorHandler(() -> false, () -> { }, Duration.ofSeconds(5), LOG_INTERVAL);
 
         assertTimeoutPreemptively(Duration.ofSeconds(1),
                 () -> errorHandler.handleError(new RedisException("Connection closed")));
@@ -59,9 +63,20 @@ class KeepAliveErrorHandlerTest {
     }
 
     @Test
+    void 멈추는_중이라도_연결_종료가_아닌_오류는_쉬지_않고_ERROR로_남긴다() {
+        KeepAliveErrorHandler errorHandler =
+                new KeepAliveErrorHandler(() -> false, () -> { }, Duration.ofSeconds(5), LOG_INTERVAL);
+
+        assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> errorHandler.handleError(new RedisException("Command timed out")));
+        assertThat(logAppender.list).anyMatch(event -> event.getLevel().equals(Level.ERROR));
+    }
+
+    @Test
     void 쉬는_도중_컨테이너가_멈추면_바로_끝낸다() {
         AtomicBoolean running = new AtomicBoolean(true);
-        KeepAliveErrorHandler errorHandler = new KeepAliveErrorHandler(running::get, () -> { }, Duration.ofSeconds(5));
+        KeepAliveErrorHandler errorHandler =
+                new KeepAliveErrorHandler(running::get, () -> { }, Duration.ofSeconds(5), LOG_INTERVAL);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         try {
             scheduler.schedule(() -> running.set(false), 100, TimeUnit.MILLISECONDS);
@@ -74,26 +89,63 @@ class KeepAliveErrorHandlerTest {
     }
 
     @Test
-    void Consumer_Group이_없으면_다시_만들고_쉬지_않는다() {
+    void Consumer_Group이_없으면_다시_만들고_다음_폴링_전에_쉰다() {
         AtomicInteger recreated = new AtomicInteger();
         KeepAliveErrorHandler errorHandler =
-                new KeepAliveErrorHandler(() -> true, recreated::incrementAndGet, Duration.ofSeconds(5));
-        RedisSystemException noGroup = new RedisSystemException("Error in execution",
-                new RedisCommandExecutionException("NOGROUP No such key 'stream' or consumer group 'group'"));
+                new KeepAliveErrorHandler(() -> true, recreated::incrementAndGet, Duration.ofMillis(200), LOG_INTERVAL);
 
-        assertTimeoutPreemptively(Duration.ofSeconds(1), () -> errorHandler.handleError(noGroup));
+        long startedAt = System.nanoTime();
+        errorHandler.handleError(noGroup());
+
         assertThat(recreated).hasValue(1);
+        assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isGreaterThanOrEqualTo(Duration.ofMillis(200));
     }
 
     @Test
-    void 같은_오류가_이어지면_스택트레이스는_한_번만_남긴다() {
-        KeepAliveErrorHandler errorHandler = new KeepAliveErrorHandler(() -> true, () -> { }, Duration.ZERO);
+    void 같은_오류가_이어지면_간격_안에서는_한_번만_남긴다() {
+        KeepAliveErrorHandler errorHandler =
+                new KeepAliveErrorHandler(() -> true, () -> { }, Duration.ZERO, LOG_INTERVAL);
 
         errorHandler.handleError(new RedisException("Command timed out"));
+        errorHandler.handleError(new RedisException("Command timed out"));
+        errorHandler.handleError(new RedisException("Command timed out"));
+
+        assertThat(logAppender.list).hasSize(1);
+        assertThat(logAppender.list.get(0).getThrowableProxy()).isNotNull();
+    }
+
+    @Test
+    void 간격이_지나면_건너뛴_횟수와_함께_다시_남긴다() throws InterruptedException {
+        KeepAliveErrorHandler errorHandler =
+                new KeepAliveErrorHandler(() -> true, () -> { }, Duration.ZERO, Duration.ofMillis(100));
+
+        errorHandler.handleError(new RedisException("Command timed out"));
+        errorHandler.handleError(new RedisException("Command timed out"));
+        errorHandler.handleError(new RedisException("Command timed out"));
+        Thread.sleep(150);
         errorHandler.handleError(new RedisException("Command timed out"));
 
         assertThat(logAppender.list).hasSize(2);
-        assertThat(logAppender.list.get(0).getThrowableProxy()).isNotNull();
-        assertThat(logAppender.list.get(1).getThrowableProxy()).isNull();
+        assertThat(logAppender.list.get(1).getFormattedMessage()).contains("2번 더");
+        assertThat(logAppender.list.get(1).getThrowableProxy()).isNotNull();
+    }
+
+    @Test
+    void Consumer_Group_재생성이_이어지면_간격_안에서는_한_번만_남긴다() {
+        AtomicInteger recreated = new AtomicInteger();
+        KeepAliveErrorHandler errorHandler =
+                new KeepAliveErrorHandler(() -> true, recreated::incrementAndGet, Duration.ZERO, LOG_INTERVAL);
+
+        errorHandler.handleError(noGroup());
+        errorHandler.handleError(noGroup());
+        errorHandler.handleError(noGroup());
+
+        assertThat(recreated).hasValue(3);
+        assertThat(logAppender.list).filteredOn(event -> event.getLevel().equals(Level.WARN)).hasSize(1);
+    }
+
+    private static RedisSystemException noGroup() {
+        return new RedisSystemException("Error in execution",
+                new RedisCommandExecutionException("NOGROUP No such key 'stream' or consumer group 'group'"));
     }
 }

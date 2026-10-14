@@ -17,6 +17,7 @@ import org.springframework.util.ErrorHandler;
 final class StreamReadRequests {
 
     private static final Duration RETRY_DELAY = Duration.ofSeconds(1);
+    private static final Duration LOG_INTERVAL = Duration.ofMinutes(1);
 
     private StreamReadRequests() {
     }
@@ -29,7 +30,7 @@ final class StreamReadRequests {
             Runnable ensureConsumerGroup
     ) {
         return keepAlive(streamKey, consumerGroup, consumerName,
-                new KeepAliveErrorHandler(container::isRunning, ensureConsumerGroup, RETRY_DELAY));
+                new KeepAliveErrorHandler(container::isRunning, ensureConsumerGroup, RETRY_DELAY, LOG_INTERVAL));
     }
 
     static StreamReadRequest<String> keepAlive(
