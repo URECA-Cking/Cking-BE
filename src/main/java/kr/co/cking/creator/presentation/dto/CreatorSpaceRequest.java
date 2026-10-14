@@ -21,12 +21,18 @@ public final class CreatorSpaceRequest {
         @Size(max = 200)
         private String profileImageKey;
         private boolean profileImageKeyProvided;
+        /** 업로드한 배너 이미지 키. 생략하면 유지, 키면 교체, null이면 기본 배너로 복귀한다(이슈 #590). */
+        @Size(max = 200)
+        private String bannerImageKey;
+        private boolean bannerImageKeyProvided;
 
         public String introText() { return introText; }
         public String profileImageUrl() { return profileImageUrl; }
         public String bannerImageUrl() { return bannerImageUrl; }
         public String profileImageKey() { return profileImageKey; }
         public boolean profileImageKeyProvided() { return profileImageKeyProvided; }
+        public String bannerImageKey() { return bannerImageKey; }
+        public boolean bannerImageKeyProvided() { return bannerImageKeyProvided; }
 
         @JsonSetter("introText")
         public void setIntroText(String introText) {
@@ -47,6 +53,12 @@ public final class CreatorSpaceRequest {
         public void setProfileImageKey(String profileImageKey) {
             this.profileImageKey = profileImageKey;
             this.profileImageKeyProvided = true;
+        }
+
+        @JsonSetter("bannerImageKey")
+        public void setBannerImageKey(String bannerImageKey) {
+            this.bannerImageKey = bannerImageKey;
+            this.bannerImageKeyProvided = true;
         }
     }
 

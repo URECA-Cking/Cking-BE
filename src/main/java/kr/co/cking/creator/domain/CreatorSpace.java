@@ -52,6 +52,14 @@ public class CreatorSpace {
     @Column(name = "banner_image_url", nullable = false, length = 500)
     private String bannerImageUrl;
 
+    /** 업로드된 Creator Space 배너 이미지의 내부 Object Storage 키(이슈 #590). 기존 URL 기반 Space는 null이다. */
+    @Column(name = "banner_image_key", length = 200)
+    private String bannerImageKey;
+
+    /** 업로드 배너 연결을 해제할 때 복귀할, Space 생성·기존 URL 수정 시점의 기본 배너 이미지다. */
+    @Column(name = "default_banner_image_url", nullable = false, length = 500)
+    private String defaultBannerImageUrl;
+
     @Column(name = "slug", nullable = false, length = 100)
     private String slug;
 
@@ -70,18 +78,25 @@ public class CreatorSpace {
         this.profileImageUrl = profileImageUrl;
         this.defaultProfileImageUrl = profileImageUrl;
         this.bannerImageUrl = bannerImageUrl;
+        this.defaultBannerImageUrl = bannerImageUrl;
         this.slug = slug;
         this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
-    /** Creator 본인이 홈·프로필을 수정한다. slug는 이 메서드로 바꾸지 않는다. */
+    /**
+     * Creator 본인이 홈·프로필을 수정한다. slug는 이 메서드로 바꾸지 않는다. 업로드한 프로필 사진·배너가 연결돼 있으면 그 이미지의
+     * URL 입력은 무시하고 현재 연결을 유지한다(교체·복귀는 {@link #updateProfileImage}·{@link #updateBannerImage} 등으로 한다).
+     */
     public void updateProfile(String introText, String profileImageUrl, String bannerImageUrl) {
         this.introText = introText;
         if (profileImageKey == null) {
             this.profileImageUrl = profileImageUrl;
             this.defaultProfileImageUrl = profileImageUrl;
         }
-        this.bannerImageUrl = bannerImageUrl;
+        if (bannerImageKey == null) {
+            this.bannerImageUrl = bannerImageUrl;
+            this.defaultBannerImageUrl = bannerImageUrl;
+        }
     }
 
     public void updateProfileImage(String profileImageKey, String profileImageUrl) {
@@ -92,6 +107,18 @@ public class CreatorSpace {
     public void restoreDefaultProfileImage() {
         this.profileImageKey = null;
         this.profileImageUrl = defaultProfileImageUrl;
+    }
+
+    /** 업로드한 배너 이미지를 현재 배너로 연결한다(이슈 #590). */
+    public void updateBannerImage(String bannerImageKey, String bannerImageUrl) {
+        this.bannerImageKey = bannerImageKey;
+        this.bannerImageUrl = bannerImageUrl;
+    }
+
+    /** 업로드한 배너 연결을 해제하고 기본 배너로 돌아간다. */
+    public void restoreDefaultBannerImage() {
+        this.bannerImageKey = null;
+        this.bannerImageUrl = defaultBannerImageUrl;
     }
 
     /** 커스텀 slug로 바꾼다. 형식·예약어·중복·변경 간격 검증은 호출하는 Application이 먼저 한다. */

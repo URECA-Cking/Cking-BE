@@ -25,4 +25,14 @@ public class CreatorSpaceProfileImageLinkService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         imageManager.apply(creator, space, imageKey, true);
     }
+
+    /** 업로드 완료된 배너 이미지를 본인 Space의 현재 배너로 연결한다. 같은 키 재요청은 멱등 성공한다(이슈 #590). */
+    @Transactional
+    public void linkBanner(Long memberId, String imageKey) {
+        Creator creator = creatorRepository.findByMemberId(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        CreatorSpace space = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId())
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        imageManager.applyBanner(creator, space, imageKey, true);
+    }
 }

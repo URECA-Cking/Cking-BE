@@ -216,6 +216,112 @@ class CreatorSpaceControllerTest {
         then(profileImageLinkService).should().link(7L, "creator-space-profile-images/42/image.jpg");
     }
 
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesBannerImageKeyAndExplicitNullForDefaultBannerRestore() throws Exception {
+        CreatorSpaceProfileFields replace = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, false,
+                "creator-space-profile-images/42/banner/new.jpg", true);
+        CreatorSpaceProfileFields restore = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, false, null, true);
+        given(profileService.updateMine(eq(7L), any())).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "bannerImageKey": "creator-space-profile-images/42/banner/new.jpg"
+                                }
+                                """))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "bannerImageKey": null
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        then(profileService).should().updateMine(7L, replace);
+        then(profileService).should().updateMine(7L, restore);
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpaceDoesNotTouchBannerImageWhenKeyIsOmitted() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png");
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY))
+                .andExpect(status().isOk());
+
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void uploadBannerImageReturnsConnectionKey() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+        given(profileImageUploadService.uploadBanner(eq(7L), any())).willReturn("creator-space-profile-images/42/banner/image.jpg");
+
+        mockMvc.perform(multipart("/api/creator/space/banner-images")
+                        .file(new MockMultipartFile("image", "banner.png", "image/png", new byte[] {1})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.imageKey").value("creator-space-profile-images/42/banner/image.jpg"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void uploadBannerImageWithoutImagePartIsValidationFailure() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+
+        mockMvc.perform(multipart("/api/creator/space/banner-images"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void uploadBannerImageRequiresJwt() throws Exception {
+        mockMvc.perform(multipart("/api/creator/space/banner-images")
+                        .file(new MockMultipartFile("image", "banner.png", "image/png", new byte[] {1})))
+                .andExpect(status().isUnauthorized());
+        then(profileImageUploadService).should(never()).uploadBanner(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void linkBannerImageUsesAuthenticatedCreatorAndReturnsMine() throws Exception {
+        given(profileService.findMine(7L)).willReturn(view());
+
+        mockMvc.perform(put("/api/creator/space/banner-image")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"imageKey\":\"creator-space-profile-images/42/banner/image.jpg\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").value(42));
+
+        then(profileImageLinkService).should().linkBanner(7L, "creator-space-profile-images/42/banner/image.jpg");
+        then(profileImageLinkService).should(never()).link(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void linkBannerImageRejectsBlankKey() throws Exception {
+        mockMvc.perform(put("/api/creator/space/banner-image")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"imageKey\":\" \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileImageLinkService).should(never()).linkBanner(any(), any());
+    }
+
     /** 모든 필드를 한 번에 교체하므로 공백이거나 누락된 필드는 검증 실패다. */
     @Test
     @WithMockJwt(memberId = "7")

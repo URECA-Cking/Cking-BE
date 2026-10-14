@@ -1,9 +1,9 @@
--- V67 이후 스키마에서 Space가 없는 기존 Creator를 수동으로 채운다.
+-- V75 이후 스키마에서 Space가 없는 기존 Creator를 수동으로 채운다(배너 업로드 컬럼 포함).
 -- V19 Flyway 파일은 체크섬을 유지해야 하므로 수정하거나 재실행하지 않는다.
 -- 활성 템플릿의 slug가 선점됐으면 승인 경로와 같이 -2부터 -100까지 찾는다.
 INSERT INTO creator_space (
     creator_id, intro_text, profile_image_url, profile_image_key, default_profile_image_url,
-    banner_image_url, slug, created_at
+    banner_image_url, banner_image_key, default_banner_image_url, slug, created_at
 )
 WITH RECURSIVE suffixes (n) AS (
     SELECT 1
@@ -29,6 +29,7 @@ WITH RECURSIVE suffixes (n) AS (
     WHERE CHAR_LENGTH(candidate_slug) <= 100
       AND NOT EXISTS (SELECT 1 FROM creator_space s WHERE s.slug = candidates.candidate_slug)
 )
-SELECT creator_id, intro_text, profile_image_url, NULL, profile_image_url, banner_image_url, candidate_slug, UTC_TIMESTAMP(6)
+SELECT creator_id, intro_text, profile_image_url, NULL, profile_image_url,
+       banner_image_url, NULL, banner_image_url, candidate_slug, UTC_TIMESTAMP(6)
 FROM available
 WHERE choice_rank = 1;

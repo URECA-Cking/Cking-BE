@@ -146,6 +146,14 @@ class SecurityConfigTest {
     }
 
     @Test
+    void Creator_Space_배너_이미지_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(post("/api/creator/space/banner-images"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/creator/space/banner-image"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void 인증_전환_전_API는_인증_없이_호출할_수_있다() throws Exception {
         mockMvc.perform(get("/api/events"))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
@@ -556,6 +564,16 @@ class SecurityConfigTest {
 
         @PutMapping("/api/creator/space/profile-image")
         String link() {
+            return "linked";
+        }
+
+        @org.springframework.web.bind.annotation.PostMapping("/api/creator/space/banner-images")
+        String uploadBanner() {
+            return "uploaded";
+        }
+
+        @PutMapping("/api/creator/space/banner-image")
+        String linkBanner() {
             return "linked";
         }
     }
