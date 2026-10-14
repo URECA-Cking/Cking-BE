@@ -118,6 +118,7 @@ public class SecurityConfig {
                                 "/api/creators/*/tickets/history",
                                 "/api/creators/*/follow",
                                 "/api/me/follows",
+                                "/api/me/tickets",
                                 "/api/me/creator-recommendations",
                                 "/api/me/creator-recommendation-events",
                                 "/api/me/interests",
