@@ -2,13 +2,13 @@ package kr.co.cking.ticket.application;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.LongStream;
 
 import org.junit.jupiter.api.Test;
 
-import kr.co.cking.creator.domain.Creator;
-import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.repository.CreatorRepository;
-import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.creator.application.CreatorPublicProfileQueryService;
+import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import kr.co.cking.ticket.application.dto.MyTicketsSummaryResponse;
@@ -34,10 +34,9 @@ class MyTicketsSummaryServiceTest {
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final CommonTicketBalanceQueryService commonBalanceQueryService = mock(CommonTicketBalanceQueryService.class);
     private final UserTicketBalanceRepository balanceRepository = mock(UserTicketBalanceRepository.class);
-    private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
-    private final CreatorSpaceRepository creatorSpaceRepository = mock(CreatorSpaceRepository.class);
+    private final CreatorPublicProfileQueryService profileQueryService = mock(CreatorPublicProfileQueryService.class);
     private final MyTicketsSummaryService service = new MyTicketsSummaryService(
-            followQueryService, commonBalanceQueryService, balanceRepository, creatorRepository, creatorSpaceRepository);
+            followQueryService, commonBalanceQueryService, balanceRepository, profileQueryService);
 
     @Test
     void 팔로우한_크리에이터가_없으면_공용_잔액만_돌려주고_크리에이터를_조회하지_않는다() {
@@ -52,8 +51,7 @@ class MyTicketsSummaryServiceTest {
         assertThat(result.creatorTotal()).isZero();
         assertThat(result.total()).isEqualTo(3L);
         verify(balanceRepository, never()).findByMemberIdAndCreatorIdIn(any(), any());
-        verify(creatorRepository, never()).findByCreatorIdIn(any());
-        verify(creatorSpaceRepository, never()).findByCreatorIdIn(any());
+        verify(profileQueryService, never()).findByCreatorIds(any());
     }
 
     @Test
@@ -75,10 +73,9 @@ class MyTicketsSummaryServiceTest {
         given(followQueryService.findFollowedCreatorIds(MEMBER_ID)).willReturn(List.of(1L, 2L));
         given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, List.of(1L, 2L)))
                 .willReturn(List.of(balance(2L, 5L), balance(1L, 4L)));
-        List<Creator> creators1 = List.of(creator(2L, "둘째"), creator(1L, "첫째"));
-        List<CreatorSpace> spaces1 = List.of(space(1L, "https://img/1"), space(2L, "https://img/2"));
-        given(creatorRepository.findByCreatorIdIn(List.of(1L, 2L))).willReturn(creators1);
-        given(creatorSpaceRepository.findByCreatorIdIn(List.of(1L, 2L))).willReturn(spaces1);
+        given(profileQueryService.findByCreatorIds(List.of(1L, 2L))).willReturn(Map.of(
+                2L, new CreatorPublicProfile(2L, "둘째", "https://img/2"),
+                1L, new CreatorPublicProfile(1L, "첫째", "https://img/1")));
 
         MyTicketsSummaryResponse result = service.getSummary(MEMBER_ID);
 
@@ -94,10 +91,9 @@ class MyTicketsSummaryServiceTest {
         given(followQueryService.findFollowedCreatorIds(MEMBER_ID)).willReturn(List.of(1L, 2L));
         given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, List.of(1L, 2L)))
                 .willReturn(List.of(balance(1L, 4L)));
-        List<Creator> creators2 = List.of(creator(1L, "첫째"), creator(2L, "둘째"));
-        List<CreatorSpace> spaces2 = List.of(space(1L, "https://img/1"), space(2L, "https://img/2"));
-        given(creatorRepository.findByCreatorIdIn(List.of(1L, 2L))).willReturn(creators2);
-        given(creatorSpaceRepository.findByCreatorIdIn(List.of(1L, 2L))).willReturn(spaces2);
+        given(profileQueryService.findByCreatorIds(List.of(1L, 2L))).willReturn(Map.of(
+                1L, new CreatorPublicProfile(1L, "첫째", "https://img/1"),
+                2L, new CreatorPublicProfile(2L, "둘째", "https://img/2")));
 
         MyTicketsSummaryResponse result = service.getSummary(MEMBER_ID);
 
@@ -113,9 +109,8 @@ class MyTicketsSummaryServiceTest {
         given(followQueryService.findFollowedCreatorIds(MEMBER_ID)).willReturn(List.of(1L));
         given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, List.of(1L)))
                 .willReturn(List.of(balance(1L, 4L)));
-        List<Creator> creators3 = List.of(creator(1L, "첫째"));
-        given(creatorRepository.findByCreatorIdIn(List.of(1L))).willReturn(creators3);
-        given(creatorSpaceRepository.findByCreatorIdIn(List.of(1L))).willReturn(List.of());
+        given(profileQueryService.findByCreatorIds(List.of(1L)))
+                .willReturn(Map.of(1L, new CreatorPublicProfile(1L, "첫째", null)));
 
         MyTicketsSummaryResponse result = service.getSummary(MEMBER_ID);
 
@@ -132,9 +127,10 @@ class MyTicketsSummaryServiceTest {
         given(followQueryService.findFollowedCreatorIds(MEMBER_ID)).willReturn(List.of(1L, 2L, 3L));
         given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, List.of(1L, 2L, 3L)))
                 .willReturn(List.of(balance(1L, 4L), balance(2L, 3L)));
-        List<Creator> creators5 = List.of(creator(1L, "a"), creator(2L, "b"), creator(3L, "c"));
-        given(creatorRepository.findByCreatorIdIn(List.of(1L, 2L, 3L))).willReturn(creators5);
-        given(creatorSpaceRepository.findByCreatorIdIn(List.of(1L, 2L, 3L))).willReturn(List.of());
+        given(profileQueryService.findByCreatorIds(List.of(1L, 2L, 3L))).willReturn(Map.of(
+                1L, new CreatorPublicProfile(1L, "a", null),
+                2L, new CreatorPublicProfile(2L, "b", null),
+                3L, new CreatorPublicProfile(3L, "c", null)));
 
         MyTicketsSummaryResponse result = service.getSummary(MEMBER_ID);
 
@@ -152,14 +148,31 @@ class MyTicketsSummaryServiceTest {
         // 조회 결과에 팔로우하지 않은 크리에이터(99) 행이 섞여 들어와도 응답 목록·합계에서 제외한다.
         given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, List.of(1L)))
                 .willReturn(List.of(balance(1L, 4L), balance(99L, 50L)));
-        List<Creator> creators4 = List.of(creator(1L, "첫째"));
-        given(creatorRepository.findByCreatorIdIn(List.of(1L))).willReturn(creators4);
-        given(creatorSpaceRepository.findByCreatorIdIn(List.of(1L))).willReturn(List.of());
+        given(profileQueryService.findByCreatorIds(List.of(1L)))
+                .willReturn(Map.of(1L, new CreatorPublicProfile(1L, "첫째", null)));
 
         MyTicketsSummaryResponse result = service.getSummary(MEMBER_ID);
 
         assertThat(result.creators()).extracting(CreatorTicket::creatorId).containsExactly(1L);
         assertThat(result.creatorTotal()).isEqualTo(4L);
+    }
+
+    @Test
+    void Creator_행이_없는_팔로우는_목록과_합계에서_함께_제외한다() {
+        given(commonBalanceQueryService.getBalanceDetail(MEMBER_ID))
+                .willReturn(new CommonTicketBalanceResponse(MEMBER_ID, 1L, COMMON_UPDATED));
+        given(followQueryService.findFollowedCreatorIds(MEMBER_ID)).willReturn(List.of(1L, 2L));
+        given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, List.of(1L, 2L)))
+                .willReturn(List.of(balance(1L, 4L), balance(2L, 9L)));
+        // creatorId 2는 Creator 조회에서 빠진다(FK상 없을 수 없지만 어긋난 경우의 방어).
+        given(profileQueryService.findByCreatorIds(List.of(1L, 2L)))
+                .willReturn(Map.of(1L, new CreatorPublicProfile(1L, "첫째", null)));
+
+        MyTicketsSummaryResponse result = service.getSummary(MEMBER_ID);
+
+        assertThat(result.creators()).extracting(CreatorTicket::creatorId).containsExactly(1L);
+        assertThat(result.creatorTotal()).isEqualTo(4L);
+        assertThat(result.total()).isEqualTo(5L);
     }
 
     @Test
@@ -169,15 +182,31 @@ class MyTicketsSummaryServiceTest {
                 .willReturn(new CommonTicketBalanceResponse(MEMBER_ID, 0L, null));
         given(followQueryService.findFollowedCreatorIds(MEMBER_ID)).willReturn(ids);
         given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, ids)).willReturn(List.of());
-        given(creatorRepository.findByCreatorIdIn(ids)).willReturn(List.of());
-        given(creatorSpaceRepository.findByCreatorIdIn(ids)).willReturn(List.of());
+        given(profileQueryService.findByCreatorIds(ids)).willReturn(Map.of());
 
         service.getSummary(MEMBER_ID);
 
         verify(balanceRepository, times(1)).findByMemberIdAndCreatorIdIn(MEMBER_ID, ids);
-        verify(creatorRepository, times(1)).findByCreatorIdIn(ids);
-        verify(creatorSpaceRepository, times(1)).findByCreatorIdIn(ids);
+        verify(profileQueryService, times(1)).findByCreatorIds(ids);
         verify(balanceRepository, never()).findByMemberIdAndCreatorId(any(), any());
+    }
+
+    @Test
+    void 팔로우가_경고_기준을_넘어도_상한_없이_전부_조회한다() {
+        int count = MyTicketsSummaryService.LARGE_FOLLOW_COUNT_WARN_THRESHOLD + 1;
+        List<Long> ids = LongStream.rangeClosed(1, count).boxed().toList();
+        given(commonBalanceQueryService.getBalanceDetail(MEMBER_ID))
+                .willReturn(new CommonTicketBalanceResponse(MEMBER_ID, 0L, null));
+        given(followQueryService.findFollowedCreatorIds(MEMBER_ID)).willReturn(ids);
+        given(balanceRepository.findByMemberIdAndCreatorIdIn(MEMBER_ID, ids)).willReturn(List.of());
+        Map<Long, CreatorPublicProfile> profiles = ids.stream().collect(
+                java.util.stream.Collectors.toMap(id -> id, id -> new CreatorPublicProfile(id, "c" + id, null)));
+        given(profileQueryService.findByCreatorIds(ids)).willReturn(profiles);
+
+        MyTicketsSummaryResponse result = service.getSummary(MEMBER_ID);
+
+        // 경고는 로그만 남기고 결과를 자르지 않는다 — 합계가 전체 기준이어야 하기 때문이다.
+        assertThat(result.creators()).hasSize(count);
     }
 
     private static UserTicketBalance balance(long creatorId, long balance) {
@@ -187,19 +216,5 @@ class MyTicketsSummaryServiceTest {
                 .balance(balance)
                 .updatedAt(CREATOR_UPDATED)
                 .build();
-    }
-
-    private static Creator creator(long creatorId, String name) {
-        Creator creator = mock(Creator.class);
-        given(creator.getCreatorId()).willReturn(creatorId);
-        given(creator.publicDisplayName()).willReturn(name);
-        return creator;
-    }
-
-    private static CreatorSpace space(long creatorId, String profileImageUrl) {
-        CreatorSpace space = mock(CreatorSpace.class);
-        given(space.getCreatorId()).willReturn(creatorId);
-        given(space.getProfileImageUrl()).willReturn(profileImageUrl);
-        return space;
     }
 }

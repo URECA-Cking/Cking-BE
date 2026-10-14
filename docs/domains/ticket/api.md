@@ -213,6 +213,8 @@ Query는 없다. `GET /api/tickets/common`과 팔로우한 Creator 수만큼의 
 - `creators`는 호출자가 **팔로우한 Creator만** 담고 `creatorId` 오름차순이다. 팔로우하지 않은 Creator의 잔액은 포함하지 않는다. 팔로우 수 상한은 없어 전부 담는다.
 - 잔액 행이 없는 Creator·공용 잔액은 `balance` 0, `updatedAt` null이다(`GET /api/creators/{creatorId}/tickets`, `GET /api/tickets/common`과 같은 규칙).
 - `creatorName`은 Creator 활동명, `profileImageUrl`은 Creator Space의 프로필 이미지 URL이다. Space가 없는 Creator의 `profileImageUrl`은 null이다.
+- 팔로우 행과 잔액 행은 Creator를 FK로 참조하므로 Creator 행이 없는 경우는 없다. 어긋난 상태가 생기면 응답 전체를 실패시키지 않고 그 Creator만 `creators`와 합계에서 함께 제외한다(`GET /api/creators/{creatorId}/tickets`처럼 404를 주지 않는다. 그 API는 요청한 Creator 하나에 대한 응답이기 때문이다).
+- 팔로우 수 상한은 없다. 팔로우한 Creator가 500명을 넘는 회원이 조회하면 서버가 경고 로그를 남겨 실제 분포를 보고 상한을 정할 근거로 쓴다. 조회는 팔로우 수와 무관하게 잔액·Creator·Space 각 한 번씩이다.
 - `creatorTotal`은 팔로우한 모든 Creator 잔액의 합, `total`은 공용 잔액과 `creatorTotal`의 합이다. `creators`와 같은 값에서 서버가 계산하므로 목록과 항상 일치하며, 목록을 나중에 제한해도 합계는 전체 기준이다.
 - **표시용이다.** 잔액은 `GET /api/creators/{creatorId}/tickets` 등 기존 조회와 같이 MySQL Balance 기준이라, Redis에서 적립·차감이 끝나도 Consumer가 DB에 반영하기 전에는 보이지 않는다. 응모 가능 여부의 근거로 쓰지 않는다(실제 응모 승인은 SPEND Lua가 Redis 잔액으로 판단한다).
 - 락 없는 읽기 전용 조회이며 Redis 키를 적재하거나 복구하지 않는다(키 부재 복구는 응모·적립 경로에서만 일어난다).
