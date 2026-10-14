@@ -104,6 +104,7 @@
 | --- | --- | --- |
 | `VALIDATION_FAILED` | 400 | `memberId`·`days` 누락 또는 범위 오류 |
 | `CANNOT_BLOCK_SELF` | 400 | 자기 자신을 차단 |
+| `CANNOT_BLOCK_ADMIN` | 400 | 대상 회원이 관리자 |
 | `FORBIDDEN` | 403 | 호출자가 Creator가 아님 |
 | `RESOURCE_NOT_FOUND` | 404 | 대상 회원 없음 |
 
