@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,6 +20,11 @@ public interface UserTicketBalanceRepository extends JpaRepository<UserTicketBal
     @Query("select b from UserTicketBalance b where b.id.memberId = :memberId and b.id.creatorId = :creatorId")
     Optional<UserTicketBalance> findByMemberIdAndCreatorId(@Param("memberId") Long memberId,
                                                             @Param("creatorId") Long creatorId);
+
+    // 내 응모권 요약용 일괄 조회. 표시용이라 잠그지 않는다 — EARN/SPEND Consumer가 갱신하는 행이므로 읽기 전용 트랜잭션에서만 호출한다.
+    @Query("select b from UserTicketBalance b where b.id.memberId = :memberId and b.id.creatorId in :creatorIds")
+    List<UserTicketBalance> findByMemberIdAndCreatorIdIn(@Param("memberId") Long memberId,
+                                                         @Param("creatorIds") Collection<Long> creatorIds);
 
     // EARN/SPEND Consumer가 같은 (memberId, creatorId) 행을 동시에 갱신할 수 있으므로 잠근다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
