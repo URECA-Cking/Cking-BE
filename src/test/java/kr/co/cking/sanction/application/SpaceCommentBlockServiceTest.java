@@ -7,6 +7,9 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
+import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.notification.application.SanctionNotificationService;
 import kr.co.cking.sanction.application.dto.SpaceCommentBlockView;
 import kr.co.cking.sanction.domain.MemberSanction;
@@ -57,10 +60,10 @@ class SpaceCommentBlockServiceTest {
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final MemberQueryService memberQueryService = mock(MemberQueryService.class);
     private final MemberSanctionRepository sanctionRepository = mock(MemberSanctionRepository.class);
-    private final SanctionService sanctionService = mock(SanctionService.class);
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final SanctionNotificationService notificationService = mock(SanctionNotificationService.class);
     private final SpaceCommentBlockService service = new SpaceCommentBlockService(
-            creatorRepository, memberQueryService, sanctionRepository, sanctionService, notificationService,
+            creatorRepository, memberQueryService, sanctionRepository, memberRepository, notificationService,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     private final Creator creator = creator(CREATOR_ID, CREATOR_MEMBER_ID);
@@ -68,6 +71,8 @@ class SpaceCommentBlockServiceTest {
     @BeforeEach
     void setUp() {
         given(creatorRepository.findByMemberId(CREATOR_MEMBER_ID)).willReturn(Optional.of(creator));
+        stubMember(CREATOR_MEMBER_ID, MemberRole.USER);
+        stubMember(TARGET_ID, MemberRole.USER);
         given(sanctionRepository.save(any(MemberSanction.class))).willAnswer(invocation -> {
             MemberSanction saved = invocation.getArgument(0);
             ReflectionTestUtils.setField(saved, "sanctionId", 900L);
@@ -116,17 +121,49 @@ class SpaceCommentBlockServiceTest {
     }
 
     @Test
-    void 차단은_대상_회원_행을_먼저_잠그고_유효한_차단을_읽고_READ_COMMITTED로_실행한다() throws Exception {
+    void 차단은_두_회원_행을_회원_ID_오름차순으로_잠근_뒤_유효한_차단을_읽고_READ_COMMITTED로_실행한다() throws Exception {
         service.block(CREATOR_MEMBER_ID, TARGET_ID, 1);
 
-        InOrder order = inOrder(sanctionService, sanctionRepository);
-        order.verify(sanctionService).lockSubject(TARGET_ID);
+        InOrder order = inOrder(memberRepository, sanctionRepository);
+        // 크리에이터(10)와 대상(20): 작은 ID부터 잠근다.
+        order.verify(memberRepository).findByIdForUpdate(CREATOR_MEMBER_ID);
+        order.verify(memberRepository).findByIdForUpdate(TARGET_ID);
         order.verify(sanctionRepository).findActiveSpaceBlocks(CREATOR_ID, TARGET_ID, NOW);
         order.verify(sanctionRepository).save(any(MemberSanction.class));
         Transactional transactional = SpaceCommentBlockService.class
                 .getMethod("block", Long.class, Long.class, int.class).getAnnotation(Transactional.class);
         assertThat(transactional).isNotNull();
         assertThat(transactional.isolation()).isEqualTo(Isolation.READ_COMMITTED);
+    }
+
+    /**
+     * 크리에이터 A(10)가 B(30)를, B가 A를 동시에 차단해도 두 요청이 같은 순서(10 → 30)로 잠가야 서로 상대 행을 기다리는
+     * 순환 대기가 생기지 않는다. 여기서는 큰 ID의 크리에이터가 작은 ID의 대상을 차단할 때도 작은 ID부터 잠그는지 본다.
+     */
+    @Test
+    void 크리에이터가_대상보다_ID가_커도_작은_ID부터_잠근다() {
+        Long largerCreatorMemberId = 30L;
+        given(creatorRepository.findByMemberId(largerCreatorMemberId))
+                .willReturn(Optional.of(creator(6L, largerCreatorMemberId)));
+        stubMember(largerCreatorMemberId, MemberRole.USER);
+
+        service.block(largerCreatorMemberId, TARGET_ID, 1);
+
+        InOrder order = inOrder(memberRepository);
+        order.verify(memberRepository).findByIdForUpdate(TARGET_ID);
+        order.verify(memberRepository).findByIdForUpdate(largerCreatorMemberId);
+    }
+
+    @Test
+    void 관리자는_차단할_수_없고_차단도_알림도_저장되지_않는다() {
+        stubMember(TARGET_ID, MemberRole.ADMIN);
+
+        assertError(() -> service.block(CREATOR_MEMBER_ID, TARGET_ID, 1), SanctionErrorCode.CANNOT_BLOCK_ADMIN);
+
+        // 대상 회원 행을 잠근 뒤에 역할을 확인하므로 같은 시점의 역할 변경과 경합하지 않는다.
+        verify(memberRepository).findByIdForUpdate(TARGET_ID);
+        verify(sanctionRepository, never()).save(any(MemberSanction.class));
+        verifyNoInteractions(notificationService);
     }
 
     @Test
@@ -152,8 +189,7 @@ class SpaceCommentBlockServiceTest {
 
     @Test
     void 대상_회원이_없으면_404다() {
-        org.mockito.BDDMockito.willThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
-                .given(sanctionService).lockSubject(999L);
+        given(memberRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
 
         assertError(() -> service.block(CREATOR_MEMBER_ID, 999L, 1), CommonErrorCode.RESOURCE_NOT_FOUND);
         verify(sanctionRepository, never()).save(any(MemberSanction.class));
@@ -187,15 +223,16 @@ class SpaceCommentBlockServiceTest {
     }
 
     @Test
-    void 해제는_제재_행_다음_회원_행_순서로_잠그고_READ_COMMITTED로_실행한다() throws Exception {
+    void 해제는_제재_행_다음_두_회원_행을_ID_오름차순으로_잠그고_READ_COMMITTED로_실행한다() throws Exception {
         MemberSanction block = block(900L, TARGET_ID, CREATOR_ID, NOW.minusSeconds(3600), Duration.ofDays(7));
         given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(block));
 
         service.release(CREATOR_MEMBER_ID, 900L);
 
-        InOrder order = inOrder(sanctionRepository, sanctionService);
+        InOrder order = inOrder(sanctionRepository, memberRepository);
         order.verify(sanctionRepository).findByIdForUpdate(900L);
-        order.verify(sanctionService).lockSubject(TARGET_ID);
+        order.verify(memberRepository).findByIdForUpdate(CREATOR_MEMBER_ID);
+        order.verify(memberRepository).findByIdForUpdate(TARGET_ID);
         Transactional transactional = SpaceCommentBlockService.class
                 .getMethod("release", Long.class, Long.class).getAnnotation(Transactional.class);
         assertThat(transactional).isNotNull();
@@ -251,6 +288,13 @@ class SpaceCommentBlockServiceTest {
         MemberSanction block = MemberSanction.spaceBlock(memberId, spaceCreatorId, CREATOR_MEMBER_ID, startedAt, duration);
         ReflectionTestUtils.setField(block, "sanctionId", sanctionId);
         return block;
+    }
+
+    /** 회원 mock을 먼저 만든 뒤 스터빙한다(given 안에서 다른 mock을 스터빙하면 Mockito가 거부한다). */
+    private void stubMember(Long memberId, MemberRole role) {
+        Member member = mock(Member.class);
+        given(member.getRole()).willReturn(role);
+        given(memberRepository.findByIdForUpdate(memberId)).willReturn(Optional.of(member));
     }
 
     private Creator creator(Long creatorId, Long memberId) {

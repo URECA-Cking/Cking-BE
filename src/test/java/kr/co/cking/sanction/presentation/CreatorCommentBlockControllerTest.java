@@ -85,6 +85,15 @@ class CreatorCommentBlockControllerTest {
     }
 
     @Test
+    void 관리자를_차단하면_400_CANNOT_BLOCK_ADMIN이다() throws Exception {
+        given(service.block(10L, 1L, 1)).willThrow(new BusinessException(SanctionErrorCode.CANNOT_BLOCK_ADMIN));
+
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{\"memberId\": 1, \"days\": 1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CANNOT_BLOCK_ADMIN"));
+    }
+
+    @Test
     void Creator가_아니면_차단이_403이다() throws Exception {
         given(service.block(10L, 20L, 1)).willThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 

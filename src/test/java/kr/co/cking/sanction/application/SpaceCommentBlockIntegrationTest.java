@@ -120,6 +120,53 @@ class SpaceCommentBlockIntegrationTest {
                 .hasSize(1);
     }
 
+    /**
+     * 크리에이터 A가 B를, B가 A를 동시에 차단·해제해도 교착으로 한쪽이 롤백되지 않아야 한다. 제재 INSERT·해제 UPDATE의
+     * created_by·released_by FK가 크리에이터 회원 행의 공유 잠금을 요구하므로, 대상 행만 잠그면 서로 상대 행을 기다리는
+     * 순환 대기가 생긴다. 타이밍에 따라 드러나므로 여러 번 반복한다.
+     */
+    @Test
+    void 두_크리에이터가_동시에_서로를_차단하고_해제해도_교착_없이_모두_성공한다() throws Exception {
+        Creator a = creator();
+        Creator b = creator();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 10; round++) {
+                CyclicBarrier blockTogether = new CyclicBarrier(2);
+                Future<Long> aBlocksB = executor.submit(() -> blockTogether(blockTogether, a, b.getMemberId()));
+                Future<Long> bBlocksA = executor.submit(() -> blockTogether(blockTogether, b, a.getMemberId()));
+                Long aBlockId = aBlocksB.get(30, TimeUnit.SECONDS);
+                Long bBlockId = bBlocksA.get(30, TimeUnit.SECONDS);
+
+                CyclicBarrier releaseTogether = new CyclicBarrier(2);
+                Future<?> aReleases = executor.submit(() -> releaseTogether(releaseTogether, a, aBlockId));
+                Future<?> bReleases = executor.submit(() -> releaseTogether(releaseTogether, b, bBlockId));
+                aReleases.get(30, TimeUnit.SECONDS);
+                bReleases.get(30, TimeUnit.SECONDS);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(sanctionRepository.findActiveSpaceBlocks(a.getCreatorId(), b.getMemberId(), Instant.now())).isEmpty();
+        assertThat(sanctionRepository.findActiveSpaceBlocks(b.getCreatorId(), a.getMemberId(), Instant.now())).isEmpty();
+    }
+
+    @Test
+    void 관리자는_차단할_수_없고_차단도_알림도_저장되지_않는다() {
+        Creator blocker = creator();
+        Member admin = member(MemberRole.ADMIN);
+
+        assertThatThrownBy(() -> blockService.block(blocker.getMemberId(), admin.getMemberId(), 1))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.CANNOT_BLOCK_ADMIN));
+
+        assertThat(sanctionRepository.findAll().stream()
+                .filter(sanction -> admin.getMemberId().equals(sanction.getMemberId()))).isEmpty();
+        assertThat(notificationRepository.findAll().stream()
+                .filter(notification -> admin.getMemberId().equals(notification.getMemberId()))).isEmpty();
+    }
+
     @Test
     void 스페이스_범위_제재에_스페이스_주인이_없으면_DB가_거부한다() {
         Member fan = member(MemberRole.USER);
@@ -130,6 +177,17 @@ class SpaceCommentBlockIntegrationTest {
 
         assertThatThrownBy(() -> sanctionRepository.saveAndFlush(platform))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private Long blockTogether(CyclicBarrier startTogether, Creator blocker, Long targetMemberId) throws Exception {
+        startTogether.await(10, TimeUnit.SECONDS);
+        return blockService.block(blocker.getMemberId(), targetMemberId, 1).sanctionId();
+    }
+
+    private Void releaseTogether(CyclicBarrier startTogether, Creator blocker, Long sanctionId) throws Exception {
+        startTogether.await(10, TimeUnit.SECONDS);
+        blockService.release(blocker.getMemberId(), sanctionId);
+        return null;
     }
 
     private Long blockTogether(CyclicBarrier startTogether, Creator blocker, Member fan, int days) throws Exception {
