@@ -2,6 +2,7 @@ package kr.co.cking.notification.application;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
 import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
@@ -15,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Transaction 안에서 이 서비스를 부르므로, 알림은 제재 저장과 함께 커밋되거나 함께 롤백된다. 같은 제재의 같은 종류 알림은
  * {@code (sanction_id, type)} 유니크로 한 번만 생성된다.
  *
- * <p>알림에는 제재 사유(수동 제한의 관리자 메모)를 담지 않는다. 해제 시각은 서버 UTC 기준으로 표기한다.
+ * <p>알림에는 제재 사유(수동 제한의 관리자 메모)를 담지 않는다. 해제 시각은 서버 UTC 기준 분 단위로 표기하며, 실제 종료 시각의
+ * 초 이하는 버리지 않고 다음 분으로 올려 안내 시각보다 일찍 풀린 것처럼 보이지 않게 한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -56,7 +58,12 @@ public class SanctionNotificationService {
     }
 
     private String startedTail(Instant endsAt) {
-        return ENDS_AT_FORMAT.format(endsAt) + "까지 댓글을 작성하거나 수정할 수 없습니다.";
+        return ENDS_AT_FORMAT.format(ceilToMinute(endsAt)) + "까지 댓글을 작성하거나 수정할 수 없습니다.";
+    }
+
+    private Instant ceilToMinute(Instant instant) {
+        Instant truncated = instant.truncatedTo(ChronoUnit.MINUTES);
+        return truncated.equals(instant) ? instant : truncated.plus(1, ChronoUnit.MINUTES);
     }
 
     private void save(Long memberId, Long sanctionId, NotificationType type, String title, String body) {

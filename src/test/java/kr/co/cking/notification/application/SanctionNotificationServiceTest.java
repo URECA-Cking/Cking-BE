@@ -48,6 +48,21 @@ class SanctionNotificationServiceTest {
     }
 
     @Test
+    void 해제_시각의_초_이하는_버리지_않고_다음_분으로_올려_안내한다() {
+        service.createCommentRestrictionStartedManually(
+                MEMBER_ID, SANCTION_ID, Instant.parse("2026-10-16T12:34:45.123456Z"));
+
+        assertThat(savedNotification().getBody()).contains("2026-10-16 12:35 UTC까지");
+    }
+
+    @Test
+    void 해제_시각이_정확히_분_경계이면_올리지_않는다() {
+        service.createCommentRestrictionStartedManually(MEMBER_ID, SANCTION_ID, Instant.parse("2026-10-16T12:35:00Z"));
+
+        assertThat(savedNotification().getBody()).contains("2026-10-16 12:35 UTC까지");
+    }
+
+    @Test
     void 해제_알림은_해제_종류로_저장한다() {
         service.createCommentRestrictionReleased(MEMBER_ID, SANCTION_ID);
 
