@@ -114,4 +114,18 @@ class QuizAttemptStoreTest {
         var c=command(0,1);store.submit(c);when(attempts.findByMemberIdAndRequestId(7L,c.requestId().toString())).thenReturn(Optional.of(saved));
         error(()->store.findExisting(new QuizAttemptCommand(7L,1L,3L,c.requestId(),100L,c.answers())),QuizErrorCode.QUIZ_ATTEMPT_REQUEST_CONFLICT);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={1,2,3,4,5})
+    void 최종_문항수와_빈근거의_채점_보상_snapshot을_유지한다(int count) {
+        var contents=java.util.stream.IntStream.range(0,count).mapToObj(i->new QuizQuestionContent(i,"문제"+i,List.of("A","B","C","D"),0,"해설","")).toList();
+        when(reader.readVerified(quiz,revision)).thenReturn(contents);
+        var answers=java.util.stream.IntStream.range(0,count).mapToObj(i->new QuizAttemptCommand.Answer(i,0)).toList();
+        var command=new QuizAttemptCommand(7L,1L,2L,UUID.randomUUID(),100L,answers);
+        var result=store.submit(command);
+        assertThat(result.correctCount()).isEqualTo(count);assertThat(result.reward().amount()).isEqualTo(count);
+        assertThat(result.questions()).hasSize(count).allMatch(q->q.sourceEvidence().isEmpty());
+        when(attempts.findByMemberIdAndRequestId(7L,command.requestId().toString())).thenReturn(Optional.of(saved));
+        assertThat(store.findExisting(command).orElseThrow().snapshotSha256()).isEqualTo(result.snapshotSha256());
+    }
 }

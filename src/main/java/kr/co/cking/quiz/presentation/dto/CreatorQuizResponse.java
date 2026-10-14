@@ -1,6 +1,10 @@
 package kr.co.cking.quiz.presentation.dto;
 
 import kr.co.cking.quiz.application.dto.CreatorQuizViews;
+import kr.co.cking.quiz.application.dto.QuizCompositionMetadata;
+import kr.co.cking.quiz.domain.QuizRevisionOrigin;
+import kr.co.cking.quiz.domain.QuizApprovalPolicyType;
+import kr.co.cking.quiz.domain.QuizQuestionChangeType;
 import kr.co.cking.quiz.application.dto.QuizDecisionView;
 import kr.co.cking.quiz.application.dto.QuizPublicationView;
 import kr.co.cking.quiz.application.dto.QuizQuestionContent;
@@ -47,13 +51,19 @@ public final class CreatorQuizResponse {
             Instant unpublishedAt,
             Instant createdAt,
             Instant updatedAt,
-            List<RevisionSummary> revisions
+            List<RevisionSummary> revisions,
+            QuizRevisionOrigin origin, Long parentRevisionId, String hashVersion,
+            QuizApprovalPolicyType approvalPolicyVersion, boolean contentLocked, boolean canEdit
     ) {
 
-        public static Detail from(CreatorQuizViews.Detail view) {
+        public static Detail from(CreatorQuizViews.Detail view) { return from(view, null); }
+        public static Detail from(CreatorQuizViews.Detail view, QuizCompositionMetadata m) {
             return new Detail(view.quizId(), view.creatorId(), view.videoId(), view.publicationStatus(),
                     view.publishedRevisionId(), view.publishedAt(), view.unpublishedAt(), view.createdAt(),
-                    view.updatedAt(), view.revisions().stream().map(RevisionSummary::from).toList());
+                    view.updatedAt(), view.revisions().stream().map(RevisionSummary::from).toList(),
+                    m == null ? null : m.origin(), m == null ? null : m.parentRevisionId(),
+                    m == null ? null : m.hashVersion(), m == null ? null : m.approvalPolicyVersion(),
+                    m != null && m.contentLocked(), m != null && m.canEdit());
         }
     }
 
@@ -86,14 +96,23 @@ public final class CreatorQuizResponse {
             String decisionReason,
             Instant decidedAt,
             Instant createdAt,
-            List<Question> questions
+            List<Question> questions,
+            QuizRevisionOrigin origin, Long parentRevisionId, String hashVersion, String revisionSha256,
+            QuizApprovalPolicyType approvalPolicyVersion, boolean contentLocked, boolean canEdit,
+            int questionCount, int optionCount
     ) {
 
-        public static Revision from(CreatorQuizViews.Revision view) {
+        public static Revision from(CreatorQuizViews.Revision view) { return from(view, null); }
+        public static Revision from(CreatorQuizViews.Revision view, QuizCompositionMetadata m) {
             return new Revision(view.quizId(), view.revisionId(), view.revisionNo(), view.latest(), view.published(),
                     view.title(), view.videoId(), view.promptVersion(), view.contentText(), view.reviewStatus(),
                     view.decisionReason(), view.decidedAt(), view.createdAt(),
-                    view.questions().stream().map(Question::from).toList());
+                    view.questions().stream().map(c -> Question.from(c, m == null ? null : m.questions().stream()
+                            .filter(q -> q.questionNo() == c.questionNo()).findFirst().orElseThrow())).toList(),
+                    m == null ? null : m.origin(), m == null ? null : m.parentRevisionId(), m == null ? null : m.hashVersion(),
+                    m == null ? null : m.revisionSha256(), m == null ? null : m.approvalPolicyVersion(),
+                    m != null && m.contentLocked(), m != null && m.canEdit(),
+                    m == null ? view.questions().size() : m.questionCount(), m == null ? 0 : m.optionCount());
         }
     }
 
@@ -104,12 +123,18 @@ public final class CreatorQuizResponse {
             List<Option> options,
             int correctOptionIndex,
             String explanation,
-            String sourceEvidence
+            String sourceEvidence,
+            Long questionId, Long originQuestionId, Long previousQuestionId, QuizQuestionChangeType changeType,
+            String evaluationStatus, QuizCompositionMetadata.SourceEvaluation sourceEvaluation
     ) {
 
-        static Question from(QuizQuestionContent content) {
+        static Question from(QuizQuestionContent content) { return from(content, null); }
+        static Question from(QuizQuestionContent content, QuizCompositionMetadata.Question m) {
             return new Question(content.questionNo(), content.question(), Option.listOf(content.options()),
-                    content.correctOptionIndex(), content.explanation(), content.sourceEvidence());
+                    content.correctOptionIndex(), content.explanation(), content.sourceEvidence(),
+                    m == null ? null : m.questionId(), m == null ? null : m.originQuestionId(),
+                    m == null ? null : m.previousQuestionId(), m == null ? null : m.changeType(),
+                    m == null ? null : m.evaluationStatus(), m == null ? null : m.sourceEvaluation());
         }
     }
 

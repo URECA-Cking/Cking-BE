@@ -37,6 +37,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(CreatorQuizController.class)
 class CreatorQuizControllerTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private kr.co.cking.quiz.application.QuizCompositionMetadataReader metadataReader;
 
     @Autowired
     private MockMvc mockMvc;
