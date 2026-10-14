@@ -117,6 +117,10 @@ public class SanctionService {
         memberQueryService.validateAdmin(adminId);
         MemberSanction sanction = sanctionRepository.findByIdForUpdate(sanctionId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        // 스페이스 차단(이슈 #579)은 그 스페이스의 크리에이터가 SpaceCommentBlockService로만 해제한다.
+        if (sanction.getScope() != SanctionScope.PLATFORM) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
         lockSubject(sanction.getMemberId());
         Instant now = clock.instant();
         boolean wasActive = sanction.isActiveAt(now);

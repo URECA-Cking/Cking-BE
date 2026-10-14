@@ -22,7 +22,7 @@
 
 ## GET /api/admin/sanctions
 
-제재를 시작 시각 최신순으로 페이지 조회한다. 자동 경고와 수동 제한을 모두 포함한다.
+제재를 시작 시각 최신순으로 페이지 조회한다. 자동 경고와 수동 제한을 모두 포함하며, 크리에이터의 스페이스 차단(`scope=SPACE`)은 포함하지 않는다.
 
 | Query | 설명 |
 | --- | --- |
@@ -68,6 +68,7 @@
 
 유효한 제한을 지금 해제한다. 요청 본문은 없고 응답 `200`과 제재.
 
+- 스페이스 차단(`scope=SPACE`)은 이 API로 해제할 수 없고 `RESOURCE_NOT_FOUND`다.
 - 해제 시각부터 제한이 풀린다. **이미 끝났거나 해제된 제한을 다시 해제하면 아무것도 바꾸지 않고 성공**한다(멱등).
 - 자동 경고는 해제해도 경고 횟수 집계에 남는다.
 
@@ -75,13 +76,74 @@
 | --- | --- | --- |
 | `RESOURCE_NOT_FOUND` | 404 | 없는 제재 |
 
+## 크리에이터 스페이스 댓글 차단 API (이슈 #579)
+
+세 API 모두 Bearer Access JWT가 필요하고 호출자는 `@CurrentMemberId`로 식별한다. Creator가 아니면 `FORBIDDEN` 403이다. 크리에이터는 **자기 스페이스의 차단만** 다루며 정책은 [Sanction](README.md#크리에이터의-스페이스-댓글-차단-이슈-579)을 따른다.
+
+### 스페이스 차단 응답
+
+| 필드 | 설명 |
+| --- | --- |
+| `sanctionId`, `memberId` | 차단 ID, 차단된 회원 |
+| `memberName` | 차단된 회원의 공개 닉네임 |
+| `startedAt`, `endsAt` | 차단 구간(UTC). `startedAt <= now < endsAt` 동안 유효 |
+| `releasedAt` | 크리에이터가 해제한 시각. 해제하지 않았으면 `null` |
+| `active` | 응답 시점에 지금 유효한 차단인지 |
+
+### POST /api/creator/comment-blocks
+
+자기 스페이스에서 회원의 댓글 작성·수정을 **지금부터** 일정 기간 막는다. 응답 `201`과 차단. 이미 유효한 차단이 있으면 새로 만들지 않고 기존 차단을 같은 `201`로 돌려준다.
+
+```json
+{ "memberId": 20, "days": 7 }
+```
+
+- `days`는 1~365. 차단된 회원에게 알림이 간다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `memberId`·`days` 누락 또는 범위 오류 |
+| `CANNOT_BLOCK_SELF` | 400 | 자기 자신을 차단 |
+| `CANNOT_BLOCK_ADMIN` | 400 | 대상 회원이 관리자 |
+| `FORBIDDEN` | 403 | 호출자가 Creator가 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 대상 회원 없음 |
+
+### GET /api/creator/comment-blocks
+
+자기 스페이스에 건 차단을 시작 시각 최신순으로 페이지 조회한다.
+
+| Query | 설명 |
+| --- | --- |
+| `active` | `true`면 지금 유효한 차단만(기본 `false`) |
+| `page`, `size` | 기본 0, 20. `size` 최대 100 |
+
+응답은 [공통 페이지 형식](../../common/api.md#페이지네이션)의 `data`이며 `items`는 스페이스 차단 응답이다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `size`·`page` 범위 오류 |
+| `FORBIDDEN` | 403 | 호출자가 Creator가 아님 |
+
+### POST /api/creator/comment-blocks/{sanctionId}/release
+
+자기가 건 차단을 지금 해제한다. 요청 본문은 없고 응답 `200`과 차단.
+
+- **이미 끝났거나 해제된 차단을 다시 해제하면 아무것도 바꾸지 않고 성공**한다(멱등). 유효한 차단을 풀 때만 차단됐던 회원에게 해제 알림이 간다.
+- 다른 크리에이터의 차단이나 플랫폼 제재는 존재 여부를 드러내지 않도록 `RESOURCE_NOT_FOUND`다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `FORBIDDEN` | 403 | 호출자가 Creator가 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 없는 차단, 다른 크리에이터의 차단, 플랫폼 제재 |
+
 ## 다른 API에 미치는 영향
 
 | API | 변화 |
 | --- | --- |
-| `POST`·`PATCH /api/creators/{creatorId}/posts/{postId}/comments` | 댓글 작성 제한 중이면 `COMMENT_RESTRICTED`(403). 메시지에 해제 시각(UTC)이 들어간다. 삭제는 막지 않는다 |
+| `POST`·`PATCH /api/creators/{creatorId}/posts/{postId}/comments` | 댓글 작성 제한 중이면 `COMMENT_RESTRICTED`(403), 그 스페이스에서 차단됐으면 `SPACE_COMMENT_BLOCKED`(403). 메시지에 해제 시각(UTC)이 들어간다. 삭제는 막지 않는다 |
 | `POST /api/admin/comment-reports/{commentId}/hide` | 처음 숨길 때 작성자에게 경고가 쌓이고 제한이 생긴다. 이미 숨긴 댓글을 다시 숨기면 쌓이지 않는다 |
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
-| `COMMENT_RESTRICTED` | 403 | 댓글 작성·수정 시 유효한 댓글 작성 제한이 있음 |
+| `COMMENT_RESTRICTED` | 403 | 댓글 작성·수정 시 유효한 플랫폼 댓글 작성 제한이 있음 |
+| `SPACE_COMMENT_BLOCKED` | 403 | 댓글 작성·수정 시 그 스페이스의 크리에이터가 건 유효한 차단이 있음. 메시지에 해제 시각(UTC)이 들어가며 다른 스페이스에서는 쓸 수 있다 |

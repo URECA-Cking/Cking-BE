@@ -138,6 +138,8 @@ public class SecurityConfig {
                                 "/api/creator/profile",
                                 "/api/creator/space",
                                 "/api/creator/calendar/**",
+                                "/api/creator/comment-blocks",
+                                "/api/creator/comment-blocks/**",
                                 "/api/creator/posts",
                                 "/api/creator/posts/**",
                                 "/api/creator/quizzes",

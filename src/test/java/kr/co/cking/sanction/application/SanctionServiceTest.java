@@ -295,6 +295,18 @@ class SanctionServiceTest {
     }
 
     @Test
+    void 스페이스_차단은_관리자_해제_API로_해제할_수_없고_바뀌지_않는다() {
+        MemberSanction spaceBlock = MemberSanction.spaceBlock(
+                MEMBER_ID, 5L, 10L, NOW.minusSeconds(3600), Duration.ofDays(7));
+        given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(spaceBlock));
+
+        assertError(() -> service.release(ADMIN_ID, 900L), CommonErrorCode.RESOURCE_NOT_FOUND);
+
+        assertThat(spaceBlock.getReleasedAt()).isNull();
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
     void 없는_제재를_해제하면_404다() {
         given(sanctionRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
 

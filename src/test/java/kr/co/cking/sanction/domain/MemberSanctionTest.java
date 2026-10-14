@@ -37,6 +37,25 @@ class MemberSanctionTest {
     }
 
     @Test
+    void 스페이스_차단은_그_스페이스_주인을_가리키는_경고에_세지_않는_수동_제한이다() {
+        MemberSanction block = MemberSanction.spaceBlock(MEMBER_ID, 5L, 10L, START, Duration.ofDays(7));
+
+        assertThat(block.getScope()).isEqualTo(SanctionScope.SPACE);
+        assertThat(block.getType()).isEqualTo(SanctionType.COMMENT_RESTRICTION);
+        assertThat(block.getSource()).isEqualTo(SanctionSource.MANUAL);
+        assertThat(block.getSpaceCreatorId()).isEqualTo(5L);
+        assertThat(block.getCreatedBy()).isEqualTo(10L);
+        assertThat(block.getCauseCommentId()).isNull();
+        assertThat(block.getEndsAt()).isEqualTo(START.plus(Duration.ofDays(7)));
+    }
+
+    @Test
+    void 플랫폼_제한은_스페이스_주인이_없다() {
+        assertThat(MemberSanction.manual(MEMBER_ID, ADMIN_ID, "사유", START, Duration.ofDays(1)).getSpaceCreatorId()).isNull();
+        assertThat(MemberSanction.automatic(MEMBER_ID, 500L, ADMIN_ID, START, Duration.ofDays(1)).getSpaceCreatorId()).isNull();
+    }
+
+    @Test
     void 제한은_시작_시각을_포함하고_종료_시각은_포함하지_않는다() {
         MemberSanction sanction = MemberSanction.automatic(MEMBER_ID, 500L, ADMIN_ID, START, Duration.ofDays(1));
 

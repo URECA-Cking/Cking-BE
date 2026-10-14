@@ -27,19 +27,28 @@ public class SanctionQueryService {
     private final Clock clock;
 
     /**
-     * 댓글 작성·수정 전에 호출한다. 지금 유효한 댓글 작성 제한이 있으면 {@code COMMENT_RESTRICTED}(403)이고, 메시지에
-     * 가장 늦게 끝나는 제한의 해제 시각(UTC)을 담는다. 삭제에는 쓰지 않는다.
+     * 댓글 작성·수정 전에 호출한다. 지금 유효한 플랫폼 댓글 작성 제한이 있으면 {@code COMMENT_RESTRICTED}(403)이고, 메시지에
+     * 가장 늦게 끝나는 제한의 해제 시각(UTC)을 담는다. 그 스페이스의 주인이 건 차단이 유효하면 {@code SPACE_COMMENT_BLOCKED}
+     * (403)이며, 다른 스페이스에서는 쓸 수 있다. 둘 다 있으면 플랫폼 제한을 먼저 알린다. 삭제에는 쓰지 않는다.
      *
      * <p>호출자는 같은 트랜잭션에서 작성자(회원) 행을 쓰기 잠금으로 먼저 읽은 뒤 호출해야 한다. REPEATABLE READ에서는
      * 첫 일반 조회 시점의 스냅샷이 고정되므로, 잠금 없이 호출하면 그 사이 확정된 제재를 못 볼 수 있다.
+     *
+     * @param creatorId 댓글을 쓰려는 게시글이 속한 스페이스의 주인
      */
-    public void requireCommentWriteAllowed(Long memberId) {
-        sanctionRepository.findActiveEndsAt(
-                        memberId, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, clock.instant())
+    public void requireCommentWriteAllowed(Long memberId, Long creatorId) {
+        Instant now = clock.instant();
+        sanctionRepository.findActiveEndsAt(memberId, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, now)
                 .ifPresent(endsAt -> {
                     throw new BusinessException(
                             SanctionErrorCode.COMMENT_RESTRICTED,
                             "댓글 작성이 제한되었습니다. 해제 시각(UTC): " + endsAt);
+                });
+        sanctionRepository.findActiveSpaceBlockEndsAt(creatorId, memberId, now)
+                .ifPresent(endsAt -> {
+                    throw new BusinessException(
+                            SanctionErrorCode.SPACE_COMMENT_BLOCKED,
+                            "이 스페이스에서 댓글 작성이 제한되었습니다. 해제 시각(UTC): " + endsAt);
                 });
     }
 

@@ -171,4 +171,7 @@
 | 167 | 외부 | Sanction | ADMIN | GET | `/api/admin/sanctions` | 회원 제재 목록(자동 경고·수동 제한, 시작 최신순, `memberId`·`active` 필터) | - |
 | 168 | 외부 | Sanction | ADMIN | POST | `/api/admin/sanctions` | 회원에게 댓글 작성 제한을 수동으로 설정(경고 횟수에 세지 않음) | 상태 기반 |
 | 169 | 외부 | Sanction | ADMIN | POST | `/api/admin/sanctions/{sanctionId}/release` | 유효한 제한 해제(이미 끝났거나 해제된 제한은 그대로 성공) | 상태 기반 |
+| 170 | 외부 | Sanction | CREATOR | POST | `/api/creator/comment-blocks` | 자기 스페이스에서 회원의 댓글 작성·수정을 1~365일 차단(경고 횟수에 세지 않음). 이미 유효한 차단이 있으면 기존 차단 반환 | 회원+크리에이터당 유효한 차단 1건 |
+| 171 | 외부 | Sanction | CREATOR | GET | `/api/creator/comment-blocks` | 자기 스페이스 차단 목록(시작 최신순, `active` 필터) | - |
+| 172 | 외부 | Sanction | CREATOR | POST | `/api/creator/comment-blocks/{sanctionId}/release` | 자기가 건 차단 해제(이미 끝났거나 해제된 차단은 그대로 성공) | 상태 기반 |
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
