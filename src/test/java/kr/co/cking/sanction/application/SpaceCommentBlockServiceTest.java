@@ -52,6 +52,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class SpaceCommentBlockServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-10-14T00:00:00Z");
+    private static final Long ADMIN_ID = 1L;
     private static final Long CREATOR_MEMBER_ID = 10L;
     private static final Long CREATOR_ID = 5L;
     private static final Long TARGET_ID = 20L;
@@ -282,6 +283,150 @@ class SpaceCommentBlockServiceTest {
 
         assertError(() -> service.findBlocks(77L, false, PAGE), CommonErrorCode.FORBIDDEN);
         verify(sanctionRepository, never()).searchSpaceBlocks(any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any());
+    }
+
+    @Test
+    void 관리자는_크리에이터를_지정해_차단하고_차단한_사람은_관리자로_기록되며_대상에게_알린다() {
+        stubMember(ADMIN_ID, MemberRole.ADMIN);
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        SpaceCommentBlockView view = service.blockByAdmin(ADMIN_ID, CREATOR_ID, TARGET_ID, 30);
+
+        ArgumentCaptor<MemberSanction> captor = ArgumentCaptor.forClass(MemberSanction.class);
+        verify(sanctionRepository).save(captor.capture());
+        MemberSanction saved = captor.getValue();
+        assertThat(saved.getScope()).isEqualTo(SanctionScope.SPACE);
+        assertThat(saved.getSpaceCreatorId()).isEqualTo(CREATOR_ID);
+        assertThat(saved.getMemberId()).isEqualTo(TARGET_ID);
+        assertThat(saved.getCreatedBy()).isEqualTo(ADMIN_ID);
+        assertThat(saved.getSource()).isEqualTo(SanctionSource.MANUAL);
+        assertThat(saved.getEndsAt()).isEqualTo(NOW.plus(Duration.ofDays(30)));
+        assertThat(view.createdBy()).isEqualTo(ADMIN_ID);
+        assertThat(view.spaceCreatorId()).isEqualTo(CREATOR_ID);
+        verify(memberQueryService).validateAdmin(ADMIN_ID);
+        verify(notificationService).createSpaceCommentBlockStarted(
+                TARGET_ID, 900L, creator.publicDisplayName(), saved.getEndsAt());
+    }
+
+    @Test
+    void 관리자의_차단은_관리자_행을_잠그지_않고_대상_행만_잠가_플랫폼_제재와_순서를_맞춘다() throws Exception {
+        stubMember(ADMIN_ID, MemberRole.ADMIN);
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        service.blockByAdmin(ADMIN_ID, CREATOR_ID, TARGET_ID, 1);
+
+        // 관리자 ID(1)가 대상(20)보다 작아도 관리자 행을 먼저 쓰기 잠금으로 잡지 않는다. 같은 관리자가 같은 대상에게 보낸
+        // 플랫폼 제한은 대상 행을 잠근 뒤 created_by FK로 관리자 행을 기다리므로, 관리자 행을 먼저 잡으면 교착이 난다.
+        verify(memberRepository).findByIdForUpdate(TARGET_ID);
+        verify(memberRepository, never()).findByIdForUpdate(ADMIN_ID);
+        InOrder order = inOrder(memberRepository, sanctionRepository);
+        order.verify(memberRepository).findByIdForUpdate(TARGET_ID);
+        order.verify(sanctionRepository).findActiveSpaceBlocks(CREATOR_ID, TARGET_ID, NOW);
+        Transactional transactional = SpaceCommentBlockService.class
+                .getMethod("blockByAdmin", Long.class, Long.class, Long.class, int.class).getAnnotation(Transactional.class);
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.isolation()).isEqualTo(Isolation.READ_COMMITTED);
+    }
+
+    @Test
+    void 관리자_차단은_스페이스_주인_다른_관리자_자기_자신_대상을_거부한다() {
+        stubMember(ADMIN_ID, MemberRole.ADMIN);
+        stubMember(2L, MemberRole.ADMIN);
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        assertError(() -> service.blockByAdmin(ADMIN_ID, CREATOR_ID, CREATOR_MEMBER_ID, 1),
+                SanctionErrorCode.CANNOT_BLOCK_SPACE_OWNER);
+        assertError(() -> service.blockByAdmin(ADMIN_ID, CREATOR_ID, 2L, 1), SanctionErrorCode.CANNOT_BLOCK_ADMIN);
+        assertError(() -> service.blockByAdmin(ADMIN_ID, CREATOR_ID, ADMIN_ID, 1), SanctionErrorCode.CANNOT_BLOCK_SELF);
+        verify(sanctionRepository, never()).save(any(MemberSanction.class));
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 관리자가_아니거나_없는_크리에이터면_차단하지_않는다() {
+        org.mockito.BDDMockito.willThrow(new BusinessException(CommonErrorCode.FORBIDDEN))
+                .given(memberQueryService).validateAdmin(7L);
+        given(creatorRepository.findById(999L)).willReturn(Optional.empty());
+
+        assertError(() -> service.blockByAdmin(7L, CREATOR_ID, TARGET_ID, 1), CommonErrorCode.FORBIDDEN);
+        assertError(() -> service.blockByAdmin(ADMIN_ID, 999L, TARGET_ID, 1), CommonErrorCode.RESOURCE_NOT_FOUND);
+        verify(sanctionRepository, never()).save(any(MemberSanction.class));
+    }
+
+    @Test
+    void 관리자가_차단할_때_크리에이터가_건_유효한_차단이_있으면_새로_만들지_않는다() {
+        stubMember(ADMIN_ID, MemberRole.ADMIN);
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+        MemberSanction byCreator = block(800L, TARGET_ID, CREATOR_ID, NOW.minusSeconds(3600), Duration.ofDays(3));
+        given(sanctionRepository.findActiveSpaceBlocks(CREATOR_ID, TARGET_ID, NOW)).willReturn(List.of(byCreator));
+
+        SpaceCommentBlockView view = service.blockByAdmin(ADMIN_ID, CREATOR_ID, TARGET_ID, 30);
+
+        assertThat(view.sanctionId()).isEqualTo(800L);
+        verify(sanctionRepository, never()).save(any(MemberSanction.class));
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 관리자는_크리에이터가_건_차단도_해제하고_해제한_사람은_관리자로_남으며_대상에게_알린다() {
+        stubMember(ADMIN_ID, MemberRole.ADMIN);
+        MemberSanction byCreator = block(900L, TARGET_ID, CREATOR_ID, NOW.minusSeconds(3600), Duration.ofDays(7));
+        given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(byCreator));
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        SpaceCommentBlockView view = service.releaseByAdmin(ADMIN_ID, 900L);
+
+        assertThat(view.active()).isFalse();
+        assertThat(byCreator.getReleasedBy()).isEqualTo(ADMIN_ID);
+        verify(memberQueryService).validateAdmin(ADMIN_ID);
+        verify(notificationService).createSpaceCommentBlockReleased(TARGET_ID, 900L, creator.publicDisplayName());
+        // 관리자 해제도 제재 행 → 대상 회원 행 순서이고 관리자 행은 잠그지 않는다(플랫폼 제재 해제와 같은 순서).
+        InOrder order = inOrder(sanctionRepository, memberRepository);
+        order.verify(sanctionRepository).findByIdForUpdate(900L);
+        order.verify(memberRepository).findByIdForUpdate(TARGET_ID);
+        verify(memberRepository, never()).findByIdForUpdate(ADMIN_ID);
+    }
+
+    @Test
+    void 관리자_해제는_플랫폼_제재나_없는_제재를_404로_거부하고_바꾸지_않는다() {
+        MemberSanction platform = MemberSanction.manual(TARGET_ID, ADMIN_ID, "사유", NOW.minusSeconds(3600), Duration.ofDays(7));
+        ReflectionTestUtils.setField(platform, "sanctionId", 902L);
+        given(sanctionRepository.findByIdForUpdate(902L)).willReturn(Optional.of(platform));
+        given(sanctionRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
+
+        assertError(() -> service.releaseByAdmin(ADMIN_ID, 902L), CommonErrorCode.RESOURCE_NOT_FOUND);
+        assertError(() -> service.releaseByAdmin(ADMIN_ID, 999L), CommonErrorCode.RESOURCE_NOT_FOUND);
+        assertThat(platform.getReleasedAt()).isNull();
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 관리자가_아니면_해제와_목록을_읽지_않는다() {
+        org.mockito.BDDMockito.willThrow(new BusinessException(CommonErrorCode.FORBIDDEN))
+                .given(memberQueryService).validateAdmin(7L);
+
+        assertError(() -> service.releaseByAdmin(7L, 900L), CommonErrorCode.FORBIDDEN);
+        assertError(() -> service.findBlocksByAdmin(7L, null, null, false, PAGE), CommonErrorCode.FORBIDDEN);
+        verify(sanctionRepository, never()).findByIdForUpdate(any());
+        verify(sanctionRepository, never()).searchSpaceBlocksForAdmin(
+                any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any());
+    }
+
+    @Test
+    void 관리자_목록은_필터를_그대로_넘기고_차단한_사람과_스페이스_주인을_함께_돌려준다() {
+        MemberSanction active = block(900L, TARGET_ID, CREATOR_ID, NOW.minusSeconds(60), Duration.ofDays(1));
+        given(sanctionRepository.searchSpaceBlocksForAdmin(CREATOR_ID, TARGET_ID, true, NOW, PAGE))
+                .willReturn(new PageImpl<>(List.of(active), PAGE, 1));
+
+        List<SpaceCommentBlockView> views = service.findBlocksByAdmin(ADMIN_ID, CREATOR_ID, TARGET_ID, true, PAGE)
+                .getContent();
+
+        assertThat(views).singleElement().satisfies(found -> {
+            assertThat(found.spaceCreatorId()).isEqualTo(CREATOR_ID);
+            assertThat(found.createdBy()).isEqualTo(CREATOR_MEMBER_ID);
+            assertThat(found.memberName()).isEqualTo("차단된팬");
+        });
+        verify(memberQueryService).validateAdmin(ADMIN_ID);
     }
 
     private MemberSanction block(Long sanctionId, Long memberId, Long spaceCreatorId, Instant startedAt, Duration duration) {

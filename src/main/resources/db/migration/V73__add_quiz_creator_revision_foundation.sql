@@ -49,9 +49,11 @@ ALTER TABLE quiz_revision
     ADD COLUMN composed_at            DATETIME(6) NULL AFTER composed_by_member_id;
 
 ALTER TABLE quiz_revision
+    ADD CONSTRAINT uk_quiz_revision_hash UNIQUE (revision_id, revision_sha256);
+
+ALTER TABLE quiz_revision
     ALTER COLUMN origin DROP DEFAULT,
     ALTER COLUMN hash_version DROP DEFAULT,
-    ADD CONSTRAINT uk_quiz_revision_hash UNIQUE (revision_id, revision_sha256),
     ADD CONSTRAINT fk_quiz_revision_parent FOREIGN KEY (quiz_id, parent_revision_id)
         REFERENCES quiz_revision (quiz_id, revision_id),
     ADD CONSTRAINT fk_quiz_revision_parent_hash FOREIGN KEY (parent_revision_id, parent_revision_sha256)

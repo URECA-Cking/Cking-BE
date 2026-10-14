@@ -227,6 +227,20 @@
 | `RESOURCE_NOT_FOUND` | 404 | 없는 댓글, 신고가 하나도 없는 댓글 |
 | `COMMENT_REPORT_ALREADY_HANDLED` | 409 | 접수 신고가 모두 반려된 댓글을 숨기려 함 |
 
+## DELETE /api/admin/comments/{commentId}
+
+관리자가 신고 접수 여부와 상관없이 댓글을 삭제한다(이슈 #584). `ADMIN` 권한이 필요하고 응답 `204`.
+
+- 물리 삭제이며 그 댓글의 신고도 함께 삭제된다. 게시글 댓글 수는 집계라 따로 맞출 값이 없다.
+- 신고 기반 숨김(`hide`)과 달리 **작성자에게 경고가 쌓이지 않고**, 작성자 알림도 가지 않으며, 삭제 이력도 남기지 않는다.
+- 크리에이터·작성자의 삭제([위](#delete-apicreatorscreatoridpostspostidcommentscommentid))와 달리 게시글·소유 관계를 보지 않고 댓글 ID만으로 삭제한다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `commentId`가 양수가 아님 |
+| `FORBIDDEN` | 403 | 호출자가 관리자가 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 댓글 없음 |
+
 ## POST /api/admin/comment-reports/{commentId}/reject
 
 관리자가 신고를 받아들이지 않고 그 댓글의 **접수(PENDING) 신고를 모두 `REJECTED`로** 바꾼다(이슈 #499). 댓글은 그대로 보인다. Bearer Access JWT와 `ADMIN` 역할이 필수이고 요청 본문은 없다. 응답 `200`.

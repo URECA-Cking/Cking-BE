@@ -43,6 +43,8 @@ class SpaceCommentBlockIntegrationTest {
     @Autowired
     private SpaceCommentBlockService blockService;
     @Autowired
+    private SanctionService sanctionService;
+    @Autowired
     private SanctionQueryService queryService;
     @Autowired
     private MemberRepository memberRepository;
@@ -150,6 +152,116 @@ class SpaceCommentBlockIntegrationTest {
 
         assertThat(sanctionRepository.findActiveSpaceBlocks(a.getCreatorId(), b.getMemberId(), Instant.now())).isEmpty();
         assertThat(sanctionRepository.findActiveSpaceBlocks(b.getCreatorId(), a.getMemberId(), Instant.now())).isEmpty();
+    }
+
+    @Test
+    void 관리자가_차단하면_그_스페이스의_작성만_막히고_관리자가_크리에이터가_건_차단도_해제할_수_있다() {
+        Creator blocker = creator();
+        Creator other = creator();
+        Member fan = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+
+        SpaceCommentBlockView byAdmin = blockService.blockByAdmin(admin.getMemberId(), blocker.getCreatorId(), fan.getMemberId(), 7);
+
+        assertThat(byAdmin.createdBy()).isEqualTo(admin.getMemberId());
+        assertThatThrownBy(() -> queryService.requireCommentWriteAllowed(fan.getMemberId(), blocker.getCreatorId()))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.SPACE_COMMENT_BLOCKED));
+        queryService.requireCommentWriteAllowed(fan.getMemberId(), other.getCreatorId());
+        // 같은 (크리에이터, 회원) 쌍에는 유효한 차단을 하나만 둔다. 크리에이터가 다시 걸어도 기존 차단이 돌아온다.
+        assertThat(blockService.block(blocker.getMemberId(), fan.getMemberId(), 3).sanctionId())
+                .isEqualTo(byAdmin.sanctionId());
+
+        blockService.releaseByAdmin(admin.getMemberId(), byAdmin.sanctionId());
+
+        queryService.requireCommentWriteAllowed(fan.getMemberId(), blocker.getCreatorId());
+        assertThat(blockService.findBlocksByAdmin(
+                admin.getMemberId(), blocker.getCreatorId(), fan.getMemberId(), false,
+                org.springframework.data.domain.PageRequest.of(0, 10)).getContent())
+                .singleElement().satisfies(found -> assertThat(found.active()).isFalse());
+    }
+
+    /**
+     * 같은 관리자가 같은 대상에게 스페이스 차단과 플랫폼 수동 제한을 동시에 걸어도 교착 없이 모두 성공해야 한다. 플랫폼 경로는
+     * 대상 행을 잠근 뒤 created_by FK로 관리자 행의 공유 잠금을 요구하므로, 스페이스 차단이 관리자 행을 먼저 쓰기 잠금으로 잡으면
+     * (관리자 ID가 대상보다 작을 때) 서로의 잠금을 기다린다. 타이밍에 따라 드러나므로 새 대상으로 여러 번 반복한다.
+     */
+    @Test
+    void 같은_관리자가_같은_대상에게_스페이스_차단과_플랫폼_제한을_동시에_걸어도_교착_없이_모두_성공한다() throws Exception {
+        Member admin = member(MemberRole.ADMIN);
+        Creator blocker = creator();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 10; round++) {
+                // 대상이 항상 관리자보다 나중에 만들어져 ID가 크다(관리자 행을 먼저 잠그는 순서가 되는 조합).
+                Member target = member(MemberRole.USER);
+                CyclicBarrier startTogether = new CyclicBarrier(2);
+                Future<Long> spaceBlock = executor.submit(() -> {
+                    startTogether.await(10, TimeUnit.SECONDS);
+                    return blockService.blockByAdmin(
+                            admin.getMemberId(), blocker.getCreatorId(), target.getMemberId(), 1).sanctionId();
+                });
+                Future<Long> platform = executor.submit(() -> {
+                    startTogether.await(10, TimeUnit.SECONDS);
+                    return sanctionService.createManual(admin.getMemberId(), target.getMemberId(), 1, "반복 욕설")
+                            .sanctionId();
+                });
+
+                assertThat(spaceBlock.get(30, TimeUnit.SECONDS)).isNotEqualTo(platform.get(30, TimeUnit.SECONDS));
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    /** 관리자가 스페이스 차단을 해제하는 동안 같은 관리자가 같은 대상의 플랫폼 제한을 해제해도 교착이 나지 않는다. */
+    @Test
+    void 같은_관리자가_스페이스_차단과_플랫폼_제한을_동시에_해제해도_교착_없이_모두_성공한다() throws Exception {
+        Member admin = member(MemberRole.ADMIN);
+        Creator blocker = creator();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 10; round++) {
+                Member target = member(MemberRole.USER);
+                Long spaceBlockId = blockService.blockByAdmin(
+                        admin.getMemberId(), blocker.getCreatorId(), target.getMemberId(), 1).sanctionId();
+                Long platformId = sanctionService.createManual(admin.getMemberId(), target.getMemberId(), 1, "반복 욕설")
+                        .sanctionId();
+
+                CyclicBarrier startTogether = new CyclicBarrier(2);
+                Future<?> releaseSpace = executor.submit(() -> {
+                    startTogether.await(10, TimeUnit.SECONDS);
+                    return blockService.releaseByAdmin(admin.getMemberId(), spaceBlockId);
+                });
+                Future<?> releasePlatform = executor.submit(() -> {
+                    startTogether.await(10, TimeUnit.SECONDS);
+                    return sanctionService.release(admin.getMemberId(), platformId);
+                });
+
+                releaseSpace.get(30, TimeUnit.SECONDS);
+                releasePlatform.get(30, TimeUnit.SECONDS);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void 관리자는_스페이스_주인과_다른_관리자를_차단할_수_없다() {
+        Creator blocker = creator();
+        Member admin = member(MemberRole.ADMIN);
+        Member otherAdmin = member(MemberRole.ADMIN);
+
+        assertThatThrownBy(() -> blockService.blockByAdmin(
+                admin.getMemberId(), blocker.getCreatorId(), blocker.getMemberId(), 1))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(SanctionErrorCode.CANNOT_BLOCK_SPACE_OWNER));
+        assertThatThrownBy(() -> blockService.blockByAdmin(
+                admin.getMemberId(), blocker.getCreatorId(), otherAdmin.getMemberId(), 1))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(SanctionErrorCode.CANNOT_BLOCK_ADMIN));
+        assertThat(sanctionRepository.findAll().stream()
+                .filter(sanction -> blocker.getCreatorId().equals(sanction.getSpaceCreatorId()))).isEmpty();
     }
 
     @Test

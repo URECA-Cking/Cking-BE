@@ -136,6 +136,59 @@
 | `FORBIDDEN` | 403 | 호출자가 Creator가 아님 |
 | `RESOURCE_NOT_FOUND` | 404 | 없는 차단, 다른 크리에이터의 차단, 플랫폼 제재 |
 
+## 관리자 스페이스 댓글 차단 API (이슈 #584)
+
+세 API 모두 Bearer Access JWT와 `ADMIN` 역할이 필수다. 관리자는 크리에이터를 지정해 **어느 스페이스에서든** 크리에이터와 같은 차단을 걸고, 크리에이터가 건 차단도 풀 수 있다. 정책과 응답 필드의 의미는 크리에이터 API와 같고, 응답에는 스페이스 주인 `creatorId`와 차단을 건 회원 `createdBy`가 더해진다.
+
+| 필드 | 설명 |
+| --- | --- |
+| `sanctionId`, `creatorId` | 차단 ID, 차단이 걸린 스페이스의 주인(Creator) |
+| `memberId`, `memberName` | 차단된 회원과 공개 닉네임 |
+| `createdBy` | 차단을 건 회원(크리에이터 본인 또는 관리자) |
+| `startedAt`, `endsAt`, `releasedAt`, `active` | 크리에이터 API 응답과 같음 |
+
+### POST /api/admin/comment-blocks
+
+지정한 크리에이터의 스페이스에서 회원의 댓글 작성·수정을 **지금부터** 일정 기간 막는다. 응답 `201`과 차단. 같은 (크리에이터, 회원) 쌍에 이미 유효한 차단이 있으면(누가 걸었든) 새로 만들지 않고 기존 차단을 같은 `201`로 돌려준다.
+
+```json
+{ "creatorId": 5, "memberId": 20, "days": 7 }
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `creatorId`·`memberId`·`days` 누락 또는 범위 오류(1~365) |
+| `CANNOT_BLOCK_SELF` | 400 | 관리자 자신을 차단 |
+| `CANNOT_BLOCK_ADMIN` | 400 | 대상 회원이 관리자 |
+| `CANNOT_BLOCK_SPACE_OWNER` | 400 | 대상이 그 스페이스의 주인 |
+| `FORBIDDEN` | 403 | 호출자가 관리자가 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 크리에이터 또는 대상 회원 없음 |
+
+### GET /api/admin/comment-blocks
+
+모든 스페이스의 차단을 시작 시각 최신순으로 페이지 조회한다. 크리에이터가 건 차단과 관리자가 건 차단을 모두 포함한다.
+
+| Query | 설명 |
+| --- | --- |
+| `creatorId` | 한 스페이스의 차단만 |
+| `memberId` | 한 회원의 차단만 |
+| `active` | `true`면 지금 유효한 차단만(기본 `false`) |
+| `page`, `size` | 기본 0, 20. `size` 최대 100 |
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `size`·`page` 범위 오류 |
+| `FORBIDDEN` | 403 | 호출자가 관리자가 아님 |
+
+### POST /api/admin/comment-blocks/{sanctionId}/release
+
+차단을 지금 해제한다. 요청 본문은 없고 응답 `200`과 차단. **이미 끝났거나 해제된 차단을 다시 해제하면 아무것도 바꾸지 않고 성공**한다(멱등). 유효한 차단을 풀 때만 차단됐던 회원에게 해제 알림이 간다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `FORBIDDEN` | 403 | 호출자가 관리자가 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 없는 제재, 또는 스페이스 차단이 아닌 제재(플랫폼 제재) |
+
 ## 다른 API에 미치는 영향
 
 | API | 변화 |
