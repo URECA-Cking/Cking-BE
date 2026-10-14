@@ -57,11 +57,15 @@ public final class QuizFixtures {
         return quiz;
     }
 
+    /** {@link #questions()}로 만든 revision의 v1 해시. */
+    public static String revisionSha256() {
+        return QuizRevisionFingerprint.revisionSha256(
+                QuizRevisionFingerprint.contentTextSha256(CONTENT_TEXT), TITLE, PROMPT_VERSION, fingerprintQuestions());
+    }
+
     /** 저장 내용과 맞는 해시를 가진 revision. */
     public static QuizRevision revision(Long revisionId, Long quizId, int revisionNo) {
-        String sha = QuizRevisionFingerprint.revisionSha256(
-                QuizRevisionFingerprint.contentTextSha256(CONTENT_TEXT), TITLE, PROMPT_VERSION, fingerprintQuestions());
-        return revision(revisionId, quizId, revisionNo, sha);
+        return revision(revisionId, quizId, revisionNo, revisionSha256());
     }
 
     public static QuizRevision revision(Long revisionId, Long quizId, int revisionNo, String revisionSha256) {
@@ -97,7 +101,7 @@ public final class QuizFixtures {
     }
 
     public static QuizRevisionDecision approval(Long revisionId, Long memberId) {
-        return QuizRevisionDecision.approve(revisionId, memberId, 900L, "e".repeat(64), NOW);
+        return QuizRevisionDecision.approve(revisionId, memberId, 900L, "e".repeat(64), revisionSha256(), NOW);
     }
 
     public static QuizRevisionDecision rejection(Long revisionId, Long memberId) {

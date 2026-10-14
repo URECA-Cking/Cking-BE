@@ -142,7 +142,7 @@ revision을 거절한다. Judge 평가가 없어도 된다. 본문은 생략할 
 
 ## POST /api/creator/quizzes/{quizId}/publish
 
-승인된 최신 revision을 게시한다. 다른 revision을 게시 중이면 게시 revision을 바꾼다. 게시 직전에 저장 내용과 Judge 승인 근거를 다시 검증한다. 같은 revision을 이미 게시 중이면 현재 상태를 반환한다.
+승인된 최신 revision을 게시한다. 첫 게시 때 그 revision과 해시를 고정하며, 이후(게시 취소 후 포함)에는 고정한 revision만 다시 게시할 수 있다. 게시 직전에 저장 내용과 Judge 승인 근거를 다시 검증한다. 같은 revision을 이미 게시 중이면 현재 상태를 반환한다.
 
 ```json
 { "revisionId": 100 }
@@ -156,6 +156,7 @@ revision을 거절한다. Judge 평가가 없어도 된다. 본문은 생략할 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
 | `VALIDATION_FAILED` | 400 | `revisionId` 없음 |
+| `QUIZ_CONTENT_LOCKED` | 409 | 게시한 적 있는 Quiz에서 고정한 revision이 아니거나, 과거 게시 revision을 확인할 수 없는 기존 Quiz |
 | `QUIZ_REVISION_NOT_LATEST` | 409 | 최신 revision이 아님 |
 | `QUIZ_REVISION_NOT_APPROVED` | 409 | 검토 대기 또는 거절된 revision |
 | `QUIZ_JUDGE_EVALUATION_REQUIRED` | 409 | 승인 근거의 판정이 ALL_PASS가 아님 |

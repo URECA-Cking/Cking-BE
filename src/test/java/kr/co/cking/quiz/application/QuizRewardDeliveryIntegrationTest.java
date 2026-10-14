@@ -76,7 +76,7 @@ class QuizRewardDeliveryIntegrationTest {
             var row=questions.saveAndFlush(new QuizQuestion(revision.getRevisionId(),i,q.question(),q.correctOptionIndex(),q.explanation(),q.sourceEvidence()));
             for(int o=0;o<2;o++) options.saveAndFlush(new QuizOption(row.getQuestionId(),o,q.options().get(o)));
         }
-        quiz.publish(revision.getRevisionId(),QuizFixtures.NOW);quizzes.saveAndFlush(quiz);
+        quiz.publish(revision.getRevisionId(),revision.getRevisionSha256(),QuizFixtures.NOW);quizzes.saveAndFlush(quiz);
         when(redisTemplate.hasKey(anyString())).thenReturn(true);
         when(redisExecutor.execute(any())).thenReturn(new QuizRedisEarnResult(QuizRedisEarnOutcome.ACCEPTED,"1-0",2L,null,null));
     }
@@ -88,7 +88,7 @@ class QuizRewardDeliveryIntegrationTest {
         for(String id:rewardIds) jdbc.update("DELETE FROM ticket_earn_request WHERE request_id=?",id);
         jdbc.update("DELETE a FROM quiz_attempt_answer a JOIN quiz_attempt t ON a.attempt_id=t.attempt_id WHERE t.creator_id=?",creatorId);
         jdbc.update("DELETE FROM quiz_attempt WHERE creator_id=?",creatorId);
-        jdbc.update("UPDATE quiz SET publication_status='NOT_PUBLISHED',published_revision_id=NULL WHERE creator_id=?",creatorId);
+        jdbc.update("UPDATE quiz SET publication_status='NOT_PUBLISHED',published_revision_id=NULL,content_locked=FALSE,locked_revision_id=NULL,locked_revision_sha256=NULL WHERE creator_id=?",creatorId);
         jdbc.update("DELETE o FROM quiz_option o JOIN quiz_question q ON o.question_id=q.question_id JOIN quiz_revision r ON q.revision_id=r.revision_id JOIN quiz z ON r.quiz_id=z.quiz_id WHERE z.creator_id=?",creatorId);
         jdbc.update("DELETE q FROM quiz_question q JOIN quiz_revision r ON q.revision_id=r.revision_id JOIN quiz z ON r.quiz_id=z.quiz_id WHERE z.creator_id=?",creatorId);
         jdbc.update("DELETE r FROM quiz_revision r JOIN quiz z ON r.quiz_id=z.quiz_id WHERE z.creator_id=?",creatorId);

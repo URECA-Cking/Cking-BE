@@ -50,7 +50,7 @@ class QuizQueryServiceTest {
     private final QuizRevisionDecisionRepository decisionRepository = mock(QuizRevisionDecisionRepository.class);
     private final QuizQuestionRepository questionRepository = mock(QuizQuestionRepository.class);
     private final QuizOptionRepository optionRepository = mock(QuizOptionRepository.class);
-    private final QuizRevisionReader reader = new QuizRevisionReader(questionRepository, optionRepository);
+    private final QuizRevisionReader reader = new QuizRevisionReader(questionRepository, optionRepository, revisionRepository);
 
     private final CreatorQuizQueryService creatorQueryService = new CreatorQuizQueryService(
             new QuizCreatorLookup(memberRepository, creatorRepository), quizRepository, revisionRepository,
@@ -122,7 +122,7 @@ class QuizQueryServiceTest {
 
     @Test
     void 공개_상세는_게시_revision의_문항과_보기만_순서대로_보여준다() {
-        quiz.publish(100L, QuizFixtures.NOW);
+        quiz.publish(100L, QuizFixtures.revisionSha256(), QuizFixtures.NOW);
         given(revisionRepository.findById(100L)).willReturn(Optional.of(QuizFixtures.revision(100L, QUIZ_ID, 1)));
 
         PublicQuizViews.Detail detail = publicQueryService.findPublishedDetail(CREATOR_ID, QUIZ_ID);
@@ -137,11 +137,11 @@ class QuizQueryServiceTest {
     void 미게시_게시취소_다른_Creator의_Quiz는_공개_상세에서_404다() {
         assertError(() -> publicQueryService.findPublishedDetail(CREATOR_ID, QUIZ_ID), QuizErrorCode.QUIZ_NOT_FOUND);
 
-        quiz.publish(100L, QuizFixtures.NOW);
+        quiz.publish(100L, QuizFixtures.revisionSha256(), QuizFixtures.NOW);
         quiz.unpublish(QuizFixtures.NOW);
         assertError(() -> publicQueryService.findPublishedDetail(CREATOR_ID, QUIZ_ID), QuizErrorCode.QUIZ_NOT_FOUND);
 
-        quiz.publish(100L, QuizFixtures.NOW);
+        quiz.publish(100L, QuizFixtures.revisionSha256(), QuizFixtures.NOW);
         given(creatorRepository.existsById(11L)).willReturn(true);
         assertError(() -> publicQueryService.findPublishedDetail(11L, QUIZ_ID), QuizErrorCode.QUIZ_NOT_FOUND);
     }

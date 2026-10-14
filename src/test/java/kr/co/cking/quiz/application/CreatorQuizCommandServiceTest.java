@@ -11,6 +11,7 @@ import kr.co.cking.quiz.QuizFixtures;
 import kr.co.cking.quiz.application.dto.QuizDecisionView;
 import kr.co.cking.quiz.application.dto.QuizPublicationView;
 import kr.co.cking.quiz.domain.Quiz;
+import kr.co.cking.quiz.domain.QuizApprovalPolicyType;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizOption;
 import kr.co.cking.quiz.domain.QuizPublicationStatus;
@@ -191,11 +192,45 @@ class CreatorQuizCommandServiceTest {
         assertThat(view.publicationStatus()).isEqualTo(QuizPublicationStatus.PUBLISHED);
         assertThat(view.publishedRevisionId()).isEqualTo(REVISION_ID);
         assertThat(view.publishedAt()).isEqualTo(QuizFixtures.NOW);
+        assertThat(quiz.isContentLocked()).isTrue();
+        assertThat(quiz.getLockedRevisionId()).isEqualTo(REVISION_ID);
+        assertThat(quiz.getLockedRevisionSha256()).isEqualTo(revision.getRevisionSha256());
+    }
+
+    @Test
+    void 기존_승인은_LEGACY_JUDGE_V1과_승인한_revision_해시를_기록한다() {
+        service(new FakeQuizApprovalPolicy()).approve(MEMBER_ID, QUIZ_ID, REVISION_ID);
+
+        ArgumentCaptor<QuizRevisionDecision> saved = ArgumentCaptor.forClass(QuizRevisionDecision.class);
+        verify(decisionRepository).save(saved.capture());
+        assertThat(saved.getValue().getApprovalPolicy()).isEqualTo(QuizApprovalPolicyType.LEGACY_JUDGE_V1);
+        assertThat(saved.getValue().getApprovedRevisionSha256()).isEqualTo(revision.getRevisionSha256());
+    }
+
+    @Test
+    void 게시한_적_있는_Quiz는_고정한_revision이_아니면_정책을_부르지_않고_QUIZ_CONTENT_LOCKED다() {
+        quiz.publish(101L, "f".repeat(64), QuizFixtures.NOW);
+        quiz.unpublish(QuizFixtures.NOW);
+        QuizApprovalPolicy policy = mock(QuizApprovalPolicy.class);
+
+        assertError(() -> service(policy).publish(MEMBER_ID, QUIZ_ID, REVISION_ID), QuizErrorCode.QUIZ_CONTENT_LOCKED);
+        assertThat(quiz.getPublicationStatus()).isEqualTo(QuizPublicationStatus.UNPUBLISHED);
+        verifyNoInteractions(policy);
+    }
+
+    @Test
+    void 과거_게시_revision을_확인하지_못한_잠긴_Quiz는_재게시할_수_없다() {
+        ReflectionTestUtils.setField(quiz, "publicationStatus", QuizPublicationStatus.UNPUBLISHED);
+        ReflectionTestUtils.setField(quiz, "contentLocked", true);
+        given(decisionRepository.findByRevisionId(REVISION_ID)).willReturn(Optional.of(fakeApproval()));
+
+        assertError(() -> service(new FakeQuizApprovalPolicy()).publish(MEMBER_ID, QUIZ_ID, REVISION_ID),
+                QuizErrorCode.QUIZ_CONTENT_LOCKED);
     }
 
     @Test
     void 같은_revision을_게시_중이면_정책을_다시_부르지_않고_현재_상태를_반환한다() {
-        quiz.publish(REVISION_ID, QuizFixtures.NOW);
+        quiz.publish(REVISION_ID, revision.getRevisionSha256(), QuizFixtures.NOW);
         QuizApprovalPolicy policy = mock(QuizApprovalPolicy.class);
 
         QuizPublicationView view = service(policy).publish(MEMBER_ID, QUIZ_ID, REVISION_ID);
@@ -238,7 +273,7 @@ class CreatorQuizCommandServiceTest {
 
     @Test
     void 게시_취소는_승인_정책과_무관하게_포인터를_비우고_기록을_지우지_않는다() {
-        quiz.publish(REVISION_ID, QuizFixtures.NOW);
+        quiz.publish(REVISION_ID, revision.getRevisionSha256(), QuizFixtures.NOW);
         QuizApprovalPolicy policy = spy(new JudgeNotIntegratedQuizApprovalPolicy());
 
         QuizPublicationView view = service(policy).unpublish(MEMBER_ID, QUIZ_ID);
@@ -304,7 +339,7 @@ class CreatorQuizCommandServiceTest {
         QuizApprovalPolicy.Target target = new QuizApprovalPolicy.Target(QUIZ_ID, REVISION_ID,
                 quiz.getContentTextSha256(), revision.getRevisionSha256());
         return QuizRevisionDecision.approve(REVISION_ID, MEMBER_ID, FakeQuizApprovalPolicy.JUDGE_EVALUATION_ID,
-                FakeQuizApprovalPolicy.evaluationSha256(target), QuizFixtures.NOW);
+                FakeQuizApprovalPolicy.evaluationSha256(target), revision.getRevisionSha256(), QuizFixtures.NOW);
     }
 
     private CreatorQuizCommandService service(QuizApprovalPolicy policy) {
@@ -313,7 +348,7 @@ class CreatorQuizCommandServiceTest {
                 quizRepository,
                 revisionRepository,
                 decisionRepository,
-                new QuizRevisionReader(questionRepository, optionRepository),
+                new QuizRevisionReader(questionRepository, optionRepository, revisionRepository),
                 policy,
                 Clock.fixed(QuizFixtures.NOW, ZoneOffset.UTC));
     }

@@ -60,7 +60,8 @@ class QuizIntegrationData {
     void cleanUp() {
         for (Creator creator : creators) {
             Long creatorId = creator.getCreatorId();
-            jdbcTemplate.update("UPDATE quiz SET publication_status = 'NOT_PUBLISHED', published_revision_id = NULL "
+            jdbcTemplate.update("UPDATE quiz SET publication_status = 'NOT_PUBLISHED', published_revision_id = NULL, "
+                    + "content_locked = FALSE, locked_revision_id = NULL, locked_revision_sha256 = NULL "
                     + "WHERE creator_id = ?", creatorId);
             jdbcTemplate.update("DELETE d FROM quiz_revision_decision d JOIN quiz_revision r ON d.revision_id = r.revision_id "
                     + "JOIN quiz q ON r.quiz_id = q.quiz_id WHERE q.creator_id = ?", creatorId);
