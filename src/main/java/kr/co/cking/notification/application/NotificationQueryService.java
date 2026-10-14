@@ -2,6 +2,7 @@ package kr.co.cking.notification.application;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import kr.co.cking.common.exception.BusinessException;
@@ -45,18 +46,21 @@ public class NotificationQueryService {
         if (notifications.isEmpty()) {
             return new PageImpl<>(List.of(), pageable, notifications.getTotalElements());
         }
-        Map<Long, Event> eventsById = eventRepository.findByEventIdIn(notifications.stream()
-                        .map(Notification::getEventId).distinct().toList())
+        // 제재 알림처럼 이벤트·추첨이 없는 알림은 ID가 null이므로 조회 대상에서 뺀다.
+        List<Long> eventIds = notifications.stream()
+                .map(Notification::getEventId).filter(Objects::nonNull).distinct().toList();
+        List<Long> drawingIds = notifications.stream()
+                .map(Notification::getDrawingId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, Event> eventsById = eventIds.isEmpty() ? Map.of() : eventRepository.findByEventIdIn(eventIds)
                 .stream().collect(Collectors.toMap(Event::getEventId, Function.identity()));
-        Map<Long, Drawing> drawingsById = drawingRepository.findAllById(notifications.stream()
-                        .map(Notification::getDrawingId).distinct().toList())
+        Map<Long, Drawing> drawingsById = drawingIds.isEmpty() ? Map.of() : drawingRepository.findAllById(drawingIds)
                 .stream().collect(Collectors.toMap(Drawing::getId, Function.identity()));
 
         return new PageImpl<>(notifications.stream()
                 .map(notification -> NotificationSummary.of(
                         notification,
-                        requireRelated(eventsById, notification.getEventId()),
-                        requireRelated(drawingsById, notification.getDrawingId())
+                        relatedOrNull(eventsById, notification.getEventId()),
+                        relatedOrNull(drawingsById, notification.getDrawingId())
                 ))
                 .toList(), pageable, notifications.getTotalElements());
     }
@@ -66,6 +70,11 @@ public class NotificationQueryService {
         if (!memberRepository.existsById(memberId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
         }
+    }
+
+    /** ID가 없으면(제재 알림) null, 있으면 반드시 존재해야 하는 연관 데이터를 꺼낸다. */
+    private <T> T relatedOrNull(Map<Long, T> relatedById, Long id) {
+        return id == null ? null : requireRelated(relatedById, id);
     }
 
     /** 외래 키로 보장되는 연관 데이터를 응답 조합에 사용하도록 꺼낸다. */

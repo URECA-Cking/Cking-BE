@@ -61,6 +61,23 @@ class NotificationControllerTest {
     }
 
     @Test
+    void 제재_알림은_event와_drawing이_null로_내려간다() throws Exception {
+        NotificationSummary sanction = new NotificationSummary(2L, null, null, NotificationType.COMMENT_RESTRICTION_STARTED,
+                "댓글 작성 제한 안내", "2026-10-16 00:00 UTC까지 댓글을 작성하거나 수정할 수 없습니다.",
+                Instant.parse("2026-10-13T00:00:00Z"), null);
+        when(notificationQueryService.findMine(eq(1L), anyInt(), anyInt()))
+                .thenReturn(new PageImpl<>(List.of(sanction), PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get("/api/me/notifications"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].notificationId").value(2))
+                .andExpect(jsonPath("$.data.items[0].type").value("COMMENT_RESTRICTION_STARTED"))
+                .andExpect(jsonPath("$.data.items[0].event").value(nullValue()))
+                .andExpect(jsonPath("$.data.items[0].drawing").value(nullValue()))
+                .andExpect(jsonPath("$.data.items[0].title").value("댓글 작성 제한 안내"));
+    }
+
+    @Test
     void page가_음수면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/me/notifications").param("page", "-1"))
                 .andExpect(status().isBadRequest())

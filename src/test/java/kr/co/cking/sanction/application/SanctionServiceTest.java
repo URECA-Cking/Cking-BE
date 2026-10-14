@@ -6,15 +6,21 @@ import kr.co.cking.common.exception.ErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.notification.application.SanctionNotificationService;
 import kr.co.cking.sanction.application.dto.CommentHideSanctionResult;
 import kr.co.cking.sanction.application.dto.SanctionView;
 import kr.co.cking.sanction.domain.MemberSanction;
+import kr.co.cking.sanction.domain.SanctionScope;
 import kr.co.cking.sanction.domain.SanctionSource;
+import kr.co.cking.sanction.domain.SanctionType;
 import kr.co.cking.sanction.repository.MemberSanctionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -28,8 +34,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 
 class SanctionServiceTest {
@@ -45,8 +53,10 @@ class SanctionServiceTest {
     private final MemberSanctionRepository sanctionRepository = mock(MemberSanctionRepository.class);
     private final SanctionSettings settings = new SanctionSettings(
             WINDOW, List.of(Duration.ofDays(1), Duration.ofDays(3), Duration.ofDays(7)));
+    private final SanctionNotificationService notificationService = mock(SanctionNotificationService.class);
     private final SanctionService service = new SanctionService(
-            memberQueryService, memberRepository, sanctionRepository, settings, Clock.fixed(NOW, ZoneOffset.UTC));
+            memberQueryService, memberRepository, sanctionRepository, settings, notificationService,
+            Clock.fixed(NOW, ZoneOffset.UTC));
 
     @BeforeEach
     void setUp() {
@@ -112,6 +122,68 @@ class SanctionServiceTest {
     }
 
     @Test
+    void 경고가_새로_쌓이면_경고_횟수와_해제_시각을_담은_제한_시작_알림을_만든다() {
+        given(sanctionRepository.countByMemberIdAndSourceAndStartedAtGreaterThanEqual(
+                MEMBER_ID, SanctionSource.AUTOMATIC, NOW.minus(WINDOW))).willReturn(1L);
+
+        service.recordCommentHide(MEMBER_ID, COMMENT_ID, ADMIN_ID, NOW);
+
+        verify(notificationService).createCommentRestrictionStartedByWarning(
+                MEMBER_ID, 900L, 2, NOW.plus(Duration.ofDays(3)));
+    }
+
+    @Test
+    void 기존에_더_오래가는_제한이_있으면_경고_알림은_그_종료_시각을_안내한다() {
+        Instant existingEndsAt = NOW.plus(Duration.ofDays(30));
+        given(sanctionRepository.findActiveEndsAt(
+                MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
+                .willReturn(Optional.of(existingEndsAt));
+
+        CommentHideSanctionResult result = service.recordCommentHide(MEMBER_ID, COMMENT_ID, ADMIN_ID, NOW);
+
+        // 새 경고 제한은 1일이지만 실제 작성 제한은 30일까지 이어지므로 알림은 30일 뒤를 안내한다.
+        verify(notificationService).createCommentRestrictionStartedByWarning(MEMBER_ID, 900L, 1, existingEndsAt);
+        assertThat(result.endsAt()).isEqualTo(NOW.plus(Duration.ofDays(1)));
+    }
+
+    @Test
+    void 기존에_더_오래가는_제한이_있으면_수동_제한_알림도_그_종료_시각을_안내한다() {
+        Instant existingEndsAt = NOW.plus(Duration.ofDays(30));
+        given(sanctionRepository.findActiveEndsAt(
+                MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
+                .willReturn(Optional.of(existingEndsAt));
+
+        service.createManual(ADMIN_ID, MEMBER_ID, 2, "사유");
+
+        verify(notificationService).createCommentRestrictionStartedManually(MEMBER_ID, 900L, existingEndsAt);
+    }
+
+    @Test
+    void 제한을_만드는_두_메서드는_동시에_커밋된_제한까지_읽도록_READ_COMMITTED로_실행한다() throws Exception {
+        Transactional hide = SanctionService.class
+                .getMethod("recordCommentHide", Long.class, Long.class, Long.class, Instant.class)
+                .getAnnotation(Transactional.class);
+        Transactional manual = SanctionService.class
+                .getMethod("createManual", Long.class, Long.class, int.class, String.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(hide).isNotNull();
+        assertThat(hide.isolation()).isEqualTo(Isolation.READ_COMMITTED);
+        assertThat(manual).isNotNull();
+        assertThat(manual.isolation()).isEqualTo(Isolation.READ_COMMITTED);
+    }
+
+    @Test
+    void 같은_댓글로_이미_경고가_쌓였으면_알림도_다시_만들지_않는다() {
+        MemberSanction existing = MemberSanction.automatic(MEMBER_ID, COMMENT_ID, ADMIN_ID, NOW.minusSeconds(60), Duration.ofDays(1));
+        given(sanctionRepository.findByCauseCommentId(COMMENT_ID)).willReturn(Optional.of(existing));
+
+        service.recordCommentHide(MEMBER_ID, COMMENT_ID, ADMIN_ID, NOW);
+
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
     void 대상_회원을_잠그고_없으면_404다() {
         service.lockSubject(MEMBER_ID);
 
@@ -132,6 +204,8 @@ class SanctionServiceTest {
         assertThat(view.source()).isEqualTo(SanctionSource.MANUAL);
         verify(memberQueryService).validateAdmin(ADMIN_ID);
         verify(memberRepository).findByIdForUpdate(MEMBER_ID);
+        verify(notificationService).createCommentRestrictionStartedManually(
+                MEMBER_ID, 900L, NOW.plus(Duration.ofDays(5)));
     }
 
     @Test
@@ -143,6 +217,7 @@ class SanctionServiceTest {
         assertError(() -> service.createManual(ADMIN_ID, MEMBER_ID, 1, null), CommonErrorCode.VALIDATION_FAILED);
         assertError(() -> service.createManual(ADMIN_ID, MEMBER_ID, 1, "가".repeat(201)), CommonErrorCode.VALIDATION_FAILED);
         verify(sanctionRepository, never()).save(any(MemberSanction.class));
+        verifyNoInteractions(notificationService);
     }
 
     @Test
@@ -173,6 +248,50 @@ class SanctionServiceTest {
         assertThat(first.releasedAt()).isEqualTo(NOW);
         assertThat(first.releasedBy()).isEqualTo(9L);
         assertThat(second.releasedBy()).isEqualTo(9L);
+        // 남은 제한이 없을 때 첫 해제에서만 알린다.
+        verify(notificationService).createCommentRestrictionReleased(MEMBER_ID, sanction.getSanctionId());
+    }
+
+    @Test
+    void 다른_제한이_남아_있으면_해제해도_해제_알림을_보내지_않는다() {
+        MemberSanction sanction = MemberSanction.manual(MEMBER_ID, ADMIN_ID, "사유", NOW.minusSeconds(3600), Duration.ofDays(7));
+        given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(sanction));
+        given(sanctionRepository.findActiveEndsAt(
+                MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW))
+                .willReturn(Optional.of(NOW.plus(Duration.ofDays(1))));
+
+        SanctionView view = service.release(ADMIN_ID, 900L);
+
+        assertThat(view.active()).isFalse();
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 이미_끝났거나_해제된_제한을_해제하면_알림을_보내지_않는다() {
+        MemberSanction expired = MemberSanction.manual(MEMBER_ID, ADMIN_ID, "사유", NOW.minus(Duration.ofDays(3)), Duration.ofDays(1));
+        given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(expired));
+
+        service.release(ADMIN_ID, 900L);
+
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 해제는_제재_행_다음_회원_행을_잠근_뒤_남은_제한을_읽고_READ_COMMITTED로_실행한다() throws Exception {
+        MemberSanction sanction = MemberSanction.manual(MEMBER_ID, ADMIN_ID, "사유", NOW.minusSeconds(3600), Duration.ofDays(7));
+        given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(sanction));
+
+        service.release(ADMIN_ID, 900L);
+
+        InOrder order = inOrder(sanctionRepository, memberRepository);
+        order.verify(sanctionRepository).findByIdForUpdate(900L);
+        order.verify(memberRepository).findByIdForUpdate(MEMBER_ID);
+        order.verify(sanctionRepository).findActiveEndsAt(
+                MEMBER_ID, SanctionScope.PLATFORM, SanctionType.COMMENT_RESTRICTION, NOW);
+        Transactional transactional = SanctionService.class
+                .getMethod("release", Long.class, Long.class).getAnnotation(Transactional.class);
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.isolation()).isEqualTo(Isolation.READ_COMMITTED);
     }
 
     @Test

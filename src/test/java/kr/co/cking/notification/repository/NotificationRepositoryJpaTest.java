@@ -1,18 +1,23 @@
 package kr.co.cking.notification.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
+import kr.co.cking.sanction.domain.MemberSanction;
+import kr.co.cking.sanction.repository.MemberSanctionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -30,6 +35,9 @@ class NotificationRepositoryJpaTest {
 
     @Autowired
     private NotificationRepository notificationRepository;
+
+    @Autowired
+    private MemberSanctionRepository sanctionRepository;
 
     @Test
     void Member별_알림을_생성시각과_알림_ID_내림차순으로_조회한다() {
@@ -58,6 +66,76 @@ class NotificationRepositoryJpaTest {
         assertThat(result).extracting(Notification::getTitle)
                 .containsExactly("나중에 생성된 알림", "먼저 생성된 알림");
         assertThat(result.getFirst().getReadAt()).isEqualTo(Instant.parse("2026-09-17T01:00:00Z"));
+    }
+
+    @Test
+    void 제재_알림은_이벤트_추첨_당첨_없이_저장되고_조회된다() {
+        long memberId = insertMember("제재 알림 회원");
+        long sanctionId = saveSanction(memberId);
+
+        Notification saved = notificationRepository.saveAndFlush(Notification.forSanction(
+                memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, "댓글 작성 제한 안내", "본문"));
+        entityManager.clear();
+
+        Notification found = notificationRepository.findById(saved.getNotificationId()).orElseThrow();
+        assertThat(found.getSanctionId()).isEqualTo(sanctionId);
+        assertThat(found.getType()).isEqualTo(NotificationType.COMMENT_RESTRICTION_STARTED);
+        assertThat(found.getEventId()).isNull();
+        assertThat(found.getDrawingId()).isNull();
+        assertThat(found.getWinnerId()).isNull();
+        assertThat(notificationRepository.findByMemberId(memberId, PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))
+                .getContent()).extracting(Notification::getNotificationId).containsExactly(saved.getNotificationId());
+    }
+
+    @Test
+    void 같은_제재의_같은_종류_알림은_유니크_제약이_막고_다른_종류는_허용한다() {
+        long memberId = insertMember("제재 알림 중복 회원");
+        long sanctionId = saveSanction(memberId);
+        notificationRepository.saveAndFlush(Notification.forSanction(
+                memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, "제목", "본문"));
+
+        assertThatThrownBy(() -> notificationRepository.saveAndFlush(Notification.forSanction(
+                memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, "제목", "본문")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 같은_제재라도_해제_알림은_따로_저장할_수_있다() {
+        long memberId = insertMember("제재 해제 알림 회원");
+        long sanctionId = saveSanction(memberId);
+        notificationRepository.saveAndFlush(Notification.forSanction(
+                memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, "제목", "본문"));
+
+        Notification released = notificationRepository.saveAndFlush(Notification.forSanction(
+                memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_RELEASED, "제목", "본문"));
+
+        assertThat(released.getNotificationId()).isNotNull();
+    }
+
+    @Test
+    void 이벤트_추첨_당첨_중_일부만_채우면_CHECK_제약이_거부한다() {
+        Fixture fixture = fixture();
+
+        // winner_id만 비어 있어도, 복합 FK는 NULL이 있으면 검사되지 않으므로 CHECK가 막아야 한다.
+        assertThatThrownBy(() -> notificationRepository.saveAndFlush(new Notification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), null,
+                NotificationType.INITIAL_WINNER, "제목", "본문")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 존재하지_않는_제재를_가리키는_알림은_FK가_거부한다() {
+        long memberId = insertMember("없는 제재 회원");
+
+        assertThatThrownBy(() -> notificationRepository.saveAndFlush(Notification.forSanction(
+                memberId, 999_999_999L, NotificationType.COMMENT_RESTRICTION_STARTED, "제목", "본문")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private long saveSanction(long memberId) {
+        long adminId = insertMember("제재 알림 관리자");
+        return sanctionRepository.saveAndFlush(MemberSanction.manual(
+                memberId, adminId, "사유", Instant.parse("2026-10-13T00:00:00Z"), Duration.ofDays(1))).getSanctionId();
     }
 
     /** Winner의 실제 계보와 일치하는 Notification을 지정한 시각으로 저장한다. */
