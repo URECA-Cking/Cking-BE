@@ -1,5 +1,6 @@
 package kr.co.cking.winner.application;
 
+import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.support.PersonalInfoMasker;
 import kr.co.cking.drawing.domain.DrawingType;
@@ -20,13 +21,14 @@ public record PublicWinnerResult(
 ) {
 
     /** 공개 Winner Projection과 회원 원본 정보를 마스킹된 이력 식별 응답으로 변환한다. */
-    public static PublicWinnerResult from(PublicWinnerProjection winner, MemberInfo member) {
+    public static PublicWinnerResult from(
+            PublicWinnerProjection winner, MemberInfo member, CreatorPublicProfile creatorProfile) {
         return new PublicWinnerResult(
                 winner.winnerId(),
                 winner.drawingId(),
                 winner.drawNo(),
                 winner.drawType(),
-                PersonalInfoMasker.maskName(member.name()),
+                creatorProfile == null ? PersonalInfoMasker.maskName(member.name()) : creatorProfile.name(),
                 PersonalInfoMasker.maskPhone(member.phone()),
                 winner.rankInDrawing(),
                 winner.prizeKey(),

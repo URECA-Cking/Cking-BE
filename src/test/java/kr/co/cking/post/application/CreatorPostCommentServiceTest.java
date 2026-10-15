@@ -249,11 +249,11 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void Creator는_Member_닉네임이_없어도_활동명_프로필로_댓글을_작성한다() {
+    void 활동명이_설정된_Creator는_Member_닉네임이_없어도_활동명_프로필로_댓글을_작성한다() {
         Member creatorMember = new Member("OAuth 이름", null, null, kr.co.cking.member.domain.MemberRole.USER);
         ReflectionTestUtils.setField(creatorMember, "memberId", OWNER_MEMBER_ID);
         given(memberRepository.findByIdForUpdate(OWNER_MEMBER_ID)).willReturn(Optional.of(creatorMember));
-        given(creatorQueryService.isCreatorMember(OWNER_MEMBER_ID)).willReturn(true);
+        given(creatorQueryService.requireActivityNameConfiguredIfCreator(OWNER_MEMBER_ID)).willReturn(true);
         given(creatorPublicProfileQueryService.findByMemberIds(Set.of(OWNER_MEMBER_ID)))
                 .willReturn(java.util.Map.of(OWNER_MEMBER_ID,
                         creatorProfile(OWNER_MEMBER_ID, CREATOR_ID, "공개활동명", "https://cdn.example.com/space/1.png")));
@@ -264,6 +264,19 @@ class CreatorPostCommentServiceTest {
         assertThat(created.authorName()).isEqualTo("공개활동명");
         assertThat(created.authorProfileImageUrl()).isEqualTo("https://cdn.example.com/space/1.png");
         assertThat(created.writtenByCreator()).isTrue();
+    }
+
+    @Test
+    void 활동명_미설정_Creator의_댓글_작성은_차단한다() {
+        Member creatorMember = new Member("OAuth 이름", null, null, kr.co.cking.member.domain.MemberRole.USER);
+        ReflectionTestUtils.setField(creatorMember, "memberId", OWNER_MEMBER_ID);
+        given(memberRepository.findByIdForUpdate(OWNER_MEMBER_ID)).willReturn(Optional.of(creatorMember));
+        willThrow(new BusinessException(kr.co.cking.creator.domain.CreatorErrorCode.ACTIVITY_NAME_SETUP_REQUIRED))
+                .given(creatorQueryService).requireActivityNameConfiguredIfCreator(OWNER_MEMBER_ID);
+
+        assertError(() -> service.create(OWNER_MEMBER_ID, CREATOR_ID, FOLLOWERS_POST_ID, "고마워요"),
+                kr.co.cking.creator.domain.CreatorErrorCode.ACTIVITY_NAME_SETUP_REQUIRED);
+        verify(commentRepository, never()).save(any());
     }
 
     @Test

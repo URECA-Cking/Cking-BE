@@ -7,6 +7,8 @@
 - 작성·수정·삭제·신고는 Bearer Access JWT가 필수다(없으면 `UNAUTHORIZED` 401). 호출자는 `@CurrentMemberId`로 식별한다.
 - 목록 조회는 인증이 필요 없다. 로그인했다면 Access JWT를 함께 보내야 팔로워 공개 게시글의 댓글을 볼 수 있다.
 - 경로의 `creatorId`·`postId`·`commentId`가 서로 맞지 않으면(다른 Creator의 게시글, 다른 게시글의 댓글) `RESOURCE_NOT_FOUND`(404)다.
+- 팬은 Member 닉네임, Creator는 활동명을 설정해야 댓글을 작성·수정할 수 있다. 활동명 미설정 Creator는
+  `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 받는다.
 
 ## 댓글 응답
 
@@ -103,6 +105,7 @@
 | `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로워도 작성 Creator 본인도 아님 (전체 공개 게시글 포함) |
 | `COMMENT_RESTRICTED` | 403 | 관리자의 댓글 숨김 경고 누적이나 수동 설정으로 댓글 작성이 제한됨. 메시지에 해제 시각(UTC)이 들어간다 ([Sanction](../sanction/README.md)) |
 | `SPACE_COMMENT_BLOCKED` | 403 | 이 스페이스의 크리에이터가 작성자를 차단함. 메시지에 해제 시각(UTC)이 들어가며 다른 스페이스에서는 쓸 수 있다 |
+| `ACTIVITY_NAME_SETUP_REQUIRED` | 409 | 활동명을 아직 설정하지 않은 Creator |
 | `RESOURCE_NOT_FOUND` | 404 | Member·Creator·게시글 없음 |
 
 ## PATCH /api/creators/{creatorId}/posts/{postId}/comments/{commentId}
@@ -117,6 +120,7 @@
 | `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로우를 끊은 작성자 |
 | `COMMENT_RESTRICTED` | 403 | 댓글 작성이 제한된 작성자. 메시지에 해제 시각(UTC)이 들어간다. 삭제는 제한 중에도 할 수 있다 |
 | `SPACE_COMMENT_BLOCKED` | 403 | 이 스페이스의 크리에이터가 작성자를 차단함. 삭제는 차단 중에도 할 수 있다 |
+| `ACTIVITY_NAME_SETUP_REQUIRED` | 409 | 활동명을 아직 설정하지 않은 Creator |
 | `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음 |
 
 ## DELETE /api/creators/{creatorId}/posts/{postId}/comments/{commentId}

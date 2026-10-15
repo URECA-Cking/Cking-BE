@@ -2,6 +2,7 @@ package kr.co.cking.member.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,10 +14,14 @@ import org.springframework.stereotype.Component;
 public class MemberProfileGuard {
 
     private final MemberRepository memberRepository;
+    private final CreatorQueryService creatorQueryService;
 
     public void requireConfigured(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (creatorQueryService.requireActivityNameConfiguredIfCreator(memberId)) {
+            return;
+        }
         member.requireProfileConfigured();
     }
 }

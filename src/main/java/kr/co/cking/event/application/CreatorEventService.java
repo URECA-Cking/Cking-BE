@@ -120,8 +120,10 @@ public class CreatorEventService {
     private Creator requireCreator(Long userId) {
         memberRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return creatorRepository.findByMemberId(userId)
+        Creator creator = creatorRepository.findByMemberId(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        creator.requireActivityNameConfigured();
+        return creator;
     }
 
     /** 잠금 상태의 Event가 요청 Creator 소유이며 삭제되지 않았는지 검증한다. */

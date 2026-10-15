@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -222,12 +223,13 @@ public class CreatorPostCommentService {
     }
 
     private void requireCommentProfileConfigured(Member author, Long memberId) {
-        if (!creatorQueryService.isCreatorMember(memberId)) {
-            author.requireProfileConfigured();
+        if (creatorQueryService.requireActivityNameConfiguredIfCreator(memberId)) {
+            return;
         }
+        author.requireProfileConfigured();
     }
 
     private CreatorPublicProfile creatorPublicProfile(Long memberId) {
-        return creatorPublicProfileQueryService.findByMemberIds(java.util.Set.of(memberId)).get(memberId);
+        return creatorPublicProfileQueryService.findByMemberIds(Set.of(memberId)).get(memberId);
     }
 }

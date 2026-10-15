@@ -142,6 +142,18 @@ class EventEntryServiceTest {
     }
 
     @Test
+    void 활동명이_설정된_Creator는_Member_닉네임_없이도_응모할_수_있다() {
+        EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.CREATOR);
+        when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
+        when(clock.instant()).thenReturn(Instant.parse("2026-10-06T00:00:00Z"));
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
+                .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.SUCCESS, "1-0", 1L));
+
+        assertThat(eventEntryService.apply(1L, command).code()).isEqualTo(EntryResultCode.SUCCESS);
+        verify(memberProfileGuard).requireConfigured(10L);
+    }
+
+    @Test
     void SPEND_예상치_못한_오류는_원_예외를_유지하고_시스템_실패로_관찰한다() {
         EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.COMMON);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);

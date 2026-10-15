@@ -20,7 +20,9 @@ class PostAuthorLookup {
     Creator requireCreator(Long memberId) {
         memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return creatorRepository.findByMemberId(memberId)
+        Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        creator.requireActivityNameConfigured();
+        return creator;
     }
 }
