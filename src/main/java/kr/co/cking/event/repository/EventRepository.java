@@ -44,25 +44,47 @@ public interface EventRepository extends JpaRepository<Event, Long> {
         return findByCreatorIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByCreatedAtDescEventIdDesc(creatorId, pageable);
     }
 
-    /** 관리자가 삭제되지 않은 Event를 선택 상태와 생성일 역순으로 조회할 때 사용한다. */
+    /** 관리자의 일반 운영 목록(ACTIVE)을 선택 상태와 생성일 역순으로 조회한다. */
     @Query("""
             select e from Event e
             where e.deletedAt is null
               and (:status is null or e.status = :status)
-              and (
-                :archiveStatus = kr.co.cking.event.domain.EventArchiveStatus.ALL
-                or (:archiveStatus = kr.co.cking.event.domain.EventArchiveStatus.ACTIVE and e.archivedAt is null)
-                or (:archiveStatus = kr.co.cking.event.domain.EventArchiveStatus.ARCHIVED and e.archivedAt is not null)
-              )
+              and e.archivedAt is null
             order by e.createdAt desc, e.eventId desc
             """)
-    Page<Event> findManagedEvents(@Param("status") EventStatus status,
-                                  @Param("archiveStatus") EventArchiveStatus archiveStatus,
-                                  Pageable pageable);
+    Page<Event> findManagedActive(@Param("status") EventStatus status, Pageable pageable);
+
+    /** 관리자의 보관함(ARCHIVED)을 선택 상태와 생성일 역순으로 조회한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+              and e.archivedAt is not null
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedArchived(@Param("status") EventStatus status, Pageable pageable);
+
+    /** 관리자가 보관 여부와 관계없이 모든 운영 Event를 선택 상태와 생성일 역순으로 조회한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedAll(@Param("status") EventStatus status, Pageable pageable);
+
+    /** API 전용 archiveStatus는 Service 분기만 담당하고 JPQL에는 실제 컬럼 조건만 둔다. */
+    default Page<Event> findManagedEvents(EventStatus status, EventArchiveStatus archiveStatus, Pageable pageable) {
+        return switch (archiveStatus) {
+            case ACTIVE -> findManagedActive(status, pageable);
+            case ARCHIVED -> findManagedArchived(status, pageable);
+            case ALL -> findManagedAll(status, pageable);
+        };
+    }
 
     /** 기존 호출자는 기본 운영 목록(ACTIVE)만 조회한다. */
     default Page<Event> findManagedEvents(EventStatus status, Pageable pageable) {
-        return findManagedEvents(status, EventArchiveStatus.ACTIVE, pageable);
+        return findManagedActive(status, pageable);
     }
 
     /** EventLifecycleScheduler가 자동 마감 대상(OPEN이고 endAt이 지난 이벤트)을 찾을 때 쓴다. */
