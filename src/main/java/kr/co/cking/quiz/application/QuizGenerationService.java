@@ -10,6 +10,7 @@ import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizGeneration;
 import kr.co.cking.quiz.domain.QuizGenerationFailure;
 import kr.co.cking.quiz.domain.QuizRevision;
+import kr.co.cking.quiz.grounding.VideoGroundingValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -71,7 +72,7 @@ public class QuizGenerationService {
         QuizGeneration created;
         try {
             created = store.create(new QuizGeneration(creator.getCreatorId(), memberId, requestId, videoId, title,
-                    questionCount, now));
+                    questionCount, now, properties.getContentReview().isEnabled()));
         } catch (DataIntegrityViolationException exception) {
             return store.findByRequest(creator.getCreatorId(), requestId)
                     .map(generation -> replay(creator.getCreatorId(), generation, fingerprint))
@@ -87,13 +88,52 @@ public class QuizGenerationService {
     /** 다른 Creator의 작업은 403, 없는 작업은 404. 조회하면서 오래된 작업을 정리한다. */
     public QuizGenerationView find(Long memberId, Long generationId) {
         Creator creator = creatorLookup.requireCreator(memberId);
+        QuizGeneration generation = owned(creator, generationId);
+        store.expireStale(creator.getCreatorId(), clock.instant());
+        return QuizGenerationView.of(store.find(generationId).orElse(generation));
+    }
+
+    /**
+     * Creator가 검토한 원문을 확정하고 Quiz 생성 단계를 제출한다(이슈 #604). 원문은 정규화하지 않고 비어 있지 않은
+     * 50,000자 이하여야 한다. 같은 원문으로 이미 확정한 작업은 다시 제출하지 않고 현재 상태를 돌려준다. 확정은 생성
+     * Provider를 호출하므로 생성 기능이 꺼져 있으면 새 확정은 503이다. 제출이 거절되면 작업을 끝내 Creator 슬롯을 푼다.
+     */
+    public QuizGenerationView confirmContent(Long memberId, Long generationId, String contentText) {
+        Creator creator = creatorLookup.requireCreator(memberId);
+        QuizGeneration generation = owned(creator, generationId);
+        if (contentText == null || contentText.isBlank()
+                || contentText.length() > VideoGroundingValidator.MAX_CONTENT_TEXT_LENGTH) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        boolean replay = contentText.equals(generation.getReviewedContentText());
+        if (!replay && !properties.isEnabled()) {
+            throw new BusinessException(QuizErrorCode.QUIZ_GENERATION_DISABLED);
+        }
+        store.expireStale(creator.getCreatorId(), clock.instant());
+        QuizGenerationStore.Confirmation confirmation =
+                store.confirmContent(generationId, memberId, contentText, clock.instant());
+        if (confirmation == QuizGenerationStore.Confirmation.CONFIRMED && !dispatcher.dispatchGeneration(generationId)) {
+            store.failUnstartedGeneration(generationId, QuizGenerationFailure.DISPATCH_REJECTED, clock.instant());
+        }
+        return QuizGenerationView.of(store.find(generationId).orElse(generation));
+    }
+
+    /** 원문 검토 대기 작업을 취소한다(이슈 #604). Provider를 호출하지 않으므로 생성 기능이 꺼져 있어도 된다. */
+    public QuizGenerationView cancelReview(Long memberId, Long generationId) {
+        Creator creator = creatorLookup.requireCreator(memberId);
+        QuizGeneration generation = owned(creator, generationId);
+        store.expireStale(creator.getCreatorId(), clock.instant());
+        store.cancelReview(generationId, clock.instant());
+        return QuizGenerationView.of(store.find(generationId).orElse(generation));
+    }
+
+    private QuizGeneration owned(Creator creator, Long generationId) {
         QuizGeneration generation = store.find(generationId)
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_GENERATION_NOT_FOUND));
         if (!generation.isOwnedBy(creator.getCreatorId())) {
             throw new BusinessException(CommonErrorCode.FORBIDDEN);
         }
-        store.expireStale(creator.getCreatorId(), clock.instant());
-        return QuizGenerationView.of(store.find(generationId).orElse(generation));
+        return generation;
     }
 
     /** 같은 요청이면 조회처럼 오래된 작업을 정리한 뒤 최신 상태를 돌려준다. 새 작업을 만들거나 제출하지 않는다. */

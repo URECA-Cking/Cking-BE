@@ -176,8 +176,8 @@ MySQL DDL은 문장마다 암묵적으로 커밋되므로 V73은 원자적으로
 - Transaction 경계: 접수 Service는 Transaction을 열지 않고, 작업 저장·점유·실패 기록이 각각 짧은 Transaction이다(`QuizGenerationStore`). Grounding과 Quiz 생성 Provider 호출은 Transaction 밖이다. Quiz 저장과 SUCCEEDED 전환은 작업 행을 잠근 한 Transaction이라 함께 커밋되거나 함께 롤백된다.
 - Executor: `quizGenerationExecutor`(pool 2, queue 10, AbortPolicy). 요청 thread에서 Provider를 호출하지 않도록 CallerRunsPolicy를 쓰지 않는다. 제출이 거절되면 PENDING → FAILED(`DISPATCH_REJECTED`)다.
 - 실패: 시간 초과는 UNKNOWN(`PROVIDER_TIMEOUT`), 그 밖의 Provider·생성·저장 실패는 FAILED이며 Quiz 행을 남기지 않는다. 어느 경우에도 자동으로 다시 호출하지 않는다.
-- 오래된 작업: 별도 Scheduler 없이 생성 요청과 상태 조회 때 해당 Creator의 작업을 정리한다. 접수 후 `stale-pending`(기본 10분)이 지난 PENDING은 FAILED(`STALE_PENDING`), 시작 후 `stale-running`(기본 15분)이 지난 RUNNING은 UNKNOWN(`STALE_RUNNING`)이다. 늦게 끝난 Worker는 작업 행을 잠근 뒤 RUNNING이 아니면 결과를 저장하지 않는다.
-- 설정: `cking.quiz.generation.*`(enabled 기본 false, stale-pending, stale-running, executor.pool-size·queue-capacity·await-termination-seconds). 꺼져 있으면 새 요청은 503이고 기존 작업 조회는 된다. Executor 크기와 기준 시간은 운영 확인 전 초기값이다.
+- 오래된 작업: 별도 Scheduler 없이 생성 요청과 상태 조회 때 해당 Creator의 작업을 정리한다. 접수 후 `stale-pending`(기본 10분)이 지난 PENDING은 FAILED(`STALE_PENDING`), 시작 후 `stale-running`(기본 15분)이 지난 RUNNING은 UNKNOWN(`STALE_RUNNING`)이다. 늦게 끝난 Worker는 작업 행을 잠근 뒤 RUNNING이 아니면 결과를 저장하지 않는다. 원문 검토 작업의 단계별 규칙은 [원문 검토 흐름](#원문-검토-흐름-이슈-604)을 따른다.
+- 설정: `cking.quiz.generation.*`(enabled 기본 false, content-review.enabled 기본 false, stale-pending, stale-running, executor.pool-size·queue-capacity·await-termination-seconds). 꺼져 있으면 새 요청은 503이고 기존 작업 조회는 된다. Executor 크기와 기준 시간은 운영 확인 전 초기값이다.
 - 로그에는 작업 ID·상태·실패 코드만 남기고 contentText·Provider 오류 원문·API key는 남기지 않는다.
 
 ### 원문 검토 데이터 기반 (이슈 #602)
@@ -190,6 +190,28 @@ Quiz 생성 전에 Creator가 Grounding 원문을 검토·확정하는 흐름을
 - 이전 버전 서버의 오래된 작업 정리(PENDING → FAILED, RUNNING → UNKNOWN)는 `review_stage`를 보지 않으므로 CHECK가 어느 단계에서도 이 전이를 막지 않는다. 막으면 이전 버전으로 되돌렸을 때 정리 UPDATE가 실패해 해당 Creator의 생성 요청이 막힌다.
 - 실패 코드 `CANCELLED`는 이전 버전으로 되돌려도 읽을 수 있도록 기록 기능보다 먼저 추가했다.
 - 기존 Quiz의 `content_text`와 revision·Judge·게시·응시 데이터는 바꾸지 않는다. 컬럼·FK·CHECK는 한 ALTER 문장으로 추가하며, 기존 데이터 보존과 CHECK 반례는 `QuizGenerationContentReviewMigrationTest`(별도 MySQL 컨테이너, Docker 필요)가 확인한다.
+
+### 원문 검토 흐름 (이슈 #604)
+
+`cking.quiz.generation.content-review.enabled`(기본 false)를 켜면 새 작업이 Grounding 뒤 Creator 원문 확정을 기다린 다음 확정 원문으로 Quiz를 만든다. 작업을 만들 때의 값으로 흐름이 정해지며, 꺼져 있으면 기존 흐름과 코드 경로가 그대로다. 확정·취소 HTTP API는 후속 작업이다.
+
+| from (status / 단계) | 사건 | to |
+| --- | --- | --- |
+| PENDING / GROUNDING | Worker 시작(기존 claim) | RUNNING / GROUNDING |
+| RUNNING / GROUNDING | Grounding 성공 | RUNNING / AWAITING_REVIEW, AI 원문·facts·모델·prompt 버전 저장 |
+| RUNNING / GROUNDING | Grounding 실패·시간 초과 | 기존 실패 코드 그대로 |
+| RUNNING / AWAITING_REVIEW | 원문 확정 | RUNNING / GENERATING, 확정 원문·SHA-256·확정자·시각 기록 후 커밋, 그다음 생성 단계 제출 |
+| RUNNING / AWAITING_REVIEW | 취소 | FAILED(`CANCELLED`), AI 원문은 남긴다 |
+| RUNNING / GENERATING | 제출 거절 | FAILED(`DISPATCH_REJECTED`), 생성 시작 전일 때만 |
+| RUNNING / GENERATING | 생성 시작 | `generation_started_at` 기록, NULL일 때만이라 한 Worker만 진행 |
+| RUNNING / GENERATING | 생성·저장 성공 | SUCCEEDED |
+| RUNNING / GENERATING | 생성 실패·시간 초과 | 기존 실패 코드 그대로 |
+
+- 단계 전이는 현재 status·단계를 조건으로 건 UPDATE이고, 확정·취소는 작업 행을 잠근 뒤 바꾼다. 그래서 같은 작업의 확정·취소가 동시에 와도 하나만 성공한다. Worker는 자기 단계일 때만 실패를 기록하므로 검토 대기 작업을 끝내지 않는다.
+- 원문 확정: 비어 있지 않은 50,000자 이하 원문을 정규화 없이 저장하고, 확정 후에는 바꿀 수 없다. 같은 원문 재확정은 다시 제출하지 않고 현재 상태를 돌려주며, 다른 원문은 `QUIZ_GENERATION_CONTENT_CONFLICT`(409), 검토 대기가 아니면 `QUIZ_GENERATION_NOT_AWAITING_REVIEW`(409)다. 생성 Provider를 호출하므로 생성 기능이 꺼져 있으면 새 확정은 503이다. 취소는 기능 상태와 관계없이 된다.
+- 생성 입력은 확정 원문뿐이다. 저장할 때 생성 입력의 해시가 확정 원문 해시와 다르면 저장하지 않으므로, 저장한 Quiz의 `content_text`·`content_text_sha256`은 확정 원문과 같다. sourceEvidence 원문 포함 검증과 Judge 입력도 확정 원문 기준이다.
+- facts가 200개를 넘거나 JSON 직렬화가 512KB를 넘으면 `GROUNDING_INVALID`로 끝내고 원문을 저장하지 않는다.
+- 오래된 작업 정리: 검토 대기는 자동으로 끝내지 않는다. 생성 단계는 확정 후 `stale-pending`까지 시작하지 않았으면 FAILED(`STALE_PENDING`, Provider 미호출), 시작 후 `stale-running`이 지나면 UNKNOWN(`STALE_RUNNING`)이다. 재시작이나 제출 유실로 실행되지 않은 생성 단계도 이 규칙으로 정리돼 Creator 슬롯이 영구히 막히지 않는다. 정리된 뒤 늦게 실행된 Worker는 생성 시작을 점유하지 못해 Provider를 부르지 않는다.
 
 ## AI Provider 호출 실패 로그 (이슈 #606)
 
