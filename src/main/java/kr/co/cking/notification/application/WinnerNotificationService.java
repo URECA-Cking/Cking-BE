@@ -17,6 +17,9 @@ public class WinnerNotificationService {
     private static final String REDRAW_WINNER_TITLE = "재추첨 당첨 안내";
     private static final String REDRAW_WINNER_BODY = "이벤트 재추첨 당첨자로 선정되었습니다.";
 
+    private static final String NON_WINNER_TITLE = "이벤트 결과 발표";
+    private static final String NON_WINNER_BODY = "이벤트 추첨 결과가 공개되었습니다. 아쉽게도 이번에는 당첨되지 않았습니다.";
+
     private final NotificationRepository notificationRepository;
 
     /** INITIAL Drawing의 Winner마다 최초 당첨 Notification을 저장한다. */
@@ -41,6 +44,16 @@ public class WinnerNotificationService {
                 eventId, drawingId, targets,
                 NotificationType.REDRAW_WINNER, REDRAW_WINNER_TITLE, REDRAW_WINNER_BODY
         );
+    }
+
+    /** INITIAL Drawing의 미당첨자마다 '이벤트 결과 발표' Notification을 저장한다. */
+    public void createNonWinnerNotifications(Long eventId, Long drawingId, List<Long> nonWinnerMemberIds) {
+        List<Notification> notifications = nonWinnerMemberIds.stream()
+                .map(memberId -> Notification.forNonWinner(
+                        memberId, eventId, drawingId, NON_WINNER_TITLE, NON_WINNER_BODY
+                ))
+                .toList();
+        notificationRepository.saveAll(notifications);
     }
 
     /** 지정한 알림 유형·문구로 대상 Winner별 Notification을 만들고 일괄 저장한다. */

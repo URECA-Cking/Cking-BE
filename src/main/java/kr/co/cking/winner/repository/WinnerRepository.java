@@ -49,6 +49,22 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
             @Param("memberId") Long memberId
     );
 
+    /**
+     * Drawing이 사용한 Snapshot 후보 중 해당 Drawing의 Winner가 아닌 Member ID를 오름차순으로 읽기 전용 조회한다.
+     * 결과 공개 시 미당첨자 알림 대상 산정에 사용하며 Drawing·Snapshot 상태는 변경하지 않는다.
+     */
+    @Query("""
+            select c.memberId
+            from kr.co.cking.snapshot.domain.DrawSnapshotCandidate c
+            join kr.co.cking.drawing.domain.Drawing d on d.snapshotId = c.snapshot.id
+            where d.id = :drawingId
+              and not exists (
+                  select 1 from Winner w where w.drawingId = d.id and w.memberId = c.memberId
+              )
+            order by c.memberId asc
+            """)
+    List<Long> findUnselectedMemberIdsByDrawingId(@Param("drawingId") Long drawingId);
+
     boolean existsByEventIdAndMemberId(Long eventId, Long memberId);
 
 }
