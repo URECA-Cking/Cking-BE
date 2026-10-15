@@ -81,7 +81,7 @@ public class GeminiRestClient implements GeminiApiClient {
 
         Map<String, Object> generationConfig = new LinkedHashMap<>();
         generationConfig.put("responseFormat", Map.of("text", Map.of(
-                "mimeType", "application/json",
+                "mimeType", "APPLICATION_JSON",
                 "schema", GeminiSchemaFactory.quizSchema(questionCount, optionCount))));
 
         Map<String, Object> body = new LinkedHashMap<>();
