@@ -207,6 +207,7 @@ Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 
 - 요청 필드가 누락되거나 공백·길이 초과·slug 형식 위반이면 `VALIDATION_FAILED`(400)다.
 - 업로드 파일이 이미지 형식·크기·해상도 규칙을 어기거나, 연결하려는 키가 본인의 업로드 완료 이미지가 아니면 `INVALID_SPACE_PROFILE_IMAGE`(400)이다.
 - 배너 업로드 파일이 이미지 형식·크기·해상도 규칙을 어기거나, 연결하려는 키가 본인이 배너로 올린 업로드 완료 이미지가 아니면 `INVALID_SPACE_BANNER_IMAGE`(400)이다.
+- `PATCH /api/creator/space`의 `profileImageUrl`·`bannerImageUrl`이 새로 적용되는데 이미 정리되었거나 정리가 확정된 관리자 템플릿 이미지의 URL이면 `INVALID_SPACE_TEMPLATE_IMAGE`(400)다. 현재 URL과 같은 값을 다시 보내거나 업로드한 이미지가 연결돼 URL 입력이 무시되는 경우는 해당하지 않는다([Space Template API](space-template-api.md#post-apiadmincreator-space-templatesprofile-images)).
 - slug가 예약어면 `RESERVED_SLUG`(400)다.
 - slug를 다른 Space가 쓰고 있거나 다른 Creator가 예약 중이면 `SLUG_ALREADY_TAKEN`(409)다.
 - 마지막 slug 변경 후 14일이 지나지 않았으면 `SLUG_CHANGE_TOO_SOON`(409)이다. 다시 바꿀 수 있는 시각은 조회 응답의 `slugChangeableAt`으로 확인한다.

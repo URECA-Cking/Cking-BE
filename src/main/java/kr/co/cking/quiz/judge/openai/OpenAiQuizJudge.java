@@ -1,5 +1,7 @@
 package kr.co.cking.quiz.judge.openai;
 
+import kr.co.cking.common.ai.AiProviderCallLog;
+import kr.co.cking.common.ai.AiProviderCallLog.NoResponse;
 import kr.co.cking.quiz.judge.JudgeUsage;
 import kr.co.cking.quiz.judge.QuizJudge;
 import kr.co.cking.quiz.judge.QuizJudgeEvaluation;
@@ -103,7 +105,7 @@ public class OpenAiQuizJudge implements QuizJudge {
         Map<String, Object> body = requestBody(input, settings);
 
         long deadline = nanoTime.getAsLong() + properties.getExecutionTimeout().toNanos();
-        JsonNode response = send(body, deadline, model, exchanges);
+        Response response = send(body, deadline, model, exchanges);
         String outputText = outputText(response, model, exchanges);
         QuizJudgeEvaluation evaluation;
         try {
@@ -141,8 +143,8 @@ public class OpenAiQuizJudge implements QuizJudge {
                 && properties.isReasoningEffortSupported();
     }
 
-    /** 성공 응답(2xx)의 JSON. 응답을 받은 요청은 사용량과 함께 {@code exchanges}에 남긴다. */
-    private JsonNode send(Map<String, Object> body, long deadline, String model,
+    /** 성공 응답(2xx)의 JSON과 그 요청. 응답을 받은 요청은 사용량과 함께 {@code exchanges}에 남긴다. */
+    private Response send(Map<String, Object> body, long deadline, String model,
                           List<QuizJudgeExecution.Exchange> exchanges) {
         int maxAttempts = properties.getHttp().getMaxAttempts();
         for (int attempt = 1; ; attempt++) {
@@ -159,6 +161,7 @@ public class OpenAiQuizJudge implements QuizJudge {
             boolean limitedByDeadline = connectTimeout.compareTo(properties.getConnectTimeout()) < 0
                     || readTimeout.compareTo(properties.getReadTimeout()) < 0;
             String responseBody;
+            AiProviderCallLog.Call call = AiProviderCallLog.start(AiProviderCallLog.Provider.OPENAI, "quiz_judge", model);
             try {
                 responseBody = clientFactory.create(connectTimeout, readTimeout).post()
                         .uri("/responses")
@@ -171,6 +174,7 @@ public class OpenAiQuizJudge implements QuizJudge {
                 int status = exception.getStatusCode().value();
                 exchanges.add(new QuizJudgeExecution.Exchange(status, null, null, null));
                 if (status != 429 && status < 500) {
+                    call.httpError(exception, attempt, false);
                     log.warn("Quiz Judge 요청이 거부되었습니다. status={}", status);
                     throw new QuizJudgeException(Failure.REJECTED, execution(model, exchanges));
                 }
@@ -178,9 +182,11 @@ public class OpenAiQuizJudge implements QuizJudge {
                         ? retryWait(exception.getResponseHeaders())
                         : Optional.empty();
                 if (wait.isEmpty() || nanoTime.getAsLong() + wait.get().toNanos() >= deadline) {
+                    call.httpError(exception, attempt, false);
                     log.warn("Quiz Judge 요청을 재시도하지 않습니다. status={}, attempts={}", status, attempt);
                     throw new QuizJudgeException(Failure.PROVIDER_ERROR, execution(model, exchanges));
                 }
+                call.httpError(exception, attempt, true);
                 log.warn("Quiz Judge 요청을 재시도합니다. status={}, attempt={}", status, attempt);
                 pause(wait.get(), model, exchanges);
                 continue;
@@ -188,12 +194,15 @@ public class OpenAiQuizJudge implements QuizJudge {
                 exchanges.add(new QuizJudgeExecution.Exchange(null, null, null, null));
                 // 중단으로 끊긴 I/O는 시간 초과 예외로 보일 수도 있어 중단을 먼저 판단한다.
                 if (Thread.currentThread().isInterrupted() || isInterruption(exception)) {
+                    call.noResponse(NoResponse.INTERRUPTED, exception, attempt, false);
                     throw interrupted(QuizJudgeInterruptedException.Phase.HTTP_REQUEST, model, exchanges);
                 }
                 if (isTimeout(exception)) {
+                    call.noResponse(NoResponse.TIMEOUT, exception, attempt, false);
                     log.warn("Quiz Judge 응답 시간이 초과되었습니다. limitedByDeadline={}", limitedByDeadline);
                     throw new QuizJudgeTimeoutException(limitedByDeadline, execution(model, exchanges));
                 }
+                call.noResponse(NoResponse.NETWORK, exception, attempt, false);
                 log.warn("Quiz Judge 네트워크 요청이 실패했습니다. type={}", exception.getClass().getSimpleName());
                 throw new QuizJudgeException(Failure.PROVIDER_ERROR, execution(model, exchanges));
             }
@@ -209,14 +218,16 @@ public class OpenAiQuizJudge implements QuizJudge {
                 throw new QuizJudgeTimeoutException(true, execution(model, exchanges));
             }
             if (root == null) {
+                call.invalidResponse(200, attempt, false);
                 throw new QuizJudgeException(Failure.INVALID_RESPONSE, execution(model, exchanges));
             }
-            return root;
+            return new Response(root, call, attempt);
         }
     }
 
     /** {@code message} 출력의 {@code output_text}를 순서대로 잇는다. refusal이 하나라도 있으면 평가 거부다. */
-    private String outputText(JsonNode root, String model, List<QuizJudgeExecution.Exchange> exchanges) {
+    private String outputText(Response response, String model, List<QuizJudgeExecution.Exchange> exchanges) {
+        JsonNode root = response.root();
         StringBuilder text = new StringBuilder();
         boolean refused = false;
         for (JsonNode item : root.path("output")) {
@@ -247,6 +258,7 @@ public class OpenAiQuizJudge implements QuizJudge {
             throw new QuizJudgeException(Failure.PROVIDER_ERROR, execution(model, exchanges));
         }
         if (!"completed".equals(status) || text.isEmpty()) {
+            response.call().invalidResponse(200, response.attempt(), false);
             throw new QuizJudgeException(Failure.INVALID_RESPONSE, execution(model, exchanges));
         }
         return text.toString();
@@ -399,6 +411,10 @@ public class OpenAiQuizJudge implements QuizJudge {
             }
         }
         return false;
+    }
+
+    /** 성공 상태로 받은 응답 JSON과, envelope 해석 실패를 같은 요청의 실패로 남기기 위한 호출 정보. */
+    private record Response(JsonNode root, AiProviderCallLog.Call call, int attempt) {
     }
 
     /** 요청마다 연결·응답 대기 시간을 정해 Client를 만든다. 테스트에서 Mock 서버에 연결된 Client로 바꿀 수 있다. */

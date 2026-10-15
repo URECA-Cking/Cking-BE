@@ -4,11 +4,13 @@ import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeoutException;
 
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisException;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisFailureType;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPort;
+import kr.co.cking.subscriptionverification.application.vision.VisionProviderErrorDetails;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRequest;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisResult;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,8 @@ import tools.jackson.databind.ObjectMapper;
 /** Gemini generateContent REST API를 VisionAnalysisPort로 변환하는 Adapter다. */
 @Slf4j
 public class GeminiVisionAnalysisAdapter implements VisionAnalysisPort {
+
+    private static final Pattern SAFE_PROVIDER_TOKEN = Pattern.compile("[A-Z][A-Z0-9_]{0,79}");
 
     private final RestClient restClient;
     private final GeminiVisionAnalysisProperties properties;
@@ -55,43 +59,82 @@ public class GeminiVisionAnalysisAdapter implements VisionAnalysisPort {
                 return result;
             } catch (RestClientResponseException exception) {
                 int status = exception.getStatusCode().value();
-                logProviderResult(status, elapsedMillis(startedAt), null, attempt);
+                VisionProviderErrorDetails error = extractProviderError(status, exception.getResponseBodyAsString());
+                logProviderFailure(error, isRetryableStatus(status), "HTTP_RESPONSE", elapsedMillis(startedAt), attempt);
                 if (!isRetryableStatus(status) || attempt == maxAttempts) {
-                    throw providerFailure(status, isRetryableStatus(status));
+                    throw providerFailure(error, isRetryableStatus(status));
                 }
                 pauseBeforeRetry();
             } catch (ResourceAccessException exception) {
-                logProviderResult(isTimeout(exception) ? 408 : 0, elapsedMillis(startedAt), null, attempt);
-                if (attempt == maxAttempts) {
-                    throw new VisionAnalysisException(
-                            VisionAnalysisFailureType.RETRYABLE,
-                            isTimeout(exception) ? "Gemini API 응답 시간이 초과되었습니다." : "Gemini API 네트워크 요청이 실패했습니다.",
-                            exception);
-                }
-                pauseBeforeRetry();
-            } catch (GeminiResponseParseException exception) {
-                logProviderResult(
-                        200,
+                boolean timeout = isTimeout(exception);
+                VisionProviderErrorDetails error = new VisionProviderErrorDetails(
+                        timeout ? 408 : 0,
+                        VisionProviderErrorDetails.UNKNOWN_CODE,
+                        VisionProviderErrorDetails.UNKNOWN,
+                        timeout ? "TIMEOUT" : "NETWORK_ERROR");
+                logProviderFailure(
+                        error,
+                        true,
+                        timeout ? "TIMEOUT" : "NETWORK",
                         elapsedMillis(startedAt),
-                        response == null ? null : extractUsage(response),
                         attempt);
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
-                            "Gemini API 응답 형식이 올바르지 않습니다.", exception);
+                            timeout ? "Gemini API 응답 시간이 초과되었습니다." : "Gemini API 네트워크 요청이 실패했습니다.",
+                            error,
+                            exception);
                 }
                 pauseBeforeRetry();
-            } catch (IllegalArgumentException exception) {
-                logProviderResult(0, elapsedMillis(startedAt), null, attempt);
-                throw new VisionAnalysisException(
-                        VisionAnalysisFailureType.NON_RETRYABLE,
-                        "Gemini API 요청 설정이 올바르지 않습니다.", exception);
-            } catch (RestClientException exception) {
-                logProviderResult(0, elapsedMillis(startedAt), null, attempt);
+            } catch (GeminiResponseParseException exception) {
+                VisionProviderErrorDetails error = new VisionProviderErrorDetails(
+                        200,
+                        VisionProviderErrorDetails.UNKNOWN_CODE,
+                        VisionProviderErrorDetails.UNKNOWN,
+                        "RESPONSE_PARSE_ERROR");
+                logProviderFailure(
+                        error,
+                        true,
+                        "RESPONSE_PARSE",
+                        elapsedMillis(startedAt),
+                        attempt);
                 if (attempt == maxAttempts) {
                     throw new VisionAnalysisException(
                             VisionAnalysisFailureType.RETRYABLE,
-                            "Gemini API 요청이 실패했습니다.", exception);
+                            "Gemini API 응답 형식이 올바르지 않습니다.", error, exception);
+                }
+                pauseBeforeRetry();
+            } catch (IllegalArgumentException exception) {
+                VisionProviderErrorDetails error = new VisionProviderErrorDetails(
+                        0,
+                        VisionProviderErrorDetails.UNKNOWN_CODE,
+                        VisionProviderErrorDetails.UNKNOWN,
+                        "CLIENT_CONFIGURATION");
+                logProviderFailure(
+                        error,
+                        false,
+                        "CLIENT_CONFIGURATION",
+                        elapsedMillis(startedAt),
+                        attempt);
+                throw new VisionAnalysisException(
+                        VisionAnalysisFailureType.NON_RETRYABLE,
+                        "Gemini API 요청 설정이 올바르지 않습니다.", error, exception);
+            } catch (RestClientException exception) {
+                VisionProviderErrorDetails error = new VisionProviderErrorDetails(
+                        0,
+                        VisionProviderErrorDetails.UNKNOWN_CODE,
+                        VisionProviderErrorDetails.UNKNOWN,
+                        "CLIENT_ERROR");
+                logProviderFailure(
+                        error,
+                        true,
+                        "CLIENT",
+                        elapsedMillis(startedAt),
+                        attempt);
+                if (attempt == maxAttempts) {
+                    throw new VisionAnalysisException(
+                            VisionAnalysisFailureType.RETRYABLE,
+                            "Gemini API 요청이 실패했습니다.", error, exception);
                 }
                 pauseBeforeRetry();
             }
@@ -122,6 +165,81 @@ public class GeminiVisionAnalysisAdapter implements VisionAnalysisPort {
                 properties.getModel(), status, latencyMillis, promptTokens, completionTokens, totalTokens, attempt);
     }
 
+    /** Provider error body의 allow-list 항목만 구조화해 남기고 message·body 전문은 폐기한다. */
+    private VisionProviderErrorDetails extractProviderError(int httpStatus, String responseBody) {
+        try {
+            Map<String, Object> root = objectMapper.readValue(responseBody, new TypeReference<>() {
+            });
+            if (root == null || !(root.get("error") instanceof Map<?, ?> error)) {
+                return unknownProviderError(httpStatus);
+            }
+            return new VisionProviderErrorDetails(
+                    httpStatus,
+                    providerCode(error.get("code")),
+                    safeToken(error.get("status")),
+                    detailReason(error.get("details")));
+        } catch (JacksonException | ClassCastException exception) {
+            return unknownProviderError(httpStatus);
+        }
+    }
+
+    private VisionProviderErrorDetails unknownProviderError(int httpStatus) {
+        return new VisionProviderErrorDetails(
+                httpStatus,
+                VisionProviderErrorDetails.UNKNOWN_CODE,
+                VisionProviderErrorDetails.UNKNOWN,
+                VisionProviderErrorDetails.UNKNOWN);
+    }
+
+    private int providerCode(Object value) {
+        if (!(value instanceof Number number)) {
+            return VisionProviderErrorDetails.UNKNOWN_CODE;
+        }
+        int code = number.intValue();
+        return code >= 100 && code <= 599 ? code : VisionProviderErrorDetails.UNKNOWN_CODE;
+    }
+
+    private String detailReason(Object value) {
+        if (!(value instanceof Iterable<?> details)) {
+            return VisionProviderErrorDetails.UNKNOWN;
+        }
+        for (Object detail : details) {
+            if (detail instanceof Map<?, ?> map) {
+                String reason = safeToken(map.get("reason"));
+                if (!VisionProviderErrorDetails.UNKNOWN.equals(reason)) {
+                    return reason;
+                }
+            }
+        }
+        return VisionProviderErrorDetails.UNKNOWN;
+    }
+
+    private String safeToken(Object value) {
+        if (!(value instanceof String token) || !SAFE_PROVIDER_TOKEN.matcher(token).matches()) {
+            return VisionProviderErrorDetails.UNKNOWN;
+        }
+        return token;
+    }
+
+    private void logProviderFailure(
+            VisionProviderErrorDetails error,
+            boolean retryable,
+            String failureKind,
+            long latencyMillis,
+            int attempt
+    ) {
+        log.warn("Gemini VLM 호출 실패: model={}, httpStatus={}, providerCode={}, providerStatus={}, providerReason={}, retryable={}, failureKind={}, latencyMs={}, attempt={}",
+                properties.getModel(),
+                error.httpStatus(),
+                error.providerCode(),
+                error.providerStatus(),
+                error.providerReason(),
+                retryable,
+                failureKind,
+                latencyMillis,
+                attempt);
+    }
+
     private Map<String, Object> extractUsage(String response) {
         try {
             Map<String, Object> root = objectMapper.readValue(response, new TypeReference<>() {
@@ -150,10 +268,11 @@ public class GeminiVisionAnalysisAdapter implements VisionAnalysisPort {
     }
 
     /** Provider 응답 본문을 가진 HTTP 예외를 cause로 연결하지 않고 상태 코드만 전달한다. */
-    private VisionAnalysisException providerFailure(int status, boolean retryable) {
+    private VisionAnalysisException providerFailure(VisionProviderErrorDetails error, boolean retryable) {
         return new VisionAnalysisException(
                 retryable ? VisionAnalysisFailureType.RETRYABLE : VisionAnalysisFailureType.NON_RETRYABLE,
-                "Gemini API 요청이 실패했습니다. status=" + status);
+                "Gemini API 요청이 실패했습니다. status=" + error.httpStatus(),
+                error);
     }
 
     private void pauseBeforeRetry() {

@@ -10,6 +10,7 @@ import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerif
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisException;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPort;
+import kr.co.cking.subscriptionverification.application.vision.VisionProviderErrorDetails;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRequest;
 import kr.co.cking.subscriptionverification.infrastructure.async.SubscriptionVerificationProcessingExecutorProperties;
 import lombok.extern.slf4j.Slf4j;
@@ -149,8 +150,7 @@ public class SubscriptionVerificationProcessingWorker {
             SubscriptionVerificationProcessingClaim claim,
             String reasonCode,
             RuntimeException exception) {
-        log.warn("구독 인증 비동기 처리에 실패했습니다. verificationId={}, reasonCode={}",
-                claim.verificationId(), reasonCode, exception);
+        logProcessingFailure("구독 인증 비동기 처리에 실패했습니다.", claim, reasonCode, exception);
         try {
             completionService.complete(
                     claim.verificationId(),
@@ -169,8 +169,31 @@ public class SubscriptionVerificationProcessingWorker {
             SubscriptionVerificationProcessingClaim claim,
             String reasonCode,
             RuntimeException exception) {
-        log.warn("구독 인증 비동기 처리의 재시도 가능한 실패를 Recovery에 맡깁니다. verificationId={}, reasonCode={}",
-                claim.verificationId(), reasonCode, exception);
+        logProcessingFailure("구독 인증 비동기 처리의 재시도 가능한 실패를 Recovery에 맡깁니다.",
+                claim, reasonCode, exception);
+    }
+
+    /** Vision 예외는 Adapter가 원문 없이 정규화한 Provider 진단값만 남긴다. */
+    private void logProcessingFailure(
+            String message,
+            SubscriptionVerificationProcessingClaim claim,
+            String reasonCode,
+            RuntimeException exception
+    ) {
+        if (exception instanceof VisionAnalysisException visionException) {
+            VisionProviderErrorDetails error = visionException.providerErrorDetails();
+            log.warn("{} verificationId={}, reasonCode={}, failureType={}, httpStatus={}, providerCode={}, providerStatus={}, providerReason={}",
+                    message,
+                    claim.verificationId(),
+                    reasonCode,
+                    visionException.failureType(),
+                    error.httpStatus(),
+                    error.providerCode(),
+                    error.providerStatus(),
+                    error.providerReason());
+            return;
+        }
+        log.warn("{} verificationId={}, reasonCode={}", message, claim.verificationId(), reasonCode, exception);
     }
 
     /** Provider 재시도 대기를 포함한 인터럽트 작업은 상태를 바꾸지 않고 Recovery에 맡긴다. */

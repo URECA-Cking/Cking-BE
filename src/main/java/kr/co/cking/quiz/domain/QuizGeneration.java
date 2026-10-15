@@ -24,6 +24,9 @@ import java.util.Objects;
  *
  * <p>DB의 {@code active_creator_id} 생성 컬럼은 매핑하지 않는다. PENDING·RUNNING일 때만 값이 생겨 Creator당 진행 중
  * 작업을 하나로 제한한다.
+ *
+ * <p>원문 검토 흐름(이슈 #602)의 단계·AI 원문·확정 원문은 {@link QuizGenerationReviewStage}와 함께 기록한다. 기존 작업은
+ * 이 값들이 모두 null이다.
  */
 @Entity
 @Table(name = "quiz_generation")
@@ -69,6 +72,40 @@ public class QuizGeneration {
     @Enumerated(EnumType.STRING)
     @Column(name = "failure_code", length = 40)
     private QuizGenerationFailure failureCode;
+
+    /** 원문 검토 흐름의 단계. null이면 검토 없이 Grounding과 생성을 이어서 하는 기존 작업이다. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "review_stage", length = 20)
+    private QuizGenerationReviewStage reviewStage;
+
+    @Column(name = "ai_content_text", columnDefinition = "MEDIUMTEXT")
+    private String aiContentText;
+
+    /** Grounding facts의 JSON 배열 원문. */
+    @Column(name = "grounding_facts", columnDefinition = "json")
+    private String groundingFacts;
+
+    @Column(name = "grounding_model", length = 100)
+    private String groundingModel;
+
+    @Column(name = "grounding_prompt_version", length = 50)
+    private String groundingPromptVersion;
+
+    /** Creator가 확정한 원문. 정규화하지 않고 그대로 저장한다. */
+    @Column(name = "reviewed_content_text", columnDefinition = "MEDIUMTEXT")
+    private String reviewedContentText;
+
+    @Column(name = "reviewed_content_sha256", length = 64)
+    private String reviewedContentSha256;
+
+    @Column(name = "content_confirmed_by_member_id")
+    private Long contentConfirmedByMemberId;
+
+    @Column(name = "content_confirmed_at")
+    private Instant contentConfirmedAt;
+
+    @Column(name = "generation_started_at")
+    private Instant generationStartedAt;
 
     @Column(name = "quiz_id")
     private Long quizId;

@@ -13,7 +13,7 @@ AI 생성(`quiz.generation`)은 결과만 반환하며 저장 전에 같은 `Qui
 
 ## 소유 데이터
 
-V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다. V73이 revision 계보·승인 정책·게시 고정 컬럼과 제약을 더한다([Creator 편집 기반](#creator-편집-revision과-책임-승인-기반-이슈-581)).
+V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다. V73이 revision 계보·승인 정책·게시 고정 컬럼과 제약을 더한다([Creator 편집 기반](#creator-편집-revision과-책임-승인-기반-이슈-581)). V77이 생성 작업에 원문 검토 컬럼과 제약을 더한다([원문 검토 데이터 기반](#원문-검토-데이터-기반-이슈-602)).
 
 - **quiz**: Creator 소유. `quiz_id`는 revision이 바뀌어도 그대로다. 원본 YouTube `videoId`, 생성 입력 `content_text`와 그 SHA-256은 생성 후 바꾸지 않는다.
 - **quiz_revision·quiz_question·quiz_option**: INSERT 후 바꾸지 않는다. 수정은 새 revision(`revision_no` + 1)으로 만든다. `question_no`·`option_no`는 0부터의 표시 순서이고 `correct_option_index`는 0-based `option_no`다.
@@ -162,7 +162,7 @@ MySQL DDL은 문장마다 암묵적으로 커밋되므로 V73은 원자적으로
 - 요청: 영상과 prompt(`GroundingPrompt`, 버전 `quiz-grounding-v1`), `response_format`(JSON schema), `store: false`. `store: false`는 Interaction 객체를 나중에 조회할 수 있게 저장하지 않도록 요청할 뿐 Provider의 모든 데이터 보관을 끈다는 뜻이 아니다.
 - 결과: contentText(검증 후 원문 그대로), facts(사실, evidenceType `SPEECH`·`VISUAL`·`UNKNOWN`, 근거, 시작·끝 시각), promptVersion, model. promptVersion과 model은 응답이 아니라 실행 설정에서 정한다. facts는 저장하지 않는다.
 - 검증(`VideoGroundingValidator`): contentText는 공백 불가, 50,000자 이하(Java `String.length()`). facts는 비어도 되지만 각 사실과 근거는 공백 불가. 시각은 시작·끝이 모두 null이거나 모두 `MM:SS`/`MM:SS.s`(분 2자리 이상, 초 00~59)이고 시작이 끝보다 늦을 수 없다. 영상 길이는 알 수 없어 검사하지 않는다.
-- 오류: 429·5xx만 최대 시도 횟수(기본 3)까지 지수 대기(기본 1초부터 두 배, 상한 4초) 후 재시도한다. 시간 초과는 재시도하지 않고 `QuizProviderTimeoutException`이다. 나머지는 `VideoGroundingException`으로, 그 밖의 4xx는 `REJECTED`, 재시도 소진·네트워크 오류는 `PROVIDER_ERROR`, 미완료(`incomplete` 등)·형식·계약 위반은 `INVALID_RESPONSE`, API key 미설정은 `NOT_CONFIGURED`(호출하지 않음)다. 예외는 고정 문구만 쓰고 cause를 붙이지 않으며, 로그에는 HTTP 상태만 남긴다.
+- 오류: 429·5xx만 최대 시도 횟수(기본 3)까지 지수 대기(기본 1초부터 두 배, 상한 4초) 후 재시도한다. 시간 초과는 재시도하지 않고 `QuizProviderTimeoutException`이다. 나머지는 `VideoGroundingException`으로, 그 밖의 4xx는 `REJECTED`, 재시도 소진·네트워크 오류는 `PROVIDER_ERROR`, 미완료(`incomplete` 등)·형식·계약 위반은 `INVALID_RESPONSE`, API key 미설정은 `NOT_CONFIGURED`(호출하지 않음)다. 예외는 고정 문구만 쓰고 cause를 붙이지 않으며, 실패 원인은 [Provider 호출 실패 로그](#ai-provider-호출-실패-로그-이슈-606)로 남긴다.
 - 설정: `cking.quiz.grounding.*`(model, base-url, connect/read timeout, max-attempts, retry-backoff, retry-backoff-max, max-output-tokens). Quiz 생성 설정(`cking.quiz.gemini`)과 분리하고 API key는 같은 `GEMINI_API_KEY`를 쓰므로 quota와 비용이 합산된다. 출력 token 상한은 비워 두면 요청에 넣지 않는다.
 - Interactions API는 Beta, YouTube URL 입력은 preview이며 공개 영상만 가능하다. 모델·timeout 기본값은 실제 호출로 확인한 뒤 조정한다.
 
@@ -179,6 +179,33 @@ MySQL DDL은 문장마다 암묵적으로 커밋되므로 V73은 원자적으로
 - 오래된 작업: 별도 Scheduler 없이 생성 요청과 상태 조회 때 해당 Creator의 작업을 정리한다. 접수 후 `stale-pending`(기본 10분)이 지난 PENDING은 FAILED(`STALE_PENDING`), 시작 후 `stale-running`(기본 15분)이 지난 RUNNING은 UNKNOWN(`STALE_RUNNING`)이다. 늦게 끝난 Worker는 작업 행을 잠근 뒤 RUNNING이 아니면 결과를 저장하지 않는다.
 - 설정: `cking.quiz.generation.*`(enabled 기본 false, stale-pending, stale-running, executor.pool-size·queue-capacity·await-termination-seconds). 꺼져 있으면 새 요청은 503이고 기존 작업 조회는 된다. Executor 크기와 기준 시간은 운영 확인 전 초기값이다.
 - 로그에는 작업 ID·상태·실패 코드만 남기고 contentText·Provider 오류 원문·API key는 남기지 않는다.
+
+### 원문 검토 데이터 기반 (이슈 #602)
+
+Quiz 생성 전에 Creator가 Grounding 원문을 검토·확정하는 흐름을 위해 V77이 `quiz_generation`에 컬럼과 CHECK를 더한다. 이 단계에서는 저장 구조만 있고 생성 흐름은 바뀌지 않는다(모든 작업의 `review_stage`가 NULL).
+
+- 상태는 기존 5종을 그대로 쓰고 세부 단계는 `review_stage`(GROUNDING → AWAITING_REVIEW → GENERATING)로 구분한다. NULL은 검토 없이 Grounding과 생성을 이어서 하는 기존 작업이다. 검토 대기 중에도 status가 RUNNING이라 `active_creator_id`가 Creator당 진행·검토 대기 작업을 하나로 계속 제한한다.
+- AWAITING_REVIEW 이후에는 AI 원문(`ai_content_text`)·facts(JSON 배열, 최대 200개)·Grounding 모델·prompt 버전이 함께 있다. GENERATING에는 Creator 확정 원문(정규화 없이 저장)·SHA-256(`QuizRevisionFingerprint.contentTextSha256`과 같은 방식)·확정자·확정 시각이 함께 있다. `generation_started_at`은 GENERATING에서만 쓴다. facts 직렬화 크기(512KB)는 서버가 검증한다.
+- 단계별 status: GROUNDING은 SUCCEEDED가 될 수 없고, AWAITING_REVIEW는 RUNNING·FAILED(취소 `CANCELLED`)·UNKNOWN, GENERATING은 PENDING이 될 수 없으며 SUCCEEDED면 생성 시작 시각이 있다.
+- 이전 버전 서버의 오래된 작업 정리(PENDING → FAILED, RUNNING → UNKNOWN)는 `review_stage`를 보지 않으므로 CHECK가 어느 단계에서도 이 전이를 막지 않는다. 막으면 이전 버전으로 되돌렸을 때 정리 UPDATE가 실패해 해당 Creator의 생성 요청이 막힌다.
+- 실패 코드 `CANCELLED`는 이전 버전으로 되돌려도 읽을 수 있도록 기록 기능보다 먼저 추가했다.
+- 기존 Quiz의 `content_text`와 revision·Judge·게시·응시 데이터는 바꾸지 않는다. 컬럼·FK·CHECK는 한 ALTER 문장으로 추가하며, 기존 데이터 보존과 CHECK 반례는 `QuizGenerationContentReviewMigrationTest`(별도 MySQL 컨테이너, Docker 필요)가 확인한다.
+
+## AI Provider 호출 실패 로그 (이슈 #606)
+
+OpenAI Judge(`quiz_judge`), Gemini Grounding(`quiz_grounding`), Gemini Quiz 생성(`quiz_generation`)의 실패한 요청마다 공통 `AiProviderCallLog`가 WARN 한 줄을 남긴다. 구독 인증 Gemini 호출은 아직 적용하지 않았다. 성공한 호출은 남기지 않고, 재시도·실패 분류·예외·DB 기록은 바꾸지 않는다. 기존 로그 문장도 그대로 둔다.
+
+```
+event=ai_provider_call provider=openai operation=quiz_judge model=gpt-6.1-sol status=429 errorCode=insufficient_quota errorType=insufficient_quota latencyMs=231 attempt=2 retry=false requestId=req_123
+```
+
+- `status`: HTTP 상태. 응답을 받지 못했으면 `-`이고 `errorType`이 `timeout`·`network`·`interrupted`, `errorCode`가 예외 클래스 이름이다. 정상 상태로 받았지만 Provider 응답 envelope를 해석하지 못한 경우(JSON이 아님, 완료 상태가 아님, 출력 텍스트·후보 없음)는 `status=200 errorType=invalid_response`다. 그 안의 Quiz·평가·contentText 해석·검증 실패와 OpenAI Judge가 보고한 refusal·incomplete·failed 상태는 이 로그 대상이 아니다. Gemini Grounding은 `incomplete`를 포함해 완료 상태가 아닌 응답을 envelope 해석 실패로 남긴다.
+- `errorCode`·`errorType`: OpenAI는 오류 본문의 `error.code`·`error.type`이라 429의 `insufficient_quota`(크레딧 부족)와 `rate_limit_exceeded`(속도 제한)를 구분한다. Gemini는 `details`의 `ErrorInfo.reason`과 `error.status`(예: `RESOURCE_EXHAUSTED`)다.
+- `retry`: 이 실패를 재시도 대상으로 판단했는지다. 실제로 다음 요청을 보냈다는 뜻은 아니다. Judge는 재시도 대기 뒤 전체 실행 시간이 남지 않으면 다시 요청하지 않으므로, 실제 요청 횟수는 같은 호출의 `attempt` 값이나 `quiz_judge_job_call` 행 수로 확인한다. `requestId`는 OpenAI 응답 헤더 `x-request-id`가 있을 때만 남긴다.
+- 영문·숫자·`_`·`-`·`.`로 된 64자 이하 값(요청 ID는 128자)만 남기고 나머지는 `-`다. 오류 본문이 비었거나 JSON이 아니거나 16KB를 넘으면 기본 진단 정보만 남긴다.
+- 응답 원문, 자유 형식 오류 메시지(`error.message`), Gemini `details` 원문, 요청 본문, API key·Authorization, contentText·Quiz 내용은 남기지 않는다. 로그를 만들다 난 오류는 호출자에게 던지지 않는다.
+- 업무 식별자(jobId·generationId)는 Provider 호출 계층에서 알 수 없어 남기지 않는다. 같은 Executor thread의 Worker 로그(작업 ID·실패 코드)로 이어서 본다.
+- 구독 인증 Gemini 호출(`subscription_verification`)은 담당자와 범위를 협의한 뒤 같은 형식으로 맞춘다.
 
 ## Fan 응시와 결과
 

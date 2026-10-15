@@ -21,5 +21,10 @@ public enum QuizGenerationFailure {
     /** 기준 시간 안에 끝나지 않아 결과를 알 수 없다. UNKNOWN 상태와 함께 쓴다. */
     STALE_RUNNING,
     /** 예상하지 못한 서버 오류. */
-    INTERNAL_ERROR
+    INTERNAL_ERROR,
+    /**
+     * Creator가 원문 검토 대기 작업을 취소했다(이슈 #602). 이전 버전으로 되돌려도 저장된 값을 읽을 수 있도록 기록하는
+     * 기능보다 먼저 추가해 둔다.
+     */
+    CANCELLED
 }
