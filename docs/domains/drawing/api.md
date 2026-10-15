@@ -140,6 +140,7 @@ Winner·WinnerManagement 저장, Drawing 완료, Event 상태 전이는 결과 T
 - `REDRAW`의 `PRIVATE` Drawing은 Event가 이미 `PUBLISHED`인 경우에만 `PUBLIC`으로 전이한다. 이때
   `EventCommandService.publish()`를 호출하지 않으며 Event는 `PUBLISHED`를 유지한다.
 - 최초 공개에서는 해당 Drawing 유형에 맞는 Winner Notification(`INITIAL_WINNER` 또는 `REDRAW_WINNER`)을 생성한다.
+  INITIAL 최초 공개에서는 해당 Drawing의 Snapshot 후보 중 Winner가 아닌 Member에게 `INITIAL_NON_WINNER`("이벤트 결과 발표") 알림도 같은 Transaction에서 생성한다. REDRAW 공개는 재추첨 당첨자에게만 알린다.
   Drawing 공개, 필요한 Event 전이, Notification 생성은 `PublicationService`의 하나의 DB Transaction으로 처리하므로
   어느 단계든 실패하면 모두 Rollback한다.
 - 이미 `PUBLIC`인 Drawing은 연결 Event도 `PUBLISHED`인 경우에만 상태 변경 없이 성공한다.

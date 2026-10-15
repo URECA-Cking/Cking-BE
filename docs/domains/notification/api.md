@@ -28,8 +28,8 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 }
 ```
 
-- `type`은 최초 추첨 당첨 알림 `INITIAL_WINNER`, 재추첨 당첨 알림 `REDRAW_WINNER`, 댓글 작성 제한 시작 알림 `COMMENT_RESTRICTION_STARTED`, 제한이 모두 풀렸을 때의 `COMMENT_RESTRICTION_RELEASED`다.
-- **`event`와 `drawing`은 제재 알림에서 `null`이다.** 당첨 알림에서는 항상 채워진다. 클라이언트는 둘 다 null 허용으로 처리해야 하며, 제재 알림은 이동할 이벤트가 없다. 제재 알림의 `title`·`body`에 제한 안내와 해제 시각(UTC, 분 단위)이 들어 있다. 실제 종료 시각에 초 이하가 있으면 다음 분으로 올려 표기하므로, 안내 시각 이후에는 항상 제한이 풀려 있다. 알림 목록 응답 형태와 읽음 처리 API는 알림 종류와 상관없이 같다.
+- `type`은 최초 추첨 당첨 알림 `INITIAL_WINNER`, 재추첨 당첨 알림 `REDRAW_WINNER`, 최초 추첨 결과 공개 시 후보였으나 당첨되지 못한 미당첨자의 결과 발표 알림 `INITIAL_NON_WINNER`(제목 "이벤트 결과 발표"), 댓글 작성 제한 시작 알림 `COMMENT_RESTRICTION_STARTED`, 제한이 모두 풀렸을 때의 `COMMENT_RESTRICTION_RELEASED`다.
+- **`event`와 `drawing`은 제재 알림에서 `null`이다.** 당첨·미당첨 알림에서는 항상 채워진다. 클라이언트는 둘 다 null 허용으로 처리해야 하며, 제재 알림은 이동할 이벤트가 없다. 제재 알림의 `title`·`body`에 제한 안내와 해제 시각(UTC, 분 단위)이 들어 있다. 실제 종료 시각에 초 이하가 있으면 다음 분으로 올려 표기하므로, 안내 시각 이후에는 항상 제한이 풀려 있다. 알림 목록 응답 형태와 읽음 처리 API는 알림 종류와 상관없이 같다.
 
 ```json
 {
