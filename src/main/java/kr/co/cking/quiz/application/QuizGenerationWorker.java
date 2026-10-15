@@ -73,13 +73,27 @@ public class QuizGenerationWorker {
         }
     }
 
-    /** Creator가 확정한 원문으로 Quiz를 생성한다. 생성 시작을 점유하지 못하면 Provider를 호출하지 않는다. */
+    /**
+     * Creator가 확정한 원문으로 Quiz를 생성한다. 생성 시작을 점유하지 못하면 Provider를 호출하지 않는다.
+     *
+     * <p>실패 기록은 점유에 성공한 Worker만 한다. 점유 Transaction은 {@code true}를 돌려줄 때 이미 커밋돼 있다. 점유 요청이
+     * 실패하거나 예외가 나면 다른 Worker가 진행 중인 작업일 수 있으므로 상태를 바꾸지 않고 끝낸다. 점유가 실제로 반영된
+     * 채 예외가 났다면 생성 단계 정리 규칙(생성 시작 후 stale-running)이 끝낸다.
+     */
     public void runGeneration(Long generationId) {
+        boolean claimed;
         try {
-            if (!store.claimGeneration(generationId, clock.instant())) {
-                log.info("이미 시작했거나 정리된 생성 단계라 실행하지 않습니다. generationId={}", generationId);
-                return;
-            }
+            claimed = store.claimGeneration(generationId, clock.instant());
+        } catch (RuntimeException exception) {
+            log.error("생성 단계 시작을 점유하지 못해 실행하지 않습니다. generationId={}, type={}",
+                    generationId, exception.getClass().getSimpleName());
+            return;
+        }
+        if (!claimed) {
+            log.info("이미 시작했거나 정리된 생성 단계라 실행하지 않습니다. generationId={}", generationId);
+            return;
+        }
+        try {
             QuizGeneration generation = find(generationId);
             QuizGenerationInput input;
             GeneratedQuiz generated;

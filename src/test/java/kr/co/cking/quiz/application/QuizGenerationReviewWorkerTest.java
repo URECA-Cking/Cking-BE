@@ -27,6 +27,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
@@ -41,6 +42,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -203,6 +205,24 @@ class QuizGenerationReviewWorkerTest {
         verify(store, never()).find(anyLong());
         verify(store, never()).completeRunning(anyLong(), any(), any());
         verify(store, never()).finishRunning(anyLong(), any(), any(), any(), any());
+        verify(store, never()).finishRunning(anyLong(), any(QuizGenerationStatus.class), any(), any());
+    }
+
+    /** 다른 Worker가 진행 중일 수 있으므로 점유 요청이 실패한 Worker는 작업 상태를 바꾸지 않는다. */
+    @Test
+    void 생성_시작_점유_요청에서_예외가_나면_상태를_바꾸지_않고_Provider도_부르지_않는다(CapturedOutput output) {
+        willThrow(new QueryTimeoutException("Lock wait timeout " + REVIEWED_TEXT)).given(store).claimGeneration(ID, NOW);
+
+        assertThatCode(() -> worker.runGeneration(ID)).doesNotThrowAnyException();
+
+        verifyNoInteractions(generator, grounder);
+        verify(store, never()).find(anyLong());
+        verify(store, never()).completeRunning(anyLong(), any(), any());
+        verify(store, never()).finishRunning(anyLong(), any(), any(), any(), any());
+        verify(store, never()).finishRunning(anyLong(), any(QuizGenerationStatus.class), any(), any());
+        assertThat(output.getAll())
+                .contains("생성 단계 시작을 점유하지 못해 실행하지 않습니다. generationId=1, type=QueryTimeoutException")
+                .doesNotContain(REVIEWED_TEXT);
     }
 
     @Test

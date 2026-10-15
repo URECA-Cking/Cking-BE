@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -46,8 +47,11 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -114,7 +118,8 @@ class QuizGenerationContentReviewIntegrationTest {
     private QuizGenerationDispatcher dispatcher;
     @Autowired
     private QuizGenerationService generationService;
-    @Autowired
+    /** 기본은 실제 메서드를 호출한다. 점유 요청 실패 주입이 필요한 테스트에서만 동작을 바꾼다. */
+    @MockitoSpyBean
     private QuizGenerationStore generationStore;
     @Autowired
     private QuizGenerationWorker worker;
@@ -376,6 +381,37 @@ class QuizGenerationContentReviewIntegrationTest {
         assertThat(state(id)).isEqualTo("UNKNOWN:GENERATING:STALE_RUNNING");
         assertThat(row(id).get("quiz_id")).isNull();
         assertThat(quizCount(creator)).isZero();
+    }
+
+    @Test
+    void 생성_중인_작업에_다른_Worker의_점유_요청이_실패해도_정상_결과를_저장한다() throws Exception {
+        doReturn(true).when(dispatcher).dispatchGeneration(anyLong());
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+        generationService.confirmContent(creator.getMemberId(), id, REVIEWED);
+        generationGate = new CountDownLatch(1);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> workerA = executor.submit(() -> worker.runGeneration(id));
+            for (int attempt = 0; attempt < 100 && GENERATION_INPUTS.isEmpty(); attempt++) {
+                sleep();
+            }
+            assertThat(GENERATION_INPUTS).as("Worker A가 생성 Provider 호출 중").hasSize(1);
+
+            doThrow(new QueryTimeoutException("Lock wait timeout")).when(generationStore)
+                    .claimGeneration(eq(id), any());
+            worker.runGeneration(id);
+            assertThat(state(id)).as("Worker B는 상태를 바꾸지 않는다").isEqualTo("RUNNING:GENERATING:-");
+
+            generationGate.countDown();
+            workerA.get(10, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(state(id)).isEqualTo("SUCCEEDED:GENERATING:-");
+        assertThat(quizCount(creator)).isEqualTo(1);
+        assertThat(GENERATION_INPUTS).hasSize(1);
     }
 
     private Creator creator() {
