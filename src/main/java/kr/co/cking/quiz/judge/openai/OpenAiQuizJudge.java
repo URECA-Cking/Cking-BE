@@ -1,5 +1,7 @@
 package kr.co.cking.quiz.judge.openai;
 
+import kr.co.cking.common.ai.AiProviderCallLog;
+import kr.co.cking.common.ai.AiProviderCallLog.NoResponse;
 import kr.co.cking.quiz.judge.JudgeUsage;
 import kr.co.cking.quiz.judge.QuizJudge;
 import kr.co.cking.quiz.judge.QuizJudgeEvaluation;
@@ -159,6 +161,7 @@ public class OpenAiQuizJudge implements QuizJudge {
             boolean limitedByDeadline = connectTimeout.compareTo(properties.getConnectTimeout()) < 0
                     || readTimeout.compareTo(properties.getReadTimeout()) < 0;
             String responseBody;
+            AiProviderCallLog.Call call = AiProviderCallLog.start(AiProviderCallLog.Provider.OPENAI, "quiz_judge", model);
             try {
                 responseBody = clientFactory.create(connectTimeout, readTimeout).post()
                         .uri("/responses")
@@ -171,6 +174,7 @@ public class OpenAiQuizJudge implements QuizJudge {
                 int status = exception.getStatusCode().value();
                 exchanges.add(new QuizJudgeExecution.Exchange(status, null, null, null));
                 if (status != 429 && status < 500) {
+                    call.httpError(exception, attempt, false);
                     log.warn("Quiz Judge 요청이 거부되었습니다. status={}", status);
                     throw new QuizJudgeException(Failure.REJECTED, execution(model, exchanges));
                 }
@@ -178,9 +182,11 @@ public class OpenAiQuizJudge implements QuizJudge {
                         ? retryWait(exception.getResponseHeaders())
                         : Optional.empty();
                 if (wait.isEmpty() || nanoTime.getAsLong() + wait.get().toNanos() >= deadline) {
+                    call.httpError(exception, attempt, false);
                     log.warn("Quiz Judge 요청을 재시도하지 않습니다. status={}, attempts={}", status, attempt);
                     throw new QuizJudgeException(Failure.PROVIDER_ERROR, execution(model, exchanges));
                 }
+                call.httpError(exception, attempt, true);
                 log.warn("Quiz Judge 요청을 재시도합니다. status={}, attempt={}", status, attempt);
                 pause(wait.get(), model, exchanges);
                 continue;
@@ -188,12 +194,15 @@ public class OpenAiQuizJudge implements QuizJudge {
                 exchanges.add(new QuizJudgeExecution.Exchange(null, null, null, null));
                 // 중단으로 끊긴 I/O는 시간 초과 예외로 보일 수도 있어 중단을 먼저 판단한다.
                 if (Thread.currentThread().isInterrupted() || isInterruption(exception)) {
+                    call.noResponse(NoResponse.INTERRUPTED, exception, attempt, false);
                     throw interrupted(QuizJudgeInterruptedException.Phase.HTTP_REQUEST, model, exchanges);
                 }
                 if (isTimeout(exception)) {
+                    call.noResponse(NoResponse.TIMEOUT, exception, attempt, false);
                     log.warn("Quiz Judge 응답 시간이 초과되었습니다. limitedByDeadline={}", limitedByDeadline);
                     throw new QuizJudgeTimeoutException(limitedByDeadline, execution(model, exchanges));
                 }
+                call.noResponse(NoResponse.NETWORK, exception, attempt, false);
                 log.warn("Quiz Judge 네트워크 요청이 실패했습니다. type={}", exception.getClass().getSimpleName());
                 throw new QuizJudgeException(Failure.PROVIDER_ERROR, execution(model, exchanges));
             }

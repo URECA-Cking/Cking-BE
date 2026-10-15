@@ -1,5 +1,7 @@
 package kr.co.cking.quiz.grounding.gemini;
 
+import kr.co.cking.common.ai.AiProviderCallLog;
+import kr.co.cking.common.ai.AiProviderCallLog.NoResponse;
 import kr.co.cking.quiz.generation.QuizProviderTimeoutException;
 import kr.co.cking.quiz.grounding.GroundingPrompt;
 import kr.co.cking.quiz.grounding.GroundingResponseParser;
@@ -80,6 +82,8 @@ public class GeminiVideoGrounder implements VideoGrounder {
     private String send(Map<String, Object> body) {
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
         for (int attempt = 1; ; attempt++) {
+            AiProviderCallLog.Call call = AiProviderCallLog.start(AiProviderCallLog.Provider.GEMINI, "quiz_grounding",
+                    properties.getModel());
             try {
                 return restClient.post()
                         .uri("/interactions")
@@ -90,19 +94,24 @@ public class GeminiVideoGrounder implements VideoGrounder {
             } catch (RestClientResponseException exception) {
                 int status = exception.getStatusCode().value();
                 if (!isRetryable(status)) {
+                    call.httpError(exception, attempt, false);
                     log.warn("영상 Grounding 요청이 거부되었습니다. status={}", status);
                     throw new VideoGroundingException(Failure.REJECTED);
                 }
                 if (attempt >= maxAttempts) {
+                    call.httpError(exception, attempt, false);
                     log.warn("영상 Grounding 재시도를 모두 소진했습니다. status={}, attempts={}", status, attempt);
                     throw new VideoGroundingException(Failure.PROVIDER_ERROR);
                 }
+                call.httpError(exception, attempt, true);
                 log.warn("영상 Grounding 요청을 재시도합니다. status={}, attempt={}", status, attempt);
                 pause(attempt);
             } catch (RestClientException exception) {
                 if (isTimeout(exception)) {
+                    call.noResponse(NoResponse.TIMEOUT, exception, attempt, false);
                     throw new QuizProviderTimeoutException("영상 Grounding 응답 시간이 초과되었습니다.", null);
                 }
+                call.noResponse(NoResponse.NETWORK, exception, attempt, false);
                 log.warn("영상 Grounding 네트워크 요청이 실패했습니다. type={}", exception.getClass().getSimpleName());
                 throw new VideoGroundingException(Failure.PROVIDER_ERROR);
             }

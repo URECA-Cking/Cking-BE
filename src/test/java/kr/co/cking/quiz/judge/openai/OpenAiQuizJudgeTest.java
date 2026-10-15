@@ -518,6 +518,28 @@ class OpenAiQuizJudgeTest {
         assertThat(output.getAll()).doesNotContain(PROVIDER_SECRET, API_KEY, "물은 증발해", "질문 0");
     }
 
+    @Test
+    void 실패한_호출은_Provider_오류_코드와_요청_ID를_진단_로그로_남긴다(CapturedOutput output) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("x-request-id", "req_quota_1");
+        server.expect(ExpectedCount.times(2), requestTo(URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                .headers(headers)
+                .body("{\"error\": {\"message\": \"" + PROVIDER_SECRET + "\", \"type\": \"insufficient_quota\", "
+                        + "\"code\": \"insufficient_quota\"}}")
+                .contentType(MediaType.APPLICATION_JSON));
+
+        assertFailure(() -> judge().judge(QuizJudgeFixtures.input(3)), Failure.PROVIDER_ERROR, 2);
+
+        server.verify();
+        assertThat(sleeps).containsExactly(Duration.ofSeconds(1));
+        assertThat(output.getAll())
+                .contains("event=ai_provider_call provider=openai operation=quiz_judge model=gpt-6.1-sol status=429 "
+                        + "errorCode=insufficient_quota errorType=insufficient_quota latencyMs=")
+                .contains("attempt=1 retry=true requestId=req_quota_1")
+                .contains("attempt=2 retry=false requestId=req_quota_1")
+                .doesNotContain(PROVIDER_SECRET, API_KEY, "물은 증발해");
+    }
+
     private OpenAiQuizJudge judge() {
         return new OpenAiQuizJudge(properties, objectMapper, (connect, read) -> {
             timeouts.add(new Duration[] {connect, read});

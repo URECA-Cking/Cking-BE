@@ -236,6 +236,27 @@ class GeminiVideoGrounderTest {
         assertThat(output.getAll()).doesNotContain(PROVIDER_SECRET, API_KEY, "물은 증발해");
     }
 
+    @Test
+    void 실패한_호출은_Provider_오류_상태와_reason을_진단_로그로_남긴다(CapturedOutput output) {
+        properties.setMaxAttempts(2);
+        server.expect(ExpectedCount.times(2), requestTo(URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                .body("""
+                        {"error": {"code": 429, "message": "%s", "status": "RESOURCE_EXHAUSTED", "details": [
+                         {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "RATE_LIMIT_EXCEEDED"}]}}"""
+                        .formatted(PROVIDER_SECRET))
+                .contentType(MediaType.APPLICATION_JSON));
+
+        assertFailure(() -> grounder().ground(VIDEO_ID), Failure.PROVIDER_ERROR);
+
+        server.verify();
+        assertThat(output.getAll())
+                .contains("event=ai_provider_call provider=gemini operation=quiz_grounding model=gemini-test-model "
+                        + "status=429 errorCode=RATE_LIMIT_EXCEEDED errorType=RESOURCE_EXHAUSTED latencyMs=")
+                .contains("attempt=1 retry=true")
+                .contains("attempt=2 retry=false")
+                .doesNotContain(PROVIDER_SECRET, API_KEY);
+    }
+
     private GeminiVideoGrounder grounder() {
         return new GeminiVideoGrounder(builder.build(), properties, objectMapper, sleeps::add);
     }
