@@ -165,6 +165,21 @@ class EventCommandServiceTest {
     }
 
     @Test
+    void archive는_Event잠금으로_조회한_뒤_보관_조건을_확인한다() {
+        Event event = eventOf(EventStatus.PUBLISHED);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.archive(1L, 9L, lockedEvent -> {
+            assertThat(lockedEvent).isSameAs(event);
+            throw new BusinessException(EventErrorCode.INVALID_STATE);
+        })).isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+
+        assertThat(event.isArchived()).isFalse();
+        verify(eventPublisher, never()).publishEvent(new EventVisibilityChangedEvent(1L));
+    }
+
+    @Test
     void archive는_PUBLISHED가_아닌_이벤트를_거부한다() {
         Event event = eventOf(EventStatus.CLOSED);
         when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));

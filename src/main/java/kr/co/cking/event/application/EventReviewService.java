@@ -108,11 +108,13 @@ public class EventReviewService {
     /** PUBLISHED Event를 관리자 보관함으로 옮긴다. 운영 환경에서는 수령 대기 당첨이 있으면 막는다. */
     public Event archive(Long adminId, Long eventId) {
         requireAdmin(adminId);
-        if (!allowArchiveWithPendingWinners && winnerManagementRepository.existsByEventIdAndStatus(
-                eventId, WinnerManagementStatus.SELECTED)) {
-            throw new BusinessException(EventErrorCode.INVALID_STATE);
-        }
-        return eventCommandService.archive(eventId, adminId);
+        return eventCommandService.archive(eventId, adminId, event -> {
+            if (!allowArchiveWithPendingWinners && !winnerManagementRepository
+                    .findAllByEventIdAndStatusForUpdate(event.getEventId(), WinnerManagementStatus.SELECTED)
+                    .isEmpty()) {
+                throw new BusinessException(EventErrorCode.INVALID_STATE);
+            }
+        });
     }
 
     /** 보관 Event를 다시 일반 운영 목록과 사용자 화면에 노출한다. */
