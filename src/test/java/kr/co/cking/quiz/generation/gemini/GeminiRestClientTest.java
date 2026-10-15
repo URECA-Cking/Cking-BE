@@ -76,13 +76,37 @@ class GeminiRestClientTest {
         Map<String, Object> generationConfig = map(body.get("generationConfig"));
         assertThat(generationConfig).doesNotContainKeys("response_mime_type", "response_schema", "responseMimeType", "responseSchema");
         Map<String, Object> textFormat = map(map(generationConfig.get("responseFormat")).get("text"));
-        assertThat(textFormat.get("mimeType")).isEqualTo("application/json");
+        assertThat(textFormat.get("mimeType")).isEqualTo("APPLICATION_JSON");
         Map<String, Object> schema = map(textFormat.get("schema"));
         assertThat(schema.get("type")).isEqualTo("object");
         assertThat(map(schema.get("properties"))).containsKeys("questions", "promptVersion");
         Map<String, Object> questions = map(map(schema.get("properties")).get("questions"));
         assertThat(questions.get("minItems")).isEqualTo(1);
         assertThat(questions.get("maxItems")).isEqualTo(1);
+    }
+
+    @Test
+    void 운영_문항_수의_요청은_APPLICATION_JSON과_보기_4개_정답_인덱스_schema를_전달한다() throws Exception {
+        server.createContext("/v1beta/models/test-model:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 200, "{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"ok\"}]}}]}");
+        });
+
+        for (int questionCount : new int[]{3, 5}) {
+            client(1, 1_000).generateContent("prompt", questionCount, 4);
+
+            Map<String, Object> body = objectMapper.readValue(requestBody.get(), new TypeReference<>() {
+            });
+            Map<String, Object> textFormat = map(map(map(body.get("generationConfig")).get("responseFormat")).get("text"));
+            assertThat(textFormat.get("mimeType")).isEqualTo("APPLICATION_JSON");
+            Map<String, Object> questions = map(map(map(textFormat.get("schema")).get("properties")).get("questions"));
+            assertThat(questions).containsEntry("minItems", questionCount).containsEntry("maxItems", questionCount);
+            Map<String, Object> question = map(map(questions.get("items")).get("properties"));
+            assertThat(map(question.get("options"))).containsEntry("minItems", 4).containsEntry("maxItems", 4);
+            assertThat(map(question.get("correctOptionIndex")))
+                    .containsEntry("type", "integer").containsEntry("minimum", 0).containsEntry("maximum", 3);
+        }
+        assertThat(requestCount).hasValue(2);
     }
 
     @Test
