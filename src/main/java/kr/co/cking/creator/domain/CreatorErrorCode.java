@@ -18,6 +18,7 @@ public enum CreatorErrorCode implements ErrorCode {
     ACTIVITY_NAME_SETUP_REQUIRED(HttpStatus.CONFLICT, "크리에이터 활동명을 먼저 설정해 주세요."),
     INVALID_SPACE_PROFILE_IMAGE(HttpStatus.BAD_REQUEST, "사용할 수 없는 Creator Space 프로필 이미지입니다."),
     INVALID_SPACE_BANNER_IMAGE(HttpStatus.BAD_REQUEST, "사용할 수 없는 Creator Space 배너 이미지입니다."),
+    INVALID_SPACE_TEMPLATE_IMAGE(HttpStatus.BAD_REQUEST, "사용할 수 없는 Creator Space 템플릿 이미지입니다."),
     INVALID_RECOMMENDATION_RESULT(HttpStatus.BAD_REQUEST, "유사 추천 결과 묶음이 올바르지 않습니다."),
     RECOMMENDATION_INPUT_CONFLICT(HttpStatus.CONFLICT, "같은 적용 실행 번호에 다른 추천 결과가 전달되었습니다."),
     STALE_RECOMMENDATION_INPUT(HttpStatus.CONFLICT, "현재보다 오래된 추천 적용 실행입니다."),

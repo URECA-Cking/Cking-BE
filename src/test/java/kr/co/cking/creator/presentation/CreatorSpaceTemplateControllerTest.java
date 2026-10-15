@@ -1,5 +1,7 @@
 package kr.co.cking.creator.presentation;
 
+import kr.co.cking.common.image.ImageProcessingLimiter;
+import kr.co.cking.creator.application.CreatorSpaceTemplateImageUploadService;
 import kr.co.cking.creator.application.CreatorSpaceTemplateService;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.common.security.WithMockJwt;
@@ -12,17 +14,21 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +46,12 @@ class CreatorSpaceTemplateControllerTest {
 
     @MockitoBean
     private MemberRepository memberRepository;
+
+    @MockitoBean
+    private CreatorSpaceTemplateImageUploadService templateImageUploadService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
 
     @Test
     void creationReturnsCreatedResponseEnvelope() throws Exception {
@@ -224,6 +236,51 @@ class CreatorSpaceTemplateControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    private void givenLimiterRunsTask() {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<Supplier<String>>getArgument(0).get());
+    }
+
+    @Test
+    void uploadBannerImageReturnsCdnImageUrl() throws Exception {
+        givenLimiterRunsTask();
+        given(templateImageUploadService.uploadBanner(eq(1L), any()))
+                .willReturn("https://cdn.example/creator-space-profile-images/template/banner/image.jpg");
+
+        mockMvc.perform(multipart("/api/admin/creator-space-templates/banner-images")
+                        .file(new MockMultipartFile("image", "banner.png", "image/png", new byte[] {1})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.imageUrl").value("https://cdn.example/creator-space-profile-images/template/banner/image.jpg"));
+
+        then(templateImageUploadService).should(never()).uploadProfile(any(), any());
+    }
+
+    @Test
+    void uploadProfileImageReturnsCdnImageUrl() throws Exception {
+        givenLimiterRunsTask();
+        given(templateImageUploadService.uploadProfile(eq(1L), any()))
+                .willReturn("https://cdn.example/creator-space-profile-images/template/profile/image.jpg");
+
+        mockMvc.perform(multipart("/api/admin/creator-space-templates/profile-images")
+                        .file(new MockMultipartFile("image", "profile.png", "image/png", new byte[] {1})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.imageUrl").value("https://cdn.example/creator-space-profile-images/template/profile/image.jpg"));
+
+        then(templateImageUploadService).should(never()).uploadBanner(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"profile-images", "banner-images"})
+    void uploadWithoutImagePartIsValidationFailure(String path) throws Exception {
+        givenLimiterRunsTask();
+
+        mockMvc.perform(multipart("/api/admin/creator-space-templates/" + path))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(templateImageUploadService).shouldHaveNoInteractions();
     }
 
     private CreatorSpaceTemplate templateWithId(Long templateId) {
