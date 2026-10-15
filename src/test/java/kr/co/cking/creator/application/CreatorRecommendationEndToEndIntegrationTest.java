@@ -133,7 +133,8 @@ class CreatorRecommendationEndToEndIntegrationTest {
         }
 
         // 3. 후보 적재: 인증·권한, 신규 세대, 같은 payload 재전송, 낮은 실행 번호.
-        long sequence = jdbc.queryForObject("SELECT COALESCE(MAX(application_sequence), 0) + 1 "
+        // 빈 DB에서도 "낮은 실행 번호"(sequence - 1)가 1 이상이도록 +2로 시작한다.
+        long sequence = jdbc.queryForObject("SELECT COALESCE(MAX(application_sequence), 0) + 2 "
                 + "FROM interest_recommendation_generation", Long.class);
         List<Creator> ranked = List.of(own, first, withoutSpace, second, third);
         Map<String, Object> batch = batch(sequence, ranked);
