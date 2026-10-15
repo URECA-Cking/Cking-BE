@@ -126,8 +126,11 @@ class CreatorRecommendationEndToEndIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT selected_at FROM member_interest WHERE member_id = ?",
                 Object.class, fan.getMemberId())).isEqualTo(selectedAt);
 
-        // 2. 적재 전에는 우리 후보가 추천에 나오지 않는다(환경에 기존 세대가 있어도 같다).
-        assertThat(creatorIds(recommend(fanToken, 20))).doesNotContain(first.getCreatorId(), second.getCreatorId(), third.getCreatorId());
+        // 2. 적재 전에는 우리 후보가 관심 분야 추천으로 나오지 않는다. 기존 세대가 없는 DB에서는 인기순 대체에 섞일 수 있다.
+        JsonNode beforeIngest = recommend(fanToken, 20);
+        if ("INTEREST_PERSONALIZED_V1".equals(beforeIngest.get("policyVersion").asText())) {
+            assertThat(creatorIds(beforeIngest)).doesNotContain(first.getCreatorId(), second.getCreatorId(), third.getCreatorId());
+        }
 
         // 3. 후보 적재: 인증·권한, 신규 세대, 같은 payload 재전송, 낮은 실행 번호.
         long sequence = jdbc.queryForObject("SELECT COALESCE(MAX(application_sequence), 0) + 1 "
