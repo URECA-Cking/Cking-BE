@@ -60,6 +60,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -487,6 +489,31 @@ class QuizGenerationContentReviewIntegrationTest {
         perform(creator, get("/api/creator/quizzes/generations/current"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").doesNotExist());
+
+        // 승인 화면(revision 상세)도 생성 작업과 같은 원문 검토 정보를 준다(이슈 #622).
+        String confirmedAt = com.jayway.jsonpath.JsonPath.read(perform(creator,
+                get("/api/creator/quizzes/generations/" + id)).andReturn().getResponse().getContentAsString(),
+                "$.data.contentConfirmedAt");
+        perform(creator, get(revisionPath(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentText").value(REVIEWED))
+                .andExpect(jsonPath("$.data.contentEdited").value(true))
+                .andExpect(jsonPath("$.data.contentConfirmedAt").value(confirmedAt));
+        perform(creator(), get(revisionPath(id))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void AI_원문을_그대로_확정한_Quiz의_revision_상세는_수정되지_않음이다() throws Exception {
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+
+        confirm(creator, id, QuizGenerationFixtures.CONTENT_TEXT).andExpect(status().isAccepted());
+        awaitState(id, "SUCCEEDED", "GENERATING");
+
+        perform(creator, get(revisionPath(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentEdited").value(false))
+                .andExpect(jsonPath("$.data.contentConfirmedAt").isNotEmpty());
     }
 
     @Test
@@ -597,6 +624,18 @@ class QuizGenerationContentReviewIntegrationTest {
         perform(creator, post("/api/creator/quizzes/generations/" + id + "/cancel")).andExpect(status().isConflict());
         assertThat(GENERATION_INPUTS).extracting(QuizGenerationInput::contentText)
                 .containsExactly(QuizGenerationFixtures.CONTENT_TEXT);
+
+        perform(creator, get(revisionPath(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("contentEdited")))
+                .andExpect(jsonPath("$.data", hasKey("contentConfirmedAt")))
+                .andExpect(jsonPath("$.data.contentEdited").value(nullValue()))
+                .andExpect(jsonPath("$.data.contentConfirmedAt").value(nullValue()));
+    }
+
+    private String revisionPath(long generationId) {
+        Map<String, Object> row = row(generationId);
+        return "/api/creator/quizzes/" + row.get("quiz_id") + "/revisions/" + row.get("revision_id");
     }
 
     private ResultActions perform(Creator creator, MockHttpServletRequestBuilder request) throws Exception {

@@ -107,9 +107,16 @@ Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가
       "explanation": "증발한 물은 구름이 됩니다.",
       "sourceEvidence": "물은 증발해 구름이 되고"
     }
-  ]
+  ],
+  "contentEdited": true,
+  "contentConfirmedAt": "2026-10-12T00:00:00Z"
 }
 ```
+
+- `contentEdited`·`contentConfirmedAt`(이슈 #622): 승인 화면에 원문 수정 여부를 보여 주기 위한 원문 검토 정보다. Quiz를 만든 생성 작업에서 읽으며, 원문이 Quiz 단위라 같은 Quiz의 모든 revision(문항 편집 revision 포함)에서 같다.
+  - `contentEdited`: 확정 원문(`contentText`)이 AI 원문과 다르면 `true`, AI 원문 그대로 확정했으면 `false`다. 생성 작업 조회 API의 `contentEdited`와 같은 기준이다.
+  - `contentConfirmedAt`: Creator가 원문을 확정한 시각이다.
+  - 원문 검토 없이 만든 Quiz(기존 흐름)나 생성 작업이 없는 Quiz는 두 필드 모두 `null`이다. 필드는 생략하지 않고 `"contentEdited": null, "contentConfirmedAt": null`로 내려간다.
 
 오류는 Quiz 상세와 같고, Quiz에 속하지 않은 revision은 `QUIZ_REVISION_NOT_FOUND`(404)다.
 

@@ -5,10 +5,12 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.quiz.application.dto.CreatorQuizViews;
 import kr.co.cking.quiz.domain.Quiz;
+import kr.co.cking.quiz.domain.QuizGeneration;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizReviewStatus;
 import kr.co.cking.quiz.domain.QuizRevision;
 import kr.co.cking.quiz.domain.QuizRevisionDecision;
+import kr.co.cking.quiz.repository.QuizGenerationRepository;
 import kr.co.cking.quiz.repository.QuizRepository;
 import kr.co.cking.quiz.repository.QuizRevisionDecisionRepository;
 import kr.co.cking.quiz.repository.QuizRevisionRepository;
@@ -36,6 +38,7 @@ public class CreatorQuizQueryService {
     private final QuizRevisionRepository revisionRepository;
     private final QuizRevisionDecisionRepository decisionRepository;
     private final QuizRevisionReader revisionReader;
+    private final QuizGenerationRepository generationRepository;
 
     /** 최근 생성 순(createdAt 내림차순, quizId 내림차순). */
     public Page<CreatorQuizViews.Summary> findMine(Long memberId, Pageable pageable) {
@@ -104,6 +107,7 @@ public class CreatorQuizQueryService {
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_REVISION_NOT_FOUND));
         QuizRevision latest = revisions.stream().max(Comparator.comparingInt(QuizRevision::getRevisionNo)).orElseThrow();
         QuizRevisionDecision decision = decisionRepository.findByRevisionId(revisionId).orElse(null);
+        QuizGeneration generation = generationRepository.findFirstByQuizIdOrderByGenerationIdAsc(quizId).orElse(null);
         return new CreatorQuizViews.Revision(
                 quiz.getQuizId(),
                 revision.getRevisionId(),
@@ -118,7 +122,9 @@ public class CreatorQuizQueryService {
                 decision == null ? null : decision.getReason(),
                 decision == null ? null : decision.getDecidedAt(),
                 revision.getCreatedAt(),
-                revisionReader.read(revisionId));
+                revisionReader.read(revisionId),
+                generation == null ? null : generation.contentEdited(),
+                generation == null ? null : generation.getContentConfirmedAt());
     }
 
     /** 없는 Quiz는 404, 다른 Creator의 Quiz는 403. */

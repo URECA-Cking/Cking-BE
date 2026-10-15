@@ -99,7 +99,8 @@ public final class CreatorQuizResponse {
             List<Question> questions,
             QuizRevisionOrigin origin, Long parentRevisionId, String hashVersion, String revisionSha256,
             QuizApprovalPolicyType approvalPolicyVersion, boolean contentLocked, boolean canEdit,
-            int questionCount, int optionCount
+            int questionCount, int optionCount,
+            Boolean contentEdited, Instant contentConfirmedAt
     ) {
 
         public static Revision from(CreatorQuizViews.Revision view) { return from(view, null); }
@@ -112,7 +113,8 @@ public final class CreatorQuizResponse {
                     m == null ? null : m.origin(), m == null ? null : m.parentRevisionId(), m == null ? null : m.hashVersion(),
                     m == null ? null : m.revisionSha256(), m == null ? null : m.approvalPolicyVersion(),
                     m != null && m.contentLocked(), m != null && m.canEdit(),
-                    m == null ? view.questions().size() : m.questionCount(), m == null ? 0 : m.optionCount());
+                    m == null ? view.questions().size() : m.questionCount(), m == null ? 0 : m.optionCount(),
+                    view.contentEdited(), view.contentConfirmedAt());
         }
     }
 

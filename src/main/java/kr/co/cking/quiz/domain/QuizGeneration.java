@@ -160,6 +160,11 @@ public class QuizGeneration {
         return status == QuizGenerationStatus.FAILED && failureCode == QuizGenerationFailure.CANCELLED;
     }
 
+    /** 확정 원문이 AI 원문과 다른지. 원문을 확정하기 전이거나 검토 없이 생성한 기존 작업이면 null이다. */
+    public Boolean contentEdited() {
+        return reviewedContentText == null ? null : !reviewedContentText.equals(aiContentText);
+    }
+
     /**
      * Creator가 검토한 원문을 확정하고 생성 단계로 넘긴다. 원문은 정규화하지 않는다. 호출자는 행을 잠근 뒤 검토 대기임을
      * 확인하고 부른다.
