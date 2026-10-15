@@ -110,6 +110,19 @@ class WelcomeQuestServiceTest {
         verify(tickets, never()).earn(any());
     }
 
+    /** 불명 실행권도 현재 조건을 확인한 뒤 Ticket의 동일 UUID 복구 경로로 보낸다. */
+    @Test
+    void 불명_EXECUTING_재시도는_Ticket_복구_결과를_반환한다() {
+        memberAt(LocalDateTime.parse("2026-10-15T00:00:00"));
+        when(tickets.findExisting(any())).thenReturn(new EarnLookupResult(EarnLookupStatus.UNAVAILABLE));
+        when(tickets.findAcceptedRewardTypes(1L)).thenReturn(Set.of());
+        when(tickets.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        assertThat(service.claim(1L, WelcomeQuestStep.SIGNUP, UUID.randomUUID(), null).code())
+                .isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        verify(tickets).earn(any());
+    }
+
     /** 저장된 Member의 UTC 생성 시각을 지정한다. */
     private void memberAt(LocalDateTime createdAt) {
         Member member = mock(Member.class);

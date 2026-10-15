@@ -43,6 +43,11 @@ public class CommonTicketOnceEarnServiceImpl implements CommonTicketOnceEarnServ
         if (!onceClaimService.beginExecution(command.requestId().toString())) {
             return fromInFlight(command);
         }
+        return execute(command);
+    }
+
+    /** Redis 실행 결과를 영속 승인 상태에 반영한다. 불명 결과는 실행권을 보존한다. */
+    private EarnResult execute(CommonOnceEarnCommand command) {
         EarnResult result = commonEarnService.earnOnceClaimed(command);
         if (result.code() == EarnResultCode.EARN_ACCEPTED || result.code() == EarnResultCode.ALREADY_PROCESSED) {
             accept(command);
@@ -94,12 +99,16 @@ public class CommonTicketOnceEarnServiceImpl implements CommonTicketOnceEarnServ
         globalClaimService.accept(command.requestId().toString());
     }
 
-    /** 실행권을 이미 발급한 요청은 Redis 승인 증거만 확인하고 불명이면 재실행하지 않는다. */
+    /** 오래된 실행권은 Redis 흔적 부재를 확인하고 조건부로 회수해 재실행한다. */
     private EarnResult fromInFlight(CommonOnceEarnCommand command) {
         EarnLookupResult lookup = commonEarnService.findExistingOnceClaimed(command);
         if (lookup.status() == EarnLookupStatus.ALREADY_PROCESSED) {
             accept(command);
             return new EarnResult(EarnResultCode.ALREADY_PROCESSED);
+        }
+        if (lookup.status() == EarnLookupStatus.NOT_FOUND
+                && onceClaimService.reclaimExecution(command.requestId().toString())) {
+            return execute(command);
         }
         return new EarnResult(lookup.status() == EarnLookupStatus.REQUEST_ID_CONFLICT
                 ? EarnResultCode.REQUEST_ID_CONFLICT : EarnResultCode.EARN_STATUS_UNKNOWN);

@@ -62,9 +62,10 @@ public class WelcomeQuestService {
         if (lookup == EarnLookupStatus.ALREADY_PROCESSED) {
             return success(step, EarnResultCode.ALREADY_PROCESSED);
         }
-        if (lookup != EarnLookupStatus.NOT_FOUND) {
+        if (lookup == EarnLookupStatus.REQUEST_ID_CONFLICT) {
             throw new BusinessException(MissionErrorCode.from(lookup));
         }
+        // 승인 결과가 불명인 요청도 현재 지급 조건을 확인한 뒤 Ticket의 복구 경로로 보낸다.
         if (!isEligible(member)) {
             throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_NOT_ELIGIBLE);
         }

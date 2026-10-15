@@ -91,4 +91,6 @@ SPEND·EARN Lua도 같은 lock을 확인해 lock이 걸린 동안 새 차감·�
 
 `CommonTicketOnceEarnService`는 웰컴 판정을 모르는 범용 Ticket 내부 경로다. `(member_id, reward_type)` UNIQUE의 `ticket_common_once_earn_request`를 전역 `ticket_earn_request`와 함께 Redis 전에 선점한다. 동일 `requestId`·내용은 승인 결과를 재현하고, 다른 내용·용도는 `REQUEST_ID_CONFLICT`, 다른 `requestId`의 같은 회원·종류는 중복 보상으로 거절한다. Redis 키 `idem:common-once:{requestId}`와 `mission:earn-guard:common:{memberId}:{rewardType}:once`는 만료하지 않는다. Redis Guard가 유실돼도 DB Business Key가 다른 UUID의 재적립을 막는다.
 
+`EXECUTING` 실행권은 `executing_at`부터 2분이 지나고 같은 UUID 재요청에서 Redis 승인 흔적이 없을 때만 조건부로 회수한다. 실행 중인 요청과 Redis 조회 불가·불명 흔적은 재실행하지 않는다. 서버 비정상 종료 후 복구는 클라이언트의 같은 UUID 재시도가 시작하며 별도 배치·관리자 API는 없다.
+
 공용 Lua가 기존 Redis Balance를 증가시키고 `stream:common-ticket-earned`에 `sourceType=ONCE`를 발행한다. `CommonEarnEventDispatcher`가 같은 Consumer·PEL 회수·Dead Stream replay 경계에서 `CommonOnceEarnLedgerService`로 분기한다. Consumer는 요청 원인과 Stream 내용을 대조한 뒤 `common_ticket_ledger.once_earn_request_id` 원장과 DB Balance를 한 트랜잭션에 기록한다. `ACCEPTED`는 Redis 승인이고 DB 반영 완료는 원장 존재로 확인한다. Consumer 전에 Mission 완료 이력은 쓰지 않는다. 기존 공용 ATTENDANCE는 `sourceType`이 없는 메시지로 종전 경로를 유지한다.

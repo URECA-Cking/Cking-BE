@@ -33,8 +33,17 @@ public interface TicketCommonOnceEarnRequestRepository extends JpaRepository<Tic
 
     /** 최초 Redis 실행권을 한 요청자에게만 발급한다. */
     @Modifying
-    @Query("update TicketCommonOnceEarnRequest r set r.status = :next where r.requestId = :requestId and r.status = :current")
+    @Query("update TicketCommonOnceEarnRequest r set r.status = :next, r.executingAt = :executingAt where r.requestId = :requestId and r.status = :current")
     int changeStatus(@Param("requestId") String requestId,
                      @Param("current") kr.co.cking.ticket.domain.TicketOnceEarnRequestStatus current,
-                     @Param("next") kr.co.cking.ticket.domain.TicketOnceEarnRequestStatus next);
+                     @Param("next") kr.co.cking.ticket.domain.TicketOnceEarnRequestStatus next,
+                     @Param("executingAt") Instant executingAt);
+
+    /** 오래된 실행권을 조건부 갱신해 동일 요청의 복구자 하나만 선출한다. */
+    @Modifying
+    @Query("update TicketCommonOnceEarnRequest r set r.executingAt = :now where r.requestId = :requestId "
+            + "and r.status = :status and r.executingAt <= :cutoff")
+    int reclaimExecution(@Param("requestId") String requestId,
+                         @Param("status") kr.co.cking.ticket.domain.TicketOnceEarnRequestStatus status,
+                         @Param("cutoff") Instant cutoff, @Param("now") Instant now);
 }

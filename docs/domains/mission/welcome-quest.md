@@ -82,7 +82,7 @@ QUIZ 요청:
 
 1. 같은 `requestId`의 기존 승인 결과를 신규 대상·조건 판정보다 먼저 확인한다. 일치하면 `ALREADY_PROCESSED`를 반환한다. 다른 요청 내용이나 다른 EARN 용도에 이미 쓴 UUID면 `REQUEST_ID_CONFLICT`다.
 2. 신규 요청이면 대상 회원, 단계별 조건, 같은 회원·단계의 기존 지급 여부를 검증한다. 이미 다른 `requestId`로 지급 승인됐다면 다시 지급하지 않는다.
-3. 공용 응모권 EARN의 전역 `requestId` 선점과 Redis Balance 증가·Stream 발행 원자성을 재사용한다. `ticket_common_once_earn_request`의 `(member_id, reward_type)` UNIQUE가 Redis 실행 전에 평생 1회 Business Key를 선점한다. `PENDING → EXECUTING → ACCEPTED`로 승인 상태를 구분하며, 실행 결과가 불명확한 `EXECUTING`은 Redis 증거가 없으면 재실행하지 않는다. Consumer가 `common_ticket_ledger.once_earn_request_id`와 DB Balance를 함께 반영한다. `common_mission_completion`에는 웰컴 완료 이력을 만들지 않는다.
+3. 공용 응모권 EARN의 전역 `requestId` 선점과 Redis Balance 증가·Stream 발행 원자성을 재사용한다. `ticket_common_once_earn_request`의 `(member_id, reward_type)` UNIQUE가 Redis 실행 전에 평생 1회 Business Key를 선점한다. `PENDING → EXECUTING → ACCEPTED`로 승인 상태를 구분한다. `EXECUTING`이 2분 이상 지속되면 같은 `requestId` 재시도에서 Redis 승인 흔적을 확인하고, 흔적이 없을 때만 조건부로 실행권을 회수해 Lua를 재호출한다. Redis 조회 실패나 불명 흔적에는 재실행하지 않는다. Consumer가 `common_ticket_ledger.once_earn_request_id`와 DB Balance를 함께 반영한다. `common_mission_completion`에는 웰컴 완료 이력을 만들지 않는다.
 4. 동일 `requestId` 재시도는 최초 판정한 회원·단계·보상량·답안에 묶인다. 재시도 사이에 팔로우를 취소하거나 기능 상태가 달라져도 이미 승인된 지급은 취소하지 않는다. 승인 여부가 확인되지 않으면 **새 UUID로 재발급하지 않는다.**
 
 | 오류 코드 | HTTP | 조건·재시도 |
@@ -97,7 +97,7 @@ QUIZ 요청:
 | `EARN_STATUS_UNKNOWN` | 504 | 지급 승인 여부 불명. 같은 `requestId`로만 확인·재시도하고 새 UUID로 지급하지 않음 |
 | `BALANCE_MAINTENANCE` | 503 | 공용 잔액 보정 중. 잠시 후 같은 `requestId`로 재시도 |
 
-세 EARN 장애 응답 후에도 클라이언트는 같은 `requestId`와 같은 Body를 보존한다. 재시도 시 기존 승인이 확인되면 `200 ALREADY_PROCESSED`, 아직 승인되지 않았고 새로 승인되면 `202 EARN_ACCEPTED`, 여전히 판단할 수 없으면 같은 장애 코드를 반환한다. `EARN_STATUS_UNKNOWN`은 서버도 확정 전까지 새 지급을 실행하지 않는다. 오류를 받은 직후 상태 조회가 `CLAIMABLE`이어도 새 UUID로 다시 요청하지 않는다.
+세 EARN 장애 응답 후에도 클라이언트는 같은 `requestId`와 같은 Body를 보존한다. 재시도 시 기존 승인이 확인되면 `200 ALREADY_PROCESSED`, 오래된 실행권을 회수해 새로 승인되면 `202 EARN_ACCEPTED`, 여전히 판단할 수 없으면 같은 장애 코드를 반환한다. `EXECUTING`의 2분 유예 중에는 재실행하지 않는다. 서버 비정상 종료 후에도 같은 UUID 재요청이 복구를 시작하며 별도 배치·관리자 API는 없다. 오류를 받은 직후 상태 조회가 `CLAIMABLE`이어도 새 UUID로 다시 요청하지 않는다.
 
 ## 공용 잔액 반영
 

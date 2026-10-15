@@ -54,6 +54,51 @@ class CommonTicketOnceEarnIntegrationTest {
         }
     }
 
+    /** Redis 실행 전 멈춘 요청은 회수 시간 이후 같은 UUID로 한 번만 승인한다. */
+    @Test
+    void 오래된_EXECUTING은_Redis_흔적이_없으면_같은_requestId로_복구한다() throws Exception {
+        Member member = newMember();
+        CommonOnceEarnCommand command = command(member.getMemberId(), UUID.randomUUID());
+        try {
+            globalClaims.claim(command);
+            onceClaims.claim(command);
+            assertThat(onceClaims.beginExecution(command.requestId().toString())).isTrue();
+            jdbc.update("UPDATE ticket_common_once_earn_request SET executing_at = "
+                    + "UTC_TIMESTAMP(6) - INTERVAL 3 MINUTE WHERE request_id = ?", command.requestId().toString());
+
+            assertThat(service.earn(command).code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+            assertThat(service.earn(command).code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+            awaitLedger(command.requestId().toString());
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM common_ticket_ledger WHERE member_id = ?",
+                    Integer.class, member.getMemberId())).isEqualTo(1);
+            assertThat(redis.opsForValue().get(CommonTicketRedisKeys.balance(member.getMemberId())))
+                    .isEqualTo("1");
+        } finally {
+            clean(member.getMemberId());
+        }
+    }
+
+    /** 오래된 요청이어도 Redis에 불명 PROCESSING 흔적이 있으면 재실행하지 않는다. */
+    @Test
+    void 오래된_EXECUTING에_Redis_불명_흔적이_있으면_재실행하지_않는다() {
+        Member member = newMember();
+        CommonOnceEarnCommand command = command(member.getMemberId(), UUID.randomUUID());
+        try {
+            globalClaims.claim(command);
+            onceClaims.claim(command);
+            assertThat(onceClaims.beginExecution(command.requestId().toString())).isTrue();
+            jdbc.update("UPDATE ticket_common_once_earn_request SET executing_at = "
+                    + "UTC_TIMESTAMP(6) - INTERVAL 3 MINUTE WHERE request_id = ?", command.requestId().toString());
+            redis.opsForValue().set(CommonTicketRedisKeys.idemOnce(command.requestId().toString()),
+                    "{\"fingerprint\":\"" + command.computeFingerprint() + "\",\"status\":\"PROCESSING\"}");
+
+            assertThat(service.earn(command).code()).isEqualTo(EarnResultCode.EARN_STATUS_UNKNOWN);
+            assertThat(redis.opsForValue().get(CommonTicketRedisKeys.balance(member.getMemberId()))).isNull();
+        } finally {
+            clean(member.getMemberId());
+        }
+    }
+
     /** Redis Guard가 사라져도 영속 Business Key가 다른 UUID의 두 번째 적립을 막는다. */
     @Test
     void Redis_Guard_유실_뒤에도_다른_requestId로_재적립되지_않는다() throws Exception {

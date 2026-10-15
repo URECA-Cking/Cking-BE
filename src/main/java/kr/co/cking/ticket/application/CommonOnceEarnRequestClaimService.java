@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class CommonOnceEarnRequestClaimService {
+    private static final Duration EXECUTION_RECLAIM_AFTER = Duration.ofMinutes(2);
     private final TicketCommonOnceEarnRequestRepository repository;
     private final Clock clock;
 
@@ -57,14 +59,22 @@ public class CommonOnceEarnRequestClaimService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean beginExecution(String requestId) {
         return repository.changeStatus(requestId, TicketOnceEarnRequestStatus.PENDING,
-                TicketOnceEarnRequestStatus.EXECUTING) == 1;
+                TicketOnceEarnRequestStatus.EXECUTING, clock.instant()) == 1;
+    }
+
+    /** Redis에 승인 흔적이 없을 때만 호출하여 오래된 실행권을 한 요청자에게 재발급한다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean reclaimExecution(String requestId) {
+        var now = clock.instant();
+        return repository.reclaimExecution(requestId, TicketOnceEarnRequestStatus.EXECUTING,
+                now.minus(EXECUTION_RECLAIM_AFTER), now) == 1;
     }
 
     /** Lua가 잔액을 바꾸지 않은 보정 락 결과면 같은 UUID 재시도를 허용한다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void releaseExecution(String requestId) {
         repository.changeStatus(requestId, TicketOnceEarnRequestStatus.EXECUTING,
-                TicketOnceEarnRequestStatus.PENDING);
+                TicketOnceEarnRequestStatus.PENDING, null);
     }
 
     /** 현재 회원의 승인된 보상 종류를 읽기 전용으로 반환한다. */

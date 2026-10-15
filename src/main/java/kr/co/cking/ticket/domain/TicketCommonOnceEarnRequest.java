@@ -30,6 +30,7 @@ public class TicketCommonOnceEarnRequest {
     @Enumerated(EnumType.STRING)
     private TicketOnceEarnRequestStatus status;
     private Instant createdAt;
+    private Instant executingAt;
     private Instant acceptedAt;
 
     /** 같은 requestId의 요청 내용이 최초 선점과 일치하는지 확인한다. */
