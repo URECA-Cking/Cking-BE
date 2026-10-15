@@ -96,6 +96,8 @@ Request의 이미지는 공통 이미지 정규화가 만든 JPEG bytes이며 Ob
 
 Provider Adapter는 원문 문자열을 위 enum으로 변환한다. timeout·429·5xx 등은 `RETRYABLE`, 인증 실패·잘못된 요청 등은 `NON_RETRYABLE` 기술 오류로 분류한다. `RETRYABLE`은 처리 시도 상한 안에서 backoff 후 재시도하고 상한을 소진하면 `FAILED`로 종료한다. `NON_RETRYABLE`은 같은 입력으로 성공할 수 없으므로 재시도하지 않고 즉시 `FAILED`로 종료한다. 파싱 실패와 Provider 장애를 사용자의 인증 실패인 `REJECTED`로 바꾸지 않는다.
 
+HTTP 오류는 `httpStatus`, Provider `code`, 대문자 토큰 형식의 `status`·`details[].reason`, 재시도 가능 여부만 구조화 로그로 남긴다. Worker 종료 로그에는 `verificationId`와 내부 `reasonCode`를 함께 남겨 같은 처리 건을 추적한다. Provider `message`, 오류 body 전문, API Key, 이미지 Base64, Prompt 전문은 어떤 로그·예외에도 넣지 않는다. 형식이 맞지 않는 Provider 분류값은 `UNKNOWN`으로 치환한다.
+
 ## 서버 판정 정책
 
 Processor 입력은 다음으로 제한한다.
