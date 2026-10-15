@@ -6,7 +6,7 @@
 
 - 권한: `PUBLIC`
 - Path Variable: `eventId` (`Long`, 양수, 필수)
-- Event 존재를 먼저 확인한 뒤 해당 Event의 `PUBLIC`·`COMPLETED` Drawing에 속한 Winner만
+- 삭제·보관되지 않은 Event 존재를 먼저 확인한 뒤 해당 Event의 `PUBLIC`·`COMPLETED` Drawing에 속한 Winner만
   `drawNo ASC`, `rankInDrawing ASC` 순으로 반환한다. 따라서 공개된 INITIAL과 공개된 REDRAW
   결과를 함께 조회하고, PRIVATE Drawing의 결과는 포함하지 않는다.
 - 각 Winner는 `drawNo`와 `drawType`으로 INITIAL·REDRAW 이력을 구분한다. 운영 상태는 공개하지 않는다.
@@ -59,7 +59,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 - Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다.
 - 먼저 Member 존재를 검증한 뒤, `memberId = authenticated memberId`인 Winner만 반환한다. 따라서 다른 사용자의
   Winner는 조회 결과에 포함되지 않는다.
-- `PUBLIC`·`COMPLETED` Drawing에 속한 Winner의 불변 데이터와 1:1 WinnerManagement의 현재 상태를
+- 삭제·보관되지 않은 Event의 `PUBLIC`·`COMPLETED` Drawing에 속한 Winner 불변 데이터와 1:1 WinnerManagement의 현재 상태를
   함께 반환한다. PRIVATE 또는 미완료 Drawing 결과는 당첨자 본인에게도 노출하지 않는다. 공개된
   INITIAL·REDRAW Winner를 `drawNo ASC`, `rankInDrawing ASC`, `eventId ASC` 순으로 반환한다.
   서로 다른 Event에서 회차와 순위가 같아도 `eventId`로 순서를 고정한다.
@@ -99,7 +99,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 - 권한: `USER`
 - Path Variable: `winnerId` (`Long`, 양수, 필수)
 - Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 요청 본문은 없다.
-- Member 존재를 검증한 뒤, Winner 존재와 본인 소유 여부를 검증한다. Winner 원본은 변경하지 않는다.
+- Member 존재를 검증한 뒤, 보관되지 않은 Event의 Winner인지와 본인 소유 여부를 검증한다. 보관 Event의 Winner는 `WINNER_NOT_FOUND`로 처리하며 Winner 원본은 변경하지 않는다.
 - WinnerManagement를 쓰기 잠금으로 조회해 동일 Winner의 동시 상태 변경을 직렬화한다. `SELECTED`일 때만
   `DECLINED`로 전이할 수 있으며 `DECLINED`는 종결 상태다. 이미 종결된 Winner의 재변경은 허용하지 않는다.
 - 상태 전이와 `WinnerStatusHistory`의 상태·변경 주체·변경 시각 저장은 하나의 Transaction으로 처리한다.
@@ -201,7 +201,7 @@ Drawing 상태를 변경하지 않는다. Drawing 상태 변경은 Drawing 도�
 - 권한: `USER` 또는 `ADMIN`
 - Path Variable: `winnerId` (`Long`, 양수, 필수)
 - 호출자 식별: Access JWT의 `@CurrentMemberId` (`Long`); query parameter `userId`는 받지 않는다.
-- Spring Security는 JWT 인증만 확인하고, Application이 Member 존재와 역할을 검증한 뒤 Winner 존재 여부를 확인한다. `USER`는 본인 소유 Winner만 조회할 수 있고,
+- Spring Security는 JWT 인증만 확인하고, Application이 Member 존재와 역할을 검증한 뒤 Winner 존재 여부를 확인한다. `USER`는 보관되지 않은 본인 소유 Winner만 조회할 수 있고,
   `ADMIN`은 모든 Winner를 조회할 수 있다. 다른 사용자의 Winner 조회는 `FORBIDDEN`이다.
 - WinnerManagement에 연결된 변경 이력을 `changedAt ASC`, `historyId ASC`으로 반환한다. 이력이 없으면 빈 배열을
   정상 반환한다.

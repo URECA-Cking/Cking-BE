@@ -14,12 +14,19 @@ import java.util.List;
 import java.util.Optional;
 
 import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.EventArchiveStatus;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 
 public interface EventRepository extends JpaRepository<Event, Long> {
 
-    boolean existsByEventIdAndDeletedAtIsNull(Long eventId);
+    boolean existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(Long eventId);
+
+    /** @deprecated 사용자 노출 여부는 보관 상태까지 함께 확인하는 메서드를 사용한다. */
+    @Deprecated
+    default boolean existsByEventIdAndDeletedAtIsNull(Long eventId) {
+        return existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(eventId);
+    }
 
     Optional<Event> findByRequestId(String requestId);
 
@@ -29,16 +36,56 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     List<Event> findByEventIdIn(Collection<Long> eventIds);
 
-    Page<Event> findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable);
+    Page<Event> findByCreatorIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable);
 
-    /** 관리자가 삭제되지 않은 Event를 선택 상태와 생성일 역순으로 조회할 때 사용한다. */
+    /** @deprecated Creator 운영 목록도 보관 Event를 제외한다. */
+    @Deprecated
+    default Page<Event> findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable) {
+        return findByCreatorIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByCreatedAtDescEventIdDesc(creatorId, pageable);
+    }
+
+    /** 관리자의 일반 운영 목록(ACTIVE)을 선택 상태와 생성일 역순으로 조회한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+              and e.archivedAt is null
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedActive(@Param("status") EventStatus status, Pageable pageable);
+
+    /** 관리자의 보관함(ARCHIVED)을 선택 상태와 생성일 역순으로 조회한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+              and e.archivedAt is not null
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedArchived(@Param("status") EventStatus status, Pageable pageable);
+
+    /** 관리자가 보관 여부와 관계없이 모든 운영 Event를 선택 상태와 생성일 역순으로 조회한다. */
     @Query("""
             select e from Event e
             where e.deletedAt is null
               and (:status is null or e.status = :status)
             order by e.createdAt desc, e.eventId desc
             """)
-    Page<Event> findManagedEvents(@Param("status") EventStatus status, Pageable pageable);
+    Page<Event> findManagedAll(@Param("status") EventStatus status, Pageable pageable);
+
+    /** API 전용 archiveStatus는 Service 분기만 담당하고 JPQL에는 실제 컬럼 조건만 둔다. */
+    default Page<Event> findManagedEvents(EventStatus status, EventArchiveStatus archiveStatus, Pageable pageable) {
+        return switch (archiveStatus) {
+            case ACTIVE -> findManagedActive(status, pageable);
+            case ARCHIVED -> findManagedArchived(status, pageable);
+            case ALL -> findManagedAll(status, pageable);
+        };
+    }
+
+    /** 기존 호출자는 기본 운영 목록(ACTIVE)만 조회한다. */
+    default Page<Event> findManagedEvents(EventStatus status, Pageable pageable) {
+        return findManagedActive(status, pageable);
+    }
 
     /** EventLifecycleScheduler가 자동 마감 대상(OPEN이고 endAt이 지난 이벤트)을 찾을 때 쓴다. */
     List<Event> findByStatusAndEndAtLessThanEqual(EventStatus status, Instant endAt);
@@ -63,6 +110,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("""
             select e from Event e
             where e.deletedAt is null
+              and e.archivedAt is null
               and e.status not in (
                   kr.co.cking.event.domain.EventStatus.DRAFT,
                   kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL,

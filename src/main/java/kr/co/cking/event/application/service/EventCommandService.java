@@ -133,6 +133,45 @@ public class EventCommandService {
         });
     }
 
+    /** 관리자 보관함으로 Event를 옮기되, 응모·추첨·당첨 원본은 변경하지 않는다. */
+    public Event archive(Long eventId, Long adminId) {
+        return archive(eventId, adminId, event -> { });
+    }
+
+    /**
+     * Event 행을 잠근 직후 보관 가능 조건을 확인하고 보관한다.
+     *
+     * <p>보관 가능 조건이 다른 도메인 상태를 읽어야 하면 반드시 이 callback 안에서 확인한다.
+     * 잠금 전 일반 조회는 MySQL REPEATABLE READ에서 뒤늦게 확정된 상태를 놓칠 수 있다.
+     */
+    public Event archive(Long eventId, Long adminId, Consumer<Event> beforeArchive) {
+        Event event = execute(eventId, target -> {
+            beforeArchive.accept(target);
+            target.archive(clock.instant(), adminId);
+            return target;
+        });
+        eventPublisher.publishEvent(new EventVisibilityChangedEvent(eventId));
+        return event;
+    }
+
+    /**
+     * Event와 함께 원자적으로 처리해야 하는 다른 도메인 명령에 Event 행 잠금을 제공한다.
+     * Event 상태를 바꾸는 경우에는 이 메서드 대신 전용 상태 전이 메서드를 사용한다.
+     */
+    public <T> T withEventLock(Long eventId, Function<Event, T> command) {
+        return execute(eventId, command);
+    }
+
+    /** Event 보관을 해제해 기존 PUBLISHED 공개 상태로 되돌린다. */
+    public Event unarchive(Long eventId) {
+        Event event = execute(eventId, target -> {
+            target.unarchive();
+            return target;
+        });
+        eventPublisher.publishEvent(new EventVisibilityChangedEvent(eventId));
+        return event;
+    }
+
     /**
      * Gate 차단·cutoff 확정(barrier) 이후 호출. 동일 cutoff로 이미 CLOSING이면 재시도로 보고
      * 멱등하게 반환한다. 이미 CLOSED인 경우에도 완료 상태를 반환한다. 그 외 OPEN이 아닌 상태

@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.domain.MemberRole;
+import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerErrorCode;
 import kr.co.cking.winner.domain.WinnerManagement;
@@ -25,6 +26,7 @@ public class WinnerStatusHistoryQueryService {
     private final WinnerRepository winnerRepository;
     private final WinnerManagementRepository winnerManagementRepository;
     private final WinnerStatusHistoryRepository winnerStatusHistoryRepository;
+    private final EventRepository eventRepository;
 
     /** Member와 Winner 접근 권한을 검증한 뒤 상태 변경 이력을 시간순으로 반환한다. */
     public List<WinnerStatusHistoryResult> getHistory(Long winnerId, Long userId) {
@@ -32,6 +34,10 @@ public class WinnerStatusHistoryQueryService {
         Winner winner = winnerRepository.findById(winnerId)
                 .orElseThrow(() -> new BusinessException(WinnerErrorCode.WINNER_NOT_FOUND));
         validateAccess(role, winner, userId);
+        if (role != MemberRole.ADMIN
+                && !eventRepository.existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(winner.getEventId())) {
+            throw new BusinessException(WinnerErrorCode.WINNER_NOT_FOUND);
+        }
 
         WinnerManagement management = winnerManagementRepository.findByWinnerId(winnerId)
                 .orElseThrow(() -> new BusinessException(WinnerErrorCode.WINNER_MANAGEMENT_NOT_FOUND));

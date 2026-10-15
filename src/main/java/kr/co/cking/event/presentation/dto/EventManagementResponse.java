@@ -56,13 +56,21 @@ public final class EventManagementResponse {
     /** 관리자 운영 목록의 Event 항목을 반환한다. */
     public record AdminItem(Long eventId, Long creatorId, String creatorName, String title, java.time.Instant startAt,
                             java.time.Instant endAt, int winnerCount, kr.co.cking.event.domain.DrawMethod drawMethod,
-                            EventStatus status) {
+                            EventStatus status, java.time.Instant archivedAt, Long archivedBy) {
         /** Event와 Creator 정보를 관리자 운영 목록 응답으로 변환한다. */
         public static AdminItem from(kr.co.cking.event.application.EventReviewService.ManagedEvent managedEvent) {
             Event event = managedEvent.event();
             return new AdminItem(event.getEventId(), event.getCreatorId(), managedEvent.creatorName(), event.getTitle(),
                     event.getStartAt(), event.getEndAt(), event.getWinnerCount(),
-                    kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()), event.getStatus());
+                    kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()), event.getStatus(),
+                    event.getArchivedAt(), event.getArchivedBy());
+        }
+    }
+
+    /** 관리자 보관·복원 명령 결과를 감사 시각·처리자와 함께 반환한다. */
+    public record ArchiveResult(Long eventId, EventStatus status, java.time.Instant archivedAt, Long archivedBy) {
+        public static ArchiveResult from(Event event) {
+            return new ArchiveResult(event.getEventId(), event.getStatus(), event.getArchivedAt(), event.getArchivedBy());
         }
     }
 

@@ -12,6 +12,7 @@ import java.util.Optional;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerErrorCode;
 import kr.co.cking.winner.domain.WinnerManagement;
@@ -46,6 +47,9 @@ class WinnerDeclineServiceTest {
     @Mock
     private WinnerStatusHistoryRepository winnerStatusHistoryRepository;
 
+    @Mock
+    private EventRepository eventRepository;
+
     private WinnerDeclineService service;
 
     @BeforeEach
@@ -54,8 +58,12 @@ class WinnerDeclineServiceTest {
                 memberQueryService,
                 winnerRepository,
                 winnerManagementRepository,
-                winnerStatusHistoryRepository
+                winnerStatusHistoryRepository,
+                eventRepository
         );
+        org.mockito.Mockito.lenient().when(eventRepository.existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(
+                org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(true);
     }
 
     @Test
@@ -108,6 +116,18 @@ class WinnerDeclineServiceTest {
 
         verify(winnerManagementRepository, never()).findByWinnerIdForUpdate(WINNER_ID);
         verifyNoInteractions(winnerStatusHistoryRepository);
+    }
+
+    @Test
+    void 보관된_Event의_Winner는_당첨_포기_대상에서_제외된다() {
+        when(winnerRepository.findById(WINNER_ID)).thenReturn(Optional.of(winner(USER_ID)));
+        when(eventRepository.existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> service.decline(WINNER_ID, USER_ID))
+                .hasFieldOrPropertyWithValue("errorCode", WinnerErrorCode.WINNER_NOT_FOUND);
+
+        verify(winnerManagementRepository, never()).findByWinnerIdForUpdate(WINNER_ID);
     }
 
     @Test

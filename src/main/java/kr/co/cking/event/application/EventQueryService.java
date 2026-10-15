@@ -112,7 +112,7 @@ public class EventQueryService {
      */
     public Event getEventForOperation(Long eventId) {
         return eventRepository.findById(eventId)
-                .filter(e -> e.getDeletedAt() == null)
+                .filter(e -> e.getDeletedAt() == null && !e.isArchived())
                 .orElseThrow(() -> new BusinessException(EventErrorCode.EVENT_NOT_FOUND));
     }
 
@@ -123,7 +123,7 @@ public class EventQueryService {
 
     private CachedEvent loadAndCache(Long eventId) {
         Event event = eventRepository.findById(eventId)
-                .filter(e -> e.getDeletedAt() == null && e.getStatus().isPubliclyVisible())
+                .filter(e -> e.getDeletedAt() == null && !e.isArchived() && e.getStatus().isPubliclyVisible())
                 .orElseThrow(() -> new BusinessException(EventErrorCode.EVENT_NOT_FOUND));
         CachedEvent cached = CachedEvent.from(event);
         eventCache.save(cached);

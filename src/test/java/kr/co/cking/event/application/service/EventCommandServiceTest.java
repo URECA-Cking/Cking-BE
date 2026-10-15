@@ -144,6 +144,51 @@ class EventCommandServiceTest {
         verify(eventPublisher).publishEvent(new EventClosingStateChangedEvent(1L));
     }
 
+    @Test
+    void archive와_unarchive는_PUBLISHED_이벤트의_보관_메타데이터만_변경하고_캐시무효화_이벤트를_발행한다() {
+        Event event = eventOf(EventStatus.PUBLISHED);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        eventCommandService.archive(1L, 9L);
+
+        assertThat(event.isArchived()).isTrue();
+        assertThat(event.getArchivedAt()).isEqualTo(FIXED_NOW);
+        assertThat(event.getArchivedBy()).isEqualTo(9L);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+
+        eventCommandService.unarchive(1L);
+
+        assertThat(event.isArchived()).isFalse();
+        assertThat(event.getArchivedAt()).isNull();
+        assertThat(event.getArchivedBy()).isNull();
+        verify(eventPublisher, org.mockito.Mockito.times(2)).publishEvent(new EventVisibilityChangedEvent(1L));
+    }
+
+    @Test
+    void archive는_Event잠금으로_조회한_뒤_보관_조건을_확인한다() {
+        Event event = eventOf(EventStatus.PUBLISHED);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.archive(1L, 9L, lockedEvent -> {
+            assertThat(lockedEvent).isSameAs(event);
+            throw new BusinessException(EventErrorCode.INVALID_STATE);
+        })).isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+
+        assertThat(event.isArchived()).isFalse();
+        verify(eventPublisher, never()).publishEvent(new EventVisibilityChangedEvent(1L));
+    }
+
+    @Test
+    void archive는_PUBLISHED가_아닌_이벤트를_거부한다() {
+        Event event = eventOf(EventStatus.CLOSED);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.archive(1L, 9L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+    }
+
     private static Event eventOf(EventStatus status) {
         return Event.builder()
                 .status(status)

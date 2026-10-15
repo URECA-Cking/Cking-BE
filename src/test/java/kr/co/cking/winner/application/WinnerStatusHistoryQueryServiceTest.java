@@ -13,6 +13,7 @@ import java.util.Optional;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerErrorCode;
@@ -49,6 +50,9 @@ class WinnerStatusHistoryQueryServiceTest {
     @Mock
     private WinnerStatusHistoryRepository winnerStatusHistoryRepository;
 
+    @Mock
+    private EventRepository eventRepository;
+
     private WinnerStatusHistoryQueryService service;
 
     /** 각 테스트가 독립된 조회 의존성을 사용하는 Service를 만든다. */
@@ -58,8 +62,12 @@ class WinnerStatusHistoryQueryServiceTest {
                 memberQueryService,
                 winnerRepository,
                 winnerManagementRepository,
-                winnerStatusHistoryRepository
+                winnerStatusHistoryRepository,
+                eventRepository
         );
+        org.mockito.Mockito.lenient().when(eventRepository.existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(
+                org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(true);
     }
 
     /** USER는 본인 Winner의 변경 전후 상태와 감사 정보를 시간순으로 조회한다. */

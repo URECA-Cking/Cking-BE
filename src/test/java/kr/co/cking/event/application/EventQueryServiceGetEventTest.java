@@ -106,6 +106,26 @@ class EventQueryServiceGetEventTest {
     }
 
     @Test
+    void 보관된_공개_이벤트는_상세_조회에서_제외된다() {
+        Event archived = Event.builder()
+                .creatorId(7L)
+                .title("보관 이벤트")
+                .startAt(Instant.parse("2026-09-01T00:00:00Z"))
+                .endAt(Instant.parse("2026-09-30T00:00:00Z"))
+                .winnerCount(3)
+                .status(EventStatus.PUBLISHED)
+                .build();
+        org.springframework.test.util.ReflectionTestUtils.setField(archived, "archivedAt", now);
+        when(eventCache.find(1L)).thenReturn(Optional.empty());
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(archived));
+
+        assertThatThrownBy(() -> service.getEvent(1L, 100L))
+                .isInstanceOf(BusinessException.class);
+
+        verify(eventCache, never()).save(any());
+    }
+
+    @Test
     void 캐시에_있으면_레포지토리를_거치지_않는다() {
         CachedEvent cached = CachedEvent.from(event);
         when(eventCache.find(1L)).thenReturn(Optional.of(cached));
