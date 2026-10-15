@@ -14,7 +14,7 @@
 - **D1 신규 대상**: 기능이 처음 활성화된 고정 UTC 시각 `welcomeQuestActivatedAt` 이상에 생성된 Member만 대상이다(`member.createdAt >= welcomeQuestActivatedAt`, 두 값 모두 UTC로 비교). 활성화 시각은 배포 시 확정·보존하고 재배포·재시작 후에도 바꾸지 않으며, 그 이전 회원에게 소급 지급하지 않는다. FE는 가입 시각을 추측하지 않고 `eligible`을 따른다.
 - 가입 트랜잭션에서는 보상을 지급하지 않는다. 퀘스트가 처음 표시되면 FE가 `SIGNUP` 지급을 별도로 자동 요청한다(D2). 이 요청의 실패는 가입 성공을 취소하지 않는다.
 - `FOLLOW`의 신규 지급 조건은 **지급 시점**에 현재 팔로우 중인 Creator가 한 명 이상인 것이다. 온보딩에서 이미 팔로우했어도 바로 충족한다(D3). 지급 후 언팔로우해도 지급 결과는 유지한다.
-- `QUIZ`의 신규 지급 조건은 요청의 `answer`가 JSON boolean `true`인 것이다. 다른 값은 정답으로 인정하지 않는다.
+- `QUIZ`는 FE가 고정된 단일 튜토리얼 문항·보기를 제공한다. 이 API는 문항 메타데이터를 반환하지 않고, 신규 지급 시 요청의 `answer`가 JSON boolean `true`인지 확인한다. 다른 값은 정답으로 인정하지 않는다. 이는 답안 값 확인이며 실제 화면 노출·풀이 과정의 서버 검증은 아니다. FE 문항의 정답이 바뀌면 이 계약과 FE를 함께 변경해야 한다.
 - `BONUS`는 세 단계와 독립이다. 대상 회원이면 즉시 받을 수 있고, 한 번 지급되면 `CLAIMED`다.
 - `completed`는 `SIGNUP`·`FOLLOW`·`QUIZ` 세 단계가 모두 지급 승인된 상태다(D4). `BONUS` 수령 여부는 `completed` 계산에 넣지 않는다. 세 단계가 끝나면 FE는 퀘스트를 종료하고, 미수령 보너스 상자는 출석 카드에 계속 표시한다. 보너스 지급 경로는 퀘스트 종료 후에도 사용할 수 있다.
 - `CLAIMED`는 Ticket의 공용 EARN이 지급을 **승인**한 상태를 뜻한다. 원장·DB 잔액 반영 완료를 뜻하지 않는다. 상태 조회는 Redis/Stream 비동기 반영 지연 때문에 이미 승인된 보상을 `CLAIMABLE`로 되돌리지 않아야 한다.
@@ -43,13 +43,13 @@
       { "step": "FOLLOW", "rewardAmount": 1, "status": "NOT_MET" },
       { "step": "QUIZ", "rewardAmount": 1, "status": "CLAIMABLE" }
     ],
-    "bonus": { "rewardAmount": 1, "status": "CLAIMABLE" }
+    "bonus": { "step": "BONUS", "rewardAmount": 1, "status": "CLAIMABLE" }
   },
   "message": null
 }
 ```
 
-비대상 회원은 `eligible=false`, `completed=false`, `items=[]`, `bonus=null`을 반환한다. 비대상 여부를 조회 자체의 오류로 만들지 않는다. 대상 회원의 `items`는 항상 `SIGNUP`, `FOLLOW`, `QUIZ` 순서로 세 항목을 반환하고, `bonus`는 항상 객체다. `rewardAmount`는 현재 계약에서 모두 `1`이다.
+비대상 회원은 `eligible=false`, `completed=false`, `items=[]`, `bonus=null`을 반환한다. 비대상 여부를 조회 자체의 오류로 만들지 않는다. 대상 회원의 `items`는 항상 `SIGNUP`, `FOLLOW`, `QUIZ` 순서로 세 항목을 반환한다. `bonus`는 같은 `step`/`rewardAmount`/`status` 구조의 객체이며 `step`은 항상 `BONUS`다. `rewardAmount`는 현재 계약에서 모두 `1`이다.
 
 ## POST /api/me/welcome-quest/{step}/claim
 
