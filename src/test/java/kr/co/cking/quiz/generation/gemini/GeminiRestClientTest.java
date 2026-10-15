@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import kr.co.cking.quiz.generation.QuizProviderTimeoutException;
@@ -33,7 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class GeminiRestClientTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -223,6 +225,42 @@ class GeminiRestClientTest {
         Map<String, Object> part = map(((List<?>) content.get("parts")).get(0));
         assertThat((String) part.get("text"))
                 .contains(input.contentText(), "Prompt version: quiz-mcq-v1", "exactly 1 question(s)");
+    }
+
+    @Test
+    void 실패한_호출은_Provider_오류_상태와_reason을_진단_로그로_남긴다(CapturedOutput output) {
+        server.createContext("/v1beta/models/test-model:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 429, """
+                    {"error": {"code": 429, "message": "quota-secret-5e2b", "status": "RESOURCE_EXHAUSTED", "details": [
+                     {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "RATE_LIMIT_EXCEEDED"}]}}""");
+        });
+
+        assertThatThrownBy(() -> client(2, 1_000).generateContent("prompt text", 1, 4))
+                .isInstanceOf(GeminiApiException.class)
+                .hasMessageContaining("429");
+        assertThat(requestCount).hasValue(2);
+        assertThat(output.getAll())
+                .contains("event=ai_provider_call provider=gemini operation=quiz_generation model=test-model "
+                        + "status=429 errorCode=RATE_LIMIT_EXCEEDED errorType=RESOURCE_EXHAUSTED latencyMs=")
+                .contains("attempt=1 retry=true")
+                .contains("attempt=2 retry=false")
+                .doesNotContain("quota-secret-5e2b", "test-key", "prompt text");
+    }
+
+    @Test
+    void 정상_상태의_잘못된_응답은_invalid_response로_남긴다(CapturedOutput output) {
+        server.createContext("/v1beta/models/test-model:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 200, "{\"candidates\": []}");
+        });
+
+        assertThatThrownBy(() -> client(2, 1_000).generateContent("prompt text", 1, 4))
+                .isInstanceOf(GeminiResponseException.class);
+        assertThat(requestCount).hasValue(1);
+        assertThat(output.getAll())
+                .contains("operation=quiz_generation model=test-model status=200 errorCode=- errorType=invalid_response")
+                .contains("attempt=1 retry=false");
     }
 
     private GeminiRestClient client(int maxAttempts, long readTimeoutMillis) {
