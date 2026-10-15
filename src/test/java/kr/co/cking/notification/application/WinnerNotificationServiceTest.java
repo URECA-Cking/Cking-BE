@@ -1,8 +1,14 @@
 package kr.co.cking.notification.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
 import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
@@ -57,5 +63,17 @@ class WinnerNotificationServiceTest {
         verify(notificationRepository).saveAll(captor.capture());
         assertThat(captor.getValue()).extracting(Notification::getType)
                 .containsOnly(NotificationType.REDRAW_WINNER);
+    }
+
+    @Test
+    void 미당첨자_알림은_DB_일괄_INSERT로_저장하고_저장_건수를_반환한다() {
+        when(notificationRepository.insertNonWinnerNotifications(
+                eq(10L), eq("INITIAL_NON_WINNER"), eq("이벤트 결과 발표"), anyString(), any(Instant.class)
+        )).thenReturn(3);
+
+        int created = winnerNotificationService.createNonWinnerNotifications(10L);
+
+        assertThat(created).isEqualTo(3);
+        verify(notificationRepository, never()).saveAll(any());
     }
 }

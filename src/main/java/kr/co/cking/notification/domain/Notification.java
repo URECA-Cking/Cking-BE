@@ -16,7 +16,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * 사용자에게 전달하는 인앱 알림을 표현한다. 당첨 알림은 {@code eventId}·{@code drawingId}·{@code winnerId}를 모두 갖고,
- * 제재 알림(이슈 #572)은 이 셋이 모두 비고 {@code sanctionId}를 갖는다. 세 값은 모두 있거나 모두 없어야 한다(DB CHECK).
+ * 제재 알림(이슈 #572)은 이 셋이 모두 비고 {@code sanctionId}를 갖는다.
+ * 미당첨자 알림(이슈 #605)은 {@code eventId}·{@code drawingId}만 갖고 {@code winnerId}는 비운다. 유형별 조합은 DB CHECK가 강제한다.
  */
 @Entity
 @Table(name = "notification")

@@ -30,6 +30,7 @@ class PublicationServiceIntegrationTest {
     private static final long CREATOR_OWNER_ID = 91302L;
     private static final long FIRST_WINNER_MEMBER_ID = 91303L;
     private static final long SECOND_WINNER_MEMBER_ID = 91304L;
+    private static final long NON_WINNER_MEMBER_ID = 91305L;
     private static final long CREATOR_ID = 92301L;
     private static final long EVENT_ID = 93301L;
     private static final long SNAPSHOT_ID = 94301L;
@@ -55,6 +56,7 @@ class PublicationServiceIntegrationTest {
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)", CREATOR_OWNER_ID, "크리에이터", "USER");
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)", FIRST_WINNER_MEMBER_ID, "당첨자1", "USER");
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)", SECOND_WINNER_MEMBER_ID, "당첨자2", "USER");
+        jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)", NON_WINNER_MEMBER_ID, "미당첨자", "USER");
         jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)", CREATOR_ID, CREATOR_OWNER_ID, "테스트 크리에이터");
         jdbcTemplate.update("INSERT INTO draw_seed (id, seed_value) VALUES (?, ?)", SEED_ID, "seed".getBytes());
         jdbcTemplate.update("""
@@ -71,7 +73,7 @@ class PublicationServiceIntegrationTest {
                     id, event_id, candidate_count, total_ticket_count, winner_count,
                     draw_method, algorithm_version, snapshot_hash, verification_status
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, SNAPSHOT_ID, EVENT_ID, 2, 20L, 2, "WEIGHTED", "WEIGHTED_V1", "d".repeat(64), "VERIFIED");
+                """, SNAPSHOT_ID, EVENT_ID, 3, 30L, 2, "WEIGHTED", "WEIGHTED_V1", "d".repeat(64), "VERIFIED");
         jdbcTemplate.update("""
                 INSERT INTO drawing (
                     id, event_id, draw_no, draw_type, snapshot_id, seed_id, draw_method,
@@ -84,6 +86,12 @@ class PublicationServiceIntegrationTest {
                 VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
                 """, EVENT_ID, DRAWING_ID, FIRST_WINNER_MEMBER_ID, 1, 10L,
                 EVENT_ID, DRAWING_ID, SECOND_WINNER_MEMBER_ID, 2, 10L);
+        jdbcTemplate.update("""
+                INSERT INTO draw_snapshot_candidate (snapshot_id, member_id, ticket_count)
+                VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)
+                """, SNAPSHOT_ID, FIRST_WINNER_MEMBER_ID, 10L,
+                SNAPSHOT_ID, SECOND_WINNER_MEMBER_ID, 10L,
+                SNAPSHOT_ID, NON_WINNER_MEMBER_ID, 10L);
     }
 
     @AfterEach
@@ -92,12 +100,18 @@ class PublicationServiceIntegrationTest {
     }
 
     @Test
-    void 최초_공개는_Winner별_Notification을_한_번씩_생성한다() {
+    void 최초_공개는_Winner와_미당첨자_Notification을_한_번씩_생성한다() {
         DrawingPublicationResult result = publicationService.publish(DRAWING_ID, ADMIN_ID);
 
         assertThat(result.outcome()).isEqualTo(PublicationOutcome.PUBLISHED);
-        assertThat(notificationCount()).isEqualTo(2);
-        assertThat(notificationTypes()).containsOnly(NotificationType.INITIAL_WINNER.name());
+        assertThat(notificationCount()).isEqualTo(3);
+        assertThat(notificationTypes()).containsExactlyInAnyOrder(
+                NotificationType.INITIAL_WINNER.name(),
+                NotificationType.INITIAL_WINNER.name(),
+                NotificationType.INITIAL_NON_WINNER.name());
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT member_id FROM notification WHERE drawing_id = ? AND type = ?", Long.class,
+                DRAWING_ID, NotificationType.INITIAL_NON_WINNER.name())).isEqualTo(NON_WINNER_MEMBER_ID);
         assertThat(drawingRepository.findById(DRAWING_ID).orElseThrow().getVisibility())
                 .isEqualTo(DrawingVisibility.PUBLIC);
         assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name()).isEqualTo("PUBLISHED");
@@ -110,7 +124,7 @@ class PublicationServiceIntegrationTest {
         DrawingPublicationResult replay = publicationService.publish(DRAWING_ID, ADMIN_ID);
 
         assertThat(replay.outcome()).isEqualTo(PublicationOutcome.ALREADY_PUBLISHED);
-        assertThat(notificationCount()).isEqualTo(2);
+        assertThat(notificationCount()).isEqualTo(3);
     }
 
     @Test
@@ -134,7 +148,7 @@ class PublicationServiceIntegrationTest {
                     .containsExactlyInAnyOrder(PublicationOutcome.PUBLISHED, PublicationOutcome.ALREADY_PUBLISHED);
         }
 
-        assertThat(notificationCount()).isEqualTo(2);
+        assertThat(notificationCount()).isEqualTo(3);
         assertThat(drawingRepository.findById(DRAWING_ID).orElseThrow().getVisibility())
                 .isEqualTo(DrawingVisibility.PUBLIC);
         assertThat(eventRepository.findById(EVENT_ID).orElseThrow().getStatus().name()).isEqualTo("PUBLISHED");
@@ -167,15 +181,16 @@ class PublicationServiceIntegrationTest {
     }
 
     private void cleanUp() {
-        jdbcTemplate.update("DELETE n FROM notification n JOIN winner w ON n.winner_id = w.id WHERE w.drawing_id = ?", DRAWING_ID);
+        jdbcTemplate.update("DELETE FROM notification WHERE drawing_id = ?", DRAWING_ID);
         jdbcTemplate.update("DELETE FROM winner WHERE drawing_id = ?", DRAWING_ID);
         jdbcTemplate.update("DELETE FROM draw_attempt_history WHERE drawing_id = ?", DRAWING_ID);
         jdbcTemplate.update("DELETE FROM drawing WHERE id = ?", DRAWING_ID);
+        jdbcTemplate.update("DELETE FROM draw_snapshot_candidate WHERE snapshot_id = ?", SNAPSHOT_ID);
         jdbcTemplate.update("DELETE FROM draw_snapshot WHERE id = ?", SNAPSHOT_ID);
         jdbcTemplate.update("DELETE FROM event WHERE event_id = ?", EVENT_ID);
         jdbcTemplate.update("DELETE FROM draw_seed WHERE id = ?", SEED_ID);
         jdbcTemplate.update("DELETE FROM creator WHERE creator_id = ?", CREATOR_ID);
-        jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?, ?, ?)",
-                ADMIN_ID, CREATOR_OWNER_ID, FIRST_WINNER_MEMBER_ID, SECOND_WINNER_MEMBER_ID);
+        jdbcTemplate.update("DELETE FROM member WHERE member_id IN (?, ?, ?, ?, ?)",
+                ADMIN_ID, CREATOR_OWNER_ID, FIRST_WINNER_MEMBER_ID, SECOND_WINNER_MEMBER_ID, NON_WINNER_MEMBER_ID);
     }
 }
