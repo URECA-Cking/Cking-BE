@@ -133,6 +133,26 @@ public class EventCommandService {
         });
     }
 
+    /** 관리자 보관함으로 Event를 옮기되, 응모·추첨·당첨 원본은 변경하지 않는다. */
+    public Event archive(Long eventId, Long adminId) {
+        Event event = execute(eventId, target -> {
+            target.archive(clock.instant(), adminId);
+            return target;
+        });
+        eventPublisher.publishEvent(new EventVisibilityChangedEvent(eventId));
+        return event;
+    }
+
+    /** Event 보관을 해제해 기존 PUBLISHED 공개 상태로 되돌린다. */
+    public Event unarchive(Long eventId) {
+        Event event = execute(eventId, target -> {
+            target.unarchive();
+            return target;
+        });
+        eventPublisher.publishEvent(new EventVisibilityChangedEvent(eventId));
+        return event;
+    }
+
     /**
      * Gate 차단·cutoff 확정(barrier) 이후 호출. 동일 cutoff로 이미 CLOSING이면 재시도로 보고
      * 멱등하게 반환한다. 이미 CLOSED인 경우에도 완료 상태를 반환한다. 그 외 OPEN이 아닌 상태

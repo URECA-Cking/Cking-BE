@@ -3,6 +3,7 @@ package kr.co.cking.winner.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.winner.domain.Winner;
 import kr.co.cking.winner.domain.WinnerErrorCode;
 import kr.co.cking.winner.domain.WinnerManagement;
@@ -24,6 +25,7 @@ public class WinnerDeclineService {
     private final WinnerRepository winnerRepository;
     private final WinnerManagementRepository winnerManagementRepository;
     private final WinnerStatusHistoryRepository winnerStatusHistoryRepository;
+    private final EventRepository eventRepository;
 
     /** 호출자 검증, 상태 전이, 변경 이력 저장을 하나의 트랜잭션으로 수행한다. */
     @Transactional
@@ -33,6 +35,9 @@ public class WinnerDeclineService {
         Winner winner = winnerRepository.findById(winnerId)
                 .orElseThrow(() -> new BusinessException(WinnerErrorCode.WINNER_NOT_FOUND));
         validateOwnership(winner, userId);
+        if (!eventRepository.existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(winner.getEventId())) {
+            throw new BusinessException(WinnerErrorCode.WINNER_NOT_FOUND);
+        }
 
         WinnerManagement management = winnerManagementRepository.findByWinnerIdForUpdate(winnerId)
                 .orElseThrow(() -> new BusinessException(WinnerErrorCode.WINNER_MANAGEMENT_NOT_FOUND));

@@ -17,6 +17,10 @@ DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPE
 CLOSED --completeDrawing--> DRAW_COMPLETED --publish--> PUBLISHED
 ```
 
+`PUBLISHED` Event는 상태 전이를 바꾸지 않고 관리자 보관함으로 옮길 수 있다. 보관은 `archivedAt`,
+`archivedBy`만 기록하며 응모·추첨·당첨·알림 원본은 삭제하지 않는다. 보관된 Event는 사용자·Creator
+조회와 응모, 사용자 당첨/알림에서 제외되고 보관 해제 시 원래 `PUBLISHED` 상태로 다시 노출된다.
+
 ## 내부 Lifecycle 계약
 
 시스템2 `EventLifecycleScheduler`는 시작 대상(`status = SCHEDULED`, `startAt <= now < endAt`)마다
@@ -41,7 +45,7 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 `UPCOMING`, `IN_PROGRESS`, `CLOSED` 중 하나다. `page`는 0부터 시작하고, `size` 기본값은 20,
 허용 범위는 1~100이다.
 
-삭제되지 않은 공개 Event만 `createdAt DESC, eventId DESC`로 반환한다. DB 상태 `SCHEDULED`는
+삭제·보관되지 않은 공개 Event만 `createdAt DESC, eventId DESC`로 반환한다. DB 상태 `SCHEDULED`는
 `UPCOMING`, `OPEN`은 현재 시각이 `endAt` 전이면 `IN_PROGRESS`, 이후와 `CLOSING` 이후 상태는
 `CLOSED`로 표시한다.
 
@@ -49,7 +53,7 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 공개 Event 정보와 해당 Event의 Creator 기준 요청 사용자의 보유 응모권 수를
 함께 반환한다. 존재하지 않는 사용자는 공통 `RESOURCE_NOT_FOUND`, 존재하지 않거나 삭제·비공개 상태인
-Event는 Event 전용 `EVENT_NOT_FOUND`다.
+Event는 Event 전용 `EVENT_NOT_FOUND`다. 보관 Event도 사용자에게는 존재하지 않는 Event와 같이 처리한다.
 
 ## POST /api/events/{eventId}/entries
 
@@ -58,7 +62,7 @@ Event는 Event 전용 `EVENT_NOT_FOUND`다.
 ## GET /api/creator/events
 
 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Query `userId`는 받지 않는다.
-Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `deletedAt IS NULL`인 Event만 반환한다.
+Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `deletedAt IS NULL`, `archivedAt IS NULL`인 Event만 반환한다.
 기본 정렬은 `createdAt DESC, eventId DESC`다.
 
 ```json
@@ -174,10 +178,12 @@ Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberI
 Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다.
 Application은 Spring Security의 1차 인가와 별도로 관리자 업무 권한을 다시 검증한다.
 
-Query는 선택 `status`, 기본 `page=0`, `size=20`이다. `size`는 1~100이어야 하며, `status`를 생략하면
+Query는 선택 `status`, 선택 `archiveStatus`, 기본 `page=0`, `size=20`이다. `archiveStatus`는 `ACTIVE`(기본,
+보관되지 않은 Event), `ARCHIVED`(보관함), `ALL` 중 하나다. `size`는 1~100이어야 하며, `status`를 생략하면
 전체 `EventStatus`를 조회한다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`, `SCHEDULED`, `OPEN`, `CLOSING`,
 `CLOSED`, `DRAW_COMPLETED`, `PUBLISHED` 중 하나로 필터링할 수 있다. 삭제 Event는 기존 Event 목록 정책과 같이
-제외하고 `createdAt DESC, eventId DESC`로 정렬한다.
+제외하고 `createdAt DESC, eventId DESC`로 정렬한다. 각 항목의 `archivedAt`, `archivedBy`는 일반 목록에서는
+생략되며 보관함에서 보관 시각·처리자 ID를 반환한다.
 
 ```json
 {
@@ -200,6 +206,17 @@ Query는 선택 `status`, 기본 `page=0`, `size=20`이다. `size`는 1~100이�
 }
 ```
 
+## PATCH /api/admin/events/{eventId}/archive
+
+Bearer Access JWT와 ADMIN 역할이 필수다. `PUBLISHED` Event만 보관할 수 있으며 성공 시 200으로
+`eventId`, `status`, `archivedAt`, `archivedBy`를 반환한다. 운영 기본 설정에서는 `SELECTED` 수령 대기
+Winner가 있으면 `INVALID_STATE`로 거부한다. 개발 프로필은 테스트 데이터 정리를 위해 이를 허용한다.
+
+## PATCH /api/admin/events/{eventId}/unarchive
+
+Bearer Access JWT와 ADMIN 역할이 필수다. 보관된 `PUBLISHED` Event를 다시 노출한다. 성공 시 200이며
+보관 메타데이터 필드는 생략된다. 보관·복원은 삭제 API가 아니며 Event와 연관 원본을 바꾸지 않는다.
+
 ## POST /api/admin/events/{eventId}/approve
 
 Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `EventCommandService.approve(eventId)`로 SCHEDULED로 전이할 수 있다. `endAt <= now`면 `INVALID_STATE`다. 현재 PENDING 승인 요청을 APPROVED로 기록하고 심사자·심사 시각을 저장한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "SCHEDULED" }`다.
@@ -215,7 +232,7 @@ Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `Even
 ## 오류와 검증
 
 - 없는 Member 또는 Event는 `RESOURCE_NOT_FOUND`, 권한·소유권 위반은 `FORBIDDEN`이다.
-- 허용되지 않은 상태의 수정·삭제·심사·승인 요청은 `INVALID_STATE`다.
+- 허용되지 않은 상태의 수정·삭제·심사·승인·보관 요청은 `INVALID_STATE`다.
 - 승인·거절처럼 Event 행 잠금으로 직렬화되는 상충 명령은 `EventCommandService`가 잠금을 획득하며, 선행 명령이 상태를 바꾼 뒤 후행 명령이 `INVALID_STATE`가 된다.
 - Event 상태 변경은 `EventCommandService`만 수행한다. 이 서비스에는 Redis Drain, Snapshot 생성, DrawingEngine 호출을 포함하지 않는다.
 - Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.

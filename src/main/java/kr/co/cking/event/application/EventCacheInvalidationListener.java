@@ -4,6 +4,7 @@ import kr.co.cking.event.application.service.EventGateLoader;
 import kr.co.cking.event.application.service.EventOpenedEvent;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.event.application.service.EventClosingStateChangedEvent;
+import kr.co.cking.event.application.service.EventVisibilityChangedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,12 @@ class EventCacheInvalidationListener {
     public void invalidateAfterClosingTransition(EventClosingStateChangedEvent event) {
         invalidate(event.eventId(), "closing transition");
         closeGate(event.eventId());
+    }
+
+    /** 보관·복원은 Gate 상태를 건드리지 않고 사용자 상세 캐시만 무효화한다. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void invalidateAfterVisibilityChange(EventVisibilityChangedEvent event) {
+        invalidate(event.eventId(), "visibility change");
     }
 
     // 복원 틱이 stale한 OPEN 조회로 Gate를 다시 열었어도, 마감 전이 커밋 직후 닫는다. 실패하면 스케줄러가 CLOSING을 재조회해 닫는다.

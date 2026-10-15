@@ -55,6 +55,8 @@ public class Event {
     private Instant closedAt;
     private Instant publishedAt;
     private Instant deletedAt;
+    private Instant archivedAt;
+    private Long archivedBy;
     private Long createdBy;
 
     @Column(updatable = false)
@@ -281,6 +283,27 @@ public class Event {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
         this.deletedAt = deletedAt;
+    }
+
+    /** 공개가 끝난 Event의 업무 원본은 보존한 채 사용자 노출만 중단한다. */
+    public void archive(Instant archivedAt, Long archivedBy) {
+        requireStatus(EventStatus.PUBLISHED);
+        if (this.archivedAt != null) {
+            return;
+        }
+        this.archivedAt = archivedAt;
+        this.archivedBy = archivedBy;
+    }
+
+    /** 보관 Event를 기존 공개 상태 그대로 다시 노출한다. */
+    public void unarchive() {
+        requireStatus(EventStatus.PUBLISHED);
+        this.archivedAt = null;
+        this.archivedBy = null;
+    }
+
+    public boolean isArchived() {
+        return archivedAt != null;
     }
 
     public DisplayStatus displayStatus(Instant now) {

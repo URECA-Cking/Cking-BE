@@ -277,7 +277,8 @@ class EventManagementControllerTest {
         Event event = event(7L, "운영 팬미팅");
         ReflectionTestUtils.setField(event, "status", kr.co.cking.event.domain.EventStatus.OPEN);
         given(eventReviewService.findManagedEvents(org.mockito.ArgumentMatchers.eq(1L),
-                org.mockito.ArgumentMatchers.eq(kr.co.cking.event.domain.EventStatus.OPEN), any()))
+                org.mockito.ArgumentMatchers.eq(kr.co.cking.event.domain.EventStatus.OPEN),
+                org.mockito.ArgumentMatchers.eq(kr.co.cking.event.domain.EventArchiveStatus.ACTIVE), any()))
                 .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(
                         new EventReviewService.ManagedEvent(event, "크리에이터"))));
 
@@ -293,6 +294,31 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.items[0].winnerCount").value(1))
                 .andExpect(jsonPath("$.data.items[0].drawMethod").value("WEIGHTED"))
                 .andExpect(jsonPath("$.data.items[0].status").value("OPEN"));
+    }
+
+    /** 관리자 보관·복원 API가 PUBLISHED 상태와 보관 메타데이터를 반환하는지 검증한다. */
+    @Test
+    void archiveAndUnarchiveReturnArchiveResultEnvelope() throws Exception {
+        Event archived = event(7L, "정리할 테스트 이벤트");
+        ReflectionTestUtils.setField(archived, "status", kr.co.cking.event.domain.EventStatus.PUBLISHED);
+        ReflectionTestUtils.setField(archived, "archivedAt", java.time.Instant.parse("2026-10-15T01:00:00Z"));
+        ReflectionTestUtils.setField(archived, "archivedBy", 1L);
+        given(eventReviewService.archive(1L, 7L)).willReturn(archived);
+
+        mockMvc.perform(patch("/api/admin/events/{eventId}/archive", 7L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventId").value(7))
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.archivedBy").value(1));
+
+        ReflectionTestUtils.setField(archived, "archivedAt", null);
+        ReflectionTestUtils.setField(archived, "archivedBy", null);
+        given(eventReviewService.unarchive(1L, 7L)).willReturn(archived);
+
+        mockMvc.perform(patch("/api/admin/events/{eventId}/unarchive", 7L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.archivedAt").doesNotExist())
+                .andExpect(jsonPath("$.data.archivedBy").doesNotExist());
     }
 
     /** 관리자 승인 API가 예약 상태를 공통 응답 봉투로 반환하는지 검증한다. */

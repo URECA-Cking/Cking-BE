@@ -24,7 +24,10 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
             )
             from Winner w
             join kr.co.cking.drawing.domain.Drawing d on d.id = w.drawingId
+            join kr.co.cking.event.domain.Event e on e.eventId = w.eventId
             where w.eventId = :eventId
+              and e.deletedAt is null
+              and e.archivedAt is null
               and d.visibility = kr.co.cking.drawing.domain.DrawingVisibility.PUBLIC
               and d.status = kr.co.cking.drawing.domain.DrawingStatus.COMPLETED
             order by d.drawNo asc, w.rankInDrawing asc
@@ -40,7 +43,10 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
             from Winner w
             join kr.co.cking.drawing.domain.Drawing d on d.id = w.drawingId
             join kr.co.cking.winner.domain.WinnerManagement wm on wm.winnerId = w.id
+            join kr.co.cking.event.domain.Event e on e.eventId = w.eventId
             where w.memberId = :memberId
+              and e.deletedAt is null
+              and e.archivedAt is null
               and d.visibility = kr.co.cking.drawing.domain.DrawingVisibility.PUBLIC
               and d.status = kr.co.cking.drawing.domain.DrawingStatus.COMPLETED
             order by d.drawNo asc, w.rankInDrawing asc, w.eventId asc

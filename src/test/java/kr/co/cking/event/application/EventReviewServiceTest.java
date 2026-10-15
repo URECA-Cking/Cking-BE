@@ -10,6 +10,7 @@ import kr.co.cking.event.domain.EventApprovalRequestStatus;
 import kr.co.cking.event.repository.EventApprovalRequestRepository;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.event.application.service.EventCommandService;
+import kr.co.cking.winner.repository.WinnerManagementRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -39,6 +40,7 @@ class EventReviewServiceTest {
         EventApprovalRequestRepository approvalRequestRepository = mock(EventApprovalRequestRepository.class);
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         EventCommandService eventCommandService = mock(EventCommandService.class);
+        WinnerManagementRepository winnerManagementRepository = mock(WinnerManagementRepository.class);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         EventApprovalRequest firstRequest = new EventApprovalRequest(10L, 1, 1L);
         EventApprovalRequest secondRequest = new EventApprovalRequest(20L, 1, 1L);
@@ -54,7 +56,7 @@ class EventReviewServiceTest {
         given(creatorRepository.findByCreatorIdIn(org.mockito.ArgumentMatchers.anyCollection()))
                 .willReturn(List.of(firstCreator, secondCreator));
         EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
-                eventCommandService, creatorRepository);
+                eventCommandService, creatorRepository, winnerManagementRepository);
 
         var result = service.findPending(1L, PageRequest.of(0, 20));
 
@@ -75,6 +77,7 @@ class EventReviewServiceTest {
         EventApprovalRequestRepository approvalRequestRepository = mock(EventApprovalRequestRepository.class);
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         EventCommandService eventCommandService = mock(EventCommandService.class);
+        WinnerManagementRepository winnerManagementRepository = mock(WinnerManagementRepository.class);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Event openEvent = event(10L, 100L, "운영 이벤트");
         ReflectionTestUtils.setField(openEvent, "status", kr.co.cking.event.domain.EventStatus.OPEN);
@@ -85,7 +88,7 @@ class EventReviewServiceTest {
                 .willReturn(new PageImpl<>(List.of(openEvent), pageable, 1));
         given(creatorRepository.findByCreatorIdIn(List.of(100L))).willReturn(List.of(creator));
         EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
-                eventCommandService, creatorRepository);
+                eventCommandService, creatorRepository, winnerManagementRepository);
 
         var result = service.findManagedEvents(1L, kr.co.cking.event.domain.EventStatus.OPEN, pageable);
 
