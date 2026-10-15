@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 개발 서버 배포 스크립트. SSM Run Command가 root로 실행한다.
 # 사용법: deploy.sh <이미지 태그>
+#         PARAM_PATH=/cking/loadtest/ deploy.sh <이미지 태그>  (읽을 Parameter Store 경로, 기본 /cking/dev/)
 #
 # 수동 롤백: 이전 태그를 인자로 주면 그 버전으로 되돌아간다.
 set -euo pipefail
@@ -8,7 +9,7 @@ set -euo pipefail
 TAG="${1:?사용법: deploy.sh <이미지 태그>}"
 REGION="ap-northeast-2"
 BUCKET="dev-cking-deploy-551372961758"
-PARAM_PATH="/cking/dev/"
+PARAM_PATH="${PARAM_PATH:-/cking/dev/}"
 APP_DIR="/opt/cking"
 HEALTH_URL="http://localhost:8080/readyz"
 HEALTH_TIMEOUT=90   # 초. 수동 배포 때 기동에 30초 안팎 걸렸고, RDS 연결 지연을 감안해 3배로 둔다.
