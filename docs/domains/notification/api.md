@@ -60,3 +60,18 @@ Bearer Access JWT가 필수다. 사용자가 자신의 인앱 알림을 읽음 �
 - 타 사용자의 알림은 `FORBIDDEN`을 반환한다.
 - 최초 요청만 UTC `readAt`을 저장하며, 이후 요청은 기존 값을 반환한다.
 - 알림 행을 비관적 쓰기 잠금으로 조회해 동시 요청에도 하나의 `readAt`을 보장한다.
+
+## PATCH /api/me/notifications/read
+
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 요청 본문과 페이지 매개변수는 없다. 현재 사용자의 `readAt`이 `null`인 알림 전체를 읽음 처리한다. 목록 조회의 `page`·`size`와 관계없이 처리한다.
+
+```json
+{
+  "readCount": 3
+}
+```
+
+- `readCount`는 이번 요청에서 새로 읽음 처리된 알림 수다. 미확인 알림이 없거나 같은 요청을 반복하면 `0`이다.
+- 이미 읽은 알림의 최초 `readAt`은 변경하지 않는다. 개별 읽음 API와 함께 호출해도 행의 최초 읽음 시각을 유지한다.
+- 다른 사용자의 알림은 변경하지 않는다. 존재하지 않는 Member는 `RESOURCE_NOT_FOUND`를 반환한다.
+- 기존 `notification.read_at`을 사용하며 DB 변경은 없다.

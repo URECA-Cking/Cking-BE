@@ -1,12 +1,14 @@
 package kr.co.cking.notification.repository;
 
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.Optional;
 import kr.co.cking.notification.domain.Notification;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -20,4 +22,10 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select notification from Notification notification where notification.notificationId = :notificationId")
     Optional<Notification> findByIdForUpdate(@Param("notificationId") Long notificationId);
+
+    /** 요청 Member의 아직 읽지 않은 모든 Notification에 최초 읽음 시각을 기록한다. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Notification notification set notification.readAt = :readAt "
+            + "where notification.memberId = :memberId and notification.readAt is null")
+    int markAllUnreadAsRead(@Param("memberId") Long memberId, @Param("readAt") Instant readAt);
 }

@@ -68,6 +68,42 @@ class NotificationRepositoryJpaTest {
         assertThat(result.getFirst().getReadAt()).isEqualTo(Instant.parse("2026-09-17T01:00:00Z"));
     }
 
+    /** 전체 읽음 UPDATE가 페이지 밖의 미확인 알림까지 처리하고 기존 시각과 타인 알림은 보존하는지 검증한다. */
+    @Test
+    void 전체_읽음은_페이지와_무관하게_미확인_알림만_변경한다() {
+        Fixture fixture = fixture();
+        Instant previousReadAt = Instant.parse("2026-09-17T01:00:00Z");
+        Instant bulkReadAt = Instant.parse("2026-10-15T01:00:00Z");
+        Notification unreadWinner = saveNotification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.INITIAL_WINNER, "미확인 당첨 알림", Instant.parse("2026-09-17T00:00:00Z"), null);
+        Notification alreadyRead = saveNotification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.REDRAW_WINNER, "기존 읽음 알림", Instant.parse("2026-09-18T00:00:00Z"), previousReadAt);
+        long sanctionId = saveSanction(fixture.memberId());
+        Notification unreadSanction = notificationRepository.saveAndFlush(Notification.forSanction(
+                fixture.memberId(), sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, "미확인 제재 알림", "본문"));
+        Notification otherMember = saveNotification(
+                fixture.otherMemberId(), fixture.eventId(), fixture.drawingId(), fixture.otherMemberWinnerId(),
+                NotificationType.INITIAL_WINNER, "타인 알림", Instant.parse("2026-09-19T00:00:00Z"), null);
+        assertThat(notificationRepository.findByMemberId(fixture.memberId(),
+                PageRequest.of(0, 1, NOTIFICATION_LIST_SORT)).getContent()).hasSize(1);
+        entityManager.clear();
+
+        assertThat(notificationRepository.markAllUnreadAsRead(fixture.memberId(), bulkReadAt)).isEqualTo(2);
+        assertThat(notificationRepository.markAllUnreadAsRead(fixture.memberId(), bulkReadAt.plusSeconds(1))).isZero();
+        entityManager.clear();
+
+        assertThat(notificationRepository.findById(unreadWinner.getNotificationId()).orElseThrow().getReadAt())
+                .isEqualTo(bulkReadAt);
+        assertThat(notificationRepository.findById(unreadSanction.getNotificationId()).orElseThrow().getReadAt())
+                .isEqualTo(bulkReadAt);
+        assertThat(notificationRepository.findById(alreadyRead.getNotificationId()).orElseThrow().getReadAt())
+                .isEqualTo(previousReadAt);
+        assertThat(notificationRepository.findById(otherMember.getNotificationId()).orElseThrow().getReadAt())
+                .isNull();
+    }
+
     @Test
     void 제재_알림은_이벤트_추첨_당첨_없이_저장되고_조회된다() {
         long memberId = insertMember("제재 알림 회원");

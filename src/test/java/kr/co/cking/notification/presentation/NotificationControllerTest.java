@@ -15,6 +15,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.notification.application.NotificationQueryService;
+import kr.co.cking.notification.application.NotificationReadAllResult;
 import kr.co.cking.notification.application.NotificationReadResult;
 import kr.co.cking.notification.application.NotificationReadService;
 import kr.co.cking.notification.application.dto.NotificationSummary;
@@ -122,6 +123,26 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.notificationId").value(10))
                 .andExpect(jsonPath("$.data.readAt").value("2026-09-17T00:00:00Z"));
+    }
+
+    /** 전체 읽음 API는 인증된 사용자의 신규 읽음 건수를 반환한다. */
+    @Test
+    void 전체_읽음_성공_응답을_반환한다() throws Exception {
+        when(notificationReadService.readAll(1L)).thenReturn(new NotificationReadAllResult(3));
+
+        mockMvc.perform(patch("/api/me/notifications/read"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.readCount").value(3));
+    }
+
+    /** 전체 읽음 API도 JWT 없이 호출하면 인증 오류를 반환한다. */
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_전체_읽음은_401과_UNAUTHORIZED를_반환한다() throws Exception {
+        mockMvc.perform(patch("/api/me/notifications/read"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test

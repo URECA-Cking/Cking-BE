@@ -49,6 +49,7 @@
 | 45 | 외부 | Redraw | ADMIN | POST | `/api/admin/redraw-requests/{redrawRequestId}/execute` | REDRAW 실행 | 상태 기반 |
 | 46 | 외부 | Notification | USER | GET | `/api/me/notifications` | 내 알림 | - |
 | 47 | 외부 | Notification | USER | PATCH | `/api/me/notifications/{notificationId}/read` | 알림 읽음 | 상태 기반 |
+| 184 | 외부 | Notification | USER | PATCH | `/api/me/notifications/read` | 내 미확인 알림 전체 읽음 | 상태 기반 |
 | 48 | 외부 | Verification | ADMIN | POST | `/api/admin/drawings/{drawingId}/verify` | 추첨 재현 검증 실행 | 상태 기반 |
 | 49 | 외부 | Verification | ADMIN | GET | `/api/admin/drawings/{drawingId}/verification-history` | 검증 이력 조회 | - |
 | 50 | 내부 | Snapshot | INTERNAL | CALL | `OfficialSnapshotService.createIfAbsent(eventId)` | 공식 Snapshot 생성 | Event 기준 |
