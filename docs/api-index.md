@@ -190,6 +190,8 @@
 | 186 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/generations/current` | 내 진행 중 Quiz 생성 작업(없으면 data 생략, 원문 검토 대기면 AI 원문·facts 포함) | - |
 | 187 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/generations/{generationId}/content-confirmation` | Grounding 원문 확정 후 Quiz 생성 시작(202, 정규화 없음, 다른 원문 재확정 409, 기능 꺼짐 시 503) | 같은 원문 |
 | 188 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/generations/{generationId}/cancel` | 원문 검토 대기 작업 취소(진행 중 작업 제한 해제, 기능 꺼짐에도 허용) | 상태 기반 |
-| 189 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/archive` | PUBLISHED Event 전역 보관(사용자 조회·응모·당첨·알림 제외) | 상태 기반 |
-| 190 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/unarchive` | 보관 PUBLISHED Event 복원 | 상태 기반 |
+| 189 | 외부 | Mission | USER | GET | `/api/me/welcome-quest` | [웰컴 퀘스트 상태 조회](domains/mission/welcome-quest.md#get-apimewelcome-quest) (공용 미션 목록과 분리) | - |
+| 190 | 외부 | Mission | USER | POST | `/api/me/welcome-quest/{step}/claim` | [웰컴 퀘스트 단계·보너스 지급](domains/mission/welcome-quest.md#post-apimewelcome-queststepclaim) | `requestId`·회원/단계 평생 1회 |
+| 191 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/archive` | PUBLISHED Event 전역 보관(사용자 조회·응모·당첨·알림 제외) | 상태 기반 |
+| 192 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/unarchive` | 보관 PUBLISHED Event 복원 | 상태 기반 |
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

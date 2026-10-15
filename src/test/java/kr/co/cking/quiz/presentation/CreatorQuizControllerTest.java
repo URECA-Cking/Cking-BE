@@ -23,8 +23,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
@@ -90,6 +93,43 @@ class CreatorQuizControllerTest {
                 .andExpect(jsonPath("$.data.questions[0].options[1].optionNo").value(1))
                 .andExpect(jsonPath("$.data.questions[0].options[1].text").value("돌"))
                 .andExpect(jsonPath("$.data.questions[0].explanation").value("해설"))
+                .andExpect(jsonPath("$.data.contentText").value(QuizFixtures.CONTENT_TEXT));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void revision_상세는_원문_수정_여부와_확정_시각을_함께_준다() throws Exception {
+        given(queryService.findRevision(7L, 1L, 100L)).willReturn(new CreatorQuizViews.Revision(
+                1L, 100L, 1, true, false, QuizFixtures.TITLE, QuizFixtures.VIDEO_ID, QuizFixtures.PROMPT_VERSION,
+                QuizFixtures.CONTENT_TEXT, QuizReviewStatus.PENDING_REVIEW, null, null, QuizFixtures.NOW,
+                List.of(new QuizQuestionContent(0, "질문", List.of("구름", "돌"), 1, "해설", "근거")),
+                true, Instant.parse("2026-10-15T01:02:03.456Z")));
+
+        mockMvc.perform(get("/api/creator/quizzes/1/revisions/100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentEdited").value(true))
+                .andExpect(jsonPath("$.data.contentConfirmedAt").value("2026-10-15T01:02:03.456Z"))
+                .andExpect(jsonPath("$.data.contentText").value(QuizFixtures.CONTENT_TEXT))
+                .andExpect(jsonPath("$.data.questions[0].options[1].text").value("돌"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 원문_검토_정보가_없는_revision_상세는_두_필드를_null로_직렬화한다() throws Exception {
+        given(queryService.findRevision(7L, 1L, 100L)).willReturn(new CreatorQuizViews.Revision(
+                1L, 100L, 1, true, false, QuizFixtures.TITLE, QuizFixtures.VIDEO_ID, QuizFixtures.PROMPT_VERSION,
+                QuizFixtures.CONTENT_TEXT, QuizReviewStatus.PENDING_REVIEW, null, null, QuizFixtures.NOW,
+                List.of(new QuizQuestionContent(0, "질문", List.of("구름", "돌"), 1, "해설", "근거"))));
+
+        mockMvc.perform(get("/api/creator/quizzes/1/revisions/100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("contentEdited")))
+                .andExpect(jsonPath("$.data", hasKey("contentConfirmedAt")))
+                .andExpect(jsonPath("$.data.contentEdited").value(nullValue()))
+                .andExpect(jsonPath("$.data.contentConfirmedAt").value(nullValue()))
+                .andExpect(jsonPath("$.data.quizId").value(1))
+                .andExpect(jsonPath("$.data.revisionId").value(100))
+                .andExpect(jsonPath("$.data.reviewStatus").value("PENDING_REVIEW"))
                 .andExpect(jsonPath("$.data.contentText").value(QuizFixtures.CONTENT_TEXT));
     }
 

@@ -44,12 +44,10 @@ public record QuizGenerationView(
     }
 
     public static QuizGenerationView of(QuizGeneration generation) {
-        String reviewed = generation.getReviewedContentText();
         return new QuizGenerationView(generation.getGenerationId(), generation.getStatus(), generation.getVideoId(),
                 generation.getTitle(), generation.getQuestionCount(), generation.getOptionCount(),
                 generation.getQuizId(), generation.getRevisionId(), generation.getFailureCode(),
                 generation.getRequestedAt(), generation.getStartedAt(), generation.getCompletedAt(),
-                generation.getReviewStage(), reviewed == null ? null : !reviewed.equals(generation.getAiContentText()),
-                generation.getContentConfirmedAt());
+                generation.getReviewStage(), generation.contentEdited(), generation.getContentConfirmedAt());
     }
 }
