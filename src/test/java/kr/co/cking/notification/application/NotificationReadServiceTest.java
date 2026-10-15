@@ -3,7 +3,10 @@ package kr.co.cking.notification.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -100,6 +103,30 @@ class NotificationReadServiceTest {
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CommonErrorCode.FORBIDDEN);
         assertThat(notification.getReadAt()).isNull();
+    }
+
+    /** 전체 읽음은 요청 사용자만 대상으로 미확인 알림의 변경 건수를 반환한다. */
+    @Test
+    void 전체_읽음은_새로_읽은_알림_건수를_반환한다() {
+        given(memberRepository.existsById(1L)).willReturn(true);
+        given(notificationRepository.markAllUnreadAsRead(eq(1L), any(Instant.class))).willReturn(3);
+
+        NotificationReadAllResult result = notificationReadService.readAll(1L);
+
+        assertThat(result.readCount()).isEqualTo(3);
+        verify(notificationRepository).markAllUnreadAsRead(eq(1L), any(Instant.class));
+    }
+
+    /** 존재하지 않는 사용자의 전체 읽음 요청은 알림을 수정하지 않는다. */
+    @Test
+    void 전체_읽음에서_존재하지_않는_Member는_RESOURCE_NOT_FOUND다() {
+        given(memberRepository.existsById(99L)).willReturn(false);
+
+        assertThatThrownBy(() -> notificationReadService.readAll(99L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+        verifyNoInteractions(notificationRepository);
     }
 
     /** 테스트에 필요한 Notification을 생성하고 식별자를 부여한다. */

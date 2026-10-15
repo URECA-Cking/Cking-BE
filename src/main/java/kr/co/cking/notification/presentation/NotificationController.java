@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
+import kr.co.cking.notification.application.NotificationReadAllResult;
 import kr.co.cking.notification.application.NotificationReadResult;
 import kr.co.cking.notification.application.NotificationReadService;
 import kr.co.cking.notification.application.NotificationQueryService;
@@ -49,5 +50,12 @@ public class NotificationController {
             @CurrentMemberId Long memberId
     ) {
         return ApiResponse.success(notificationReadService.read(memberId, notificationId));
+    }
+
+    /** 요청 사용자의 미확인 알림 전체를 읽음 처리하고 새로 처리한 건수를 반환한다. */
+    @PatchMapping("/api/me/notifications/read")
+    @Operation(summary = "내 알림 전체 읽음 처리", description = "인증된 사용자의 읽지 않은 알림을 페이지와 관계없이 모두 읽음 처리하고 새로 처리한 건수를 반환합니다. 반복 요청 시 이미 읽은 알림의 시각은 유지됩니다.")
+    public ApiResponse<NotificationReadAllResult> readAll(@CurrentMemberId Long memberId) {
+        return ApiResponse.success(notificationReadService.readAll(memberId));
     }
 }

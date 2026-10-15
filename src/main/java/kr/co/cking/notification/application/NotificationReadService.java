@@ -34,6 +34,14 @@ public class NotificationReadService {
         return new NotificationReadResult(notification.getNotificationId(), notification.getReadAt());
     }
 
+    /** 요청 사용자의 미확인 Notification 전체를 읽음 처리하고 새로 처리한 건수를 반환한다. */
+    @Transactional
+    public NotificationReadAllResult readAll(Long userId) {
+        validateMember(userId);
+        int readCount = notificationRepository.markAllUnreadAsRead(userId, Instant.now());
+        return new NotificationReadAllResult(readCount);
+    }
+
     /** 요청 사용자 존재 여부를 검증한다. */
     private void validateMember(Long userId) {
         if (!memberRepository.existsById(userId)) {

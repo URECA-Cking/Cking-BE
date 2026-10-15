@@ -24,6 +24,7 @@
 ## Repository 계약
 
 - `NotificationRepository.findByMemberId(memberId, pageable)`은 요청 Member의 행만 반환한다.
+- 전체 읽음 처리는 페이지 조회를 거치지 않고 `(member_id, read_at IS NULL)` 조건의 UPDATE로 미확인 행만 변경한다. 이미 읽은 알림의 최초 읽음 시각은 유지한다.
 - Event·Drawing 조회는 Notification Query Service가 ID 묶음으로 조회해 응답을 조합한다. ID가 NULL인 제재 알림은 조회 대상에서 빼며, 응답의 `event`·`drawing`은 `null`이다. ID가 있는데 대상이 없으면(당첨 알림) 서버 정합성 오류다.
 
 API 계약은 [api.md](api.md)에 정의한다. DB 구조의 정본은 `src/main/resources/db/migration/`이다.
