@@ -24,6 +24,9 @@ public interface QuizGenerationRepository extends JpaRepository<QuizGeneration, 
     Optional<QuizGeneration> findFirstByCreatorIdAndStatusInOrderByRequestedAtDesc(
             Long creatorId, Collection<QuizGenerationStatus> statuses);
 
+    /** Quiz를 만든 생성 작업. 성공한 작업 하나가 Quiz 하나를 만든다. */
+    Optional<QuizGeneration> findFirstByQuizIdOrderByGenerationIdAsc(Long quizId);
+
     /** 결과 저장과 상태 정리가 겹치지 않도록 작업 행을 잠근다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select g from QuizGeneration g where g.generationId = :generationId")

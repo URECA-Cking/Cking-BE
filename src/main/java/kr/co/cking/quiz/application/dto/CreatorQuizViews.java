@@ -52,7 +52,12 @@ public final class CreatorQuizViews {
     ) {
     }
 
-    /** @param decisionReason 거절 사유. 승인·검토 대기면 null */
+    /**
+     * @param decisionReason     거절 사유. 승인·검토 대기면 null
+     * @param contentEdited      Quiz 원문(확정 원문)이 AI 원문과 다른지(이슈 #622). Quiz 단위라 같은 Quiz의 모든 revision에서
+     *                           같다. 원문 검토 없이 만든 Quiz나 생성 작업이 없는 Quiz는 null이다
+     * @param contentConfirmedAt Creator가 원문을 확정한 시각. contentEdited가 null이면 null이다
+     */
     public record Revision(
             Long quizId,
             Long revisionId,
@@ -67,7 +72,18 @@ public final class CreatorQuizViews {
             String decisionReason,
             Instant decidedAt,
             Instant createdAt,
-            List<QuizQuestionContent> questions
+            List<QuizQuestionContent> questions,
+            Boolean contentEdited,
+            Instant contentConfirmedAt
     ) {
+
+        /** 원문 검토 정보가 없는 revision 상세. */
+        public Revision(Long quizId, Long revisionId, int revisionNo, boolean latest, boolean published, String title,
+                        String videoId, String promptVersion, String contentText, QuizReviewStatus reviewStatus,
+                        String decisionReason, Instant decidedAt, Instant createdAt,
+                        List<QuizQuestionContent> questions) {
+            this(quizId, revisionId, revisionNo, latest, published, title, videoId, promptVersion, contentText,
+                    reviewStatus, decisionReason, decidedAt, createdAt, questions, null, null);
+        }
     }
 }

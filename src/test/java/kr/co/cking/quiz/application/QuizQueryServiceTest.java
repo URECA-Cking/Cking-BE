@@ -11,10 +11,14 @@ import kr.co.cking.quiz.QuizFixtures;
 import kr.co.cking.quiz.application.dto.CreatorQuizViews;
 import kr.co.cking.quiz.application.dto.PublicQuizViews;
 import kr.co.cking.quiz.domain.Quiz;
+import kr.co.cking.quiz.domain.QuizGeneration;
+import kr.co.cking.quiz.domain.QuizGenerationReviewStage;
+import kr.co.cking.quiz.domain.QuizGenerationStatus;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizReviewStatus;
 import kr.co.cking.quiz.domain.QuizRevision;
 import kr.co.cking.quiz.repository.PublishedQuizSummary;
+import kr.co.cking.quiz.repository.QuizGenerationRepository;
 import kr.co.cking.quiz.repository.QuizOptionRepository;
 import kr.co.cking.quiz.repository.QuizQuestionRepository;
 import kr.co.cking.quiz.repository.QuizRepository;
@@ -28,6 +32,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,7 +40,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 class QuizQueryServiceTest {
 
@@ -50,11 +58,12 @@ class QuizQueryServiceTest {
     private final QuizRevisionDecisionRepository decisionRepository = mock(QuizRevisionDecisionRepository.class);
     private final QuizQuestionRepository questionRepository = mock(QuizQuestionRepository.class);
     private final QuizOptionRepository optionRepository = mock(QuizOptionRepository.class);
+    private final QuizGenerationRepository generationRepository = mock(QuizGenerationRepository.class);
     private final QuizRevisionReader reader = new QuizRevisionReader(questionRepository, optionRepository, revisionRepository);
 
     private final CreatorQuizQueryService creatorQueryService = new CreatorQuizQueryService(
             new QuizCreatorLookup(memberRepository, creatorRepository), quizRepository, revisionRepository,
-            decisionRepository, reader);
+            decisionRepository, reader, generationRepository);
     private final PublicQuizQueryService publicQueryService = new PublicQuizQueryService(
             creatorRepository, quizRepository, revisionRepository, reader);
 
@@ -106,6 +115,76 @@ class QuizQueryServiceTest {
         assertThat(view.contentText()).isEqualTo(QuizFixtures.CONTENT_TEXT);
         assertThat(view.questions()).extracting(question -> question.correctOptionIndex()).containsExactly(0, 1);
         assertThat(view.questions().get(1).options()).containsExactly("눈", "비");
+    }
+
+    @Test
+    void revision_상세는_원문을_고쳐_확정했으면_수정됨과_확정_시각을_보여준다() {
+        Instant confirmedAt = Instant.parse("2026-10-15T01:02:03.456Z");
+        givenRevisions();
+        given(generationRepository.findFirstByQuizIdOrderByGenerationIdAsc(QUIZ_ID))
+                .willReturn(Optional.of(confirmed("AI 원문", "고친 원문", confirmedAt)));
+
+        CreatorQuizViews.Revision view = creatorQueryService.findRevision(MEMBER_ID, QUIZ_ID, 100L);
+
+        assertThat(view.contentEdited()).isTrue();
+        assertThat(view.contentConfirmedAt()).isEqualTo(confirmedAt);
+        assertThat(view.contentText()).as("기존 필드는 Quiz 원문 그대로").isEqualTo(QuizFixtures.CONTENT_TEXT);
+    }
+
+    @Test
+    void revision_상세는_AI_원문_그대로_확정했으면_수정되지_않음이다() {
+        givenRevisions();
+        given(generationRepository.findFirstByQuizIdOrderByGenerationIdAsc(QUIZ_ID))
+                .willReturn(Optional.of(confirmed("AI 원문", "AI 원문", QuizFixtures.NOW)));
+
+        CreatorQuizViews.Revision view = creatorQueryService.findRevision(MEMBER_ID, QUIZ_ID, 100L);
+
+        assertThat(view.contentEdited()).isFalse();
+        assertThat(view.contentConfirmedAt()).isEqualTo(QuizFixtures.NOW);
+    }
+
+    @Test
+    void 원문_검토_없이_만든_Quiz와_생성_작업이_없는_Quiz는_원문_검토_정보가_null이다() {
+        givenRevisions();
+        QuizGeneration legacy = new QuizGeneration(CREATOR_ID, MEMBER_ID, "req", QuizFixtures.VIDEO_ID, "제목", 3,
+                QuizFixtures.NOW);
+        ReflectionTestUtils.setField(legacy, "status", QuizGenerationStatus.RUNNING);
+        legacy.succeed(QUIZ_ID, 100L, QuizFixtures.NOW);
+        given(generationRepository.findFirstByQuizIdOrderByGenerationIdAsc(QUIZ_ID)).willReturn(Optional.of(legacy));
+
+        CreatorQuizViews.Revision legacyView = creatorQueryService.findRevision(MEMBER_ID, QUIZ_ID, 100L);
+
+        assertThat(legacyView.contentEdited()).isNull();
+        assertThat(legacyView.contentConfirmedAt()).isNull();
+
+        given(generationRepository.findFirstByQuizIdOrderByGenerationIdAsc(QUIZ_ID)).willReturn(Optional.empty());
+        CreatorQuizViews.Revision noGeneration = creatorQueryService.findRevision(MEMBER_ID, QUIZ_ID, 100L);
+
+        assertThat(noGeneration.contentEdited()).isNull();
+        assertThat(noGeneration.contentConfirmedAt()).isNull();
+    }
+
+    @Test
+    void 같은_Quiz의_모든_revision은_같은_원문_검토_정보를_보여준다() {
+        givenRevisions();
+        given(generationRepository.findFirstByQuizIdOrderByGenerationIdAsc(QUIZ_ID))
+                .willReturn(Optional.of(confirmed("AI 원문", "고친 원문", QuizFixtures.NOW)));
+
+        CreatorQuizViews.Revision first = creatorQueryService.findRevision(MEMBER_ID, QUIZ_ID, 100L);
+        CreatorQuizViews.Revision second = creatorQueryService.findRevision(MEMBER_ID, QUIZ_ID, 101L);
+
+        assertThat(second.latest()).isTrue();
+        assertThat(second.contentEdited()).isEqualTo(first.contentEdited()).isTrue();
+        assertThat(second.contentConfirmedAt()).isEqualTo(first.contentConfirmedAt()).isEqualTo(QuizFixtures.NOW);
+    }
+
+    @Test
+    void 다른_Creator의_Quiz_revision은_원문_검토_정보를_조회하지_않고_403이다() {
+        givenRevisions();
+        ReflectionTestUtils.setField(quiz, "creatorId", 99L);
+
+        assertError(() -> creatorQueryService.findRevision(MEMBER_ID, QUIZ_ID, 100L), CommonErrorCode.FORBIDDEN);
+        then(generationRepository).should(never()).findFirstByQuizIdOrderByGenerationIdAsc(anyLong());
     }
 
     @Test
@@ -171,6 +250,25 @@ class QuizQueryServiceTest {
         assertThat(summary.publishedAt()).isEqualTo(QuizFixtures.NOW);
         assertThat(page.getNumber()).isEqualTo(1);
         assertThat(page.getTotalElements()).isEqualTo(3);
+    }
+
+    private void givenRevisions() {
+        given(revisionRepository.findByQuizIdOrderByRevisionNoAsc(QUIZ_ID)).willReturn(List.of(
+                QuizFixtures.revision(100L, QUIZ_ID, 1), QuizFixtures.revision(101L, QUIZ_ID, 2)));
+        given(decisionRepository.findByRevisionId(anyLong())).willReturn(Optional.empty());
+        given(questionRepository.findByRevisionIdOrderByQuestionNoAsc(101L)).willReturn(QuizFixtures.questionRows(101L));
+    }
+
+    /** 원문을 확정해 Quiz를 만든 원문 검토 작업. */
+    private static QuizGeneration confirmed(String aiContentText, String reviewedContentText, Instant confirmedAt) {
+        QuizGeneration generation = new QuizGeneration(CREATOR_ID, MEMBER_ID, "req", QuizFixtures.VIDEO_ID, "제목", 3,
+                QuizFixtures.NOW, true);
+        ReflectionTestUtils.setField(generation, "status", QuizGenerationStatus.RUNNING);
+        ReflectionTestUtils.setField(generation, "reviewStage", QuizGenerationReviewStage.AWAITING_REVIEW);
+        ReflectionTestUtils.setField(generation, "aiContentText", aiContentText);
+        generation.confirmContent(reviewedContentText, "sha", MEMBER_ID, confirmedAt);
+        generation.succeed(QUIZ_ID, 100L, confirmedAt);
+        return generation;
     }
 
     private static void assertError(ThrowingCallable call, ErrorCode errorCode) {
