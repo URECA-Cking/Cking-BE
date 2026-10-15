@@ -5,6 +5,7 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 ## 문서
 
 - [미션 완료 API](api.md): `POST .../missions/{missionId}/complete` 계약, 공용 미션 API 포함
+- [웰컴 퀘스트 API](welcome-quest.md): 신규 회원의 단계·독립 보너스 상태와 공용 응모권 지급 목표 계약
 
 ## 소유 데이터와 경계
 
