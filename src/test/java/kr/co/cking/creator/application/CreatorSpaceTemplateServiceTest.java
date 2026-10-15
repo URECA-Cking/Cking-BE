@@ -3,12 +3,14 @@ package kr.co.cking.creator.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
+import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorSpaceTemplateRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
@@ -18,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,6 +32,76 @@ class CreatorSpaceTemplateServiceTest {
             "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
     );
 
+    private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
+
+    @Test
+    void creatingPinsUploadedTemplateImagesBeforeSavingInTheSameTransaction() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        CreatorSpaceTemplateRepository templateRepository = mock(CreatorSpaceTemplateRepository.class);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(new Member("관리자", null, null, MemberRole.ADMIN)));
+        given(templateRepository.save(any(CreatorSpaceTemplate.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(
+                memberRepository, templateRepository, mock(CreatorApplicationLockManager.class), imagePinner);
+
+        service.create(1L, FIELDS);
+
+        InOrder order = inOrder(imagePinner, templateRepository);
+        order.verify(imagePinner).pin("https://img/profile.png", "https://img/banner.png");
+        order.verify(templateRepository).save(any(CreatorSpaceTemplate.class));
+    }
+
+    @Test
+    void creatingIsRejectedAndNotSavedWhenAnImageWasAlreadyCleanedUp() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        CreatorSpaceTemplateRepository templateRepository = mock(CreatorSpaceTemplateRepository.class);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(new Member("관리자", null, null, MemberRole.ADMIN)));
+        willThrow(new BusinessException(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE)).given(imagePinner).pin(any(), any());
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(
+                memberRepository, templateRepository, mock(CreatorApplicationLockManager.class), imagePinner);
+
+        assertThatThrownBy(() -> service.create(1L, FIELDS))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE);
+
+        verify(templateRepository, never()).save(any());
+    }
+
+    @Test
+    void updatingPinsTheNewUrlsAndKeepsTheTemplateUnchangedWhenPinningFails() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        CreatorSpaceTemplateRepository templateRepository = mock(CreatorSpaceTemplateRepository.class);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(new Member("관리자", null, null, MemberRole.ADMIN)));
+        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
+                1L, "기존 소개", "https://img/old-profile.png", "https://img/old-banner.png", "creator-{creatorId}");
+        given(templateRepository.findById(100L)).willReturn(Optional.of(template));
+        willThrow(new BusinessException(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE)).given(imagePinner).pin(any(), any());
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(
+                memberRepository, templateRepository, mock(CreatorApplicationLockManager.class), imagePinner);
+
+        assertThatThrownBy(() -> service.update(1L, 100L, FIELDS)).isInstanceOf(BusinessException.class);
+
+        verify(imagePinner).pin("https://img/profile.png", "https://img/banner.png");
+        assertThat(template.getIntroText()).isEqualTo("기존 소개");
+        assertThat(template.getBannerImageUrl()).isEqualTo("https://img/old-banner.png");
+    }
+
+    @Test
+    void nonAdminAndMissingTemplateNeverPinImages() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        CreatorSpaceTemplateRepository templateRepository = mock(CreatorSpaceTemplateRepository.class);
+        given(memberRepository.findById(2L)).willReturn(Optional.of(new Member("일반사용자", null, null, MemberRole.USER)));
+        given(memberRepository.findById(1L)).willReturn(Optional.of(new Member("관리자", null, null, MemberRole.ADMIN)));
+        given(templateRepository.findById(100L)).willReturn(Optional.empty());
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(
+                memberRepository, templateRepository, mock(CreatorApplicationLockManager.class), imagePinner);
+
+        assertThatThrownBy(() -> service.create(2L, FIELDS)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.update(1L, 100L, FIELDS)).isInstanceOf(BusinessException.class);
+
+        verify(imagePinner, never()).pin(any(), any());
+    }
+
     @Test
     void nonAdminCannotCreateTemplate() {
         MemberRepository memberRepository = mock(MemberRepository.class);
@@ -35,7 +109,7 @@ class CreatorSpaceTemplateServiceTest {
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
         Member user = new Member("일반사용자", null, null, MemberRole.USER);
         given(memberRepository.findById(1L)).willReturn(Optional.of(user));
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         assertThatThrownBy(() -> service.create(1L, FIELDS))
                 .isInstanceOf(BusinessException.class)
@@ -52,7 +126,7 @@ class CreatorSpaceTemplateServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         given(templateRepository.save(any(CreatorSpaceTemplate.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         CreatorSpaceTemplate created = service.create(1L, FIELDS);
 
@@ -69,7 +143,7 @@ class CreatorSpaceTemplateServiceTest {
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         given(templateRepository.findById(100L)).willReturn(Optional.empty());
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         assertThatThrownBy(() -> service.update(1L, 100L, FIELDS))
                 .isInstanceOf(BusinessException.class)
@@ -94,7 +168,7 @@ class CreatorSpaceTemplateServiceTest {
         given(templateRepository.findByIdForActivation(20L)).willReturn(Optional.of(target));
         given(templateRepository.findByActiveMarkerForActivation(CreatorSpaceTemplate.ACTIVE_MARKER))
                 .willReturn(Optional.of(current));
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         CreatorSpaceTemplate activated = service.activate(1L, 20L);
 
@@ -117,7 +191,7 @@ class CreatorSpaceTemplateServiceTest {
         ReflectionTestUtils.setField(target, "templateId", 20L);
         given(templateRepository.existsById(20L)).willReturn(true);
         given(templateRepository.findByIdForActivation(20L)).willReturn(Optional.of(target));
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         service.activate(1L, 20L);
 
@@ -137,7 +211,7 @@ class CreatorSpaceTemplateServiceTest {
         CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
         Member user = new Member("일반사용자", null, null, MemberRole.USER);
         given(memberRepository.findById(1L)).willReturn(Optional.of(user));
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         assertThatThrownBy(() -> service.activate(1L, 20L))
                 .isInstanceOf(BusinessException.class)
@@ -156,7 +230,7 @@ class CreatorSpaceTemplateServiceTest {
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         given(templateRepository.existsById(999L)).willReturn(false);
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         assertThatThrownBy(() -> service.activate(1L, 999L))
                 .isInstanceOf(BusinessException.class)
@@ -174,7 +248,7 @@ class CreatorSpaceTemplateServiceTest {
         CreatorSpaceTemplate active = new CreatorSpaceTemplate(1L, "신규", "p", "b", "s");
         active.activate(1L);
         given(templateRepository.findByActiveMarker(CreatorSpaceTemplate.ACTIVE_MARKER)).willReturn(Optional.of(active));
-        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager);
+        CreatorSpaceTemplateService service = new CreatorSpaceTemplateService(memberRepository, templateRepository, lockManager, imagePinner);
 
         Optional<CreatorSpaceTemplate> result = service.findActive();
 
