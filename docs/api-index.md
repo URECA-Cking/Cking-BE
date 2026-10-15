@@ -139,7 +139,7 @@
 | 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |
 | 136 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/reports` | 게시글 댓글 신고(게시글을 볼 수 있는 사용자, 본인 댓글 제외) | 신고자+댓글당 1건(재신고는 기존 신고 반환) |
 | 137 | 외부 | Post | ADMIN | GET | `/api/admin/comment-reports` | 신고된 게시글 댓글 목록(댓글별 신고 수·접수 수·사유별 수·처리 상태, 최근 신고 순, `status` 필터) | - |
-| 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V50, 기존 회원은 전원 true) | 상태 기반 |
+| 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`는 온보딩 여부이며 웰컴 퀘스트 신규 판정과 무관 | 상태 기반 |
 | 139 | 외부 | Drawing | ADMIN | GET | `/api/admin/events/{eventId}/drawings/initial` | Event의 INITIAL Drawing 조회 | - |
 | 140 | 외부 | Creator 추천 | USER | POST | `/api/me/creator-recommendation-events` | 실제 노출·클릭 최대 50건 원자 수집, JWT 소유권/후보/신규 이벤트 24시간 검증, 보존 중 승인 재전송은 만료 후 멱등 성공 | eventId 및 요청+Creator+타입 |
 | 141 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes` | 내 Quiz 목록(최신 revision 제목·검토 상태, 최근 생성 순) | - |

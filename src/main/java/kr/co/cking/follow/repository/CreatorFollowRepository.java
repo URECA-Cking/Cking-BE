@@ -39,6 +39,9 @@ public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Lo
     /** 크리에이터의 팔로워 수. idx_creator_follow_creator로 집계한다. */
     long countByCreatorId(Long creatorId);
 
+    /** 회원이 현재 팔로우 중인 Creator 수를 상태 변경 없이 조회한다. */
+    long countByMemberId(Long memberId);
+
     @Query("select f from CreatorFollow f where f.memberId = :memberId order by f.createdAt desc, f.followId desc")
     Page<CreatorFollow> findByMemberIdLatestFirst(@Param("memberId") Long memberId, Pageable pageable);
 

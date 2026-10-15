@@ -5,7 +5,9 @@ Mission 도메인은 크리에이터별 미션 정의(`mission`)와 공용 미�
 ## 문서
 
 - [미션 완료 API](api.md): `POST .../missions/{missionId}/complete` 계약, 공용 미션 API 포함
-- [웰컴 퀘스트 API](welcome-quest.md): 신규 회원의 단계·독립 보너스 상태와 공용 응모권 지급 목표 계약
+- [웰컴 퀘스트 API](welcome-quest.md): 신규 회원의 단계·독립 보너스 상태와 공용 응모권 지급 계약
+
+웰컴 퀘스트는 `WelcomeQuestService`가 고정 UTC 활성화 시각, 현재 팔로우 수, QUIZ 답안을 판정한다. Ticket의 `CommonTicketOnceEarnService`에 회원·보상 종류·금액을 전달하며, Mission은 Redis·원장·잔액을 직접 변경하지 않는다. 상태 조회는 Ticket의 승인된 보상 종류만 읽고 지급 기록을 만들지 않는다.
 
 ## 소유 데이터와 경계
 
@@ -60,7 +62,7 @@ Creator LIKE·Creator SHARE·공용 ATTENDANCE는 Member와 대상 Mission 등 �
 - **적립은 별도의 공용 EARN 경로를 탄다.** `CommonTicketEarnService`/`common-ticket-earn.lua`/`stream:common-ticket-earned`가 `TicketEarnService`/`ticket-earn.lua`/`stream:ticket-earned`와 같은 원자성·멱등성을 크리에이터 축 없이 재현한다. 자세한 계약은 [Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219)을 참고한다.
 - **공용 미션은 유형당 하나뿐이라(`uk_common_mission_type`) 생성 계기(Creator 승인 같은)가 없다.** `V16__add_common_ticket.sql`이 기본 출석 미션(reward 1, 상시 활성)을 직접 시딩한다 — 이슈 #185의 크리에이터별 기본 미션 초기화와 동일한 정책이지만 코드가 아니라 데이터로 고정했다.
 - **PEL 회수·Dead Stream 이관·수동 replay가 크리에이터 EARN과 동일하게 갖춰져 있다**([Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219) 참고).
-- **알려진 제약(미해결)**: 공용 잔액 수동 보정(`TicketCompensationService` 대응)은 아직 없다. 후속 이슈로 남긴다.
+- **공용 잔액 수동 보정**: 현재 `CommonTicketCompensationService`와 관리자 `POST /api/admin/tickets/common/resync`가 제공된다. 상세 안전장치는 [Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219)을 따른다.
 
 ### 출석 전환과 배포 전제
 

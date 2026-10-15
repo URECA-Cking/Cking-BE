@@ -14,6 +14,16 @@ public final class CommonTicketRedisKeys {
         return "idem:common-mission:" + requestId;
     }
 
+    /** 공용 평생 1회 적립 요청의 만료 없는 멱등 키를 만든다. */
+    public static String idemOnce(String requestId) {
+        return "idem:common-once:" + requestId;
+    }
+
+    /** 회원·보상 종류별 만료 없는 Redis Guard 키를 만든다. */
+    public static String onceGuard(Long userId, String rewardType) {
+        return "mission:earn-guard:common:" + userId + ":" + rewardType + ":once";
+    }
+
     // periodKeyYyyyMmDd는 yyyyMMdd(대시 없음) — 호출측에서 변환해서 넘겨야 한다.
     public static String earnGuard(Long userId, String missionType, String periodKeyYyyyMmDd) {
         return "mission:earn-guard:common:" + userId + ":" + missionType + ":" + periodKeyYyyyMmDd;

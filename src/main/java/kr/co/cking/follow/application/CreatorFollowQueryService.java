@@ -45,6 +45,11 @@ public class CreatorFollowQueryService {
         return creatorId == null ? 0L : followRepository.countByCreatorId(creatorId);
     }
 
+    /** 웰컴 퀘스트 등의 조건 판정용으로 현재 회원의 팔로우 수를 읽는다. */
+    public long countFollowedCreators(Long memberId) {
+        return memberId == null ? 0L : followRepository.countByMemberId(memberId);
+    }
+
     /** API용 팔로우 여부 조회. 존재하지 않는 크리에이터는 404다. */
     public boolean findFollowStatus(Long memberId, Long creatorId) {
         if (!creatorRepository.existsById(creatorId)) {

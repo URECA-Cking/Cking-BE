@@ -18,6 +18,8 @@
 -- ARGV[8] = missionType
 -- ARGV[9] = missionId
 -- ARGV[10] = periodKey (fingerprint에는 안 쓰이고 Guard 키 구성과 Stream 발행 필드로만 쓰인다)
+-- ARGV[11] = sourceType (미지정이면 기존 MISSION, ONCE는 평생 1회 적립)
+-- ARGV[12] = rewardType (ONCE일 때만 사용)
 --
 -- 반환: { resultCode, ...옵션 필드 }
 --   ALREADY_PROCESSED / REQUEST_ID_CONFLICT / DUPLICATE_MISSION / EARN_STATUS_UNKNOWN /
@@ -38,6 +40,23 @@ local userId      = ARGV[7]
 local missionType = ARGV[8]
 local missionId   = ARGV[9]
 local periodKey   = ARGV[10]
+local sourceType  = ARGV[11] or 'MISSION'
+local rewardType  = ARGV[12] or ''
+local once        = sourceType == 'ONCE'
+
+-- 평생 1회 요청은 Redis 멱등·Guard 키에도 만료를 두지 않는다.
+local function setIdem(value, onlyIfAbsent)
+    if once then
+        if onlyIfAbsent then
+            return redis.pcall('SET', idemKey, value, 'NX')
+        end
+        return redis.pcall('SET', idemKey, value)
+    end
+    if onlyIfAbsent then
+        return redis.pcall('SET', idemKey, value, 'NX', 'EX', idemTtl)
+    end
+    return redis.pcall('SET', idemKey, value, 'EX', idemTtl)
+end
 
 -- 1) 멱등성 확인
 local stored = redis.call('GET', idemKey)
@@ -57,9 +76,7 @@ if stored then
     local guardValue = requestId .. ':' .. fingerprint
     if redis.call('GET', originalGuardKey) == guardValue then
         local result = { 'ALREADY_PROCESSED' }
-        redis.pcall('SET', idemKey,
-            cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = originalGuardKey }),
-            'EX', idemTtl)
+        setIdem(cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = originalGuardKey }), false)
         return result
     end
     return { 'EARN_STATUS_UNKNOWN' }
@@ -73,9 +90,8 @@ if redis.call('EXISTS', maintenanceLockKey) == 1 then
 end
 
 -- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.
-local idemReserved = redis.call('SET', idemKey,
-    cjson.encode({ fingerprint = fingerprint, status = 'PROCESSING', guardKey = guardKey }),
-    'NX', 'EX', idemTtl)
+local idemReserved = setIdem(
+    cjson.encode({ fingerprint = fingerprint, status = 'PROCESSING', guardKey = guardKey }), true)
 if not idemReserved then
     return redis.error_reply('IDEM_RESERVE_FAILED: unexpected idem conflict for requestId=' .. requestId)
 end
@@ -83,7 +99,12 @@ end
 -- 2) 중복 적립 가드(userId+missionType+yyyyMMdd). 공용 미션은 유형당 하나뿐이라
 -- missionType만으로 이미 유일하다(크리에이터 축이 없음).
 local guardValue = requestId .. ':' .. fingerprint
-local guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+local guardAcquired
+if once then
+    guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX')
+else
+    guardAcquired = redis.pcall('SET', guardKey, guardValue, 'NX', 'EX', guardTtl)
+end
 if type(guardAcquired) == 'table' and guardAcquired.err then
     redis.call('DEL', idemKey)
     return redis.error_reply('GUARD_ACQUIRE_FAILED: ' .. guardAcquired.err)
@@ -110,13 +131,16 @@ if type(newBalance) == 'table' and newBalance.err then
     return redis.error_reply('INCRBY_FAILED: ' .. newBalance.err)
 end
 
-local streamId = redis.pcall('XADD', streamKey, '*',
-    'requestId', requestId,
-    'userId', userId,
-    'missionType', missionType,
-    'missionId', missionId,
-    'periodKey', periodKey,
-    'amount', ARGV[1])
+local streamId
+if once then
+    streamId = redis.pcall('XADD', streamKey, '*',
+        'sourceType', sourceType, 'requestId', requestId, 'userId', userId,
+        'rewardType', rewardType, 'amount', ARGV[1], 'fingerprint', fingerprint)
+else
+    streamId = redis.pcall('XADD', streamKey, '*',
+        'requestId', requestId, 'userId', userId, 'missionType', missionType,
+        'missionId', missionId, 'periodKey', periodKey, 'amount', ARGV[1])
+end
 
 if type(streamId) == 'table' and streamId.err then
     if balanceExisted then
@@ -131,8 +155,6 @@ end
 
 local result = { 'EARN_ACCEPTED', streamId, tostring(newBalance) }
 
-redis.pcall('SET', idemKey,
-    cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = guardKey }),
-    'EX', idemTtl)
+setIdem(cjson.encode({ fingerprint = fingerprint, status = 'COMPLETED', result = result, guardKey = guardKey }), false)
 
 return result

@@ -3,7 +3,7 @@ package kr.co.cking.stream.application;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.domain.DeadStreamType;
 import kr.co.cking.stream.repository.DeadStreamMessageRepository;
-import kr.co.cking.ticket.application.CommonMissionEarnLedgerService;
+import kr.co.cking.ticket.application.CommonEarnEventDispatcher;
 import kr.co.cking.ticket.application.TicketEarnEventDispatcher;
 import kr.co.cking.ticket.application.TicketSpendLedgerService;
 import org.junit.jupiter.api.Test;
@@ -27,7 +27,7 @@ class DeadStreamReplayServiceTest {
     private final DeadStreamMessageRepository repository = mock(DeadStreamMessageRepository.class);
     private final TicketEarnEventDispatcher dispatcher = mock(TicketEarnEventDispatcher.class);
     private final TicketSpendLedgerService spendLedgerService = mock(TicketSpendLedgerService.class);
-    private final CommonMissionEarnLedgerService commonLedgerService = mock(CommonMissionEarnLedgerService.class);
+    private final CommonEarnEventDispatcher commonLedgerService = mock(CommonEarnEventDispatcher.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final DeadStreamReplayService service = new DeadStreamReplayService(repository, dispatcher,
             spendLedgerService, commonLedgerService, objectMapper);

@@ -7,6 +7,8 @@ Java 연동: `kr.co.cking.ticket.application` (`TicketEarnService`/`TicketEarnSe
 
 ## Redis 키
 
+공용 평생 1회 EARN(#628)은 별도 `ticket_common_once_earn_request`를 Redis 전에 선점하고 기존 `common-ticket-earn.lua`를 `sourceType=ONCE`로 호출한다. `idem:common-once:{requestId}`와 `mission:earn-guard:common:{memberId}:{rewardType}:once`에는 TTL이 없다. Lua는 공용 잔액 증가와 기존 공용 EARN Stream 발행을 원자 처리하며, ONCE 메시지에는 `rewardType`·`fingerprint`를 포함한다. `sourceType`이 없는 공용 ATTENDANCE 호출은 기존 UTC 일일 Guard·25시간 TTL을 유지한다.
+
 | 키 | 타입 | TTL | 용도 |
 | --- | --- | --- | --- |
 | `idem:mission:{requestId}` | STRING(JSON) | 25시간 | DAILY requestId 기준 결과 재현. `{fingerprint, status, guardKey, result?}` |

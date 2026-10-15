@@ -1,6 +1,6 @@
 # 웰컴 퀘스트 API 계약 (#626)
 
-이 문서는 웰컴 퀘스트의 **목표 외부 API 계약**이다. 현재 구현된 API를 설명하지 않는다. BE 구현과 FE 연동은 이 계약을 기준으로 진행한다. 모든 응답은 [공통 API 규약](../../common/api.md)의 `code`/`data`/`message` 봉투를 사용한다.
+이 문서는 웰컴 퀘스트의 **구현된 외부 API 계약**이다. 모든 응답은 [공통 API 규약](../../common/api.md)의 `code`/`data`/`message` 봉투를 사용한다.
 
 ## 범위와 책임
 
@@ -11,7 +11,7 @@
 
 ## 대상과 상태
 
-- **D1 신규 대상**: 기능이 처음 활성화된 고정 UTC 시각 `welcomeQuestActivatedAt` 이상에 생성된 Member만 대상이다(`member.createdAt >= welcomeQuestActivatedAt`, 두 값 모두 UTC로 비교). 활성화 시각은 배포 시 확정·보존하고 재배포·재시작 후에도 바꾸지 않으며, 그 이전 회원에게 소급 지급하지 않는다. FE는 가입 시각을 추측하지 않고 `eligible`을 따른다.
+- **D1 신규 대상**: 고정 UTC 시각 `2026-10-15T00:00:00Z` 이상에 생성된 Member만 대상이다(`member.createdAt`은 UTC로 저장). 이 값은 `WelcomeQuestService`의 상수이며 재배포·재시작 후에도 바꾸지 않는다. 이전 회원에게 소급 지급하지 않는다. FE는 가입 시각을 추측하지 않고 `eligible`을 따른다.
 - 가입 트랜잭션에서는 보상을 지급하지 않는다. 퀘스트가 처음 표시되면 FE가 `SIGNUP` 지급을 별도로 자동 요청한다(D2). 이 요청의 실패는 가입 성공을 취소하지 않는다.
 - `FOLLOW`의 신규 지급 조건은 **지급 시점**에 현재 팔로우 중인 Creator가 한 명 이상인 것이다. 온보딩에서 이미 팔로우했어도 바로 충족한다(D3). 지급 후 언팔로우해도 지급 결과는 유지한다.
 - `QUIZ`는 FE가 고정된 단일 튜토리얼 문항·보기를 제공한다. 이 API는 문항 메타데이터를 반환하지 않고, 신규 지급 시 요청의 `answer`가 JSON boolean `true`인지 확인한다. 다른 값은 정답으로 인정하지 않는다. 이는 답안 값 확인이며 실제 화면 노출·풀이 과정의 서버 검증은 아니다. FE 문항의 정답이 바뀌면 이 계약과 FE를 함께 변경해야 한다.
@@ -82,7 +82,7 @@ QUIZ 요청:
 
 1. 같은 `requestId`의 기존 승인 결과를 신규 대상·조건 판정보다 먼저 확인한다. 일치하면 `ALREADY_PROCESSED`를 반환한다. 다른 요청 내용이나 다른 EARN 용도에 이미 쓴 UUID면 `REQUEST_ID_CONFLICT`다.
 2. 신규 요청이면 대상 회원, 단계별 조건, 같은 회원·단계의 기존 지급 여부를 검증한다. 이미 다른 `requestId`로 지급 승인됐다면 다시 지급하지 않는다.
-3. 공용 응모권 EARN의 전역 `requestId` 선점과 Redis Balance 증가·Stream 발행 원자성을 재사용한다. 동시에 **회원·단계의 평생 1회 Business Key를 영속적으로 보장**해야 한다. 기존 공용 ATTENDANCE의 UTC 일일 Guard와 `common_mission_completion` 일일 UNIQUE만으로 평생 1회를 보장할 수 없으므로, 후속 BE 구현에서 웰컴 전용 영속 지급 원인·원장 연결과 EARN 경계를 마련한다. 원장·잔액 반영은 기존 공용 Ticket 소비·재처리 경계를 따른다.
+3. 공용 응모권 EARN의 전역 `requestId` 선점과 Redis Balance 증가·Stream 발행 원자성을 재사용한다. `ticket_common_once_earn_request`의 `(member_id, reward_type)` UNIQUE가 Redis 실행 전에 평생 1회 Business Key를 선점한다. `PENDING → EXECUTING → ACCEPTED`로 승인 상태를 구분하며, 실행 결과가 불명확한 `EXECUTING`은 Redis 증거가 없으면 재실행하지 않는다. Consumer가 `common_ticket_ledger.once_earn_request_id`와 DB Balance를 함께 반영한다. `common_mission_completion`에는 웰컴 완료 이력을 만들지 않는다.
 4. 동일 `requestId` 재시도는 최초 판정한 회원·단계·보상량·답안에 묶인다. 재시도 사이에 팔로우를 취소하거나 기능 상태가 달라져도 이미 승인된 지급은 취소하지 않는다. 승인 여부가 확인되지 않으면 **새 UUID로 재발급하지 않는다.**
 
 | 오류 코드 | HTTP | 조건·재시도 |

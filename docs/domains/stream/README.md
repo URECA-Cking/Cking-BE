@@ -13,7 +13,9 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
 | --- | --- | --- | --- | --- |
 | `stream:ticket-earned` | `cg:ticket-earn` | `earn-consumer-1` | EARN Ledger, Mission Completion, DB Balance | 없음 |
 | `stream:ticket-deducted` | `cg:ticket-history` | `spend-consumer-1` | EventEntry, SPEND Ledger, DB Balance | `EVENT_ENTRY_CLOSED` barrier는 DB 반영 없이 ACK |
-| `stream:common-ticket-earned` | `cg:common-ticket-earn` | `common-earn-consumer-1` | 공용 EARN Ledger, Common Mission Completion, 공용 Balance | 없음(크리에이터 축이 없어 barrier 대상 아님) |
+| `stream:common-ticket-earned` | `cg:common-ticket-earn` | `common-earn-consumer-1` | 공용 EARN Ledger, Common Mission Completion 또는 1회 지급 원인, 공용 Balance | 없음(크리에이터 축이 없어 barrier 대상 아님) |
+
+공용 EARN 메시지에 `sourceType=ONCE`가 있으면 `CommonEarnEventDispatcher`가 영속 1회 지급 원인과 내용을 대조해 원장·잔액을 반영한다. 기존 출석 메시지는 `sourceType`이 없어 `CommonMissionEarnLedgerService`로 간다. 두 경로 모두 반영 성공 후에만 XACK하며 PEL 회수와 Dead Stream replay에서 같은 분기를 사용한다.
 
 - 세 그룹 모두 concurrency 1로 고정한다(MVP). 병렬 처리가 필요하면 이벤트별 Stream 분리를 먼저 재검토한다.
 - 그룹은 기동 시 `XGROUP CREATE ... MKSTREAM`(시작 오프셋 0)으로 만들고, 이미 있으면(`BUSYGROUP`) 무시한다. Listener는 `lastConsumed`(신규 메시지)만 읽는다.
