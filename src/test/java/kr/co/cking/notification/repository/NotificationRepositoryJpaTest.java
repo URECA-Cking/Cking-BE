@@ -21,7 +21,6 @@ import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
 import kr.co.cking.sanction.domain.MemberSanction;
 import kr.co.cking.sanction.repository.MemberSanctionRepository;
-import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -51,9 +50,6 @@ class NotificationRepositoryJpaTest {
 
     @Autowired
     private MemberSanctionRepository sanctionRepository;
-
-    @Autowired
-    private WinnerRepository winnerRepository;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -334,8 +330,8 @@ class NotificationRepositoryJpaTest {
         Fixture fixture = fixture();
         long nonWinnerId = insertMember("미당첨 회원");
 
-        Notification saved = notificationRepository.saveAndFlush(Notification.forNonWinner(
-                nonWinnerId, fixture.eventId(), fixture.drawingId(), "이벤트 결과 발표", "본문"));
+        Notification saved = notificationRepository.saveAndFlush(nonWinnerNotification(
+                nonWinnerId, fixture));
 
         assertThat(saved.getNotificationId()).isNotNull();
         assertThat(saved.getWinnerId()).isNull();
@@ -346,11 +342,11 @@ class NotificationRepositoryJpaTest {
     void 같은_이벤트와_회원의_미당첨_알림은_중복_저장할_수_없다() {
         Fixture fixture = fixture();
         long nonWinnerId = insertMember("중복 미당첨 회원");
-        notificationRepository.saveAndFlush(Notification.forNonWinner(
-                nonWinnerId, fixture.eventId(), fixture.drawingId(), "이벤트 결과 발표", "본문"));
+        notificationRepository.saveAndFlush(nonWinnerNotification(
+                nonWinnerId, fixture));
 
-        assertThatThrownBy(() -> notificationRepository.saveAndFlush(Notification.forNonWinner(
-                nonWinnerId, fixture.eventId(), fixture.drawingId(), "이벤트 결과 발표", "본문")))
+        assertThatThrownBy(() -> notificationRepository.saveAndFlush(nonWinnerNotification(
+                nonWinnerId, fixture)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -376,22 +372,35 @@ class NotificationRepositoryJpaTest {
     }
 
     @Test
-    void 미당첨_대상은_Snapshot_후보에서_해당_Drawing_Winner를_뺀_Member다() {
+    void 일괄_INSERT는_Snapshot_후보에서_해당_Drawing_Winner를_뺀_Member에게만_저장한다() {
         Fixture fixture = fixture();
         long nonWinnerId = insertMember("미당첨 후보");
-        long snapshotId = ((Number) entityManager
-                .createNativeQuery("SELECT snapshot_id FROM drawing WHERE id = :id")
-                .setParameter("id", fixture.drawingId()).getSingleResult()).longValue();
-        for (long memberId : new long[]{fixture.memberId(), fixture.otherMemberId(), nonWinnerId}) {
-            entityManager.createNativeQuery("INSERT INTO draw_snapshot_candidate "
-                            + "(snapshot_id, member_id, ticket_count) VALUES (:snapshotId, :memberId, 1)")
-                    .setParameter("snapshotId", snapshotId)
-                    .setParameter("memberId", memberId)
-                    .executeUpdate();
-        }
+        insertCandidates(fixture, fixture.memberId(), fixture.otherMemberId(), nonWinnerId);
 
-        assertThat(winnerRepository.findUnselectedMemberIdsByDrawingId(fixture.drawingId()))
-                .containsExactly(nonWinnerId);
+        int created = notificationRepository.insertNonWinnerNotifications(
+                fixture.drawingId(), NotificationType.INITIAL_NON_WINNER.name(), "이벤트 결과 발표", "본문", Instant.now());
+
+        assertThat(created).isEqualTo(1);
+        List<Notification> saved = notificationRepository.findByMemberId(nonWinnerId, PageRequest.of(0, 10)).getContent();
+        assertThat(saved).hasSize(1);
+        assertThat(saved.get(0).getType()).isEqualTo(NotificationType.INITIAL_NON_WINNER);
+        assertThat(saved.get(0).getEventId()).isEqualTo(fixture.eventId());
+        assertThat(saved.get(0).getDrawingId()).isEqualTo(fixture.drawingId());
+        assertThat(saved.get(0).getWinnerId()).isNull();
+        assertThat(notificationRepository.findByMemberId(fixture.memberId(), PageRequest.of(0, 10))).isEmpty();
+    }
+
+    @Test
+    void 일괄_INSERT를_같은_Drawing에_반복하면_유니크_제약이_거부한다() {
+        Fixture fixture = fixture();
+        long nonWinnerId = insertMember("반복 미당첨 후보");
+        insertCandidates(fixture, nonWinnerId);
+        notificationRepository.insertNonWinnerNotifications(
+                fixture.drawingId(), NotificationType.INITIAL_NON_WINNER.name(), "이벤트 결과 발표", "본문", Instant.now());
+
+        assertThatThrownBy(() -> notificationRepository.insertNonWinnerNotifications(
+                fixture.drawingId(), NotificationType.INITIAL_NON_WINNER.name(), "이벤트 결과 발표", "본문", Instant.now()))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -401,6 +410,26 @@ class NotificationRepositoryJpaTest {
         assertThatThrownBy(() -> notificationRepository.saveAndFlush(Notification.forSanction(
                 memberId, 999_999_999L, NotificationType.COMMENT_RESTRICTION_STARTED, "제목", "본문")))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /** 미당첨 유형의 Notification을 Winner 없이 만든다. */
+    private Notification nonWinnerNotification(long memberId, Fixture fixture) {
+        return new Notification(memberId, fixture.eventId(), fixture.drawingId(), null,
+                NotificationType.INITIAL_NON_WINNER, "이벤트 결과 발표", "본문");
+    }
+
+    /** Drawing이 사용한 Snapshot의 후보로 지정한 Member들을 등록한다. */
+    private void insertCandidates(Fixture fixture, long... memberIds) {
+        long snapshotId = ((Number) entityManager
+                .createNativeQuery("SELECT snapshot_id FROM drawing WHERE id = :id")
+                .setParameter("id", fixture.drawingId()).getSingleResult()).longValue();
+        for (long memberId : memberIds) {
+            entityManager.createNativeQuery("INSERT INTO draw_snapshot_candidate "
+                            + "(snapshot_id, member_id, ticket_count) VALUES (:snapshotId, :memberId, 1)")
+                    .setParameter("snapshotId", snapshotId)
+                    .setParameter("memberId", memberId)
+                    .executeUpdate();
+        }
     }
 
     private long saveSanction(long memberId) {

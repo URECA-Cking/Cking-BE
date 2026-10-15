@@ -65,11 +65,10 @@ class PublicationServiceTest {
                 Instant.parse("2026-09-18T12:00:00Z"), PublicationOutcome.PUBLISHED
         );
         when(drawingPublicationService.publish(10L, 1L)).thenReturn(expected);
-        when(winnerRepository.findUnselectedMemberIdsByDrawingId(10L)).thenReturn(List.of(4L, 5L));
 
         publicationService.publish(10L, 1L);
 
-        verify(winnerNotificationService).createNonWinnerNotifications(20L, 10L, List.of(4L, 5L));
+        verify(winnerNotificationService).createNonWinnerNotifications(10L);
     }
 
     @Test
@@ -85,11 +84,8 @@ class PublicationServiceTest {
         assertThat(actual).isSameAs(expected);
         verify(winnerRepository, never()).findAllByDrawingIdOrderByRankInDrawingAsc(10L);
         verify(winnerNotificationService, never()).createNonWinnerNotifications(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyList()
+                org.mockito.ArgumentMatchers.any()
         );
-        verify(winnerRepository, never()).findUnselectedMemberIdsByDrawingId(10L);
         verify(winnerNotificationService, never()).createInitialWinnerNotifications(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
@@ -120,10 +116,7 @@ class PublicationServiceTest {
                 org.mockito.ArgumentMatchers.anyList()
         );
         verify(winnerNotificationService, never()).createNonWinnerNotifications(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyList()
+                org.mockito.ArgumentMatchers.any()
         );
-        verify(winnerRepository, never()).findUnselectedMemberIdsByDrawingId(10L);
     }
 }

@@ -1,8 +1,14 @@
 package kr.co.cking.notification.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
 import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
@@ -60,24 +66,14 @@ class WinnerNotificationServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void 미당첨자별로_결과_발표_알림을_Winner_없이_저장한다() {
-        winnerNotificationService.createNonWinnerNotifications(20L, 10L, List.of(4L, 5L));
+    void 미당첨자_알림은_DB_일괄_INSERT로_저장하고_저장_건수를_반환한다() {
+        when(notificationRepository.insertNonWinnerNotifications(
+                eq(10L), eq("INITIAL_NON_WINNER"), eq("이벤트 결과 발표"), anyString(), any(Instant.class)
+        )).thenReturn(3);
 
-        ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
-        verify(notificationRepository).saveAll(captor.capture());
-        assertThat(captor.getValue()).extracting(
-                Notification::getEventId,
-                Notification::getDrawingId,
-                Notification::getWinnerId,
-                Notification::getMemberId,
-                Notification::getType,
-                Notification::getTitle
-        ).containsExactly(
-                org.assertj.core.groups.Tuple.tuple(
-                        20L, 10L, null, 4L, NotificationType.INITIAL_NON_WINNER, "이벤트 결과 발표"),
-                org.assertj.core.groups.Tuple.tuple(
-                        20L, 10L, null, 5L, NotificationType.INITIAL_NON_WINNER, "이벤트 결과 발표")
-        );
+        int created = winnerNotificationService.createNonWinnerNotifications(10L);
+
+        assertThat(created).isEqualTo(3);
+        verify(notificationRepository, never()).saveAll(any());
     }
 }
