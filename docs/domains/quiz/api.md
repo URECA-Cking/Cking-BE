@@ -190,8 +190,13 @@ YouTube 영상으로 Quiz 생성을 요청한다. 응답 `202`와 생성 작업.
 ```json
 { "generationId": 1, "status": "PENDING", "videoId": "dQw4w9WgXcQ", "title": "물의 순환",
   "questionCount": 3, "optionCount": 4, "quizId": null, "revisionId": null, "failureCode": null,
-  "requestedAt": "2026-10-12T00:00:00Z", "startedAt": null, "completedAt": null }
+  "requestedAt": "2026-10-12T00:00:00Z", "startedAt": null, "completedAt": null,
+  "reviewStage": "GROUNDING", "contentEdited": null, "contentConfirmedAt": null }
 ```
+
+- `reviewStage`: 원문 검토 작업의 단계(`GROUNDING` → `AWAITING_REVIEW` → `GENERATING`). 검토 없이 이어서 생성하는 기존 작업(원문 검토 기능 꺼짐)은 `null`이다. 검토 대기·생성 단계에도 `status`는 `RUNNING`이다.
+- `contentEdited`: 확정 원문이 AI 원문과 다른지. 원문 확정 전이거나 기존 작업이면 `null`이다. `contentConfirmedAt`: 원문을 확정한 시각.
+- 원문 본문은 이 응답에 담지 않는다. 검토할 원문은 [원문 검토 API](content-review-api.md)의 `GET /api/creator/quizzes/generations/current`로 조회한다.
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
@@ -208,18 +213,22 @@ YouTube 영상으로 Quiz 생성을 요청한다. 응답 `202`와 생성 작업.
 | `status` | 의미 |
 | --- | --- |
 | `PENDING` | 접수됨, Worker 시작 전 |
-| `RUNNING` | Grounding·생성 진행 중 |
+| `RUNNING` | Grounding·생성 진행 중. 원문 검토 작업은 검토 대기(`reviewStage=AWAITING_REVIEW`)도 여기에 속한다 |
 | `SUCCEEDED` | 저장 완료. `quizId`·`revisionId`가 있다 |
 | `FAILED` | 실패. `failureCode`가 있다 |
 | `UNKNOWN` | 시간 초과 등으로 결과를 알 수 없다. `failureCode`가 있고 이후 결과를 저장하지 않는다 |
 
-`failureCode`: `GROUNDING_REJECTED`(비공개 영상 등 Provider 거부), `GROUNDING_INVALID`, `GENERATION_INVALID`, `DRAFT_INVALID`(저장 길이 상한 등), `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`(UNKNOWN), `DISPATCH_REJECTED`(생성 대기열이 가득 참), `STALE_PENDING`, `STALE_RUNNING`(UNKNOWN), `INTERNAL_ERROR`. 실패해도 자동으로 다시 시도하지 않으므로 새 requestId로 다시 요청한다.
+`failureCode`: `GROUNDING_REJECTED`(비공개 영상 등 Provider 거부), `GROUNDING_INVALID`, `GENERATION_INVALID`, `DRAFT_INVALID`(저장 길이 상한 등), `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`(UNKNOWN), `DISPATCH_REJECTED`(생성 대기열이 가득 참), `STALE_PENDING`, `STALE_RUNNING`(UNKNOWN), `INTERNAL_ERROR`, `CANCELLED`(Creator가 원문 검토를 취소함). 실패해도 자동으로 다시 시도하지 않으므로 새 requestId로 다시 요청한다.
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
 | `FORBIDDEN` | 403 | Creator가 아니거나 다른 Creator의 작업 |
 | `RESOURCE_NOT_FOUND` | 404 | Member 없음 |
 | `QUIZ_GENERATION_NOT_FOUND` | 404 | 작업 없음 |
+
+## 원문 검토 API
+
+원문 검토 작업의 진행 중 작업 조회·원문 확정·검토 취소는 [원문 검토 API](content-review-api.md)를 따른다(이슈 #615).
 
 ## GET /api/creators/{creatorId}/quizzes
 

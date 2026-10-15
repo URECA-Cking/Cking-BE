@@ -12,12 +12,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Optional;
 
 /** 상태 전이는 현재 상태를 조건으로 거는 UPDATE나 행 잠금으로만 한다. 바뀐 행 수가 0이면 전이하지 않은 것이다. */
 public interface QuizGenerationRepository extends JpaRepository<QuizGeneration, Long> {
 
     Optional<QuizGeneration> findByCreatorIdAndRequestId(Long creatorId, String requestId);
+
+    /** Creator의 진행 중 작업. {@code active_creator_id} UNIQUE로 PENDING·RUNNING 작업은 하나뿐이다. */
+    Optional<QuizGeneration> findFirstByCreatorIdAndStatusInOrderByRequestedAtDesc(
+            Long creatorId, Collection<QuizGenerationStatus> statuses);
 
     /** 결과 저장과 상태 정리가 겹치지 않도록 작업 행을 잠근다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

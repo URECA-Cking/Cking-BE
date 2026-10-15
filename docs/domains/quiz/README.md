@@ -193,7 +193,7 @@ Quiz 생성 전에 Creator가 Grounding 원문을 검토·확정하는 흐름을
 
 ### 원문 검토 흐름 (이슈 #604)
 
-`cking.quiz.generation.content-review.enabled`(기본 false)를 켜면 새 작업이 Grounding 뒤 Creator 원문 확정을 기다린 다음 확정 원문으로 Quiz를 만든다. 작업을 만들 때의 값으로 흐름이 정해지며, 꺼져 있으면 기존 흐름과 코드 경로가 그대로다. 확정·취소 HTTP API는 후속 작업이다.
+`cking.quiz.generation.content-review.enabled`(기본 false)를 켜면 새 작업이 Grounding 뒤 Creator 원문 확정을 기다린 다음 확정 원문으로 Quiz를 만든다. 작업을 만들 때의 값으로 흐름이 정해지며, 꺼져 있으면 기존 흐름과 코드 경로가 그대로다. 진행 중 작업 조회·원문 확정·검토 취소 HTTP API는 [원문 검토 API](content-review-api.md)를 따른다(이슈 #615).
 
 | from (status / 단계) | 사건 | to |
 | --- | --- | --- |
