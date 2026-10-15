@@ -23,6 +23,7 @@ import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisFai
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRequest;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisResult;
 import kr.co.cking.subscriptionverification.application.vision.VisionPlatform;
+import kr.co.cking.subscriptionverification.application.vision.VisionProviderErrorDetails;
 import kr.co.cking.subscriptionverification.application.vision.VisionSubscriptionState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -236,6 +237,76 @@ class GeminiVisionAnalysisAdapterTest {
                     assertThat(analysisException.getMessage()).doesNotContain("provider-sensitive-body");
                 });
         assertThat(requestCount).hasValue(1);
+    }
+
+    @Test
+    void HTTP_오류는_Provider_원문_대신_안전한_구조화_분류만_기록한다() {
+        String sensitiveMessage = "Invalid value: subscription screenshot base64 must not be logged";
+        server.createContext("/v1beta/models/gemini-3.5-flash-lite:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 400, """
+                    {"error":{"code":400,"status":"INVALID_ARGUMENT","message":"%s",
+                    "details":[{"reason":"FIELD_VIOLATION","secret":"%s"}]}}
+                    """.formatted(sensitiveMessage, sensitiveMessage));
+        });
+        Logger logger = (Logger) LoggerFactory.getLogger(GeminiVisionAnalysisAdapter.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            assertThatThrownBy(() -> client(1, 1_000).analyze(request()))
+                    .isInstanceOf(VisionAnalysisException.class)
+                    .satisfies(exception -> {
+                        VisionAnalysisException analysisException = (VisionAnalysisException) exception;
+                        assertThat(analysisException.providerErrorDetails()).isEqualTo(
+                                new VisionProviderErrorDetails(400, 400, "INVALID_ARGUMENT", "FIELD_VIOLATION"));
+                        assertThat(analysisException.getMessage()).doesNotContain(sensitiveMessage);
+                    });
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .singleElement()
+                    .satisfies(message -> assertThat((String) message)
+                            .contains("httpStatus=400", "providerCode=400", "providerStatus=INVALID_ARGUMENT",
+                                    "providerReason=FIELD_VIOLATION", "retryable=false", "failureKind=HTTP_RESPONSE")
+                            .doesNotContain(sensitiveMessage, "test-key", "/9j/", "대상 채널"));
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void 안전하지_않은_Provider_분류값은_UNKNOWN으로_치환한다() {
+        String sensitiveMessage = "request body contains confidential-data";
+        server.createContext("/v1beta/models/gemini-3.5-flash-lite:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 400, """
+                    {"error":{"code":400,"status":"%s","message":"%s",
+                    "details":[{"reason":"%s"}]}}
+                    """.formatted(sensitiveMessage, sensitiveMessage, sensitiveMessage));
+        });
+        Logger logger = (Logger) LoggerFactory.getLogger(GeminiVisionAnalysisAdapter.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            assertThatThrownBy(() -> client(1, 1_000).analyze(request()))
+                    .isInstanceOf(VisionAnalysisException.class)
+                    .satisfies(exception -> assertThat(((VisionAnalysisException) exception).providerErrorDetails())
+                            .isEqualTo(new VisionProviderErrorDetails(
+                                    400, 400, VisionProviderErrorDetails.UNKNOWN, VisionProviderErrorDetails.UNKNOWN)));
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .singleElement()
+                    .satisfies(message -> assertThat((String) message)
+                            .contains("providerStatus=UNKNOWN", "providerReason=UNKNOWN")
+                            .doesNotContain(sensitiveMessage));
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test
