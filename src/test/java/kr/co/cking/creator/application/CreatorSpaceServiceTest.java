@@ -9,6 +9,7 @@ import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -19,9 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class CreatorSpaceServiceTest {
 
@@ -45,6 +49,57 @@ class CreatorSpaceServiceTest {
         assertThat(space.getCreatorId()).isEqualTo(42L);
         assertThat(space.getSlug()).isEqualTo("creator-42");
         assertThat(space.getIntroText()).isEqualTo("소개");
+    }
+
+    /** 템플릿 URL을 Space로 복사하기 전에 같은 트랜잭션에서 템플릿 이미지를 고정해 정리 작업의 삭제 확정과 겹치지 않게 한다(이슈 #598). */
+    @Test
+    void pinsTemplateImagesBeforeCopyingTheirUrlsIntoTheNewSpace() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
+        given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        service.createFromActiveTemplateIfAbsent(42L);
+
+        InOrder order = inOrder(imagePinner, spaceRepository);
+        order.verify(imagePinner).pin("https://img/profile.png", "https://img/banner.png");
+        order.verify(spaceRepository).save(any(CreatorSpace.class));
+    }
+
+    /** 삭제가 확정된 이미지를 가리키는 템플릿으로는 Space를 만들지 않는다. 승인을 다시 하면 최신 템플릿을 읽는다. */
+    @Test
+    void doesNotCreateTheSpaceWhenATemplateImageWasAlreadyCleanedUp() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
+        willThrow(new BusinessException(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE)).given(imagePinner).pin(any(), any());
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(42L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE);
+
+        verify(spaceRepository, never()).save(any());
+    }
+
+    @Test
+    void doesNotPinAnythingWhenTheSpaceAlreadyExists() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        CreatorSpace existing = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
+                1L, "소개", "p", "b", "creator-{creatorId}"), "creator-42");
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.of(existing));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        assertThat(service.createFromActiveTemplateIfAbsent(42L)).isSameAs(existing);
+
+        verifyNoInteractions(imagePinner);
     }
 
     /** 다른 Creator가 커스텀 slug로 자동 slug를 먼저 가져갔으면 번호를 붙인 대체 slug를 써서 승인을 이어간다. */
@@ -210,11 +265,12 @@ class CreatorSpaceServiceTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 9, 28, 3, 0);
 
     private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
+    private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
 
     private CreatorSpaceService newService(CreatorSpaceRepository spaceRepository, CreatorSpaceTemplateService templateService) {
         return new CreatorSpaceService(
                 spaceRepository, templateService,
                 new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), imagePinner);
     }
 }

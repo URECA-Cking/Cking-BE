@@ -36,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
@@ -52,9 +53,10 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final CreatorSpaceProfileImageManager profileImageManager = mock(CreatorSpaceProfileImageManager.class);
+    private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
             creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
+            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, imagePinner);
 
     private Creator creator;
     private CreatorSpace space;
@@ -202,6 +204,54 @@ class CreatorSpaceProfileServiceTest {
         assertThat(view.space().getSlug()).isEqualTo("creator-42");
     }
 
+    /** 새로 적용되는 URL만 고정한다. 템플릿 이미지를 이 URL로 기록하는 경로이므로 삭제 확정과 겹치지 않아야 한다(이슈 #598). */
+    @Test
+    void updateMinePinsOnlyTheUrlsThatActuallyChange() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+
+        service.updateMine(7L, new CreatorSpaceProfileFields("새 소개", "https://img/profile.png", "https://img/b2.png"));
+
+        then(imagePinner).should().pin(null, "https://img/b2.png");
+    }
+
+    /** FE는 저장할 때 현재 URL을 그대로 다시 보낸다. 고정하지 않아야 정리된 이미지를 가진 Space도 소개글을 고칠 수 있다. */
+    @Test
+    void updateMineDoesNotPinUrlsThatAreUnchanged() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+
+        service.updateMine(7L, new CreatorSpaceProfileFields("새 소개", "https://img/profile.png", "https://img/banner.png"));
+
+        then(imagePinner).should().pin(null, null);
+        assertThat(space.getIntroText()).isEqualTo("새 소개");
+    }
+
+    @Test
+    void updateMineDoesNotPinUrlsIgnoredBecauseAnUploadedImageIsLinked() {
+        space.updateProfileImage("creator-space-profile-images/42/current.jpg", "https://cdn/current.jpg");
+        space.updateBannerImage("creator-space-profile-images/42/banner/current.jpg", "https://cdn/banner.jpg");
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+
+        service.updateMine(7L, NEW_PROFILE);
+
+        then(imagePinner).should().pin(null, null);
+    }
+
+    @Test
+    void updateMineIsRejectedAndLeavesTheSpaceUnchangedWhenAPinnedImageWasCleanedUp() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        willThrow(new BusinessException(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE)).given(imagePinner).pin(any(), any());
+
+        assertErrorCode(() -> service.updateMine(7L, NEW_PROFILE), CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE);
+
+        assertThat(space.getIntroText()).isEqualTo("소개");
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
+        then(profileImageManager).shouldHaveNoInteractions();
+    }
+
     @Test
     void updateMineDelegatesConnectedImageUpdateToImageManager() {
         space.updateProfileImage("creator-space-profile-images/42/current.jpg", "https://cdn/current.jpg");
@@ -227,7 +277,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, imagePinner);
 
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
                 "새 소개", "https://cdn/current.jpg", "https://img/b2.png", null, true));
@@ -263,7 +313,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, imagePinner);
 
         // 클라이언트가 현재 배너 URL(업로드 이미지)을 그대로 보내도 기본 배너로 저장되지 않아야 한다.
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(

@@ -15,10 +15,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
+import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
+import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceImageKind;
+import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.domain.CreatorSpaceTemplateImage;
+import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.creator.repository.CreatorSpaceTemplateImageRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
@@ -47,6 +53,9 @@ class CreatorSpaceTemplateImageRaceIntegrationTest {
     private static final long TIMEOUT_SECONDS = 20;
 
     @Autowired private CreatorSpaceTemplateService templateService;
+    @Autowired private CreatorSpaceProfileService profileService;
+    @Autowired private CreatorRepository creatorRepository;
+    @Autowired private CreatorSpaceRepository spaceRepository;
     @Autowired private CreatorSpaceTemplateImageRepository imageRepository;
     @Autowired private MemberRepository memberRepository;
     @Autowired private PlatformTransactionManager transactionManager;
@@ -55,6 +64,7 @@ class CreatorSpaceTemplateImageRaceIntegrationTest {
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final List<String> keys = new ArrayList<>();
     private final List<Long> memberIds = new ArrayList<>();
+    private final List<Long> creatorMemberIds = new ArrayList<>();
     private Long adminId;
 
     /** 관리자 회원을 다른 스레드가 아니라 테스트 스레드에서 미리 만든다. */
@@ -69,6 +79,10 @@ class CreatorSpaceTemplateImageRaceIntegrationTest {
         // 템플릿은 이 테스트의 관리자가 만든 것만 지운다(생성자 FK 때문에 회원보다 먼저).
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM creator_space_template WHERE created_by = ?", memberId));
         keys.forEach(key -> jdbcTemplate.update("DELETE FROM creator_space_template_image WHERE object_key = ?", key));
+        creatorMemberIds.forEach(memberId -> {
+            jdbcTemplate.update("DELETE FROM creator_space WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)", memberId);
+            jdbcTemplate.update("DELETE FROM creator WHERE member_id = ?", memberId);
+        });
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId));
     }
 
@@ -168,6 +182,109 @@ class CreatorSpaceTemplateImageRaceIntegrationTest {
                         .isEqualTo(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE));
         assertThat(statusOf(key)).isEqualTo("DELETING");
         assertThat(templatesReferencing(key)).isZero();
+    }
+
+    // ---- Creator가 프로필 URL을 직접 바꾸는 경로(updateMine)도 같은 보호를 받는다 ----
+
+    @Test
+    void 삭제가_확정된_템플릿_이미지의_URL로_프로필을_수정하면_거절하고_Space를_바꾸지_않는다() {
+        String key = image("DELETING");
+        Member owner = creatorWithSpace(CDN + "default/banner.png");
+
+        assertThatThrownBy(() -> profileService.updateMine(owner.getMemberId(), profileFields(CDN + key)))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE);
+
+        assertThat(bannerUrlOf(owner)).isEqualTo(CDN + "default/banner.png");
+    }
+
+    /** 현재 URL을 그대로 보내는 수정은 고정하지 않으므로, 이미 정리된 이미지를 가진 Space도 소개글을 고칠 수 있다. */
+    @Test
+    void 바뀌지_않는_URL은_고정하지_않아_정리된_이미지를_가진_Space도_수정할_수_있다() {
+        String key = image("DELETED");
+        Member owner = creatorWithSpace(CDN + key);
+
+        profileService.updateMine(owner.getMemberId(), profileFields(CDN + key));
+
+        assertThat(bannerUrlOf(owner)).isEqualTo(CDN + key);
+        assertThat(statusOf(key)).isEqualTo("DELETED");
+    }
+
+    @Test
+    void 프로필_수정이_이미지를_고정한_동안_삭제_확정은_기다렸다가_실패한다() throws Exception {
+        String key = image("DELETE_PENDING");
+        Member owner = creatorWithSpace(CDN + "default/banner.png");
+        CountDownLatch pinned = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Future<?> updating = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            profileService.updateMine(owner.getMemberId(), profileFields(CDN + key));
+            pinned.countDown();
+            await(release);
+        }));
+        assertThat(pinned.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+
+        Future<Integer> committing = executor.submit(() -> imageRepository.markDeleting(key, Instant.now()));
+        Thread.sleep(BLOCKED_CHECK_MILLIS);
+        assertThat(committing.isDone()).as("삭제 확정은 프로필 수정 트랜잭션의 행 잠금을 기다려야 한다").isFalse();
+
+        release.countDown();
+        updating.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        assertThat(committing.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isZero();
+        assertThat(statusOf(key)).isEqualTo("UPLOADED");
+        assertThat(bannerUrlOf(owner)).isEqualTo(CDN + key);
+    }
+
+    /** 삭제를 먼저 확정해 둔 동안 시작한 프로필 수정은 확정이 끝난 뒤 거절되어 삭제된 이미지를 Space에 기록하지 않는다. */
+    @Test
+    void 삭제_확정이_진행되는_동안_시작한_프로필_수정은_기다렸다가_거절된다() throws Exception {
+        String key = image("DELETE_PENDING");
+        Member owner = creatorWithSpace(CDN + "default/banner.png");
+        CountDownLatch committed = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Future<Integer> committing = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+            int updated = imageRepository.markDeleting(key, Instant.now());
+            committed.countDown();
+            await(release);
+            return updated;
+        }));
+        assertThat(committed.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+
+        Future<?> updating = executor.submit(() -> profileService.updateMine(owner.getMemberId(), profileFields(CDN + key)));
+        Thread.sleep(BLOCKED_CHECK_MILLIS);
+        assertThat(updating.isDone()).as("프로필 수정은 삭제 확정 트랜잭션의 행 잠금을 기다려야 한다").isFalse();
+
+        release.countDown();
+        assertThat(committing.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo(1);
+        assertThatThrownBy(() -> updating.get(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .hasCauseInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error.getCause()).getErrorCode())
+                        .isEqualTo(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE));
+        assertThat(statusOf(key)).isEqualTo("DELETING");
+        assertThat(bannerUrlOf(owner)).isEqualTo(CDN + "default/banner.png");
+    }
+
+    private CreatorSpaceProfileFields profileFields(String bannerUrl) {
+        return new CreatorSpaceProfileFields("새 소개", CDN + "default/profile.png", bannerUrl);
+    }
+
+    /** 회원·Creator·Space를 직접 만든다. Space의 프로필·배너는 전달한 URL(프로필은 기본값)로 시작한다. */
+    private Member creatorWithSpace(String bannerUrl) {
+        Member owner = memberRepository.saveAndFlush(new Member("경합크리에이터", null, null, MemberRole.USER));
+        memberIds.add(owner.getMemberId());
+        creatorMemberIds.add(owner.getMemberId());
+        Creator creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "경합크리에이터"));
+        spaceRepository.saveAndFlush(CreatorSpace.fromTemplate(creator.getCreatorId(),
+                new CreatorSpaceTemplate(1L, "소개", CDN + "default/profile.png", bannerUrl, "creator-{creatorId}"),
+                "race-it-" + creator.getCreatorId()));
+        return owner;
+    }
+
+    private String bannerUrlOf(Member owner) {
+        return jdbcTemplate.queryForObject(
+                "SELECT banner_image_url FROM creator_space WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
+                String.class, owner.getMemberId());
     }
 
     private static void await(CountDownLatch latch) {
