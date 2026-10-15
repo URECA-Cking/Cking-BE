@@ -11,7 +11,7 @@ public interface CommonTicketOnceEarnService {
     /** 영속 Business Key를 먼저 선점하고 공용 Redis EARN을 실행한다. */
     EarnResult earn(CommonOnceEarnCommand command);
 
-    /** 같은 requestId의 이전 승인 결과를 읽기 전용으로 확인한다. */
+    /** 같은 requestId의 승인 결과와 검증된 영속 선점 여부를 읽기 전용으로 확인한다. */
     EarnLookupResult findExisting(CommonOnceEarnCommand command);
 
     /** 승인된 보상 종류만 읽어 상태 조회에 제공한다. */

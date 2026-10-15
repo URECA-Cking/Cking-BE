@@ -47,9 +47,26 @@ class CommonTicketOnceEarnIntegrationTest {
             onceClaims.claim(command);
             assertThat(onceClaims.beginExecution(command.requestId().toString())).isTrue();
             assertThat(service.findExisting(command).status()).isEqualTo(EarnLookupStatus.UNAVAILABLE);
+            assertThat(service.findExisting(command).persistedRequest()).isTrue();
             assertThat(service.earn(command).code()).isEqualTo(EarnResultCode.EARN_STATUS_UNKNOWN);
             assertThat(redis.opsForValue().get(CommonTicketRedisKeys.balance(member.getMemberId()))).isNull();
         } finally {
+            clean(member.getMemberId());
+        }
+    }
+
+    /** 전역 UUID 선점만 있고 보상 선점이 없으면 최초 조건 검증을 생략할 수 없다. */
+    @Test
+    void 보상_영속_선점이_없으면_기존_요청으로_간주하지_않는다() {
+        Member member = newMember();
+        CommonOnceEarnCommand command = command(member.getMemberId(), UUID.randomUUID());
+        try {
+            globalClaims.claim(command);
+            assertThat(service.findExisting(command).persistedRequest()).isFalse();
+            assertThat(service.findExisting(new CommonOnceEarnCommand(command.requestId(), member.getMemberId(),
+                    "SIGNUP", 1L, "changed-answer")).status()).isEqualTo(EarnLookupStatus.REQUEST_ID_CONFLICT);
+        } finally {
+            jdbc.update("DELETE FROM ticket_earn_request WHERE request_id = ?", command.requestId().toString());
             clean(member.getMemberId());
         }
     }

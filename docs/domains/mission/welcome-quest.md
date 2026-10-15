@@ -81,9 +81,9 @@ QUIZ 요청:
 ### 지급·재시도 순서
 
 1. 같은 `requestId`의 기존 승인 결과를 신규 대상·조건 판정보다 먼저 확인한다. 일치하면 `ALREADY_PROCESSED`를 반환한다. 다른 요청 내용이나 다른 EARN 용도에 이미 쓴 UUID면 `REQUEST_ID_CONFLICT`다.
-2. 신규 요청이면 대상 회원, 단계별 조건, 같은 회원·단계의 기존 지급 여부를 검증한다. 이미 다른 `requestId`로 지급 승인됐다면 다시 지급하지 않는다.
+2. 동일 UUID·동일 요청 내용의 `ticket_common_once_earn_request`가 확인되면 최초 조건 검증을 통과한 재시도로 간주한다. 승인 불명 상태여도 현재 팔로우 수·답안·대상 여부를 다시 판정하지 않고 Ticket의 승인 확인·실행권 회수 경로로 보낸다. 영속 보상 선점 기록이 없는 신규 요청(전역 UUID 선점만 있는 경우 포함)은 대상 회원, 단계별 조건, 같은 회원·단계의 기존 지급 여부를 검증한다. 이미 다른 `requestId`로 지급 승인됐다면 다시 지급하지 않는다.
 3. 공용 응모권 EARN의 전역 `requestId` 선점과 Redis Balance 증가·Stream 발행 원자성을 재사용한다. `ticket_common_once_earn_request`의 `(member_id, reward_type)` UNIQUE가 Redis 실행 전에 평생 1회 Business Key를 선점한다. `PENDING → EXECUTING → ACCEPTED`로 승인 상태를 구분한다. `EXECUTING`이 2분 이상 지속되면 같은 `requestId` 재시도에서 Redis 승인 흔적을 확인하고, 흔적이 없을 때만 조건부로 실행권을 회수해 Lua를 재호출한다. Redis 조회 실패나 불명 흔적에는 재실행하지 않는다. Consumer가 `common_ticket_ledger.once_earn_request_id`와 DB Balance를 함께 반영한다. `common_mission_completion`에는 웰컴 완료 이력을 만들지 않는다.
-4. 동일 `requestId` 재시도는 최초 판정한 회원·단계·보상량·답안에 묶인다. 재시도 사이에 팔로우를 취소하거나 기능 상태가 달라져도 이미 승인된 지급은 취소하지 않는다. 승인 여부가 확인되지 않으면 **새 UUID로 재발급하지 않는다.**
+4. 동일 `requestId` 재시도는 최초 판정한 회원·단계·보상량·답안의 Fingerprint에 묶인다. 재시도 사이에 팔로우를 취소하거나 기능 상태가 달라져도 영속 선점된 동일 요청은 복구할 수 있다. 승인 여부가 확인되지 않으면 **새 UUID로 재발급하지 않는다.**
 
 | 오류 코드 | HTTP | 조건·재시도 |
 | --- | --- | --- |

@@ -14,6 +14,7 @@ import kr.co.cking.mission.domain.WelcomeQuestStatus;
 import kr.co.cking.mission.domain.WelcomeQuestStep;
 import kr.co.cking.ticket.application.CommonTicketOnceEarnService;
 import kr.co.cking.ticket.application.dto.CommonOnceEarnCommand;
+import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
 import lombok.RequiredArgsConstructor;
@@ -58,25 +59,27 @@ public class WelcomeQuestService {
         Member member = requireMember(memberId);
         CommonOnceEarnCommand command = new CommonOnceEarnCommand(requestId, memberId,
                 step.name(), (long) REWARD_AMOUNT, step == WelcomeQuestStep.QUIZ ? String.valueOf(answer) : "");
-        EarnLookupStatus lookup = onceEarnService.findExisting(command).status();
-        if (lookup == EarnLookupStatus.ALREADY_PROCESSED) {
+        EarnLookupResult lookup = onceEarnService.findExisting(command);
+        if (lookup.status() == EarnLookupStatus.ALREADY_PROCESSED) {
             return success(step, EarnResultCode.ALREADY_PROCESSED);
         }
-        if (lookup == EarnLookupStatus.REQUEST_ID_CONFLICT) {
-            throw new BusinessException(MissionErrorCode.from(lookup));
+        if (lookup.status() == EarnLookupStatus.REQUEST_ID_CONFLICT) {
+            throw new BusinessException(MissionErrorCode.from(lookup.status()));
         }
-        // 승인 결과가 불명인 요청도 현재 지급 조건을 확인한 뒤 Ticket의 복구 경로로 보낸다.
-        if (!isEligible(member)) {
-            throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_NOT_ELIGIBLE);
-        }
-        if (onceEarnService.findAcceptedRewardTypes(memberId).contains(step.name())) {
-            throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_ALREADY_CLAIMED);
-        }
-        if (step == WelcomeQuestStep.FOLLOW && followQueryService.countFollowedCreators(memberId) == 0) {
-            throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_CONDITION_NOT_MET);
-        }
-        if (step == WelcomeQuestStep.QUIZ && !Boolean.TRUE.equals(answer)) {
-            throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_WRONG_ANSWER);
+        // 같은 내용으로 영속 선점된 재시도만 최초 조건 판정을 신뢰한다.
+        if (!lookup.persistedRequest()) {
+            if (!isEligible(member)) {
+                throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_NOT_ELIGIBLE);
+            }
+            if (onceEarnService.findAcceptedRewardTypes(memberId).contains(step.name())) {
+                throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_ALREADY_CLAIMED);
+            }
+            if (step == WelcomeQuestStep.FOLLOW && followQueryService.countFollowedCreators(memberId) == 0) {
+                throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_CONDITION_NOT_MET);
+            }
+            if (step == WelcomeQuestStep.QUIZ && !Boolean.TRUE.equals(answer)) {
+                throw new BusinessException(WelcomeQuestErrorCode.WELCOME_QUEST_WRONG_ANSWER);
+            }
         }
         EarnResultCode code = onceEarnService.earn(command).code();
         if (code == EarnResultCode.DUPLICATE_MISSION) {

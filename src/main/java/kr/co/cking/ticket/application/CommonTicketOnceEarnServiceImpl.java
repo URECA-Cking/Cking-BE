@@ -71,8 +71,9 @@ public class CommonTicketOnceEarnServiceImpl implements CommonTicketOnceEarnServ
         if (once == TicketOnceEarnRequestClaim.REQUEST_ID_CONFLICT) {
             return new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
         }
+        boolean persistedRequest = once != null;
         if (global == TicketEarnRequestClaim.ACCEPTED || once == TicketOnceEarnRequestClaim.ACCEPTED) {
-            return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
+            return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED, persistedRequest);
         }
         if (once == null && global == null) {
             return new EarnLookupResult(EarnLookupStatus.NOT_FOUND);
@@ -82,9 +83,9 @@ public class CommonTicketOnceEarnServiceImpl implements CommonTicketOnceEarnServ
             accept(command);
         }
         if (once == TicketOnceEarnRequestClaim.EXECUTING && redis.status() == EarnLookupStatus.NOT_FOUND) {
-            return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE);
+            return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE, true);
         }
-        return redis;
+        return new EarnLookupResult(redis.status(), persistedRequest);
     }
 
     /** 승인된 보상 종류를 Ticket 소유 데이터에서 읽는다. */

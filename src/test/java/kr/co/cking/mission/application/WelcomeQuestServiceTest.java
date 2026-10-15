@@ -21,8 +21,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -110,17 +112,38 @@ class WelcomeQuestServiceTest {
         verify(tickets, never()).earn(any());
     }
 
-    /** 불명 실행권도 현재 조건을 확인한 뒤 Ticket의 동일 UUID 복구 경로로 보낸다. */
+    /** 최초 FOLLOW 조건을 통과한 영속 요청은 언팔로우 후에도 동일 UUID 복구 경로에 도달한다. */
     @Test
-    void 불명_EXECUTING_재시도는_Ticket_복구_결과를_반환한다() {
+    void 영속_선점된_FOLLOW는_언팔로우_후에도_같은_requestId로_복구한다() {
+        memberAt(LocalDateTime.parse("2026-10-15T00:00:00"));
+        UUID requestId = UUID.randomUUID();
+        when(tickets.findExisting(any())).thenReturn(new EarnLookupResult(EarnLookupStatus.NOT_FOUND),
+                new EarnLookupResult(EarnLookupStatus.UNAVAILABLE, true));
+        when(follows.countFollowedCreators(1L)).thenReturn(1L);
+        when(tickets.findAcceptedRewardTypes(1L)).thenReturn(Set.of());
+        when(tickets.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_STATUS_UNKNOWN),
+                new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        assertThatThrownBy(() -> service.claim(1L, WelcomeQuestStep.FOLLOW, requestId, null))
+                .isInstanceOf(BusinessException.class);
+        when(follows.countFollowedCreators(1L)).thenReturn(0L);
+        assertThat(service.claim(1L, WelcomeQuestStep.FOLLOW, requestId, null).code())
+                .isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        verify(follows).countFollowedCreators(1L);
+        verify(tickets, times(2)).earn(argThat(command -> command.requestId().equals(requestId)));
+    }
+
+    /** Redis 조회 장애만 있는 신규 FOLLOW는 영속 선점이 없으므로 현재 조건을 검증한다. */
+    @Test
+    void 영속_선점이_없는_불명_FOLLOW는_현재_조건_없이_지급하지_않는다() {
         memberAt(LocalDateTime.parse("2026-10-15T00:00:00"));
         when(tickets.findExisting(any())).thenReturn(new EarnLookupResult(EarnLookupStatus.UNAVAILABLE));
         when(tickets.findAcceptedRewardTypes(1L)).thenReturn(Set.of());
-        when(tickets.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        when(follows.countFollowedCreators(1L)).thenReturn(0L);
 
-        assertThat(service.claim(1L, WelcomeQuestStep.SIGNUP, UUID.randomUUID(), null).code())
-                .isEqualTo(EarnResultCode.EARN_ACCEPTED);
-        verify(tickets).earn(any());
+        assertThatThrownBy(() -> service.claim(1L, WelcomeQuestStep.FOLLOW, UUID.randomUUID(), null))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("팔로우");
+        verify(tickets, never()).earn(any());
     }
 
     /** 저장된 Member의 UTC 생성 시각을 지정한다. */

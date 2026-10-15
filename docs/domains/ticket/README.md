@@ -93,4 +93,6 @@ SPEND·EARN Lua도 같은 lock을 확인해 lock이 걸린 동안 새 차감·�
 
 `EXECUTING` 실행권은 `executing_at`부터 2분이 지나고 같은 UUID 재요청에서 Redis 승인 흔적이 없을 때만 조건부로 회수한다. 실행 중인 요청과 Redis 조회 불가·불명 흔적은 재실행하지 않는다. 서버 비정상 종료 후 복구는 클라이언트의 같은 UUID 재시도가 시작하며 별도 배치·관리자 API는 없다.
 
+이 회수 판단은 Redis의 멱등 키·Guard·Stream이 승인 이후 유실되지 않는다는 운영 전제에 의존한다. 개발 배포의 `docker-compose.dev.yml`은 `noeviction`과 Redis 데이터 볼륨·AOF(`appendfsync everysec`)를 설정하지만, AOF의 최근 쓰기 유실 가능성까지 제거하지는 못한다. Redis 재시작·복구 후 이 키나 Stream의 유실이 의심되면 `EXECUTING` 회수를 안전하다고 간주하지 말고 승인·원장·Stream 상태를 운영자가 확인해야 한다. 특히 DB 선점 기록만으로 Redis 재실행의 안전성을 증명할 수 없다. 로컬 `docker-compose.yml`에는 동등한 Redis 영속화 설정이 없다.
+
 공용 Lua가 기존 Redis Balance를 증가시키고 `stream:common-ticket-earned`에 `sourceType=ONCE`를 발행한다. `CommonEarnEventDispatcher`가 같은 Consumer·PEL 회수·Dead Stream replay 경계에서 `CommonOnceEarnLedgerService`로 분기한다. Consumer는 요청 원인과 Stream 내용을 대조한 뒤 `common_ticket_ledger.once_earn_request_id` 원장과 DB Balance를 한 트랜잭션에 기록한다. `ACCEPTED`는 Redis 승인이고 DB 반영 완료는 원장 존재로 확인한다. Consumer 전에 Mission 완료 이력은 쓰지 않는다. 기존 공용 ATTENDANCE는 `sourceType`이 없는 메시지로 종전 경로를 유지한다.
