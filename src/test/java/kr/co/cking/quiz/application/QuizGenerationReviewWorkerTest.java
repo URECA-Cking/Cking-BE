@@ -109,6 +109,21 @@ class QuizGenerationReviewWorkerTest {
     }
 
     @Test
+    void Grounding_단계를_점유하지_못하거나_점유_요청에서_예외가_나면_상태를_바꾸지_않는다() {
+        given(store.claim(ID, NOW)).willReturn(false);
+        worker.run(ID);
+
+        willThrow(new QueryTimeoutException("Lock wait timeout")).given(store).claim(ID, NOW);
+        assertThatCode(() -> worker.run(ID)).doesNotThrowAnyException();
+
+        verifyNoInteractions(grounder, generator);
+        verify(store, never()).find(anyLong());
+        verify(store, never()).awaitReview(anyLong(), anyString(), anyString(), anyString(), anyString(), any());
+        verify(store, never()).finishRunning(anyLong(), any(), any(), any(), any());
+        verify(store, never()).finishRunning(anyLong(), any(QuizGenerationStatus.class), any(), any());
+    }
+
+    @Test
     void facts는_200개까지_저장하고_넘으면_GROUNDING_INVALID다() {
         given(grounder.ground(QuizGenerationFixtures.VIDEO_ID)).willReturn(grounding(facts(200, "근거")));
         worker.run(ID);

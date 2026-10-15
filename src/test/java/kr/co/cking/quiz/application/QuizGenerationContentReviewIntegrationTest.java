@@ -384,6 +384,23 @@ class QuizGenerationContentReviewIntegrationTest {
     }
 
     @Test
+    void Grounding_중인_작업에_다른_Worker의_점유_요청이_실패해도_정상적으로_검토_대기가_된다() {
+        Creator creator = creator();
+        GROUNDER.hold();
+        long id = request(creator);
+        awaitState(id, "RUNNING", "GROUNDING");
+
+        doThrow(new QueryTimeoutException("Lock wait timeout")).when(generationStore).claim(eq(id), any());
+        worker.run(id);
+        assertThat(state(id)).as("Worker B는 상태를 바꾸지 않는다").isEqualTo("RUNNING:GROUNDING:-");
+
+        GROUNDER.release();
+        awaitState(id, "RUNNING", "AWAITING_REVIEW");
+        assertThat(row(id).get("ai_content_text")).isEqualTo(QuizGenerationFixtures.CONTENT_TEXT);
+        assertThat(GROUNDER.calls()).as("Worker A만 Grounding을 호출한다").isEqualTo(1);
+    }
+
+    @Test
     void 생성_중인_작업에_다른_Worker의_점유_요청이_실패해도_정상_결과를_저장한다() throws Exception {
         doReturn(true).when(dispatcher).dispatchGeneration(anyLong());
         Creator creator = creator();

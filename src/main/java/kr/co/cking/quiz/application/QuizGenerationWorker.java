@@ -54,13 +54,26 @@ public class QuizGenerationWorker {
     private final Clock clock;
     private final ObjectMapper objectMapper;
 
-    /** 접수한 작업을 시작한다. 기존 작업은 Grounding부터 저장까지, 원문 검토 작업은 Grounding까지 한다. */
+    /**
+     * 접수한 작업을 시작한다. 기존 작업은 Grounding부터 저장까지, 원문 검토 작업은 Grounding까지 한다.
+     *
+     * <p>실패 기록은 점유(PENDING → RUNNING)에 성공한 Worker만 한다. 점유 요청이 실패하거나 예외가 나면 다른 Worker가
+     * 진행 중인 작업일 수 있으므로 상태를 바꾸지 않고 끝낸다. 점유되지 않은 작업은 오래된 작업 정리가 끝낸다.
+     */
     public void run(Long generationId) {
+        boolean claimed;
+        try {
+            claimed = store.claim(generationId, clock.instant());
+        } catch (RuntimeException exception) {
+            log.error("Quiz 생성 작업을 점유하지 못해 실행하지 않습니다. generationId={}, type={}",
+                    generationId, exception.getClass().getSimpleName());
+            return;
+        }
+        if (!claimed) {
+            return;
+        }
         QuizGenerationReviewStage stage = null;
         try {
-            if (!store.claim(generationId, clock.instant())) {
-                return;
-            }
             QuizGeneration generation = find(generationId);
             stage = generation.getReviewStage();
             if (stage == null) {

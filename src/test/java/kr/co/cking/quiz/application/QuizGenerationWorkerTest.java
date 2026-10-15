@@ -26,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
@@ -97,6 +98,24 @@ class QuizGenerationWorkerTest {
 
         verifyNoInteractions(grounder, generator);
         verify(store, never()).completeRunning(anyLong(), any(), any());
+        verify(store, never()).finishRunning(anyLong(), any(), any(), any());
+    }
+
+    /** 다른 Worker가 진행 중일 수 있으므로 점유 요청이 실패한 Worker는 작업 상태를 바꾸지 않는다. */
+    @Test
+    void 점유_요청에서_예외가_나면_상태를_바꾸지_않고_Provider도_부르지_않는다(CapturedOutput output) {
+        willThrow(new QueryTimeoutException("Lock wait timeout " + CONTENT_TEXT)).given(store).claim(ID, NOW);
+
+        worker.run(ID);
+
+        verifyNoInteractions(grounder, generator);
+        verify(store, never()).find(anyLong());
+        verify(store, never()).completeRunning(anyLong(), any(), any());
+        verify(store, never()).finishRunning(anyLong(), any(), any(), any());
+        verify(store, never()).finishRunning(anyLong(), any(), any(), any(), any());
+        assertThat(output.getAll())
+                .contains("Quiz 생성 작업을 점유하지 못해 실행하지 않습니다. generationId=1, type=QueryTimeoutException")
+                .doesNotContain(CONTENT_TEXT);
     }
 
     @Test
