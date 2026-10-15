@@ -23,6 +23,8 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.stream.StreamMessageListenerContainer;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest(properties = {
         "cking.entry.stream-key=stream:ticket-deducted:drain-test",
@@ -33,6 +35,10 @@ class EventDrainCheckerTest {
     private static final String STREAM_KEY = "stream:ticket-deducted:drain-test";
     private static final String GROUP = "cg:ticket-history:drain-test";
     private static final String CONSUMER = "drain-test-consumer";
+
+    // 테스트가 직접 읽고 ACK해 PEL 상태를 만들므로, 이 Stream을 읽는 실제 SPEND 소비자는 띄우지 않는다.
+    @MockitoBean(name = "spendStreamListenerContainer")
+    private StreamMessageListenerContainer<String, MapRecord<String, String, String>> spendStreamListenerContainer;
 
     @Autowired
     private EventDrainChecker eventDrainChecker;

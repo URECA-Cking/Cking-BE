@@ -5,10 +5,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
-import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.stream.StreamMessageListenerContainer;
@@ -38,23 +36,21 @@ public class CommonEarnStreamConfig {
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> commonEarnStreamListenerContainer(
             RedisConnectionFactory connectionFactory,
             StringRedisTemplate redisTemplate,
-            CommonEarnStreamListener commonEarnStreamListener,
-            ApplicationShutdownState shutdownState
+            CommonEarnStreamListener commonEarnStreamListener
     ) {
         ensureConsumerGroup(redisTemplate);
 
         StreamMessageListenerContainerOptions<String, MapRecord<String, String, String>> options =
                 StreamMessageListenerContainerOptions.builder()
                         .pollTimeout(Duration.ofSeconds(2))
-                        .errorHandler(new StreamListenerErrorHandler(shutdownState))
                         .build();
 
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> container =
                 StreamMessageListenerContainer.create(connectionFactory, options);
 
-        container.receive(
-                Consumer.from(consumerGroup, CONSUMER_NAME),
-                StreamOffset.create(streamKey, ReadOffset.lastConsumed()),
+        container.register(
+                StreamReadRequests.keepAlive(container, streamKey, consumerGroup, CONSUMER_NAME,
+                        () -> ensureConsumerGroup(redisTemplate)),
                 commonEarnStreamListener
         );
 
