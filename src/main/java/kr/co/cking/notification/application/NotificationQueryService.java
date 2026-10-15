@@ -38,11 +38,11 @@ public class NotificationQueryService {
     private final EventRepository eventRepository;
     private final DrawingRepository drawingRepository;
 
-    /** 요청 Member의 알림만 최신순 페이지로 조회하고 Event·Drawing 정보를 조합한다. */
+    /** 요청 Member의 숨기지 않은 알림만 최신순 페이지로 조회하고 Event·Drawing 정보를 조합한다. */
     public Page<NotificationSummary> findMine(Long memberId, int page, int size) {
         requireMember(memberId);
         Pageable pageable = PageRequest.of(page, size, NOTIFICATION_LIST_SORT);
-        Page<Notification> notifications = notificationRepository.findByMemberId(memberId, pageable);
+        Page<Notification> notifications = notificationRepository.findByMemberIdAndHiddenAtIsNull(memberId, pageable);
         if (notifications.isEmpty()) {
             return new PageImpl<>(List.of(), pageable, notifications.getTotalElements());
         }

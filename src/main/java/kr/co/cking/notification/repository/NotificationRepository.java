@@ -15,8 +15,8 @@ import org.springframework.data.repository.query.Param;
 /** Notification 영속화와 사용자별 조회·읽음 처리용 잠금 조회를 제공한다. */
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
-    /** 특정 Member가 소유한 Notification만 Page 조건에 따라 조회한다. */
-    Page<Notification> findByMemberId(Long memberId, Pageable pageable);
+    /** 특정 Member가 소유하고 숨기지 않은 Notification만 Page 조건에 따라 조회한다. */
+    Page<Notification> findByMemberIdAndHiddenAtIsNull(Long memberId, Pageable pageable);
 
     /** 동시 읽음 처리의 최초 시각을 하나로 보장하기 위해 Notification 행을 잠근다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -49,9 +49,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             @Param("body") String body,
             @Param("createdAt") Instant createdAt);
 
-    /** 요청 Member의 아직 읽지 않은 모든 Notification에 최초 읽음 시각을 기록한다. */
+    /** 요청 Member의 숨기지 않았고 아직 읽지 않은 모든 Notification에 최초 읽음 시각을 기록한다. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Notification notification set notification.readAt = :readAt "
-            + "where notification.memberId = :memberId and notification.readAt is null")
+            + "where notification.memberId = :memberId and notification.readAt is null and notification.hiddenAt is null")
     int markAllUnreadAsRead(@Param("memberId") Long memberId, @Param("readAt") Instant readAt);
 }
