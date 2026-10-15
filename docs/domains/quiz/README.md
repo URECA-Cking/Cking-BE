@@ -199,7 +199,7 @@ OpenAI Judge(`quiz_judge`), Gemini Grounding(`quiz_grounding`), Gemini Quiz 생�
 event=ai_provider_call provider=openai operation=quiz_judge model=gpt-6.1-sol status=429 errorCode=insufficient_quota errorType=insufficient_quota latencyMs=231 attempt=2 retry=false requestId=req_123
 ```
 
-- `status`: HTTP 상태. 응답을 받지 못했으면 `-`이고 `errorType`이 `timeout`·`network`·`interrupted`, `errorCode`가 예외 클래스 이름이다. 정상 상태로 받았지만 Provider 응답 envelope를 해석하지 못한 경우(JSON이 아님, 완료 상태가 아님, 출력 텍스트·후보 없음)는 `status=200 errorType=invalid_response`다. 그 안의 Quiz·평가·contentText 해석·검증 실패와 Provider가 보고한 refusal·incomplete·failed 상태는 이 로그 대상이 아니다.
+- `status`: HTTP 상태. 응답을 받지 못했으면 `-`이고 `errorType`이 `timeout`·`network`·`interrupted`, `errorCode`가 예외 클래스 이름이다. 정상 상태로 받았지만 Provider 응답 envelope를 해석하지 못한 경우(JSON이 아님, 완료 상태가 아님, 출력 텍스트·후보 없음)는 `status=200 errorType=invalid_response`다. 그 안의 Quiz·평가·contentText 해석·검증 실패와 OpenAI Judge가 보고한 refusal·incomplete·failed 상태는 이 로그 대상이 아니다. Gemini Grounding은 `incomplete`를 포함해 완료 상태가 아닌 응답을 envelope 해석 실패로 남긴다.
 - `errorCode`·`errorType`: OpenAI는 오류 본문의 `error.code`·`error.type`이라 429의 `insufficient_quota`(크레딧 부족)와 `rate_limit_exceeded`(속도 제한)를 구분한다. Gemini는 `details`의 `ErrorInfo.reason`과 `error.status`(예: `RESOURCE_EXHAUSTED`)다.
 - `retry`: 이 실패를 재시도 대상으로 판단했는지다. 실제로 다음 요청을 보냈다는 뜻은 아니다. Judge는 재시도 대기 뒤 전체 실행 시간이 남지 않으면 다시 요청하지 않으므로, 실제 요청 횟수는 같은 호출의 `attempt` 값이나 `quiz_judge_job_call` 행 수로 확인한다. `requestId`는 OpenAI 응답 헤더 `x-request-id`가 있을 때만 남긴다.
 - 영문·숫자·`_`·`-`·`.`로 된 64자 이하 값(요청 ID는 128자)만 남기고 나머지는 `-`다. 오류 본문이 비었거나 JSON이 아니거나 16KB를 넘으면 기본 진단 정보만 남긴다.
