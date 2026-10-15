@@ -74,23 +74,24 @@ public class GeminiVideoGrounder implements VideoGrounder {
             throw new VideoGroundingException(Failure.NOT_CONFIGURED);
         }
         String model = properties.getModel();
-        String responseBody = send(requestBody(WATCH_URL + videoId, model));
-        String outputText = outputText(responseBody);
+        Response response = send(requestBody(WATCH_URL + videoId, model));
+        String outputText = outputText(response);
         return validator.validate(parser.parse(outputText, GroundingPrompt.VERSION, model));
     }
 
-    private String send(Map<String, Object> body) {
+    private Response send(Map<String, Object> body) {
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
         for (int attempt = 1; ; attempt++) {
             AiProviderCallLog.Call call = AiProviderCallLog.start(AiProviderCallLog.Provider.GEMINI, "quiz_grounding",
                     properties.getModel());
             try {
-                return restClient.post()
+                String responseBody = restClient.post()
                         .uri("/interactions")
                         .header("x-goog-api-key", properties.getApiKey())
                         .body(body)
                         .retrieve()
                         .body(String.class);
+                return new Response(responseBody, call, attempt);
             } catch (RestClientResponseException exception) {
                 int status = exception.getStatusCode().value();
                 if (!isRetryable(status)) {
@@ -136,15 +137,15 @@ public class GeminiVideoGrounder implements VideoGrounder {
     }
 
     /** 완료된 Interaction의 {@code model_output} step에 있는 text를 순서대로 잇는다. */
-    private String outputText(String responseBody) {
+    private String outputText(Response response) {
         JsonNode root;
         try {
-            root = objectMapper.readTree(responseBody == null ? "" : responseBody);
+            root = objectMapper.readTree(response.body() == null ? "" : response.body());
         } catch (JacksonException exception) {
-            throw new VideoGroundingException(Failure.INVALID_RESPONSE);
+            throw invalidEnvelope(response);
         }
         if (root == null || !"completed".equals(root.path("status").asString(null))) {
-            throw new VideoGroundingException(Failure.INVALID_RESPONSE);
+            throw invalidEnvelope(response);
         }
         StringBuilder text = new StringBuilder();
         for (JsonNode step : root.path("steps")) {
@@ -158,9 +159,15 @@ public class GeminiVideoGrounder implements VideoGrounder {
             }
         }
         if (text.isEmpty()) {
-            throw new VideoGroundingException(Failure.INVALID_RESPONSE);
+            throw invalidEnvelope(response);
         }
         return text.toString();
+    }
+
+    /** Interaction 응답 자체를 해석하지 못했다. 그 안의 contentText·facts 검증 실패는 여기서 남기지 않는다. */
+    private VideoGroundingException invalidEnvelope(Response response) {
+        response.call().invalidResponse(200, response.attempt(), false);
+        return new VideoGroundingException(Failure.INVALID_RESPONSE);
     }
 
     private boolean isRetryable(int status) {
@@ -195,6 +202,10 @@ public class GeminiVideoGrounder implements VideoGrounder {
     }
 
     /** 재시도 대기. 테스트에서 실제로 기다리지 않도록 바꿀 수 있다. */
+    /** 성공 상태로 받은 응답 본문과, envelope 해석 실패를 같은 요청의 실패로 남기기 위한 호출 정보. */
+    private record Response(String body, AiProviderCallLog.Call call, int attempt) {
+    }
+
     @FunctionalInterface
     interface Sleeper {
         void sleep(Duration duration) throws InterruptedException;

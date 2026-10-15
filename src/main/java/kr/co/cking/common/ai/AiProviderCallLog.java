@@ -88,7 +88,7 @@ public final class AiProviderCallLog {
             }
         }
 
-        /** 정상 상태로 응답했지만 계약에 맞지 않아 실패로 처리했다. */
+        /** 정상 상태로 응답했지만 Provider 응답 envelope를 해석하지 못했다. 그 안의 업무 결과 검증 실패에는 쓰지 않는다. */
         public void invalidResponse(int status, int attempt, boolean retry) {
             try {
                 write(String.valueOf(status), NONE, "invalid_response", attempt, retry, null);

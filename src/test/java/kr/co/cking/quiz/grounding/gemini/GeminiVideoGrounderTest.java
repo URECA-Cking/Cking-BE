@@ -257,6 +257,31 @@ class GeminiVideoGrounderTest {
                 .doesNotContain(PROVIDER_SECRET, API_KEY);
     }
 
+    @Test
+    void 성공_상태_응답의_envelope만_진단_로그를_남기고_contentText_검증_실패는_남기지_않는다(CapturedOutput output) {
+        String[] envelopeFailures = {"not json " + PROVIDER_SECRET, "{\"status\": \"incomplete\", \"steps\": []}",
+                "{\"status\": \"completed\", \"steps\": [{\"type\": \"user_input\"}]}"};
+        for (String body : envelopeFailures) {
+            server.reset();
+            server.expect(ExpectedCount.once(), requestTo(URL)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+            assertFailure(() -> grounder().ground(VIDEO_ID), Failure.INVALID_RESPONSE);
+            server.verify();
+        }
+        String envelopeLog = "event=ai_provider_call provider=gemini operation=quiz_grounding model=gemini-test-model "
+                + "status=200 errorCode=- errorType=invalid_response latencyMs=";
+        assertThat(output.getAll().split(envelopeLog, -1)).hasSize(4);
+
+        server.reset();
+        server.expect(ExpectedCount.once(), requestTo(URL)).andRespond(withSuccess(
+                completed("{\"contentText\": \" \", \"facts\": [], \"note\": \"" + PROVIDER_SECRET + "\"}"),
+                MediaType.APPLICATION_JSON));
+        assertFailure(() -> grounder().ground(VIDEO_ID), Failure.INVALID_RESPONSE);
+        server.verify();
+
+        assertThat(output.getAll().split(envelopeLog, -1)).as("contentText 검증 실패는 공통 로그 대상이 아니다").hasSize(4);
+        assertThat(output.getAll()).doesNotContain(PROVIDER_SECRET, API_KEY);
+    }
+
     private GeminiVideoGrounder grounder() {
         return new GeminiVideoGrounder(builder.build(), properties, objectMapper, sleeps::add);
     }
