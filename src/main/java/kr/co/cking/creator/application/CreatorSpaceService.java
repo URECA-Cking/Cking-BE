@@ -28,6 +28,7 @@ public class CreatorSpaceService {
     private final CreatorSpaceTemplateService templateService;
     private final CreatorSpaceSlugRegistry slugRegistry;
     private final Clock clock;
+    private final CreatorSpaceTemplateImagePinner imagePinner;
 
     /** 이미 Space가 있으면 그대로 반환한다. */
     public CreatorSpace createFromActiveTemplateIfAbsent(Long creatorId) {
@@ -38,6 +39,9 @@ public class CreatorSpaceService {
     private CreatorSpace createNew(Long creatorId) {
         CreatorSpaceTemplate template = templateService.findActive()
                 .orElseThrow(() -> new BusinessException(CreatorErrorCode.NO_ACTIVE_SPACE_TEMPLATE));
+        // 템플릿 URL을 Space로 복사하기 전에 같은 트랜잭션에서 업로드한 템플릿 이미지를 고정한다. 읽은 뒤 관리자가 템플릿을
+        // 바꾸고 정리 작업이 그 이미지의 삭제를 확정했다면 여기서 거절되고, 아니면 정리 작업이 이 Space의 참조를 보게 된다.
+        imagePinner.pin(template.getProfileImageUrl(), template.getBannerImageUrl());
         LocalDateTime now = LocalDateTime.now(clock);
         String slug = availableSlug(buildSlug(template.getSlugRule(), creatorId), creatorId, now);
         slugRegistry.clearReservation(slug);

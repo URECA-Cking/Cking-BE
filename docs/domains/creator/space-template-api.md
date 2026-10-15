@@ -37,7 +37,14 @@
 
 - 응답은 key가 아니라 공개 CDN URL이다. 이 API는 템플릿에 이미지를 **연결하지 않는다.** 관리자는 응답의 `imageUrl`을 생성·수정 API의 `profileImageUrl`·`bannerImageUrl`에 넣어 저장한다. 템플릿 생성·수정·활성화 계약과 DB는 바뀌지 않으며, URL을 직접 입력하는 방식도 그대로 쓸 수 있다.
 - 저장 위치는 Creator Space 이미지와 같은 `creator-space-profile-images/` 접두사 아래 `template/profile/`·`template/banner/`다. 같은 CDN 경로를 쓰고, Creator의 숫자 `creatorId` 하위 경로와 겹치지 않는다.
-- Creator 소유 기록(`creator_space_profile_image`)을 남기지 않으므로 Creator 이미지 정리 작업이 이 객체를 지우지 않는다. 템플릿 값은 Creator 승인 시점에 Space로 URL이 복사되어 기본 이미지·기본 배너로 쓰이므로, 템플릿 이미지를 바꿔도 이전 객체를 삭제하지 않는다. 올리기만 하고 템플릿에 쓰지 않은 이미지도 저장소에 남는다.
+- Creator 소유 기록(`creator_space_profile_image`)은 남기지 않으므로 Creator 이미지 정리 작업이 이 객체를 지우지 않는다. 대신 업로드 기록(`creator_space_template_image`: key, 종류, 상태, 생성 시각)을 저장소에 올리기 전에 남기고, 올린 뒤 완료로 표시한다. 올리다 실패한 기록은 정리 대상으로 남는다.
+- 템플릿 이미지 정리 작업(`CreatorSpaceTemplateImageCleanupScheduler`, 기본 10분 간격, `cking.creator.space-template-image.cleanup-interval-ms`)이 **올린 지 24시간이 지났고 어떤 템플릿·Space의 URL에도 들어 있지 않은** 업로드만 삭제 대기로 선점하고, 삭제 직전에 참조를 다시 확인한 뒤 객체를 지운다. 참조 여부는 템플릿의 `profileImageUrl`·`bannerImageUrl`과 Space의 `profileImageUrl`·`defaultProfileImageUrl`·`bannerImageUrl`·`defaultBannerImageUrl`에 업로드 key가 포함되는지로 본다(CDN 주소가 바뀌어도 판단이 유지되도록 URL 전체 비교가 아니다).
+- 템플릿 값은 Creator 승인 시점에 Space로 URL이 복사되어 기본 이미지·기본 배너로 쓰이므로, 템플릿에서 빠졌어도 Space가 쓰는 이미지는 지우지 않는다. 더는 어디에서도 참조되지 않게 되면 다음 정리 때 삭제된다. 올린 뒤 24시간 안에 템플릿에 저장하지 않으면 삭제될 수 있다. 정리 작업이 도입되기 전(업로드 기록이 없는 시기)에 올린 이미지는 정리 대상이 아니다.
+- **삭제와 템플릿 저장의 경합**: 저장소 객체 삭제는 DB 트랜잭션에 묶을 수 없어서, "참조를 확인한 뒤 삭제"만으로는 그 사이에 같은 URL을 템플릿에 저장하는 요청을 막지 못한다. 그래서 상태 전이로 직렬화한다. 업로드 기록의 상태는 `UPLOADING → UPLOADED → DELETE_PENDING → DELETING → DELETED`이고, 정리 작업은 저장소 객체를 지우기 전에 `DELETE_PENDING → DELETING`을 조건부 UPDATE로 먼저 확정한다. 템플릿 생성·수정은 같은 트랜잭션에서 저장하려는 URL에 든 템플릿 이미지를 `UPLOADED`로 고정(pin)한다. 이 UPDATE가 잡은 행 잠금이 저장 트랜잭션이 끝날 때까지 유지되므로 둘 중 하나만 성공한다: 고정이 먼저면 삭제 확정이 0건이라 정리 작업이 저장소를 지우지 않고, 삭제 확정이 먼저면 템플릿 저장이 거절된다.
+- 정리 작업이 이미 삭제를 확정(`DELETING`)했거나 지운(`DELETED`) 이미지의 URL을 템플릿에 저장하려 하면 `INVALID_SPACE_TEMPLATE_IMAGE`(400)로 거절한다. 지운 뒤에도 기록을 `DELETED`로 남기는 것은 나중에 옛 URL을 다시 붙여 넣는 저장을 거절하기 위해서다. 업로드 기록이 없는 URL(외부 URL, 정리 작업 도입 이전 이미지)은 추적하지 않으므로 그대로 저장된다. 삭제를 확정한 뒤 저장소 삭제가 실패하면 다음 주기에 삭제만 재시도한다.
+- **고정하는 경로**: 템플릿 이미지 URL을 기록하는 모든 경로가 같은 고정을 거친다. ① 템플릿 생성·수정, ② Creator 승인 때 템플릿 URL을 Space로 복사하는 Space 생성(복사하기 전에 같은 트랜잭션에서 고정), ③ Creator가 `PATCH /api/creator/space`로 프로필 이미지 URL·배너 URL을 직접 바꾸는 경우다. ②에서 읽은 뒤 관리자가 템플릿을 바꾸고 정리 작업이 그 이미지의 삭제를 확정했다면 Space를 만들지 않고 `INVALID_SPACE_TEMPLATE_IMAGE`로 거절하며, 승인을 다시 하면 최신 템플릿을 읽는다.
+- ③은 URL 입력이 실제로 새로 적용되는 경우만 고정한다. 업로드한 이미지가 연결돼 있어 URL 입력이 무시되거나 현재 URL과 같은 값을 다시 보내는 경우는 고정하지 않으므로, 이미 정리된 이미지를 가진 Space도 소개글 등을 계속 수정할 수 있다.
+- 정리 작업은 한 번 실행에서 처리한 개수(삭제 대기로 선점, 저장소 삭제, 참조 확인으로 취소, 삭제 확정 직전 사용 시작으로 취소, 삭제 실패)를 하나라도 있으면 INFO 로그로 남긴다.
 - 관리자만 호출할 수 있고, 이미지 처리 요청이 몰리면 `IMAGE_PROCESSING_BUSY`(503)다.
 
 ## POST /api/admin/creator-space-templates
@@ -101,4 +108,5 @@ Query parameter는 없다. 응답은 생성 API와 같은 형식이다.
 - 관리자가 아닌 호출자는 `FORBIDDEN`이다.
 - 유효하지 않은 요청 필드(빈 문자열, 길이 초과, 누락, `slugRule`이 위 형식이 아님 — `{creatorId}`가 없거나 두 번 이상, 맨 끝이 아님, 바로 앞이 숫자, 대문자·밑줄 등 허용되지 않은 문자)는 `VALIDATION_FAILED`다.
 - 동시 활성화 요청 경합은 `CONCURRENT_COMMAND`다.
+- 템플릿 생성·수정에서 `profileImageUrl`·`bannerImageUrl`이 이미 정리되었거나 정리가 확정된 템플릿 이미지를 가리키면 `INVALID_SPACE_TEMPLATE_IMAGE`(400)다. 이미지를 다시 올려 새 URL로 저장한다.
 - 이미지 업로드에서 `image` part가 없으면 `VALIDATION_FAILED`(400), 파일이 이미지 형식·크기·해상도 규칙을 어기면 `INVALID_SPACE_TEMPLATE_IMAGE`(400), 파일 5MB 또는 요청 6MB를 넘으면 `UPLOAD_TOO_LARGE`(413)다.
