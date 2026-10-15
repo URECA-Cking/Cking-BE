@@ -21,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -59,7 +60,7 @@ class QuizGenerationServiceTest {
     void setUp() {
         properties.setEnabled(true);
         service = new QuizGenerationService(new QuizCreatorLookup(memberRepository, creatorRepository), store,
-                dispatcher, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+                dispatcher, properties, Clock.fixed(NOW, ZoneOffset.UTC), new ObjectMapper());
         given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator(CREATOR_ID)));
         given(store.findByRequest(CREATOR_ID, REQUEST_ID.toString())).willReturn(Optional.empty());

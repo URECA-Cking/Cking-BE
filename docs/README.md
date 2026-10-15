@@ -73,6 +73,7 @@
 - [Creator 문항 구성](domains/quiz/composition-api.md): 선택·수동 편집·책임 승인, 멱등성·계보 계약
 - [Fan Quiz 응시](domains/quiz/attempt-api.md): JWT 답안 제출·서버 채점·본인 결과·보상 연동 경계
 - [Quiz Judge API](domains/quiz/judge-api.md): Creator 평가 요청·조회, attempt·멱등성·실패 코드
+- [Quiz 원문 검토 API](domains/quiz/content-review-api.md): 진행 중 생성 작업 조회, Grounding 원문 확정·검토 취소, 권한·멱등성·동시성
 - [Quiz Judge 검증 목록](domains/quiz/judge-verification.md): #529 완료 조건별 구현·테스트와 로컬/CI 검증 경계
 - [AI Quiz 서비스 연결 설계](domains/quiz/integration-design.md): 생성·Grounding·Judge·승인·게시 책임 경계와 후속 작업 분리
 - [비정상 행동 탐지](domains/abuse-detection/README.md): Mission·Entry 행동 패턴 탐지, Redis feature, Evidence와 Fail Open 계약

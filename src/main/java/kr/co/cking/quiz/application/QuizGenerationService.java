@@ -5,18 +5,24 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.quiz.application.config.QuizGenerationProperties;
 import kr.co.cking.quiz.application.dto.QuizGenerationCommand;
+import kr.co.cking.quiz.application.dto.QuizGenerationCurrentView;
 import kr.co.cking.quiz.application.dto.QuizGenerationView;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizGeneration;
 import kr.co.cking.quiz.domain.QuizGenerationFailure;
+import kr.co.cking.quiz.domain.QuizGenerationReviewStage;
 import kr.co.cking.quiz.domain.QuizRevision;
+import kr.co.cking.quiz.grounding.GroundingFact;
 import kr.co.cking.quiz.grounding.VideoGroundingValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -45,6 +51,7 @@ public class QuizGenerationService {
     private final QuizGenerationDispatcher dispatcher;
     private final QuizGenerationProperties properties;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     public QuizGenerationView request(Long memberId, QuizGenerationCommand command) {
         Creator creator = creatorLookup.requireCreator(memberId);
@@ -91,6 +98,28 @@ public class QuizGenerationService {
         QuizGeneration generation = owned(creator, generationId);
         store.expireStale(creator.getCreatorId(), clock.instant());
         return QuizGenerationView.of(store.find(generationId).orElse(generation));
+    }
+
+    /**
+     * Creator의 진행 중(PENDING·RUNNING) 작업을 찾는다(이슈 #615). 없으면 빈 값이다. 조회 전에 오래된 작업을 정리한다.
+     * 원문 검토 대기면 검토할 AI 원문·facts를 함께 돌려주고, 그 밖의 단계와 기존 작업은 원문을 담지 않는다.
+     */
+    public Optional<QuizGenerationCurrentView> findCurrent(Long memberId) {
+        Creator creator = creatorLookup.requireCreator(memberId);
+        store.expireStale(creator.getCreatorId(), clock.instant());
+        return store.findActive(creator.getCreatorId())
+                .map(generation -> new QuizGenerationCurrentView(QuizGenerationView.of(generation), content(generation)));
+    }
+
+    private QuizGenerationCurrentView.Content content(QuizGeneration generation) {
+        if (generation.getReviewStage() != QuizGenerationReviewStage.AWAITING_REVIEW) {
+            return null;
+        }
+        List<GroundingFact> facts = objectMapper.readValue(generation.getGroundingFacts(), new TypeReference<>() {
+        });
+        return new QuizGenerationCurrentView.Content(generation.getAiContentText(), facts,
+                generation.getGroundingModel(), generation.getGroundingPromptVersion(),
+                VideoGroundingValidator.MAX_CONTENT_TEXT_LENGTH);
     }
 
     /**

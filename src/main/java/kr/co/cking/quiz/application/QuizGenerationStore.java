@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -54,6 +55,13 @@ public class QuizGenerationStore {
     @Transactional(readOnly = true)
     public Optional<QuizGeneration> findByRequest(Long creatorId, String requestId) {
         return repository.findByCreatorIdAndRequestId(creatorId, requestId);
+    }
+
+    /** Creator의 진행 중(PENDING·RUNNING) 작업. 원문 검토 대기·생성 단계도 RUNNING이다. */
+    @Transactional(readOnly = true)
+    public Optional<QuizGeneration> findActive(Long creatorId) {
+        return repository.findFirstByCreatorIdAndStatusInOrderByRequestedAtDesc(creatorId,
+                List.of(QuizGenerationStatus.PENDING, QuizGenerationStatus.RUNNING));
     }
 
     /** requestId·진행 중 작업 고유 제약을 어기면 커밋 전에 {@code DataIntegrityViolationException}이 난다. */

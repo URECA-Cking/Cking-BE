@@ -8,18 +8,23 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.quiz.application.config.QuizGenerationProperties;
+import kr.co.cking.quiz.application.dto.QuizGenerationCurrentView;
+import kr.co.cking.quiz.application.dto.QuizGenerationView;
 import kr.co.cking.quiz.domain.QuizErrorCode;
 import kr.co.cking.quiz.domain.QuizGeneration;
 import kr.co.cking.quiz.domain.QuizGenerationFailure;
 import kr.co.cking.quiz.domain.QuizGenerationReviewStage;
 import kr.co.cking.quiz.domain.QuizGenerationStatus;
 import kr.co.cking.quiz.domain.QuizRevisionFingerprint;
+import kr.co.cking.quiz.grounding.EvidenceType;
+import kr.co.cking.quiz.grounding.GroundingFact;
 import kr.co.cking.quiz.grounding.VideoGroundingValidator;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -59,7 +64,7 @@ class QuizGenerationReviewServiceTest {
     void setUp() {
         properties.setEnabled(true);
         service = new QuizGenerationService(new QuizCreatorLookup(memberRepository, creatorRepository), store,
-                dispatcher, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+                dispatcher, properties, Clock.fixed(NOW, ZoneOffset.UTC), new ObjectMapper());
         given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator(CREATOR_ID)));
         generation = awaiting(CREATOR_ID);
@@ -163,6 +168,76 @@ class QuizGenerationReviewServiceTest {
                 .willThrow(new BusinessException(QuizErrorCode.QUIZ_GENERATION_NOT_AWAITING_REVIEW));
         assertError(() -> service.cancelReview(MEMBER_ID, ID), QuizErrorCode.QUIZ_GENERATION_NOT_AWAITING_REVIEW);
         verifyNoInteractions(dispatcher);
+    }
+
+    @Test
+    void 진행_중_작업이_없으면_오래된_작업을_정리한_뒤_빈_값이다() {
+        given(store.findActive(CREATOR_ID)).willReturn(Optional.empty());
+
+        assertThat(service.findCurrent(MEMBER_ID)).isEmpty();
+
+        InOrder order = inOrder(store);
+        order.verify(store).expireStale(CREATOR_ID, NOW);
+        order.verify(store).findActive(CREATOR_ID);
+    }
+
+    @Test
+    void 검토_대기_작업은_AI_원문과_facts를_함께_돌려준다() {
+        ReflectionTestUtils.setField(generation, "groundingFacts", """
+                [{"fact": "물은 증발한다.", "evidenceType": "SPEECH", "evidence": "물이 증발합니다",
+                  "timestampStart": "00:01", "timestampEnd": "00:03"},
+                 {"fact": "비가 온다.", "evidenceType": "VISUAL", "evidence": "비 장면",
+                  "timestampStart": null, "timestampEnd": null}]""");
+        ReflectionTestUtils.setField(generation, "groundingModel", "gemini-test");
+        ReflectionTestUtils.setField(generation, "groundingPromptVersion", "quiz-grounding-v1");
+        given(store.findActive(CREATOR_ID)).willReturn(Optional.of(generation));
+
+        QuizGenerationCurrentView current = service.findCurrent(MEMBER_ID).orElseThrow();
+
+        assertThat(current.generation().reviewStage()).isEqualTo(QuizGenerationReviewStage.AWAITING_REVIEW);
+        assertThat(current.generation().contentEdited()).isNull();
+        assertThat(current.content().aiContentText()).isEqualTo("AI 원문");
+        assertThat(current.content().facts()).containsExactly(
+                new GroundingFact("물은 증발한다.", EvidenceType.SPEECH, "물이 증발합니다", "00:01", "00:03"),
+                new GroundingFact("비가 온다.", EvidenceType.VISUAL, "비 장면", null, null));
+        assertThat(current.content().groundingModel()).isEqualTo("gemini-test");
+        assertThat(current.content().groundingPromptVersion()).isEqualTo("quiz-grounding-v1");
+        assertThat(current.content().maxLength()).isEqualTo(VideoGroundingValidator.MAX_CONTENT_TEXT_LENGTH);
+    }
+
+    @Test
+    void 검토_대기가_아닌_진행_중_작업은_원문을_담지_않는다() {
+        QuizGeneration grounding = awaiting(CREATOR_ID);
+        ReflectionTestUtils.setField(grounding, "reviewStage", QuizGenerationReviewStage.GROUNDING);
+        ReflectionTestUtils.setField(grounding, "aiContentText", null);
+        QuizGeneration generating = awaiting(CREATOR_ID);
+        generating.confirmContent(TEXT, QuizRevisionFingerprint.contentTextSha256(TEXT), MEMBER_ID, NOW);
+        QuizGeneration legacy = new QuizGeneration(CREATOR_ID, MEMBER_ID, "req", "dQw4w9WgXcQ", "제목", 3, NOW);
+        ReflectionTestUtils.setField(legacy, "status", QuizGenerationStatus.RUNNING);
+
+        for (QuizGeneration active : new QuizGeneration[] {grounding, generating, legacy}) {
+            given(store.findActive(CREATOR_ID)).willReturn(Optional.of(active));
+            assertThat(service.findCurrent(MEMBER_ID).orElseThrow().content()).isNull();
+        }
+    }
+
+    @Test
+    void 작업_상태에_원문_검토_단계와_수정_여부와_확정_시각을_담는다() {
+        QuizGeneration unchanged = awaiting(CREATOR_ID);
+        unchanged.confirmContent("AI 원문", QuizRevisionFingerprint.contentTextSha256("AI 원문"), MEMBER_ID, NOW);
+        QuizGeneration edited = awaiting(CREATOR_ID);
+        edited.confirmContent(TEXT, QuizRevisionFingerprint.contentTextSha256(TEXT), MEMBER_ID, NOW);
+        QuizGeneration legacy = new QuizGeneration(CREATOR_ID, MEMBER_ID, "req", "dQw4w9WgXcQ", "제목", 3, NOW);
+
+        assertThat(QuizGenerationView.of(unchanged).contentEdited()).isFalse();
+        assertThat(QuizGenerationView.of(edited).contentEdited()).isTrue();
+        assertThat(QuizGenerationView.of(edited).reviewStage()).isEqualTo(QuizGenerationReviewStage.GENERATING);
+        assertThat(QuizGenerationView.of(edited).contentConfirmedAt()).isEqualTo(NOW);
+        assertThat(QuizGenerationView.of(generation).contentEdited()).as("확정 전").isNull();
+        QuizGenerationView legacyView = QuizGenerationView.of(legacy);
+        assertThat(legacyView.reviewStage()).isNull();
+        assertThat(legacyView.contentEdited()).isNull();
+        assertThat(legacyView.contentConfirmedAt()).isNull();
     }
 
     private static QuizGeneration awaiting(Long creatorId) {

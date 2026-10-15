@@ -19,13 +19,20 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 
@@ -54,6 +61,11 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Grounding 원문 검토 흐름(이슈 #604)을 실제 MySQL과 Executor로 검증한다. Provider는 테스트용 Fake다.
@@ -63,6 +75,7 @@ import static org.mockito.Mockito.verify;
  * Docker가 없으면 컨테이너 시작에서 실패하며 Spring Context를 만들지 않으므로 기본 datasource로 넘어가지 않는다.
  */
 @SpringBootTest
+@AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "cking.quiz.generation.enabled=true",
         "cking.quiz.generation.content-review.enabled=true"})
@@ -123,6 +136,10 @@ class QuizGenerationContentReviewIntegrationTest {
     private QuizGenerationStore generationStore;
     @Autowired
     private QuizGenerationWorker worker;
+    @Autowired
+    private MockMvc mockMvc;
+    @Autowired
+    private kr.co.cking.quiz.application.config.QuizGenerationProperties generationProperties;
     @Autowired
     private DataSource dataSource;
     @Autowired
@@ -429,6 +446,174 @@ class QuizGenerationContentReviewIntegrationTest {
         assertThat(state(id)).isEqualTo("SUCCEEDED:GENERATING:-");
         assertThat(quizCount(creator)).isEqualTo(1);
         assertThat(GENERATION_INPUTS).hasSize(1);
+    }
+
+    // Creator HTTP API(이슈 #615)
+
+    @Test
+    void API로_검토_원문을_조회하고_수정한_원문을_확정해_Quiz를_만든다() throws Exception {
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+
+        perform(creator, get("/api/creator/quizzes/generations/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generationId").value(id))
+                .andExpect(jsonPath("$.data.status").value("RUNNING"))
+                .andExpect(jsonPath("$.data.reviewStage").value("AWAITING_REVIEW"))
+                .andExpect(jsonPath("$.data.contentEdited").isEmpty())
+                .andExpect(jsonPath("$.data.content.aiContentText").value(QuizGenerationFixtures.CONTENT_TEXT))
+                .andExpect(jsonPath("$.data.content.facts.length()").value(2))
+                .andExpect(jsonPath("$.data.content.facts[0].evidenceType").value("SPEECH"))
+                .andExpect(jsonPath("$.data.content.facts[1].timestampStart").isEmpty())
+                .andExpect(jsonPath("$.data.content.groundingModel").value(FakeVideoGrounder.MODEL))
+                .andExpect(jsonPath("$.data.content.maxLength").value(50000));
+
+        confirm(creator, id, REVIEWED)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.reviewStage").value("GENERATING"))
+                .andExpect(jsonPath("$.data.contentEdited").value(true))
+                .andExpect(jsonPath("$.data.contentConfirmedAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.content").doesNotExist());
+        awaitState(id, "SUCCEEDED", "GENERATING");
+
+        perform(creator, get("/api/creator/quizzes/generations/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.quizId").value(row(id).get("quiz_id")))
+                .andExpect(jsonPath("$.data.contentEdited").value(true))
+                .andExpect(jsonPath("$.data.content").doesNotExist());
+        assertThat(jdbcTemplate.queryForObject("SELECT content_text FROM quiz WHERE quiz_id = ?", String.class,
+                row(id).get("quiz_id"))).isEqualTo(REVIEWED);
+        perform(creator, get("/api/creator/quizzes/generations/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void API는_본인_작업만_다루고_취소는_멱등이며_슬롯을_푼다() throws Exception {
+        Creator owner = creator();
+        Creator other = creator();
+        long id = awaitingReview(owner);
+
+        confirm(other, id, REVIEWED).andExpect(status().isForbidden());
+        perform(other, post("/api/creator/quizzes/generations/" + id + "/cancel")).andExpect(status().isForbidden());
+        perform(other, get("/api/creator/quizzes/generations/current")).andExpect(jsonPath("$.data").doesNotExist());
+        mockMvc.perform(get("/api/creator/quizzes/generations/current")).andExpect(status().isUnauthorized());
+        assertThat(state(id)).isEqualTo("RUNNING:AWAITING_REVIEW:-");
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            perform(owner, post("/api/creator/quizzes/generations/" + id + "/cancel"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("FAILED"))
+                    .andExpect(jsonPath("$.data.failureCode").value("CANCELLED"));
+        }
+        confirm(owner, id, REVIEWED)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUIZ_GENERATION_NOT_AWAITING_REVIEW"));
+        perform(owner, get("/api/creator/quizzes/generations/current")).andExpect(jsonPath("$.data").doesNotExist());
+        awaitingReview(owner);
+    }
+
+    @Test
+    void API_원문_재확정은_같은_원문이면_멱등이고_다른_원문은_409다() throws Exception {
+        doReturn(true).when(dispatcher).dispatchGeneration(anyLong());
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+
+        confirm(creator, id, REVIEWED).andExpect(status().isAccepted());
+        Object confirmedAt = row(id).get("content_confirmed_at");
+        confirm(creator, id, REVIEWED)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.reviewStage").value("GENERATING"));
+        confirm(creator, id, REVIEWED + " 다시 고침")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUIZ_GENERATION_CONTENT_CONFLICT"));
+
+        assertThat(row(id).get("content_confirmed_at")).isEqualTo(confirmedAt);
+        assertThat(row(id).get("reviewed_content_text")).isEqualTo(REVIEWED);
+        verify(dispatcher, times(1)).dispatchGeneration(id);
+    }
+
+    @Test
+    void API_동시_확정과_확정_취소_동시_요청은_하나만_반영된다() throws Exception {
+        doReturn(true).when(dispatcher).dispatchGeneration(anyLong());
+        Creator same = creator();
+        long sameId = awaitingReview(same);
+
+        List<Object> sameStatuses = concurrently(() -> confirmStatus(same, sameId, REVIEWED),
+                () -> confirmStatus(same, sameId, REVIEWED));
+
+        assertThat(sameStatuses).containsExactly(202, 202);
+        verify(dispatcher, times(1)).dispatchGeneration(sameId);
+
+        Creator racing = creator();
+        long racingId = awaitingReview(racing);
+
+        List<Object> racingStatuses = concurrently(() -> confirmStatus(racing, racingId, REVIEWED),
+                () -> perform(racing, post("/api/creator/quizzes/generations/" + racingId + "/cancel"))
+                        .andReturn().getResponse().getStatus());
+
+        assertThat(racingStatuses).containsAnyOf(202, 200).contains(409);
+        assertThat(state(racingId)).isIn("RUNNING:GENERATING:-", "FAILED:AWAITING_REVIEW:CANCELLED");
+    }
+
+    @Test
+    void API_생성_기능이_꺼져_있으면_새_확정은_503이고_취소는_된다() throws Exception {
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+        generationProperties.setEnabled(false);
+        try {
+            confirm(creator, id, REVIEWED)
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("QUIZ_GENERATION_DISABLED"));
+            perform(creator, post("/api/creator/quizzes/generations/" + id + "/cancel")).andExpect(status().isOk());
+        } finally {
+            generationProperties.setEnabled(true);
+        }
+        assertThat(state(id)).isEqualTo("FAILED:AWAITING_REVIEW:CANCELLED");
+    }
+
+    @Test
+    void 기존_흐름_작업은_원문_검토_필드가_null이고_확정할_수_없다() throws Exception {
+        Creator creator = creator();
+        generationProperties.getContentReview().setEnabled(false);
+        long id;
+        try {
+            id = request(creator);
+        } finally {
+            generationProperties.getContentReview().setEnabled(true);
+        }
+        awaitState(id, "SUCCEEDED", "-");
+
+        perform(creator, get("/api/creator/quizzes/generations/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.reviewStage").isEmpty())
+                .andExpect(jsonPath("$.data.contentEdited").isEmpty())
+                .andExpect(jsonPath("$.data.contentConfirmedAt").isEmpty());
+        confirm(creator, id, REVIEWED)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUIZ_GENERATION_NOT_AWAITING_REVIEW"));
+        perform(creator, post("/api/creator/quizzes/generations/" + id + "/cancel")).andExpect(status().isConflict());
+        assertThat(GENERATION_INPUTS).extracting(QuizGenerationInput::contentText)
+                .containsExactly(QuizGenerationFixtures.CONTENT_TEXT);
+    }
+
+    private ResultActions perform(Creator creator, MockHttpServletRequestBuilder request) throws Exception {
+        Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "none")
+                .claim("sub", String.valueOf(creator.getMemberId())).build();
+        return mockMvc.perform(request.with(authentication(new JwtAuthenticationToken(jwt, List.of()))));
+    }
+
+    private ResultActions confirm(Creator creator, long id, String contentText) throws Exception {
+        return perform(creator, post("/api/creator/quizzes/generations/" + id + "/content-confirmation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(new tools.jackson.databind.ObjectMapper().writeValueAsString(
+                        Map.of("contentText", contentText))));
+    }
+
+    private Object confirmStatus(Creator creator, long id, String contentText) throws Exception {
+        return confirm(creator, id, contentText).andReturn().getResponse().getStatus();
     }
 
     private Creator creator() {
