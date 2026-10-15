@@ -9,6 +9,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
 import kr.co.cking.sanction.domain.MemberSanction;
@@ -20,6 +28,10 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @DataJpaTest
@@ -38,6 +50,9 @@ class NotificationRepositoryJpaTest {
 
     @Autowired
     private MemberSanctionRepository sanctionRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Test
     void Member별_알림을_생성시각과_알림_ID_내림차순으로_조회한다() {
@@ -102,6 +117,157 @@ class NotificationRepositoryJpaTest {
                 .isEqualTo(previousReadAt);
         assertThat(notificationRepository.findById(otherMember.getNotificationId()).orElseThrow().getReadAt())
                 .isNull();
+    }
+
+    /** 개별 읽음이 행 잠금을 먼저 잡으면 전체 읽음은 커밋을 기다린 뒤 남은 알림만 처리한다. */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 개별_읽음이_먼저_잠그면_전체_읽음은_나머지_알림만_변경한다() throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        ConcurrencyFixture fixture = transaction.execute(status -> concurrencyFixture());
+        Instant individualReadAt = Instant.parse("2026-10-15T01:00:00Z");
+        Instant bulkReadAt = individualReadAt.plusSeconds(1);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch bulkStarted = new CountDownLatch(1);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> individual = executor.submit(() -> transaction.execute(status -> {
+                notificationRepository.findByIdForUpdate(fixture.targetId()).orElseThrow()
+                        .markAsRead(individualReadAt);
+                entityManager.flush();
+                locked.countDown();
+                await(release);
+                return null;
+            }));
+            await(locked);
+            Future<Integer> bulk = executor.submit(() -> transaction.execute(status -> {
+                bulkStarted.countDown();
+                return notificationRepository.markAllUnreadAsRead(fixture.memberId(), bulkReadAt);
+            }));
+            await(bulkStarted);
+            assertThatThrownBy(() -> bulk.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+
+            individual.get(10, TimeUnit.SECONDS);
+            assertThat(bulk.get(10, TimeUnit.SECONDS)).isEqualTo(1);
+            transaction.execute(status -> {
+                assertThat(notificationRepository.findById(fixture.targetId()).orElseThrow().getReadAt())
+                        .isEqualTo(individualReadAt);
+                assertThat(notificationRepository.findById(fixture.otherId()).orElseThrow().getReadAt())
+                        .isEqualTo(bulkReadAt);
+                return null;
+            });
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            try {
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                transaction.execute(status -> {
+                    deleteConcurrencyFixture(fixture);
+                    return null;
+                });
+            }
+        }
+    }
+
+    /** 전체 읽음이 먼저 갱신한 행은 개별 읽음이 잠금을 기다린 뒤에도 최초 시각을 유지한다. */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 전체_읽음이_먼저_잠그면_개별_읽음은_기존_시각을_유지한다() throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        ConcurrencyFixture fixture = transaction.execute(status -> concurrencyFixture());
+        Instant bulkReadAt = Instant.parse("2026-10-15T01:00:00Z");
+        Instant individualReadAt = bulkReadAt.plusSeconds(1);
+        CountDownLatch updated = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch individualStarted = new CountDownLatch(1);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> bulk = executor.submit(() -> transaction.execute(status -> {
+                int count = notificationRepository.markAllUnreadAsRead(fixture.memberId(), bulkReadAt);
+                updated.countDown();
+                await(release);
+                return count;
+            }));
+            await(updated);
+            Future<Instant> individual = executor.submit(() -> transaction.execute(status -> {
+                individualStarted.countDown();
+                Notification notification = notificationRepository.findByIdForUpdate(fixture.targetId()).orElseThrow();
+                notification.markAsRead(individualReadAt);
+                return notification.getReadAt();
+            }));
+            await(individualStarted);
+            assertThatThrownBy(() -> individual.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+
+            assertThat(bulk.get(10, TimeUnit.SECONDS)).isEqualTo(2);
+            assertThat(individual.get(10, TimeUnit.SECONDS)).isEqualTo(bulkReadAt);
+            transaction.execute(status -> {
+                assertThat(notificationRepository.findById(fixture.targetId()).orElseThrow().getReadAt())
+                        .isEqualTo(bulkReadAt);
+                assertThat(notificationRepository.findById(fixture.otherId()).orElseThrow().getReadAt())
+                        .isEqualTo(bulkReadAt);
+                return null;
+            });
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            try {
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                transaction.execute(status -> {
+                    deleteConcurrencyFixture(fixture);
+                    return null;
+                });
+            }
+        }
+    }
+
+    /** 경합 테스트에 사용할 회원·제재·미확인 알림 두 건을 별도 트랜잭션에서 저장한다. */
+    private ConcurrencyFixture concurrencyFixture() {
+        Member member = new Member("알림 경합 회원", null, null, MemberRole.USER);
+        Member admin = new Member("알림 경합 관리자", null, null, MemberRole.USER);
+        entityManager.persist(member);
+        entityManager.persist(admin);
+        entityManager.flush();
+        MemberSanction sanction = MemberSanction.manual(member.getMemberId(), admin.getMemberId(),
+                "경합 검증", Instant.parse("2026-10-15T00:00:00Z"), Duration.ofDays(1));
+        entityManager.persist(sanction);
+        entityManager.flush();
+        Notification target = notificationRepository.saveAndFlush(Notification.forSanction(member.getMemberId(),
+                sanction.getSanctionId(), NotificationType.COMMENT_RESTRICTION_STARTED, "경합 대상", "본문"));
+        Notification other = notificationRepository.saveAndFlush(Notification.forSanction(member.getMemberId(),
+                sanction.getSanctionId(), NotificationType.COMMENT_RESTRICTION_RELEASED, "추가 알림", "본문"));
+        return new ConcurrencyFixture(member.getMemberId(), admin.getMemberId(), sanction.getSanctionId(),
+                target.getNotificationId(), other.getNotificationId());
+    }
+
+    /** 경합 테스트가 커밋한 알림과 참조 행을 FK 순서대로 삭제한다. */
+    private void deleteConcurrencyFixture(ConcurrencyFixture fixture) {
+        notificationRepository.deleteAllById(List.of(fixture.targetId(), fixture.otherId()));
+        notificationRepository.flush();
+        sanctionRepository.deleteById(fixture.sanctionId());
+        sanctionRepository.flush();
+        entityManager.remove(entityManager.find(Member.class, fixture.memberId()));
+        entityManager.remove(entityManager.find(Member.class, fixture.adminId()));
+        entityManager.flush();
+    }
+
+    /** 작업 스레드가 합의한 단계에 도달할 때까지 제한 시간 동안 기다린다. */
+    private void await(CountDownLatch latch) {
+        try {
+            assertThat(latch.await(10, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("알림 경합 대기 중 인터럽트", exception);
+        }
+    }
+
+    private record ConcurrencyFixture(long memberId, long adminId, long sanctionId, long targetId, long otherId) {
     }
 
     @Test
