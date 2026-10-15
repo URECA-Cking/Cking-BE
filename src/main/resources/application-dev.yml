@@ -58,9 +58,9 @@ cking:
   # Quiz는 OpenAI 사용 한도와 모델 접근 권한을 확인한 뒤 켠다.
   quiz:
     generation:
-      enabled: ${QUIZ_GENERATION_ENABLED:false}
+      enabled: ${QUIZ_GENERATION_ENABLED:true}
     judge:
-      enabled: ${QUIZ_JUDGE_ENABLED:false}
+      enabled: ${QUIZ_JUDGE_ENABLED:true}
 
 info:
   image:
