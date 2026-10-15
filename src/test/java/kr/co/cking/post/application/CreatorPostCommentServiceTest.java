@@ -3,8 +3,12 @@ package kr.co.cking.post.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.exception.ErrorCode;
+import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
+import kr.co.cking.member.application.ProfileImageUrlResolver;
+import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
 import kr.co.cking.post.domain.CommentFilterAction;
@@ -14,6 +18,8 @@ import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
+import kr.co.cking.sanction.application.SanctionQueryService;
+import kr.co.cking.sanction.domain.SanctionErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -37,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -59,10 +66,13 @@ class CreatorPostCommentServiceTest {
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+    private final ProfileImageUrlResolver profileImageUrlResolver = mock(ProfileImageUrlResolver.class);
+    private final SanctionQueryService sanctionQueryService = mock(SanctionQueryService.class);
     private final CreatorPostCommentService service = new CreatorPostCommentService(
             new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
-            commentRepository, memberRepository, Clock.fixed(LATER, ZoneOffset.UTC),
-            mock(ApplicationEventPublisher.class));
+            commentRepository, memberRepository, spaceRepository, profileImageUrlResolver,
+            Clock.fixed(LATER, ZoneOffset.UTC), mock(ApplicationEventPublisher.class), sanctionQueryService);
 
     @BeforeEach
     void setUp() {
@@ -74,7 +84,7 @@ class CreatorPostCommentServiceTest {
         }
         given(followQueryService.isFollowing(FAN_MEMBER_ID, CREATOR_ID)).willReturn(true);
         for (Long memberId : List.of(OWNER_MEMBER_ID, FAN_MEMBER_ID, STRANGER_MEMBER_ID)) {
-            given(memberRepository.findById(memberId)).willReturn(Optional.of(member(memberId)));
+            given(memberRepository.findByIdForUpdate(memberId)).willReturn(Optional.of(member(memberId)));
         }
         given(commentRepository.save(any(CreatorPostComment.class))).willAnswer(invocation -> {
             CreatorPostComment saved = invocation.getArgument(0);
@@ -95,7 +105,7 @@ class CreatorPostCommentServiceTest {
 
         assertThat(comments).extracting(CreatorPostCommentView::commentId).containsExactly(1L, 2L);
         assertThat(comments).extracting(CreatorPostCommentView::authorName)
-                .containsExactly("member-" + FAN_MEMBER_ID, "member-" + OWNER_MEMBER_ID);
+                .containsExactly("member-" + FAN_MEMBER_ID, "creator-" + CREATOR_ID);
         assertThat(comments).extracting(CreatorPostCommentView::writtenByCreator).containsExactly(false, true);
     }
 
@@ -118,6 +128,61 @@ class CreatorPostCommentServiceTest {
         assertThat(created.writtenByCreator()).isFalse();
         assertThat(created.content()).isEqualTo("응원해요");
         assertThat(created.createdAt()).isEqualTo(LATER);
+    }
+
+    @Test
+    void 댓글_작성_제한_중인_회원은_작성과_수정이_COMMENT_RESTRICTED로_막히고_삭제는_할_수_있다() {
+        willThrow(new BusinessException(SanctionErrorCode.COMMENT_RESTRICTED))
+                .given(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID, CREATOR_ID);
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
+
+        assertError(() -> service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요"),
+                SanctionErrorCode.COMMENT_RESTRICTED);
+        assertError(() -> service.update(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L, "수정"),
+                SanctionErrorCode.COMMENT_RESTRICTED);
+        verify(commentRepository, never()).save(any(CreatorPostComment.class));
+
+        service.delete(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L);
+
+        verify(commentRepository).delete(any(CreatorPostComment.class));
+    }
+
+    @Test
+    void 작성과_수정은_작성자_행을_잠근_다음_제한을_확인하고_그_다음_게시글_댓글_순으로_읽는다() {
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
+
+        service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요");
+        service.update(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L, "수정");
+
+        InOrder order = inOrder(memberRepository, sanctionQueryService, postRepository, commentRepository);
+        order.verify(memberRepository).findByIdForUpdate(FAN_MEMBER_ID);
+        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID, CREATOR_ID);
+        order.verify(postRepository).findByIdForShare(PUBLIC_POST_ID);
+        order.verify(commentRepository).save(any(CreatorPostComment.class));
+        order.verify(memberRepository).findByIdForUpdate(FAN_MEMBER_ID);
+        order.verify(sanctionQueryService).requireCommentWriteAllowed(FAN_MEMBER_ID, CREATOR_ID);
+        order.verify(postRepository).findByIdForShare(PUBLIC_POST_ID);
+        order.verify(commentRepository).findByIdForUpdate(1L);
+    }
+
+    @Test
+    void 삭제는_작성자_행을_잠그지도_제한을_확인하지도_않는다() {
+        given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
+
+        service.delete(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 1L);
+
+        verify(memberRepository, never()).findByIdForUpdate(any());
+        verify(sanctionQueryService, never()).requireCommentWriteAllowed(any(), any());
+    }
+
+    @Test
+    void 제한은_다른_회원의_작성을_막지_않는다() {
+        willThrow(new BusinessException(SanctionErrorCode.COMMENT_RESTRICTED))
+                .given(sanctionQueryService).requireCommentWriteAllowed(STRANGER_MEMBER_ID, CREATOR_ID);
+
+        CreatorPostCommentView created = service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요");
+
+        assertThat(created.commentId()).isEqualTo(500L);
     }
 
     @Test
@@ -368,6 +433,195 @@ class CreatorPostCommentServiceTest {
         assertThat(view.filtered()).isTrue();
         assertThat(view.revealable()).isFalse();
         assertThat(view.content()).isNull();
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글은_다른_사람에게_가려지고_원문_보기도_허용하지_않는다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        stubCommentPage(hidden);
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0);
+
+        assertThat(view.filtered()).isTrue();
+        assertThat(view.revealable()).isFalse();
+        assertThat(view.content()).isNull();
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글도_작성자_본인에게는_원문이_그대로_보인다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        stubCommentPage(hidden);
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, FAN_MEMBER_ID, PAGE).getContent().get(0);
+
+        assertThat(view.filtered()).isFalse();
+        assertThat(view.content()).isEqualTo("댓글 1");
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글의_원문은_403이고_작성자_본인은_404다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        given(commentRepository.findById(1L)).willReturn(Optional.of(hidden));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
+                PostErrorCode.COMMENT_NOT_REVEALABLE);
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, FAN_MEMBER_ID),
+                CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    void 관리자가_숨긴_댓글은_본문을_수정하고_재판정을_받아도_계속_숨겨진다() {
+        CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+
+        hidden.update("고친 댓글", LATER);
+        hidden.markFiltered(CommentFilterAction.PASS, List.of(), "rule-2", "model-2", LATER);
+
+        assertThat(hidden.isHiddenByAdmin()).isTrue();
+        assertThat(hidden.isConcealed()).isTrue();
+    }
+
+    @Test
+    void 회원_프로필_사진이_있으면_공개_URL을_없으면_null을_작성자_사진으로_내려준다() {
+        Member withPhoto = member(FAN_MEMBER_ID);
+        withPhoto.updateProfileImageKey("member-profile-images/20/a.jpg");
+        given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
+                .willReturn("https://cdn.example.com/member-profile-images/20/a.jpg");
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
+                comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID), comment(2L, PUBLIC_POST_ID, STRANGER_MEMBER_ID)), PAGE, 2));
+        given(memberRepository.findAllById(Set.of(FAN_MEMBER_ID, STRANGER_MEMBER_ID)))
+                .willReturn(List.of(withPhoto, member(STRANGER_MEMBER_ID)));
+
+        List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent();
+
+        assertThat(views).extracting(CreatorPostCommentView::authorProfileImageUrl)
+                .containsExactly("https://cdn.example.com/member-profile-images/20/a.jpg", null);
+        // Creator 본인 댓글이 없으면 Space를 조회하지 않는다.
+        verify(spaceRepository, never()).findByCreatorId(any());
+    }
+
+    @Test
+    void Creator_본인_댓글은_Space_프로필_사진을_쓰고_댓글이_여럿이어도_Space는_한_번만_읽는다() {
+        CreatorSpace space = mock(CreatorSpace.class);
+        given(space.getProfileImageUrl()).willReturn("https://cdn.example.com/space/profile.png");
+        given(spaceRepository.findByCreatorId(CREATOR_ID)).willReturn(Optional.of(space));
+        Member owner = member(OWNER_MEMBER_ID);
+        owner.updateProfileImageKey("member-profile-images/10/own.jpg");
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
+                comment(1L, PUBLIC_POST_ID, OWNER_MEMBER_ID), comment(2L, PUBLIC_POST_ID, OWNER_MEMBER_ID),
+                comment(3L, PUBLIC_POST_ID, FAN_MEMBER_ID)), PAGE, 3));
+        given(memberRepository.findAllById(Set.of(OWNER_MEMBER_ID, FAN_MEMBER_ID)))
+                .willReturn(List.of(owner, member(FAN_MEMBER_ID)));
+
+        List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent();
+
+        // 회원 개인 사진이 있어도 Creator 본인 댓글은 Space 사진이다.
+        assertThat(views).extracting(CreatorPostCommentView::authorProfileImageUrl)
+                .containsExactly("https://cdn.example.com/space/profile.png", "https://cdn.example.com/space/profile.png", null);
+        verify(spaceRepository, times(1)).findByCreatorId(CREATOR_ID);
+        verify(profileImageUrlResolver, never()).resolve("member-profile-images/10/own.jpg");
+    }
+
+    @Test
+    void Creator_Space가_없으면_Creator_본인_댓글의_사진은_null이다() {
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
+                comment(1L, PUBLIC_POST_ID, OWNER_MEMBER_ID)), PAGE, 1));
+        given(memberRepository.findAllById(Set.of(OWNER_MEMBER_ID))).willReturn(List.of(member(OWNER_MEMBER_ID)));
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent().get(0);
+
+        assertThat(view.authorProfileImageUrl()).isNull();
+        assertThat(view.authorName()).isEqualTo("creator-" + CREATOR_ID);
+    }
+
+    @Test
+    void 작성자를_찾지_못한_댓글은_이름과_사진이_null이다() {
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
+                comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)), PAGE, 1));
+        given(memberRepository.findAllById(Set.of(FAN_MEMBER_ID))).willReturn(List.of());
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent().get(0);
+
+        assertThat(view.authorName()).isNull();
+        assertThat(view.authorProfileImageUrl()).isNull();
+    }
+
+    @Test
+    void 필터가_차단하거나_관리자가_숨긴_댓글은_다른_사람에게_작성자_이름과_사진도_가린다() {
+        Member fan = member(FAN_MEMBER_ID);
+        fan.updateProfileImageKey("member-profile-images/20/a.jpg");
+        given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
+                .willReturn("https://cdn.example.com/member-profile-images/20/a.jpg");
+        CreatorPostComment hidden = passed(2L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(9L, NOW);
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "profanity:test"), hidden, passed(3L, FAN_MEMBER_ID));
+        given(memberRepository.findAllById(any())).willReturn(List.of(fan));
+
+        List<CreatorPostCommentView> views =
+                service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent();
+
+        assertThat(views.get(0).authorName()).isNull();
+        assertThat(views.get(0).authorProfileImageUrl()).isNull();
+        assertThat(views.get(1).authorName()).isNull();
+        assertThat(views.get(1).authorProfileImageUrl()).isNull();
+        // 가려지지 않은 댓글은 그대로다.
+        assertThat(views.get(2).authorName()).isEqualTo("member-" + FAN_MEMBER_ID);
+        assertThat(views.get(2).authorProfileImageUrl()).isEqualTo("https://cdn.example.com/member-profile-images/20/a.jpg");
+    }
+
+    @Test
+    void 가려진_댓글도_작성자_본인에게는_이름과_사진이_보이고_게시글_Creator에게는_가려진다() {
+        Member fan = member(FAN_MEMBER_ID);
+        fan.updateProfileImageKey("member-profile-images/20/a.jpg");
+        given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
+                .willReturn("https://cdn.example.com/member-profile-images/20/a.jpg");
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "profanity:test"));
+        given(memberRepository.findAllById(any())).willReturn(List.of(fan));
+
+        CreatorPostCommentView seenByAuthor =
+                service.findByPost(CREATOR_ID, PUBLIC_POST_ID, FAN_MEMBER_ID, PAGE).getContent().get(0);
+        CreatorPostCommentView seenByCreator =
+                service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent().get(0);
+
+        assertThat(seenByAuthor.filtered()).isFalse();
+        assertThat(seenByAuthor.authorName()).isEqualTo("member-" + FAN_MEMBER_ID);
+        assertThat(seenByAuthor.authorProfileImageUrl()).isEqualTo("https://cdn.example.com/member-profile-images/20/a.jpg");
+        assertThat(seenByCreator.filtered()).isTrue();
+        assertThat(seenByCreator.authorName()).isNull();
+        assertThat(seenByCreator.authorProfileImageUrl()).isNull();
+    }
+
+    @Test
+    void 작성과_수정_응답에도_작성자_사진이_담긴다() {
+        Member fan = member(FAN_MEMBER_ID);
+        fan.updateProfileImageKey("member-profile-images/20/a.jpg");
+        given(memberRepository.findByIdForUpdate(FAN_MEMBER_ID)).willReturn(Optional.of(fan));
+        given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
+                .willReturn("https://cdn.example.com/member-profile-images/20/a.jpg");
+        given(commentRepository.findByIdForUpdate(500L))
+                .willReturn(Optional.of(comment(500L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
+
+        CreatorPostCommentView created = service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요");
+        CreatorPostCommentView updated = service.update(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, 500L, "고쳤어요");
+
+        assertThat(created.authorProfileImageUrl()).isEqualTo("https://cdn.example.com/member-profile-images/20/a.jpg");
+        assertThat(updated.authorProfileImageUrl()).isEqualTo("https://cdn.example.com/member-profile-images/20/a.jpg");
+    }
+
+    @Test
+    void Creator_본인이_작성하면_응답의_사진은_Space_프로필_사진이다() {
+        CreatorSpace space = mock(CreatorSpace.class);
+        given(space.getProfileImageUrl()).willReturn("https://cdn.example.com/space/profile.png");
+        given(spaceRepository.findByCreatorId(CREATOR_ID)).willReturn(Optional.of(space));
+
+        CreatorPostCommentView created = service.create(OWNER_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "공지예요");
+
+        assertThat(created.writtenByCreator()).isTrue();
+        assertThat(created.authorName()).isEqualTo("creator-" + CREATOR_ID);
+        assertThat(created.authorProfileImageUrl()).isEqualTo("https://cdn.example.com/space/profile.png");
     }
 
     @Test

@@ -88,7 +88,7 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
-        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
@@ -106,7 +106,7 @@ class MissionCompletionServiceTest {
         IllegalStateException original = new IllegalStateException("Ticket unavailable");
         when(ticketEarnService.findExisting(any())).thenThrow(original);
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isSameAs(original);
         verify(abuseObserver).observeUnexpectedFailure(any());
@@ -187,7 +187,7 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
-        serviceWith(clock).complete(CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+        serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
         verify(ticketEarnService).earn(captor.capture());
@@ -206,11 +206,11 @@ class MissionCompletionServiceTest {
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
         Clock beforeMidnight = Clock.fixed(Instant.parse("2026-09-16T23:59:59Z"), ZoneOffset.UTC);
-        serviceWith(beforeMidnight).complete(
+        serviceWith(beforeMidnight).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         Clock afterMidnight = Clock.fixed(Instant.parse("2026-09-17T00:00:01Z"), ZoneOffset.UTC);
-        serviceWith(afterMidnight).complete(
+        serviceWith(afterMidnight).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
@@ -231,7 +231,7 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
-        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
@@ -250,7 +250,7 @@ class MissionCompletionServiceTest {
         when(ticketEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
 
-        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
@@ -268,7 +268,7 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.DUPLICATE_MISSION));
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -280,7 +280,7 @@ class MissionCompletionServiceTest {
         Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
         when(memberRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -297,7 +297,7 @@ class MissionCompletionServiceTest {
         when(memberRepository.findById(USER_ID)).thenReturn(Optional.of(mock(Member.class)));
         when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -313,7 +313,7 @@ class MissionCompletionServiceTest {
         stubMemberAndMission(expired);
         stubNoExistingReplay();
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -334,7 +334,7 @@ class MissionCompletionServiceTest {
         when(ticketEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
 
-        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
@@ -350,7 +350,7 @@ class MissionCompletionServiceTest {
         when(ticketEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT));
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -366,7 +366,7 @@ class MissionCompletionServiceTest {
         when(ticketEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.UNAVAILABLE));
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -386,7 +386,7 @@ class MissionCompletionServiceTest {
         when(ticketEarnService.findExisting(any()))
                 .thenReturn(new EarnLookupResult(EarnLookupStatus.UNAVAILABLE));
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -406,7 +406,7 @@ class MissionCompletionServiceTest {
         stubMemberAndMission(mission);
         stubNoExistingReplay();
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -425,7 +425,7 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
 
-        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
@@ -440,7 +440,7 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.ALREADY_PROCESSED));
 
-        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
                 CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
 
         assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
@@ -457,10 +457,124 @@ class MissionCompletionServiceTest {
         stubNoExistingReplay();
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(code));
 
-        assertThatThrownBy(() -> serviceWith(clock).complete(CREATOR_ID, MISSION_ID,
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
                 new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(MissionErrorCode.from(code));
+    }
+
+    @Test
+    void 일반_완료_API는_좋아요_미션을_새로_완료하지_않고_EARN을_호출하지_않는다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-10-13T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(MissionErrorCode.MISSION_REQUIRES_POST_LIKE));
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 일반_완료_API는_이미_성공한_좋아요_requestId의_replay는_기존_결과를_반환한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-10-13T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 게시글_좋아요_보상은_같은_날_같은_requestId를_쓰고_날짜가_바뀌면_다른_requestId를_쓴다() {
+        Mission like = likeMission();
+        org.springframework.test.util.ReflectionTestUtils.setField(like, "missionId", MISSION_ID);
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.of(like));
+        stubMemberAndMission(like);
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompletionService service = serviceWith(Clock.systemUTC());
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-13T00:00:01Z"));
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-13T23:59:59Z"));
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-14T00:00:01Z"));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(3)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(0).requestId()).isEqualTo(commands.get(1).requestId());
+        assertThat(commands.get(0).requestId()).isNotEqualTo(commands.get(2).requestId());
+        assertThat(commands.get(0).periodKey()).isEqualTo("2026-10-13");
+        assertThat(commands.get(2).periodKey()).isEqualTo("2026-10-14");
+        assertThat(commands.get(0).missionType()).isEqualTo("LIKE");
+        assertThat(commands.get(0).userId()).isEqualTo(USER_ID);
+    }
+
+    /**
+     * 자격 판정과 지급 사이에 UTC 자정을 넘긴 경우: 이 서비스의 시계가 이미 다음 날이어도 호출자가 판정한 시각(D)의 날짜로
+     * requestId·periodKey를 만든다. 시계를 다시 읽으면 D 판정이 D+1 보상으로 처리되어, 이전 날 좋아요에 날짜만 바뀐 중복 요청이
+     * 새 좋아요 없이 다음 날 보상을 받는다.
+     */
+    @Test
+    void 게시글_좋아요_보상은_판정_시각의_날짜를_쓰고_서비스_시계가_자정을_넘겨도_바뀌지_않는다() {
+        Mission like = likeMission();
+        org.springframework.test.util.ReflectionTestUtils.setField(like, "missionId", MISSION_ID);
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.of(like));
+        stubMemberAndMission(like);
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        Instant decidedBeforeMidnight = Instant.parse("2026-10-13T23:59:59.999Z");
+        MissionCompletionService afterMidnight =
+                serviceWith(Clock.fixed(Instant.parse("2026-10-14T00:00:00.050Z"), ZoneOffset.UTC));
+        MissionCompletionService beforeMidnight =
+                serviceWith(Clock.fixed(decidedBeforeMidnight, ZoneOffset.UTC));
+
+        beforeMidnight.completeByPostLike(CREATOR_ID, USER_ID, decidedBeforeMidnight);
+        afterMidnight.completeByPostLike(CREATOR_ID, USER_ID, decidedBeforeMidnight);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(1).periodKey()).isEqualTo("2026-10-13");
+        assertThat(commands.get(1).requestId()).isEqualTo(commands.get(0).requestId());
+        var observation = org.mockito.ArgumentCaptor.forClass(MissionObservationContext.class);
+        verify(abuseObserver, org.mockito.Mockito.times(2)).observeSuccess(observation.capture(), any());
+        assertThat(observation.getAllValues().get(1).requestedAt()).isEqualTo(decidedBeforeMidnight);
+    }
+
+    @Test
+    void 게시글_좋아요_보상은_다른_사용자와_다른_requestId를_쓴다() {
+        Mission like = likeMission();
+        org.springframework.test.util.ReflectionTestUtils.setField(like, "missionId", MISSION_ID);
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.of(like));
+        when(memberRepository.findById(any())).thenReturn(Optional.of(mock(Member.class)));
+        when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID)).thenReturn(Optional.of(like));
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        MissionCompletionService service = serviceWith(Clock.systemUTC());
+        Instant decidedAt = Instant.parse("2026-10-13T00:00:01Z");
+
+        service.completeByPostLike(CREATOR_ID, USER_ID, decidedAt);
+        service.completeByPostLike(CREATOR_ID, USER_ID + 1, decidedAt);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        assertThat(captor.getAllValues().get(0).requestId()).isNotEqualTo(captor.getAllValues().get(1).requestId());
+    }
+
+    @Test
+    void 게시글_좋아요_보상은_Creator에_좋아요_미션이_없으면_MISSION_NOT_FOUND다() {
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> serviceWith(Clock.systemUTC()).completeByPostLike(CREATOR_ID, USER_ID, Instant.now()))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(MissionErrorCode.MISSION_NOT_FOUND));
+        verify(ticketEarnService, never()).earn(any());
     }
 }

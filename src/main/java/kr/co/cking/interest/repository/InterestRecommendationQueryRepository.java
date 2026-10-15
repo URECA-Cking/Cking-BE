@@ -16,14 +16,16 @@ public interface InterestRecommendationQueryRepository extends Repository<Intere
      */
     @Query("""
             select new kr.co.cking.interest.repository.ActiveInterestRecommendationCandidate(
-                mi.id.interestCode, c.creatorId, c.rank
+                mi.id.interestCode, c.creatorId, c.rank, mi.id.taxonomyVersion,
+                g.generationId, g.method, g.modelVersion
             )
             from MemberInterest mi, InterestRecommendationState s,
-                 InterestRecommendationCandidate c, CreatorSpace space
+                 InterestRecommendationCandidate c, InterestRecommendationGeneration g, CreatorSpace space
             where mi.id.memberId = :memberId
               and s.id.taxonomyVersion = mi.id.taxonomyVersion
               and s.id.interestCode = mi.id.interestCode
               and c.generationId = s.currentGenerationId
+              and g.generationId = c.generationId
               and space.creatorId = c.creatorId
             order by mi.id.interestCode asc, c.rank asc, c.creatorId asc
             """)

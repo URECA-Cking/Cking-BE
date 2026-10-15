@@ -25,7 +25,8 @@ import java.util.Optional;
  *
  * <p>신고는 댓글의 노출 상태나 필터 판정을 바꾸지 않는다. 신고할 수 있는 사람은 게시글을 볼 수 있는 로그인 사용자이며
  * (전체 공개 게시글은 팔로우하지 않아도 된다), 본인 댓글은 신고할 수 없다. 같은 사용자가 같은 댓글을 다시 신고하면 새로
- * 저장하지 않고 기존 신고를 그대로 돌려준다(멱등).
+ * 저장하지 않고 기존 신고를 그대로 돌려준다(멱등). 이미 가려진 댓글(필터가 차단했거나 관리자가 숨김)에는 새 신고를 받지
+ * 않고 {@code COMMENT_REPORT_ALREADY_FILTERED}(409)다(이슈 #499).
  *
  * <p>가장 먼저 신고자(회원) 행을 쓰기 잠금으로 읽는다. 반복 신고 한도는 "기존 신고 수를 읽고 새 신고를 저장"하는 두 단계라
  * 댓글별 잠금만으로는 같은 사용자가 서로 다른 댓글을 동시에 신고하는 경우를 막지 못한다(각 요청이 같은 기존 수를 읽는다).
@@ -71,6 +72,9 @@ public class CreatorPostCommentReportService {
                 reportRepository.findByCommentIdAndReporterMemberId(commentId, memberId);
         if (existing.isPresent()) {
             return CommentReportView.from(existing.get());
+        }
+        if (comment.isConcealed()) {
+            throw new BusinessException(PostErrorCode.COMMENT_REPORT_ALREADY_FILTERED);
         }
 
         Instant now = clock.instant();

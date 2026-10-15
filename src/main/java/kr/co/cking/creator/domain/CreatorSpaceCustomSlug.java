@@ -35,6 +35,8 @@ public final class CreatorSpaceCustomSlug {
             "cking", "official", "staff", "manager",
             "creator", "creators", "space", "spaces", "mission", "missions",
             "event", "events", "ticket", "tickets", "winner", "winners", "notification", "notifications",
+            "explore", "my-page", "my-entries", "my-winners", "my-calendar", "studio", "onboarding",
+            "assets", "icons",
             "null", "undefined"
     );
 

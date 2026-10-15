@@ -87,7 +87,7 @@ class MissionCompletionConcurrencyIntegrationTest {
         MissionCompleteCommand command = new MissionCompleteCommand(member.getMemberId(), requestId);
 
         // 1) 활성 상태에서 최초 성공
-        var firstOutcome = service.complete(creator.getCreatorId(), mission.getMissionId(), command);
+        var firstOutcome = service.completeVerifiedLike(creator.getCreatorId(), mission.getMissionId(), command);
         assertThat(firstOutcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
 
         // 2) 미션이 실제로 종료될 때까지 대기
@@ -95,7 +95,7 @@ class MissionCompletionConcurrencyIntegrationTest {
 
         // 3) 동일 requestId로 재시도 — findExisting()이 활성 검증보다 먼저 확인하므로
         //    MISSION_INACTIVE가 아니라 ALREADY_PROCESSED가 나와야 한다.
-        var retryOutcome = service.complete(creator.getCreatorId(), mission.getMissionId(), command);
+        var retryOutcome = service.completeVerifiedLike(creator.getCreatorId(), mission.getMissionId(), command);
         assertThat(retryOutcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
     }
 
@@ -103,7 +103,7 @@ class MissionCompletionConcurrencyIntegrationTest {
             throws InterruptedException {
         start.await();
         try {
-            return service.complete(creatorId, missionId,
+            return service.completeVerifiedLike(creatorId, missionId,
                     new MissionCompleteCommand(userId, UUID.randomUUID())).code().name();
         } catch (BusinessException e) {
             return e.getErrorCode().code();

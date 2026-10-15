@@ -15,12 +15,12 @@ public interface PopularCreatorQueryRepository extends Repository<CreatorSpace, 
      */
     @Query("""
             select new kr.co.cking.creator.repository.PopularCreatorCandidate(
-                c.creatorId, c.name, space.introText, space.profileImageUrl, count(f.followId)
+                c.creatorId, c.activityName, space.introText, space.profileImageUrl, count(f.followId)
             )
             from CreatorSpace space
             join Creator c on c.creatorId = space.creatorId
             left join CreatorFollow f on f.creatorId = c.creatorId
-            group by c.creatorId, c.name, space.introText, space.profileImageUrl
+            group by c.creatorId, c.activityName, space.introText, space.profileImageUrl
             order by count(f.followId) desc, c.creatorId asc
             """)
     List<PopularCreatorCandidate> findPopular(Pageable pageable);

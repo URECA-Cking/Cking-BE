@@ -4,6 +4,7 @@ import kr.co.cking.calendar.domain.CreatorSchedule;
 import kr.co.cking.calendar.domain.MemberCalendarEntry;
 import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorActivityName;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
@@ -40,7 +41,11 @@ class MemberCalendarEntryRepositoryQueryTest {
         Member fan = memberRepository.saveAndFlush(new Member("담기 조회 팬", null, null, MemberRole.USER));
         Member otherFan = memberRepository.saveAndFlush(new Member("담기 조회 다른 팬", null, null, MemberRole.USER));
         Member creatorMember = memberRepository.saveAndFlush(new Member("담기 조회 크리에이터", null, null, MemberRole.USER));
-        Creator creator = creatorRepository.saveAndFlush(new Creator(creatorMember.getMemberId(), "담기 조회 크리에이터"));
+        Creator creator = creatorRepository.saveAndFlush(new Creator(
+                creatorMember.getMemberId(),
+                "담기 조회 크리에이터",
+                CreatorActivityName.of("담기조회크리에이터")
+        ));
 
         Instant from = Instant.parse("2026-10-01T00:00:00Z");
         Instant to = Instant.parse("2026-10-31T00:00:00Z");
@@ -58,7 +63,7 @@ class MemberCalendarEntryRepositoryQueryTest {
 
         assertThat(result).extracting(MemberCalendarScheduleProjection::scheduleId)
                 .containsExactly(inside.getScheduleId());
-        assertThat(result.get(0).creatorName()).isEqualTo("담기 조회 크리에이터");
+        assertThat(result.get(0).creatorName()).isEqualTo("담기조회크리에이터");
         assertThat(result.get(0).creatorId()).isEqualTo(creator.getCreatorId());
     }
 

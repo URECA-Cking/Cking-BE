@@ -11,6 +11,7 @@ import kr.co.cking.post.domain.PostErrorCode;
 import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostImageRepository;
+import kr.co.cking.post.repository.CreatorPostLikeRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InOrder;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.URI;
 import java.time.Clock;
@@ -61,7 +63,9 @@ class CreatorPostServiceTest {
     private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final CreatorPostService service = new CreatorPostService(
             authorLookup, postRepository, imageRepository, commentRepository, eventPublisher,
-            new CreatorPostViewAssembler(objectStorage), Clock.fixed(NOW, ZoneOffset.UTC));
+            new CreatorPostViewAssembler(objectStorage),
+            new PostEngagementReader(mock(CreatorPostLikeRepository.class), commentRepository),
+            Clock.fixed(NOW, ZoneOffset.UTC));
 
     @BeforeEach
     void setUp() {
@@ -72,6 +76,9 @@ class CreatorPostServiceTest {
 
     @Test
     void 작성은_이미지를_조건부로_연결하고_요청_순서대로_표시_순서를_정한다() {
+        kr.co.cking.creator.domain.Creator legacyCreator = creator(CREATOR_ID, MEMBER_ID);
+        ReflectionTestUtils.setField(legacyCreator, "activityNameConfigured", false);
+        given(authorLookup.requireCreator(MEMBER_ID)).willReturn(legacyCreator);
         given(postRepository.save(any(CreatorPost.class))).willReturn(post(POST_ID, CREATOR_ID, PostVisibility.PUBLIC));
         given(imageRepository.linkToPost(List.of("k2", "k1"), CREATOR_ID, POST_ID, NOW)).willReturn(2);
 

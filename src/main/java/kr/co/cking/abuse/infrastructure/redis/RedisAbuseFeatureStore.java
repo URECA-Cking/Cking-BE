@@ -30,7 +30,12 @@ public class RedisAbuseFeatureStore implements AbuseFeatureStore {
             AbuseMetric.RAPID_EARN_SPEND_PAIR_CREATED,
             AbuseMetric.FAILURE_COUNT,
             AbuseMetric.FAILURE_CONSECUTIVE_COUNT,
-            AbuseMetric.DISTINCT_FAILURE_TYPE_COUNT);
+            AbuseMetric.DISTINCT_FAILURE_TYPE_COUNT,
+            AbuseMetric.YOUTUBE_SUBMISSION_COUNT,
+            AbuseMetric.YOUTUBE_IMAGE_REUSE_COUNT,
+            AbuseMetric.YOUTUBE_NEGATIVE_DECISION_COUNT,
+            AbuseMetric.YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_COUNT);
+    private static final int LEGACY_SNAPSHOT_SIZE = 11;
 
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> featureStoreRecordLuaScript;
@@ -68,7 +73,11 @@ public class RedisAbuseFeatureStore implements AbuseFeatureStore {
                 milliseconds(windowPolicy.requestIdRotationWindow()),
                 milliseconds(windowPolicy.rapidEarnSpendWindow()),
                 milliseconds(windowPolicy.rapidEarnSpendMaxDelay()),
-                milliseconds(windowPolicy.failureWindow()));
+                milliseconds(windowPolicy.failureWindow()),
+                milliseconds(windowPolicy.youtubeSubmissionWindow()),
+                milliseconds(windowPolicy.youtubeRequestIdRotationWindow()),
+                milliseconds(windowPolicy.youtubeImageReuseWindow()),
+                milliseconds(windowPolicy.youtubeNegativeDecisionWindow()));
         return toSnapshot(result);
     }
 
@@ -86,7 +95,11 @@ public class RedisAbuseFeatureStore implements AbuseFeatureStore {
                 AbuseRedisKeys.failure(observation.userId()),
                 AbuseRedisKeys.failureType(observation.userId()),
                 AbuseRedisKeys.failureSequence(observation.userId()),
-                AbuseRedisKeys.insufficientBalanceSequence(observation.userId(), observation.balanceScope()));
+                AbuseRedisKeys.insufficientBalanceSequence(observation.userId(), observation.balanceScope()),
+                AbuseRedisKeys.youtubeSubmission(observation.userId()),
+                observation.businessKey() == null ? UNUSED_KEY : AbuseRedisKeys.youtubeImageReuse(observation.businessKey()),
+                observation.businessKey() == null ? UNUSED_KEY : AbuseRedisKeys.youtubeNegativeDecision(observation.businessKey()),
+                observation.businessKey() == null ? UNUSED_KEY : AbuseRedisKeys.youtubeNegativeDecisionSequence(observation.businessKey()));
     }
 
     /** Mission business key가 있을 때만 중복 Mission window key를 hash로 생성한다. */
@@ -103,12 +116,12 @@ public class RedisAbuseFeatureStore implements AbuseFeatureStore {
 
     /** Lua가 반환한 metric 순서와 값 개수를 검증해 불변 Snapshot으로 바꾼다. */
     private AbuseFeatureSnapshot toSnapshot(List<?> result) {
-        if (result == null || result.size() != SNAPSHOT_METRICS.size()) {
+        if (result == null || (result.size() != SNAPSHOT_METRICS.size() && result.size() != LEGACY_SNAPSHOT_SIZE)) {
             throw new IllegalStateException("Abuse Feature Lua가 완전한 Snapshot을 반환하지 않았습니다.");
         }
         EnumMap<AbuseMetric, Long> values = new EnumMap<>(AbuseMetric.class);
         for (int index = 0; index < SNAPSHOT_METRICS.size(); index++) {
-            values.put(SNAPSHOT_METRICS.get(index), toLong(result.get(index)));
+            values.put(SNAPSHOT_METRICS.get(index), index < result.size() ? toLong(result.get(index)) : 0L);
         }
         return new AbuseFeatureSnapshot(values);
     }

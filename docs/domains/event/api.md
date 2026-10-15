@@ -5,6 +5,8 @@
 ## 권한과 상태 전이
 
 - Creator는 승인된 `creator` 레코드가 존재해야 하며, 자신의 Event만 관리할 수 있다.
+- 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 Creator도 Event를 생성할 수 있다. 활동명 미설정 Creator의 작성 전
+  설정 강제는 FE 연동 완료 후 별도 릴리스에서 활성화한다.
 - 관리자 목록·승인·거절은 `member.role == ADMIN`만 가능하다.
 - Event 상태는 Repository로 직접 변경하지 않는다. 아래 전이는 `EventCommandService`를 사용한다.
 
@@ -64,6 +66,8 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
   "items": [{
     "eventId": 1,
     "title": "팬미팅 이벤트",
+    "description": "팬미팅 응모 이벤트입니다.",
+    "rejectReason": null,
     "startAt": "2026-09-20T09:00:00Z",
     "endAt": "2026-09-21T09:00:00Z",
     "winnerCount": 3,
@@ -83,6 +87,9 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
   "hasNext": false
 }
 ```
+
+- `description`은 작성하지 않았으면 `null`이다.
+- `rejectReason`은 `status == REJECTED`일 때만 가장 최근 승인 요청 차수의 반려 사유다. 그 외 상태(수정으로 `DRAFT`로 돌아간 경우 포함)이거나 사유가 없으면 `null`이다.
 
 ## POST /api/creator/events
 
@@ -213,6 +220,7 @@ Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `Even
 - Event 상태 변경은 `EventCommandService`만 수행한다. 이 서비스에는 Redis Drain, Snapshot 생성, DrawingEngine 호출을 포함하지 않는다.
 - Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.
 - Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
+- 목록·심사 응답의 `creatorName`은 OAuth 원본 이름이 아닌 Creator의 현재 공개 활동명이다.
 - `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
 
 ## GET /api/events/{eventId}/entries/me

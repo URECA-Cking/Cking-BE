@@ -6,10 +6,17 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.follow.domain.FollowErrorCode;
 import kr.co.cking.follow.repository.CreatorFollowRepository;
+import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.member.domain.Member;
+import org.springframework.context.ApplicationEventPublisher;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Clock;
+import kr.co.cking.common.repository.DatabaseTime;
+import kr.co.cking.common.repository.MemberActivityLock;
+import kr.co.cking.common.event.CreatorFollowCreated;
+import org.mockito.ArgumentCaptor;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -31,8 +38,19 @@ class CreatorFollowServiceTest {
 
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final CreatorFollowRepository followRepository = mock(CreatorFollowRepository.class);
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final DatabaseTime databaseTime = mock(DatabaseTime.class);
+    private final MemberActivityLock activityLock = mock(MemberActivityLock.class);
+    private final CreatorFollowEventService followEvents = mock(CreatorFollowEventService.class);
     private final CreatorFollowService service = new CreatorFollowService(
-            creatorRepository, followRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+            creatorRepository, followRepository, databaseTime, memberRepository, eventPublisher, activityLock, followEvents);
+
+    @BeforeEach
+    void setUp() {
+        given(memberRepository.existsById(anyLong())).willReturn(true);
+        given(databaseTime.now()).willReturn(NOW);
+    }
 
     @Test
     void 팔로우는_관계가_없을_때만_추가하는_insert를_호출한다() {
@@ -41,6 +59,21 @@ class CreatorFollowServiceTest {
         service.follow(MEMBER_ID, CREATOR_ID);
 
         verify(followRepository).insertIfAbsent(MEMBER_ID, CREATOR_ID, NOW);
+        var event = ArgumentCaptor.forClass(CreatorFollowCreated.class);
+        verify(followEvents).append(event.capture());
+        org.assertj.core.api.Assertions.assertThat(event.getValue().memberId()).isEqualTo(MEMBER_ID);
+        org.assertj.core.api.Assertions.assertThat(event.getValue().creatorId()).isEqualTo(CREATOR_ID);
+        org.assertj.core.api.Assertions.assertThat(event.getValue().followedAt()).isEqualTo(NOW);
+        verify(eventPublisher).publishEvent(event.getValue());
+    }
+
+    @Test
+    void 반복_팔로우는_신규_전환_이벤트를_발행하지_않는다() {
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator()));
+        given(followRepository.existsByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)).willReturn(true);
+        service.follow(MEMBER_ID, CREATOR_ID);
+        verify(eventPublisher, never()).publishEvent(any());
+        verify(followRepository, never()).insertIfAbsent(anyLong(), anyLong(), any());
     }
 
     @Test

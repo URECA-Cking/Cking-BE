@@ -14,7 +14,11 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 당첨 결과를 사용자에게 전달하는 인앱 알림을 표현한다. */
+/**
+ * 사용자에게 전달하는 인앱 알림을 표현한다. 당첨 알림은 {@code eventId}·{@code drawingId}·{@code winnerId}를 모두 갖고,
+ * 제재 알림(이슈 #572)은 이 셋이 모두 비고 {@code sanctionId}를 갖는다.
+ * 미당첨자 알림(이슈 #605)은 {@code eventId}·{@code drawingId}만 갖고 {@code winnerId}는 비운다. 유형별 조합은 DB CHECK가 강제한다.
+ */
 @Entity
 @Table(name = "notification")
 @Getter
@@ -29,14 +33,17 @@ public class Notification {
     @Column(name = "member_id", nullable = false, updatable = false)
     private Long memberId;
 
-    @Column(name = "event_id", nullable = false, updatable = false)
+    @Column(name = "event_id", updatable = false)
     private Long eventId;
 
-    @Column(name = "drawing_id", nullable = false, updatable = false)
+    @Column(name = "drawing_id", updatable = false)
     private Long drawingId;
 
-    @Column(name = "winner_id", nullable = false, updatable = false)
+    @Column(name = "winner_id", updatable = false)
     private Long winnerId;
+
+    @Column(name = "sanction_id", updatable = false)
+    private Long sanctionId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, updatable = false, length = 30)
@@ -50,6 +57,10 @@ public class Notification {
 
     @Column(name = "read_at")
     private Instant readAt;
+
+    /** 사용자가 알림함에서 숨긴 시각. null이면 보이는 알림이며 숨김은 되돌리지 않는다. */
+    @Column(name = "hidden_at")
+    private Instant hiddenAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -73,6 +84,18 @@ public class Notification {
         this.createdAt = createdAt;
     }
 
+    /** 제재(댓글 작성 제한) 시작·해제를 알리는 Notification을 만든다. 이벤트·추첨·당첨 값은 비운다. */
+    public static Notification forSanction(
+            Long memberId, Long sanctionId, NotificationType type, String title, String body) {
+        Notification notification = new Notification();
+        notification.memberId = memberId;
+        notification.sanctionId = sanctionId;
+        notification.type = type;
+        notification.title = title;
+        notification.body = body;
+        return notification;
+    }
+
     /** 저장 직전에 생성 시각이 비어 있으면 현재 시각을 설정한다. */
     @PrePersist
     void assignCreatedAtIfMissing() {
@@ -84,6 +107,18 @@ public class Notification {
     /** 요청 사용자가 이 Notification의 소유자인지 확인한다. */
     public boolean isOwnedBy(Long userId) {
         return memberId.equals(userId);
+    }
+
+    /** 숨긴 알림인지 확인한다. */
+    public boolean isHidden() {
+        return hiddenAt != null;
+    }
+
+    /** 아직 숨기지 않은 경우에만 최초 숨김 시각을 기록한다. 이미 숨겼으면 기존 시각을 유지한다. */
+    public void hide(Instant hiddenAt) {
+        if (this.hiddenAt == null) {
+            this.hiddenAt = hiddenAt;
+        }
     }
 
     /** 아직 읽지 않은 경우에만 최초 읽음 시각을 기록한다. */

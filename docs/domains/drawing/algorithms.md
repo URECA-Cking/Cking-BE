@@ -18,6 +18,13 @@
   누적 구간 선택과 당첨 후보 제거를 `O(log candidateCount)`에 처리한다.
 - 두 방식 모두 후보를 `memberId ASC`로 정규화하고 `winnerCount`만큼 중복 없이 선정한다.
 
+개발 전용 네 가지 가중치 비복원 선정 방식의 동일성 계약과 측정 절차는
+[가중치 추첨 비교](weighted-random-benchmark.md)를 참고한다. 운영 `WEIGHTED_V1`은
+기존 Fenwick Tree와 난수 규칙을 유지한다.
+
+`WEIGHTED_V1`의 long 총합 지원 범위, 제외 후 오버플로 오류 계약과 메모리 측정 절차는
+[가중 추첨 메모리·경계값 검증](weighted-memory-boundaries.md)을 참고한다.
+
 ## 상품 배정
 
 - `PRIZE_UNIFORM_V1`은 재고가 남은 각 상품 등급을 동일한 확률로 선택한다. `weight`는 양의 정수로
@@ -40,3 +47,7 @@ V2 Input Hash에 기록한다.
 Seed를 사용한다. 같은 Snapshot, Seed, 후보·상품 알고리즘 버전, 제외 대상,
 `winnerCount`는 항상 같은 Winner, Rank, 상품 배정을 만든다. 선택된 두 알고리즘 버전과
 상품 설정·배정 결과는 Snapshot/Input/Result Hash에 포함한다.
+
+응모자 선정 확률은 [가중 추첨 확률 분포 검증](weighted-distribution-verification.md)의
+고정 Seed 회귀와 별도 대량 명령으로 검증한다. 비복원 다중 당첨의 최종 포함 확률은
+단순히 `winnerCount * ticketCount / totalWeight`가 아니며 순서별 확률의 합을 기준으로 한다.

@@ -6,6 +6,7 @@ import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.post.application.dto.AdminCommentReportView;
 import kr.co.cking.post.domain.CommentFilterAction;
 import kr.co.cking.post.domain.CommentReportReason;
+import kr.co.cking.post.domain.CommentReportStatus;
 import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.domain.PostVisibility;
 import kr.co.cking.post.repository.CommentReportReasonCount;
@@ -49,7 +50,7 @@ class AdminCommentReportQueryServiceTest {
     void 신고된_댓글을_원문_차단_여부_신고_수_사유별_수와_함께_돌려준다() {
         Instant latest = NOW.plusSeconds(30);
         given(reportRepository.findSummaries(PAGE)).willReturn(new PageImpl<>(
-                List.of(new CommentReportSummary(501L, 3L, latest), new CommentReportSummary(500L, 1L, NOW)),
+                List.of(new CommentReportSummary(501L, 3L, latest, 2L), new CommentReportSummary(500L, 1L, NOW, 0L)),
                 PAGE, 2));
         given(commentRepository.findAllById(List.of(501L, 500L)))
                 .willReturn(List.of(comment(500L, 100L, "일반 댓글"), blocked(501L, 101L, "차단된 댓글")));
@@ -60,7 +61,7 @@ class AdminCommentReportQueryServiceTest {
                 new CommentReportReasonCount(501L, CommentReportReason.SPAM, 1L),
                 new CommentReportReasonCount(500L, CommentReportReason.OTHER, 1L)));
 
-        List<AdminCommentReportView> views = service.findReportedComments(1L, PAGE).getContent();
+        List<AdminCommentReportView> views = service.findReportedComments(1L, null, PAGE).getContent();
 
         verify(memberQueryService).validateAdmin(1L);
         assertThat(views).extracting(AdminCommentReportView::commentId).containsExactly(501L, 500L);
@@ -71,17 +72,60 @@ class AdminCommentReportQueryServiceTest {
         assertThat(first.content()).isEqualTo("차단된 댓글");
         assertThat(first.blocked()).isTrue();
         assertThat(first.reportCount()).isEqualTo(3L);
+        assertThat(first.pendingReportCount()).isEqualTo(2L);
+        assertThat(first.status()).isEqualTo(CommentReportStatus.PENDING);
+        assertThat(first.hiddenByAdmin()).isFalse();
         assertThat(first.reasonCounts()).isEqualTo(Map.of(CommentReportReason.ABUSE, 2L, CommentReportReason.SPAM, 1L));
         assertThat(first.latestReportedAt()).isEqualTo(latest);
         assertThat(views.get(1).blocked()).isFalse();
         assertThat(views.get(1).creatorId()).isEqualTo(1L);
+        assertThat(views.get(1).status()).isEqualTo(CommentReportStatus.REJECTED);
+    }
+
+    @Test
+    void 접수_신고가_있으면_PENDING_모두_처리됐으면_숨김_여부로_RESOLVED와_REJECTED를_가른다() {
+        given(reportRepository.findSummaries(PAGE)).willReturn(new PageImpl<>(List.of(
+                new CommentReportSummary(502L, 2L, NOW, 0L),
+                new CommentReportSummary(501L, 1L, NOW, 0L),
+                new CommentReportSummary(500L, 3L, NOW, 1L)), PAGE, 3));
+        CreatorPostComment hidden = comment(502L, 100L, "숨긴 댓글");
+        hidden.hideByAdmin(9L, NOW);
+        given(commentRepository.findAllById(List.of(502L, 501L, 500L))).willReturn(List.of(
+                hidden, comment(501L, 100L, "반려된 댓글"), comment(500L, 100L, "접수 댓글")));
+        given(postRepository.findAllById(any())).willReturn(List.of(post(100L, 1L, PostVisibility.PUBLIC)));
+        given(reportRepository.countReasons(any())).willReturn(List.of());
+
+        List<AdminCommentReportView> views = service.findReportedComments(1L, null, PAGE).getContent();
+
+        assertThat(views).extracting(AdminCommentReportView::status).containsExactly(
+                CommentReportStatus.RESOLVED, CommentReportStatus.REJECTED, CommentReportStatus.PENDING);
+        assertThat(views.get(0).hiddenByAdmin()).isTrue();
+        assertThat(views.get(1).hiddenByAdmin()).isFalse();
+        assertThat(views.get(2).pendingReportCount()).isEqualTo(1L);
+        assertThat(views.get(2).reportCount()).isEqualTo(3L);
+    }
+
+    @Test
+    void 상태로_거르면_그_상태의_조회만_쓴다() {
+        given(reportRepository.findPendingSummaries(PAGE)).willReturn(Page.empty(PAGE));
+        given(reportRepository.findResolvedSummaries(PAGE)).willReturn(Page.empty(PAGE));
+        given(reportRepository.findRejectedSummaries(PAGE)).willReturn(Page.empty(PAGE));
+
+        service.findReportedComments(1L, CommentReportStatus.PENDING, PAGE);
+        service.findReportedComments(1L, CommentReportStatus.RESOLVED, PAGE);
+        service.findReportedComments(1L, CommentReportStatus.REJECTED, PAGE);
+
+        verify(reportRepository).findPendingSummaries(PAGE);
+        verify(reportRepository).findResolvedSummaries(PAGE);
+        verify(reportRepository).findRejectedSummaries(PAGE);
+        verify(reportRepository, never()).findSummaries(any());
     }
 
     @Test
     void 신고가_없으면_빈_페이지를_돌려주고_댓글을_조회하지_않는다() {
         given(reportRepository.findSummaries(PAGE)).willReturn(Page.empty(PAGE));
 
-        assertThat(service.findReportedComments(1L, PAGE).getContent()).isEmpty();
+        assertThat(service.findReportedComments(1L, null, PAGE).getContent()).isEmpty();
         verify(commentRepository, never()).findAllById(any());
     }
 
@@ -90,7 +134,7 @@ class AdminCommentReportQueryServiceTest {
         PageRequest beyondLast = PageRequest.of(3, 2);
         given(reportRepository.findSummaries(beyondLast)).willReturn(new PageImpl<>(List.of(), beyondLast, 5));
 
-        Page<AdminCommentReportView> result = service.findReportedComments(1L, beyondLast);
+        Page<AdminCommentReportView> result = service.findReportedComments(1L, null, beyondLast);
 
         assertThat(result.getContent()).isEmpty();
         assertThat(result.getTotalElements()).isEqualTo(5);
@@ -105,7 +149,7 @@ class AdminCommentReportQueryServiceTest {
     void 관리자가_아니면_조회하지_않는다() {
         willThrow(new BusinessException(CommonErrorCode.FORBIDDEN)).given(memberQueryService).validateAdmin(7L);
 
-        assertThatThrownBy(() -> service.findReportedComments(7L, PAGE))
+        assertThatThrownBy(() -> service.findReportedComments(7L, null, PAGE))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.FORBIDDEN));
         verify(reportRepository, never()).findSummaries(any());

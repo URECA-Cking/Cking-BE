@@ -34,16 +34,15 @@ public class CreatorApplicationService {
     private final CreatorApplicationLockManager lockManager;
     private final MissionInitializationService missionInitializationService;
     private final CreatorSpaceService creatorSpaceService;
+    private final CreatorActivityNameService activityNameService;
 
     public ApplyResult apply(Long memberId) {
         return lockManager.execute("creator-application:member:" + memberId, () -> applyLocked(memberId));
     }
 
     private ApplyResult applyLocked(Long memberId) {
-        // 신청 처리에는 Member의 상세 정보가 필요 없으므로 존재 여부만 확인한다.
-        if (!memberRepository.existsById(memberId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
-        }
+        Member member = requireMember(memberId);
+        member.requireProfileConfigured();
         if (creatorRepository.existsByMemberId(memberId)) {
             throw new BusinessException(CreatorErrorCode.INVALID_STATE);
         }
@@ -70,7 +69,7 @@ public class CreatorApplicationService {
         Page<CreatorApplication> applications = applicationRepository.findAllByOrderByRequestedAtAscIdAsc(pageable);
         Map<Long, String> applicantNames = memberRepository.findByMemberIdIn(applications.stream()
                         .map(CreatorApplication::getMemberId).toList())
-                .stream().collect(Collectors.toMap(Member::getMemberId, Member::getName));
+                .stream().collect(Collectors.toMap(Member::getMemberId, Member::publicDisplayName));
         List<AdminApplication> items = applications.stream()
                 .map(application -> new AdminApplication(application, applicantNames.get(application.getMemberId())))
                 .toList();
@@ -79,7 +78,8 @@ public class CreatorApplicationService {
 
     public CreatorApplication approve(Long adminId, Long applicationId) {
         return lockManager.execute("creator-application:review:" + applicationId,
-                () -> approveLocked(adminId, applicationId));
+                // 첫 JPA 조회 전에 이름 lock을 얻어 대기 중 commit한 활동명을 같은 snapshot에서 본다.
+                () -> lockManager.executeActivityNameAllocation(() -> approveLocked(adminId, applicationId)));
     }
 
     /** 신청을 승인하고 Creator·기본 미션·Creator Space를 하나의 트랜잭션으로 생성한다. */
@@ -91,9 +91,10 @@ public class CreatorApplicationService {
             throw new BusinessException(CreatorErrorCode.INVALID_STATE);
         }
         application.approve(adminId);
-        Creator creator = creatorRepository.save(
-                new Creator(application.getMemberId(), applicant.getName())
-        );
+        Creator creator = creatorRepository.save(new Creator(
+                application.getMemberId(), applicant.getName(),
+                activityNameService.initialAvailableNameUnderAllocationLock(
+                        applicant.getNickname(), applicant.getName(), application.getMemberId())));
         missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
         creatorSpaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId());
         return application;

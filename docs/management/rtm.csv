@@ -9,7 +9,7 @@ FR-P1-007,1조,공용 출석 완료 시 공용 응모권 1장을 지급한다,�
 FR-P1-008,1조,periodKey는 UTC 일 단위로 관리하고 출석 중복 적립 가드를 둔다,문구,출석 미션,"공용 ATTENDANCE는 userId+missionType+UTC yyyymmdd 공용 Guard와 기존 Creator ATTENDANCE 완료 이력 조회로 서비스 전체 하루 1회를 보장한다",1차 확정,시작 전,No
 FR-P1-009,1조,좋아요는 크리에이터별 하루 1회만 인정한다,문구,좋아요 미션,"userId+creatorId+periodKey 기준, contentId는 중복 판정 기준에 포함하지 않음(2026-09-11 해소: 콘텐츠 기준 아님)",1차 확정,시작 전,No
 FR-P1-010,1조,좋아요 완료 시 해당 크리에이터 전용 응모권 1장을 지급한다,문구,좋아요 미션,"하루 최대 1장, TicketEarnService.earn() 호출로 이어짐",1차 확정,시작 전,No
-FR-P1-011,1조,1차 MVP에서 좋아요 활동은 Mock 방식으로 검증한다,문구,좋아요 미션,실제 SNS 연동 없이 버튼 클릭=완료 처리,1차 확정,시작 전,No
+FR-P1-011,1조,1차 MVP에서 좋아요 활동은 Mock 방식으로 검증한다,문구,좋아요 미션,실제 SNS 연동 없이 게시글 좋아요 성공=완료 처리(이슈 #554, 서버가 좋아요 확인 후 보상. 기존 버튼 클릭=완료는 대체됨),1차 확정,시작 전,No
 FR-P1-012,1조,좋아요를 취소해도 이미 지급한 응모권은 회수하지 않는다,문구,좋아요 미션,회수 로직 없음,1차 확정,시작 전,No
 FR-P1-013,1조,좋아요 취소 후 다시 좋아요를 해도 같은 날 추가 보상은 지급하지 않는다,문구,좋아요 미션,가드 키가 이미 SET된 상태이므로 자연히 차단됨,1차 확정,시작 전,No
 FR-P1-014,1조,미션 완료 시각은 서버 시각 기준으로 기록한다,문구,미션수행,클라이언트가 전달한 시각은 신뢰하지 않음,1차 확정,시작 전,No
@@ -309,3 +309,6 @@ FR-AI-035,AI,LLM 공용 fixture를 Java가 그대로 재현한다,성집,Creator
 FR-AI-036,AI,개인화 조회는 모델 API를 호출하지 않고 요청 수에 따른 N+1이 없다,성집,Creator 추천,저장된 활성 세대만 bulk query로 조회,확정,완료,No
 FR-AI-037,AI,개인화 결과가 비어 있으면 팔로워 수 순 인기 Creator로 대체한다,성집,Creator 추천,"개인화 정책의 items가 비면 POPULAR_FALLBACK_V1 반환, 개인화 결과가 하나라도 있으면 대체하지 않음",신설,완료,Yes
 FR-AI-038,AI,인기순은 팔로워 수 내림차순·creatorId 오름차순이며 본인·기팔로우·Space 없는 Creator를 제외한다,성집,Creator 추천,"aggregateScore에 팔로워 수, interestCodes·seedCreatorIds는 빈 배열, size 적용",신설,완료,Yes
+FR-AI-039,AI,세부 관심 주제를 상위 분류체계와 별도 버전 세트로 해시와 함께 등록할 수 있다,성집,Creator 추천,interest_subtopic_set·interest_subtopic(V68) / 해시는 상위 분류체계와 같은 규칙 / 85개 시드는 팀 확정 후 별도 마이그레이션,신설,개발 중,Yes
+FR-AI-040,AI,GET /api/interests가 세부 주제를 상위 항목 아래에 내려준다,성집,Creator 추천,subtopicVersion·maxSubtopicPerParent·items[].subtopics 추가 / 활성 세부 세트가 없으면 빈 목록(200),신설,개발 중,No
+FR-AI-041,AI,회원이 세부 관심 주제를 상위당 3개까지 조회·저장한다,성집,Creator 추천,GET·PUT /api/me/interests에 subtopicVersion·subtopicCodes 추가 / 생략 시 유지 / 상위 해제 시 연쇄 삭제 / 회원 행 잠금으로 동시 저장 직렬화,신설,개발 중,No

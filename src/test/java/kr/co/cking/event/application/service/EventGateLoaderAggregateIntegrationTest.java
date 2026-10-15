@@ -52,7 +52,7 @@ class EventGateLoaderAggregateIntegrationTest {
                 MEMBER_A_ID, "Gate 집계 사용자A", "USER");
         jdbcTemplate.update("INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)",
                 MEMBER_B_ID, "Gate 집계 사용자B", "USER");
-        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)",
                 CREATOR_ID, OWNER_MEMBER_ID, "Gate 집계 크리에이터");
 
         String requestId = UUID.randomUUID().toString();

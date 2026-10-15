@@ -11,27 +11,43 @@
 {
   "taxonomyVersion": "v0.2",
   "maxSelection": 3,
+  "subtopicVersion": "subtopic-v1",
+  "maxSubtopicPerParent": 3,
   "items": [
-    { "interestCode": "FITNESS", "name": "운동·건강", "displayOrder": 1 },
-    { "interestCode": "FOOD", "name": "요리·푸드", "displayOrder": 2 }
+    {
+      "interestCode": "FITNESS", "name": "운동·건강", "displayOrder": 1,
+      "subtopics": [
+        { "subtopicCode": "FITNESS_WEIGHTS", "name": "웨이트", "displayOrder": 1 },
+        { "subtopicCode": "FITNESS_YOGA", "name": "요가", "displayOrder": 3 }
+      ]
+    },
+    { "interestCode": "FOOD", "name": "요리·푸드", "displayOrder": 2, "subtopics": [] }
   ]
 }
 ```
 
 - `taxonomyVersion`은 관심 분야 저장 요청에 그대로 쓴다. `maxSelection`은 서버가 정한 선택 상한이다.
 - 분류 기준문(`description`)은 화면 노출용이 아니라 해시·추천 계산용이라 응답에 포함하지 않는다.
+- 세부 주제(`subtopics`)는 활성 분류체계에 묶인 **활성 세부 세트**의 활성 주제이며 상위 항목 아래에 세트의 `displayOrder` 순으로 담는다.
+  `subtopicVersion`은 저장 요청에 그대로 쓰고, `maxSubtopicPerParent`는 상위 하나당 선택 상한이다. 활성 세부 세트가 없으면
+  `subtopicVersion: null`이고 모든 항목의 `subtopics`는 `[]`다(200). 세부 주제의 분류 기준문(`description`)은 응답에 포함하지 않는다.
 - 활성 분류체계가 없으면 정상 200으로 `taxonomyVersion: null`, `items: []`를 반환한다.
-- **응답 형식은 FE 협의 후 확정한다.**
+- 응답 형식은 FE와 합의해 위 형태로 확정했다(2026-10-07).
 
 ## GET /api/me/interests
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 선택을 분류체계의 `displayOrder` 순으로 반환한다.
 
 ```json
-{ "taxonomyVersion": "v0.2", "interestCodes": ["FITNESS", "TRAVEL"] }
+{
+  "taxonomyVersion": "v0.2", "interestCodes": ["FITNESS", "TRAVEL"],
+  "subtopicVersion": "subtopic-v1", "subtopicCodes": ["FITNESS_WEIGHTS", "FITNESS_YOGA"]
+}
 ```
 
 - 선택이 없으면 `interestCodes: []`와 현재 활성 분류체계 버전을 반환한다(활성 분류체계도 없으면 `taxonomyVersion: null`).
+- 세부 선택이 없으면 `subtopicCodes: []`와 현재 활성 세부 세트 버전을 반환한다(활성 세부 세트가 없으면 `subtopicVersion: null`).
+  `subtopicCodes`는 세트의 `displayOrder` 순이다.
 - JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`다.
 
 ## PUT /api/me/interests
@@ -39,19 +55,30 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 기존 선택 **전체를 교체**한다. 같은 요청을 반복해도 최종 상태가 같다(멱등).
 
 ```json
-{ "taxonomyVersion": "v0.2", "interestCodes": ["FITNESS", "TRAVEL"] }
+{
+  "taxonomyVersion": "v0.2", "interestCodes": ["FITNESS", "TRAVEL"],
+  "subtopicVersion": "subtopic-v1", "subtopicCodes": ["FITNESS_WEIGHTS"]
+}
 ```
 
 응답은 GET과 같다. `interestCodes`는 0~3개이며 빈 배열은 전체 해제다.
+
+**세부 주제 필드(`subtopicVersion`·`subtopicCodes`)**
+
+- 두 필드를 **모두 생략**하면 기존 세부 선택을 유지한다(구버전 요청 호환). 보내면 빈 배열을 포함해 세부 선택 **전체를 교체**한다.
+- 세부 주제의 부모가 이번 요청의 `interestCodes`에 있어야 하고, 상위당 최대 3개다(전체 최대 9개).
+- 상위 분야를 해제하면(필드를 생략한 요청 포함) 그 아래 세부 선택도 같은 Transaction에서 삭제한다.
+- `subtopicVersion`은 요청한 `taxonomyVersion`에 묶인 활성 세부 세트여야 한다.
 
 | 상황 | 응답 |
 | --- | --- |
 | `interestCodes` 4개 이상, 중복, null·blank 코드, `taxonomyVersion` 누락 | `VALIDATION_FAILED`(400) |
 | 등록되지 않았거나 활성이 아닌 `taxonomyVersion`, 그 버전에 없거나 비활성인 코드 | `VALIDATION_FAILED`(400) |
+| 세부: 상위당 4개 이상, 부모 미선택, 중복, null·blank, 없거나 비활성인 코드·버전, `subtopicVersion`·`subtopicCodes` 중 하나만 전송 | `VALIDATION_FAILED`(400) |
 | JWT 없음·무효 | `UNAUTHORIZED`(401) |
 | 회원이 존재하지 않음 | `RESOURCE_NOT_FOUND`(404) |
 
-- 검증에 실패하면 기존 선택은 그대로다.
+- 검증에 실패하면 기존 선택(상위·세부)은 그대로다.
 - 유지되는 선택은 `selected_at`을 바꾸지 않는다. 같은 회원의 동시 저장은 직렬화된다.
 
 ## FE 연동 가이드
@@ -63,6 +90,10 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 - 저장 요청의 `taxonomyVersion`은 **`GET /api/interests` 응답 값**을 보낸다. `GET /api/me/interests`의 버전은 과거에 저장한 선택의 버전이라
   분류체계가 바뀌면 활성 버전과 달라 저장이 400이 된다. 활성 분류체계가 없으면(`taxonomyVersion: null`) 저장할 수 없다.
+- 세부 주제(`subtopics`)도 `GET /api/interests` 응답의 `subtopicVersion`을 보낸다. 세부 필드를 둘 다 생략하면 기존 세부 선택이 유지되고, 상위를 해제하면
+  그 아래 세부 선택은 서버가 같이 지운다. 활성 세부 세트가 없으면(`subtopicVersion: null`) 세부 선택은 저장할 수 없다.
+- **세부 주제를 저장해도 추천 순위는 바뀌지 않는다.** 개인화 추천은 아직 상위 관심 분야와 팔로우만 쓴다. 세부 선택의 추천 반영은 후속 단계이므로
+  "고른 세부 주제가 추천에 반영된다"는 식의 화면 문구는 쓰지 않는다.
 - 400 `VALIDATION_FAILED`는 4개 이상, 중복, 없는 코드, 비활성 버전을 구분하지 않고 필드별 상세도 없다. 최대 선택 수는 응답의 `maxSelection`으로
   FE가 미리 막는다. 선택 해제는 빈 배열 PUT이다.
 - `/api/interests`는 인증이 필요 없지만 유효하지 않거나 만료된 Access JWT를 붙여 보내면 401이 될 수 있다. 기존 401 → refresh → 재시도 흐름이 처리한다.

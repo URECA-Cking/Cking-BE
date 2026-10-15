@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.post.application.dto.CreatorPostFields;
 import kr.co.cking.post.application.dto.CreatorPostView;
+import kr.co.cking.post.application.dto.PostEngagement;
 import kr.co.cking.post.domain.CreatorPost;
 import kr.co.cking.post.domain.CreatorPostImage;
 import kr.co.cking.post.domain.PostErrorCode;
@@ -40,6 +41,7 @@ public class CreatorPostService {
     private final CreatorPostCommentRepository commentRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final CreatorPostViewAssembler viewAssembler;
+    private final PostEngagementReader engagementReader;
     private final Clock clock;
 
     /**
@@ -54,7 +56,7 @@ public class CreatorPostService {
                 new CreatorPost(creator.getCreatorId(), content(fields), fields.visibility(), now));
         link(imageKeys, creator.getCreatorId(), post.getPostId(), now);
         applyDisplayOrder(imageKeys, post.getPostId());
-        return viewAssembler.assemble(post, imageKeys, false);
+        return viewAssembler.assemble(post, imageKeys, false, PostEngagement.NONE);
     }
 
     /**
@@ -74,7 +76,7 @@ public class CreatorPostService {
         release(postId, removedKeys, now);
         link(addedKeys, creator.getCreatorId(), postId, now);
         applyDisplayOrder(imageKeys, postId);
-        return viewAssembler.assemble(post, imageKeys, false);
+        return viewAssembler.assemble(post, imageKeys, false, engagementReader.read(postId, memberId));
     }
 
     public void delete(Long memberId, Long postId) {

@@ -12,6 +12,7 @@ import kr.co.cking.event.application.dto.EntrySpendResult;
 import kr.co.cking.event.application.service.EntrySpendService;
 import kr.co.cking.event.domain.EntryErrorCode;
 import kr.co.cking.event.domain.EntryResultCode;
+import kr.co.cking.member.application.MemberProfileGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,10 +22,12 @@ public class EventEntryService {
 
     private final EventQueryService eventQueryService;
     private final EntrySpendService entrySpendService;
+    private final MemberProfileGuard memberProfileGuard;
     private final EntryAbuseObserver abuseObserver;
     private final Clock clock;
 
     public EntryOutcome apply(Long eventId, EntryCommand command) {
+        memberProfileGuard.requireConfigured(command.userId());
         CachedEvent event = eventQueryService.getCachedEvent(eventId);
         Instant requestedAt = clock.instant();
         EntryObservationContext observation = new EntryObservationContext(

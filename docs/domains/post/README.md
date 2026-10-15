@@ -8,14 +8,15 @@ Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계�
 - 공개 범위(PUBLIC·FOLLOWERS)에 따른 게시글 공개 조회
 - 게시글 이미지 업로드 기록으로 소유자·연결 검증과 저장소 정리
 - 게시글 댓글 조회·작성·수정·삭제
+- 게시글 좋아요·취소와 좋아요 수·내 좋아요·댓글 수 집계, 좋아요 성공 뒤 Mission 보상 요청(이슈 #554)
 - 댓글 필터 판정 요청·결과 저장과 필터링된 댓글의 원문 가림·원문 보기
-- 댓글 신고 접수와 관리자의 신고된 댓글 조회
+- 댓글 신고 접수와 관리자의 신고된 댓글 조회, 숨김·반려 처리
 
 Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `CreatorFollowQueryService.isFollowing`으로 확인한다. 게시글과 댓글의 조회·참여 권한 판단은 `PostAccessPolicy` 한 곳에 둔다.
 
 ## 소유 데이터
 
-V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. V46이 댓글에 필터 판정 컬럼(`filter_status`·`filter_action`·`filter_reasons`·`filter_rule_version`·`filter_model_version`·`filtered_at`)을 더했다. V49의 `creator_post_comment_report`(댓글 신고)도 소유한다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다. 신고는 댓글 FK의 `ON DELETE CASCADE`로 댓글과 함께 지워진다.
+V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. V46이 댓글에 필터 판정 컬럼(`filter_status`·`filter_action`·`filter_reasons`·`filter_rule_version`·`filter_model_version`·`filtered_at`)을 더했다. V69의 `creator_post_like`(게시글 좋아요, `(post_id, member_id)` PK, 게시글 삭제 시 `ON DELETE CASCADE`)도 소유한다. V49의 `creator_post_comment_report`(댓글 신고)도 소유한다. V60이 신고에 처리 상태(`status`·`handled_by`·`handled_at`)를, 댓글에 관리자 숨김(`admin_hidden_at`·`admin_hidden_by`)을 더했다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다. 신고는 댓글 FK의 `ON DELETE CASCADE`로 댓글과 함께 지워진다.
 
 ## 댓글 권한
 
@@ -24,9 +25,10 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 | 조회 | 게시글을 볼 수 있는 사람. PUBLIC은 누구나, FOLLOWERS는 팔로워와 작성 Creator 본인 (그 외 `POST_FOLLOWERS_ONLY`) |
 | 작성 | 로그인 + 팔로워 또는 작성 Creator 본인. PUBLIC 게시글도 팔로우해야 한다 (그 외 `COMMENT_FOLLOWERS_ONLY`) |
 | 수정 | 댓글 작성자 본인이면서 작성과 같은 조건 |
+| 작성·수정 제한 | 관리자의 댓글 숨김으로 경고가 쌓이거나 관리자가 직접 건 제한 중이면 `COMMENT_RESTRICTED`(403). 삭제는 제한과 무관하다. [Sanction](../sanction/README.md) |
 | 삭제 | 댓글 작성자 본인, 게시글 작성 Creator 본인. 공개 범위·팔로우를 보지 않으므로 팔로우를 끊은 작성자도 자기 댓글을 지울 수 있다 |
 
-필터링(BLOCK)된 댓글의 원문은 작성자 본인이 아닌 조회자에게 가려지고, 게시글을 볼 수 있는 사람이면 누구나 원문 보기를 요청할 수 있다. 개인정보 규칙으로 막힌 댓글은 누구에게도 원문을 보여주지 않는다. 자세한 응답 규칙은 [Post Comment API](comment-api.md#필터링)를 따른다. 필터 판정 결과는 어떤 응답에도 사유를 담지 않으며, 게시글 작성 Creator의 댓글 삭제도 댓글 관리 수단으로 남는다.
+필터링(BLOCK)된 댓글과 관리자가 숨긴 댓글은 원문과 작성자 이름·프로필 사진이 작성자 본인이 아닌 조회자에게 가려지고(이슈 #546), 필터링된 댓글은 게시글을 볼 수 있는 사람이면 누구나 원문 보기를 요청할 수 있다. 개인정보 규칙으로 막힌 댓글과 관리자가 숨긴 댓글은 누구에게도 원문을 보여주지 않는다. 자세한 응답 규칙은 [Post Comment API](comment-api.md#필터링)를 따른다. 필터 판정 결과는 어떤 응답에도 사유를 담지 않으며, 게시글 작성 Creator의 댓글 삭제도 댓글 관리 수단으로 남는다.
 
 ### 필터 판정 흐름
 
@@ -57,12 +59,15 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 
 로그인한 사용자가 게시글을 볼 수 있다면 댓글을 신고할 수 있다(전체 공개 게시글은 팔로우하지 않아도 된다). 요청·응답 계약은 [Post Comment API](comment-api.md#post-apicreatorscreatoridpostspostidcommentscommentidreports)를 따른다.
 
-- **범위**: 신고 접수·저장과 관리자 조회까지다. 신고는 댓글의 노출 상태나 필터 판정을 바꾸지 않으며, 신고 수로 자동 가림하지 않는다(오신고·집단 신고 악용을 막을 수단이 없기 때문). 신고 데이터를 필터 평가·규칙에 쓰는 일은 사람 검수를 거친 것만 대상으로 별도 이슈에서 다룬다.
+- **범위**: 신고 접수·저장, 관리자 조회, 관리자의 숨김·반려 처리(이슈 #499)다. 신고 접수 자체는 댓글의 노출 상태나 필터 판정을 바꾸지 않으며, 신고 수로 자동 가림하지 않는다(오신고·집단 신고 악용을 막을 수단이 없기 때문). 댓글은 관리자가 확인하고 숨길 때만 가려진다. 신고 데이터를 필터 평가·규칙에 쓰는 일은 사람 검수를 거친 것만 대상으로 별도 이슈에서 다룬다.
 - **사유**: `ABUSE`·`SPAM`·`PRIVACY`·`OTHER`. 설명(`detail`, 1~200자)은 `OTHER`일 때만 받는다.
 - **멱등**: `(comment_id, reporter_member_id)` 유니크 제약이 있다. 같은 사용자의 재신고는 기존 신고를 그대로 돌려준다. 신고자 잠금 다음에 댓글 작성·수정·삭제와 같은 순서(게시글 공유 잠금 → 댓글 쓰기 잠금)로 중복 신고를 직렬화하고, 먼저 삭제된 댓글은 404가 된다.
 - **제한**: 같은 신고자가 1시간 안에 새로 접수할 수 있는 신고는 20건이다(`COMMENT_REPORT_LIMIT_EXCEEDED` 429). 한도와 시간은 `CreatorPostCommentReportService`의 상수이며 조정이 필요하면 설정으로 옮긴다. 한도 확인(기존 신고 수 읽기)과 저장은 두 단계라 댓글별 잠금만으로는 같은 사용자가 서로 다른 댓글을 동시에 신고할 때 한도를 넘을 수 있다. 그래서 가장 먼저 신고자(회원) 행을 쓰기 잠금으로 읽어(`MemberRepository.findByIdForUpdate`, 관심 분야 저장과 같은 방식) 신고자 단위로 직렬화한다. 잠금 순서는 신고자 → 게시글(공유) → 댓글(쓰기)이다.
 - **비공개**: 신고자 정보는 어떤 응답에도 담지 않는다. 댓글 작성자와 Creator는 자기 댓글이 신고되었는지도 알 수 없다. 관리자 목록은 댓글별 신고 수와 사유별 수만 보여 주고 신고자를 식별하는 값은 내려주지 않는다.
-- **관리자 조회**: `GET /api/admin/comment-reports`. 댓글 원문, 필터 차단 여부(`blocked`)를 함께 보여 준다. 신고 처리 상태(처리 전/완료)는 이번 범위에 없다.
+- **관리자 조회**: `GET /api/admin/comment-reports`. 댓글 원문, 필터 차단 여부(`blocked`), 관리자 숨김 여부(`hiddenByAdmin`), 처리 상태, 접수 신고 수를 함께 보여 주고 `status`(PENDING·RESOLVED·REJECTED)로 거를 수 있다.
+- **처리(이슈 #499)**: 신고는 접수(`PENDING`)로 시작한다. 관리자가 댓글 단위로 `POST /api/admin/comment-reports/{commentId}/hide`(숨김, 접수 신고를 `RESOLVED`로)나 `.../reject`(반려, 접수 신고를 `REJECTED`로)를 호출하면 그 댓글의 접수 신고를 한 번에 처리한다(처리한 관리자·시각 저장). 같은 조치의 재요청은 성공(멱등, 처리 수 0), 서로 다른 조치(숨긴 댓글 반려, 접수 신고가 모두 반려된 댓글 숨김)는 `COMMENT_REPORT_ALREADY_HANDLED`(409)다. 숨김은 되돌리지 않는다.
+- **관리자 숨김**: 필터 판정(`filter_*`)과 별개 컬럼(`admin_hidden_at`·`admin_hidden_by`)에 저장해 필터 재판정이나 댓글 수정으로 덮어써지지 않는다. 숨긴 댓글은 작성자 본인이 아닌 조회자에게 가려지고 원문 보기(`/original`)도 `COMMENT_NOT_REVEALABLE`(403)이며, 작성자 본인에게는 그대로 보인다.
+- **이미 가려진 댓글**: 필터가 차단했거나 관리자가 숨긴 댓글은 새 신고를 받지 않는다(`COMMENT_REPORT_ALREADY_FILTERED` 409). 이미 접수한 신고자의 재신고는 기존 신고를 돌려준다. 숨김 조치는 게시글 공유 잠금 → 댓글 쓰기 잠금 순서(신고 접수와 같음)로 같은 댓글의 신고 접수와 직렬화돼, 숨김 직후 접수 신고가 남는 일이 없다.
 
 댓글 작성·수정·삭제는 게시글 행을 공유 잠금(`FOR SHARE`)으로 읽는다. 게시글 수정·삭제는 쓰기 잠금(`FOR UPDATE`)을 잡으므로, 동시에 진행 중인 게시글 삭제가 끝날 때까지 기다렸다가 사라진 게시글을 보고 404로 응답한다(잠금이 없으면 댓글 저장이 FK 오류로 500이 된다). 공유 잠금끼리는 충돌하지 않아 같은 게시글의 댓글 쓰기는 서로 기다리지 않는다. 댓글 수정·삭제는 이어서 댓글 행을 쓰기 잠금으로 읽어, 같은 댓글의 동시 수정·삭제도 직렬화한다(먼저 삭제되면 404). 잠금 순서는 항상 게시글 → 댓글이며 게시글 삭제도 같은 순서라 교착이 생기지 않는다. 댓글 목록 조회는 잠그지 않는다.
 
@@ -104,3 +109,12 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 2. `DELETE_PENDING`이 된 지 10분이 지난 기록을 최대 100건씩 저장소에서 지우고 기록을 삭제한다. 유예 시간은 방금 Commit된 수정·삭제의 AFTER_COMMIT 삭제와 겹치지 않게 하기 위함이다. 실패한 기록은 `status_changed_at`을 현재 시각으로 미뤄 대기열 뒤로 보내고 유예 시간 뒤 다시 시도한다. 계속 실패하는 기록이 앞 100건을 차지해 뒤의 기록이 처리되지 않는 일을 막기 위함이다. 저장소 delete는 없는 key도 성공하므로 여러 번 실행돼도 안전하다.
 
 임시 저장 기능이 생기면 미연결 보관 시간(24시간)을 다시 정한다.
+
+## 게시글 좋아요 (이슈 #554)
+
+외부 계약은 [Post API](api.md#게시글-좋아요)를 따른다.
+
+- **Transaction 경계**: DB 변경은 `PostLikeWriter`가 한 Transaction(READ_COMMITTED)에서 끝내고, `PostLikeService`가 Commit 뒤 Transaction 밖에서 Mission 보상을 요청한다. 보상 호출이 Redis·Ticket 처리를 하는 동안 DB 잠금을 쥐지 않기 위함이다.
+- **멱등·동시성**: `ON DUPLICATE KEY` insert로 같은 쌍의 동시 요청을 하나만 남긴다. 새 좋아요인지는 insert의 영향 행 수로 판단하지 않는다. Connector/J는 기본(`useAffectedRows=false`)에서 중복 insert에도 1을 돌려주므로(실제 드라이버로 확인), 저장된 `created_at`을 읽어 오늘(UTC) 눌린 좋아요인지로 판단한다. 게시글 행은 공유 잠금(`FOR SHARE`)으로 읽어 동시에 진행 중인 게시글 삭제가 끝난 뒤 404로 응답한다(댓글 작성과 같은 방식).
+- **집계**: 목록·상세의 좋아요 수·내 좋아요·댓글 수는 `PostEngagementReader`가 한 페이지를 일괄 집계한다(쿼리 3개 이하). 잠긴 게시글도 수치를 내려준다.
+- **미션 보상은 부가 효과**: 보상 호출이 실패하거나 예외가 나도 좋아요는 롤백하지 않고 응답은 성공이다. 보상은 **오늘(UTC) 누른 좋아요**일 때만 요청한다. 오늘 누른 좋아요에 같은 POST가 다시 오면 같은 날 같은 `requestId`로 재시도하므로 이전 실패가 회복되고, 이전 날에 누른 좋아요를 유지한 채 날짜만 바뀐 중복 POST는 새 좋아요가 아니므로 보상하지 않는다(좋아요 행의 `created_at`의 UTC 날짜로 판단하며, 취소 뒤 다시 누르면 새 좋아요다). 이 판정에 쓴 시각(`decidedAt`)을 Mission 호출에 그대로 넘겨 보상 날짜를 같은 값으로 맞춘다.

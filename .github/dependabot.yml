@@ -18,3 +18,42 @@ updates:
       - task
     assignees:
       - rmsckd1640
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "[TASK] "
+    labels:
+      - task
+    assignees:
+      - rmsckd1640
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker-compose:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Redis는 Valkey 7.2와 호환되는 7.2 계열로 유지한다. 마이너는 ElastiCache 이전 때 엔진과 함께 정한다.
+      - dependency-name: redis
+        update-types: ["version-update:semver-minor"]
+    commit-message:
+      prefix: "[TASK] "
+    labels:
+      - task
+    assignees:
+      - rmsckd1640

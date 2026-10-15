@@ -62,7 +62,8 @@ class MissionResultClassifierTest {
     @ParameterizedTest
     @EnumSource(value = MissionErrorCode.class, names = {
             "MISSION_NOT_FOUND",
-            "MISSION_REQUIRES_VERIFICATION"
+            "MISSION_REQUIRES_VERIFICATION",
+            "MISSION_REQUIRES_POST_LIKE"
     })
     void 리소스_확인과_별도_인증_오류는_관찰하지_않는다(MissionErrorCode errorCode) {
         assertThat(classifier.classify(errorCode)).isEmpty();

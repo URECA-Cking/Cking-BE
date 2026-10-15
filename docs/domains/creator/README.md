@@ -1,6 +1,6 @@
 # Creator 도메인
 
-Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승인된 Creator(`creator`), 관리자 기본 Creator Space 템플릿(`creator_space_template`), 승인된 Creator 전용 Creator Space(`creator_space`)를 소유한다.
+Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승인된 Creator(`creator`), 관리자 기본 Creator Space 템플릿(`creator_space_template`)과 그 이미지 업로드 기록(`creator_space_template_image`), 승인된 Creator 전용 Creator Space(`creator_space`)를 소유한다.
 
 ## 문서
 
@@ -9,6 +9,21 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 - [Creator Space API](space-api.md): 공개 Creator 목록, Space 공개 조회(creatorId·slug), Creator 본인 조회·수정·커스텀 slug 변경 외부 API 계약
 - [Creator Space slug 정책](space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 - [Creator 유사 추천 결과](similarity-recommendation.md): Cking-LLM 후보 묶음 검증, 세대 보존, 원자 교체와 공개 조회 계약
+
+## 공개 활동명(이슈 #520)
+
+`creator.name`은 승인 당시 Member의 OAuth 원본 이름을 보관하는 내부 값이며 공개 응답에 사용하지 않는다. 공개 `creatorName`은
+`creator.activity_name`의 활동명이다. 필드명은 유지해 기존 FE 계약을 깨지 않는다.
+
+- 활동명은 Member 닉네임과 같은 완성형 한글·ASCII 영문·숫자·`_`·`-` 1~20자, NFC·소문자 정규화 규칙을 쓰지만
+  Creator 안에서만 중복되지 않는 별도 namespace다.
+- 최초 Creator 승인 시 Member 닉네임을 후보로 쓴다. 충돌하면 20자 안에서 `-2`, `-3`을 붙여 승인은 실패하지 않는다.
+- 기존 Creator는 V59에서 `creator-{creatorId}` 임시 활동명으로 이관되고 `activityNameConfigured=false`가 된다. 활동명
+  설정 FE가 배포되기 전에는 기존 게시글·Event 생성 흐름을 막지 않으며, 설정 화면 배포 후 별도 릴리스에서 작성 전 설정
+  강제를 활성화한다.
+- 최초 설정 후 실제 변경은 14일 간격이며, 바로 이전 활동명은 14일 예약돼 즉시 되돌릴 수 있다.
+- Space·Event·Calendar·Follow·추천·유사 추천과 Space 소유 Creator 댓글은 조회 시점의 현재 활동명을 사용한다. 콘텐츠에 이름을
+  snapshot하지 않으므로 활동명을 바꾸면 기존 콘텐츠에도 새 이름이 표시된다.
 
 ## Creator Space 자동 생성(이슈 #270)
 

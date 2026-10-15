@@ -4,6 +4,7 @@ import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 public final class CreatorRecommendationResponse {
 
@@ -11,11 +12,13 @@ public final class CreatorRecommendationResponse {
     }
 
     public record Result(
+            UUID recommendationRequestId,
             String policyVersion,
             List<Item> items
     ) {
-        public static Result from(PersonalizedCreatorRecommendationView view) {
+        public static Result from(PersonalizedCreatorRecommendationView view, UUID requestId) {
             return new Result(
+                    requestId,
                     view.policyVersion(),
                     view.items().stream().map(Item::from).toList());
         }

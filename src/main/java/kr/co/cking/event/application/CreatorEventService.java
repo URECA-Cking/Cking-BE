@@ -64,6 +64,21 @@ public class CreatorEventService {
         return eventRepository.findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(creator.getCreatorId(), pageable);
     }
 
+    /** REJECTED 상태 Event의 최근 반려 사유를 eventId별로 조회한다. 사유가 없으면 키가 없다. */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.Map<Long, String> findRejectReasons(java.util.Collection<Event> events) {
+        var rejectedIds = events.stream()
+                .filter(event -> event.getStatus() == kr.co.cking.event.domain.EventStatus.REJECTED)
+                .map(Event::getEventId).toList();
+        if (rejectedIds.isEmpty()) {
+            return java.util.Map.of();
+        }
+        return approvalRequestRepository.findLatestRejected(rejectedIds).stream()
+                .filter(request -> request.getRejectReason() != null)
+                .collect(java.util.stream.Collectors.toMap(EventApprovalRequest::getEventId,
+                        EventApprovalRequest::getRejectReason));
+    }
+
     /** Creator 소유 Event의 새 승인 요청 차수를 만들고 승인 대기 상태로 전이한다. */
     public EventApprovalRequest requestApproval(Long userId, Long eventId) {
         Creator creator = requireCreator(userId);

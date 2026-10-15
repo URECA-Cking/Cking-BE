@@ -1,6 +1,7 @@
 package kr.co.cking.ticket.application;
 
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorActivityName;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
@@ -55,7 +56,7 @@ class TicketOnceEarnRequestClaimServiceIntegrationTest {
     void Redis_실행_전에_동일_평생_업무키를_durable하게_선점한다() {
         Member member = memberRepository.save(new Member("회원", "010-0000-0000", "member@example.com", MemberRole.USER));
         Member creatorMember = memberRepository.save(new Member("크리에이터", "010-1111-1111", "creator@example.com", MemberRole.USER));
-        Creator creator = creatorRepository.save(new Creator(creatorMember.getMemberId(), "크리에이터"));
+        Creator creator = newCreator(creatorMember);
         Mission mission = missionRepository.save(new Mission(creator.getCreatorId(), MissionType.SHARE, 1, null, null));
 
         TicketOnceEarnRequestClaim first = claimService.claim(command(member, creator, mission, UUID.randomUUID()), "a".repeat(64));
@@ -96,7 +97,7 @@ class TicketOnceEarnRequestClaimServiceIntegrationTest {
                 "회원", "010-0000-0000", "member" + UUID.randomUUID() + "@example.com", MemberRole.USER));
         Member creatorMember = memberRepository.save(new Member(
                 "크리에이터", "010-1111-1111", "creator" + UUID.randomUUID() + "@example.com", MemberRole.USER));
-        Creator creator = creatorRepository.save(new Creator(creatorMember.getMemberId(), "크리에이터"));
+        Creator creator = newCreator(creatorMember);
         Mission mission = missionRepository.save(new Mission(creator.getCreatorId(), MissionType.SHARE, 1, null, null));
         return command(member, creator, mission, UUID.randomUUID());
     }
@@ -104,6 +105,13 @@ class TicketOnceEarnRequestClaimServiceIntegrationTest {
     private EarnCommand command(Member member, Creator creator, Mission mission, UUID requestId) {
         return new EarnCommand(requestId, member.getMemberId(), creator.getCreatorId(), MissionType.SHARE.name(),
                 mission.getMissionId(), "2026-09-16", "share:" + creator.getCreatorId(), 1L, EarnRewardPolicy.ONCE);
+    }
+
+    private Creator newCreator(Member creatorMember) {
+        String activityName = "creator-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        return creatorRepository.save(new Creator(
+                creatorMember.getMemberId(), "크리에이터", CreatorActivityName.of(activityName)
+        ));
     }
 
     @TestConfiguration

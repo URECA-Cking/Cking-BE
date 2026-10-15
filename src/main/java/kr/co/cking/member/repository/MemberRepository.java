@@ -17,6 +17,8 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
 
     Optional<Member> findByEmail(String email);
 
+    boolean existsByNicknameNormalized(String nicknameNormalized);
+
     /** 같은 회원에 대한 명령(예: 관심 분야 전체 교체)을 직렬화하려고 회원 행을 잠근다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from Member m where m.memberId = :memberId")

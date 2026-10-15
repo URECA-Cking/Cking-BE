@@ -1,0 +1,280 @@
+# AI Quiz API
+
+모든 성공·실패 응답은 [공통 API 규약](../../common/api.md)의 응답 봉투를 사용하며, 아래 Response 예시는 `data` 값이다. 상태 전이와 승인 조건은 [AI Quiz](README.md)를 따른다.
+
+## 인증
+
+- `/api/creator/quizzes/**`는 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다. 없는 Member는 `RESOURCE_NOT_FOUND`(404), Creator가 아니거나 다른 Creator의 Quiz면 `FORBIDDEN`(403)이다.
+- 공개 Quiz 목록·상세 GET은 인증이 필요 없다. [답안 제출·본인 결과 조회](attempt-api.md)는 JWT 인증이 필수다.
+
+## Judge 평가와 승인
+
+Creator 문항 선택·수정·추가와 별도 책임 승인 계약은 [문항 구성 API](composition-api.md)를 따른다.
+기존 `/approve`는 AI 원본의 ALL_PASS 정책을 유지하며 Creator 구성본은 `creator-approval`을 사용한다.
+
+Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가하고, 모든 문항의 7개 항목이 pass인 저장 결과를 근거로 명시적으로 승인한다. SUCCEEDED는 실행 성공이며 ALL_PASS와 다르다. 평가 기능 기본 OFF는 신규 접수만 막고 기존 유효 평가의 승인·게시·조회는 유지한다.
+
+## 공통 값
+
+| 필드 | 설명 |
+| --- | --- |
+| `publicationStatus` | `NOT_PUBLISHED`, `PUBLISHED`, `UNPUBLISHED` |
+| `reviewStatus` | revision 검토 상태. `PENDING_REVIEW`, `APPROVED`, `REJECTED` |
+| `questionNo`, `optionNo` | 0부터 시작하는 표시 순서 |
+| `correctOptionIndex` | 0-based. 정답 보기의 `optionNo`와 같다(Creator 검토 및 본인 응시 결과에만 있다) |
+| `publishedAt` | 현재(또는 마지막) 게시가 시작된 시각. 재게시·게시 revision 변경 때 갱신된다. 게시한 적 없으면 null |
+| `unpublishedAt` | 그 게시가 취소된 시각. `PUBLISHED`이면 항상 null이고, 재게시하면 지워진다 |
+| 시각 | UTC Instant |
+
+## GET /api/creator/quizzes
+
+내 Quiz를 최근 생성 순(`createdAt` 내림차순, tie-breaker `quizId` 내림차순)으로 조회한다. `page`(기본 0), `size`(기본 20, 최대 100). 제목과 검토 상태는 최신 revision 기준이다.
+
+```json
+{
+  "items": [
+    {
+      "quizId": 1,
+      "title": "물의 순환",
+      "publicationStatus": "NOT_PUBLISHED",
+      "publishedRevisionId": null,
+      "latestRevisionId": 100,
+      "latestRevisionNo": 1,
+      "latestReviewStatus": "PENDING_REVIEW",
+      "publishedAt": null,
+      "createdAt": "2026-10-12T00:00:00Z",
+      "updatedAt": "2026-10-12T00:00:00Z"
+    }
+  ],
+  "page": 0, "size": 20, "totalElements": 1, "totalPages": 1, "hasNext": false
+}
+```
+
+## GET /api/creator/quizzes/{quizId}
+
+내 Quiz 상세. `revisions`는 revision 번호 오름차순이다.
+
+```json
+{
+  "quizId": 1,
+  "creatorId": 10,
+  "videoId": "dQw4w9WgXcQ",
+  "publicationStatus": "PUBLISHED",
+  "publishedRevisionId": 100,
+  "publishedAt": "2026-10-12T01:00:00Z",
+  "unpublishedAt": null,
+  "createdAt": "2026-10-12T00:00:00Z",
+  "updatedAt": "2026-10-12T01:00:00Z",
+  "revisions": [
+    { "revisionId": 100, "revisionNo": 1, "title": "물의 순환", "reviewStatus": "APPROVED",
+      "decidedAt": "2026-10-12T00:30:00Z", "createdAt": "2026-10-12T00:00:00Z" }
+  ]
+}
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `FORBIDDEN` | 403 | Creator가 아니거나 다른 Creator의 Quiz |
+| `RESOURCE_NOT_FOUND` | 404 | Member 없음 |
+| `QUIZ_NOT_FOUND` | 404 | Quiz 없음 |
+
+## GET /api/creator/quizzes/{quizId}/revisions/{revisionId}
+
+검토용 revision 상세. 정답·해설·근거와 원본 텍스트를 포함한다. `latest`는 최신 revision 여부, `published`는 현재 게시 중인 revision 여부다. `decisionReason`은 거절 사유다.
+
+```json
+{
+  "quizId": 1,
+  "revisionId": 100,
+  "revisionNo": 1,
+  "latest": true,
+  "published": false,
+  "title": "물의 순환",
+  "videoId": "dQw4w9WgXcQ",
+  "promptVersion": "quiz-mcq-v1",
+  "contentText": "물은 증발해 구름이 되고, 구름은 비가 되어 내린다.",
+  "reviewStatus": "PENDING_REVIEW",
+  "decisionReason": null,
+  "decidedAt": null,
+  "createdAt": "2026-10-12T00:00:00Z",
+  "questions": [
+    {
+      "questionNo": 0,
+      "question": "물이 증발하면 무엇이 되나요?",
+      "options": [ { "optionNo": 0, "text": "구름" }, { "optionNo": 1, "text": "돌" },
+        { "optionNo": 2, "text": "흙" }, { "optionNo": 3, "text": "모래" } ],
+      "correctOptionIndex": 0,
+      "explanation": "증발한 물은 구름이 됩니다.",
+      "sourceEvidence": "물은 증발해 구름이 되고"
+    }
+  ],
+  "contentEdited": true,
+  "contentConfirmedAt": "2026-10-12T00:00:00Z"
+}
+```
+
+- `contentEdited`·`contentConfirmedAt`(이슈 #622): 승인 화면에 원문 수정 여부를 보여 주기 위한 원문 검토 정보다. Quiz를 만든 생성 작업에서 읽으며, 원문이 Quiz 단위라 같은 Quiz의 모든 revision(문항 편집 revision 포함)에서 같다.
+  - `contentEdited`: 확정 원문(`contentText`)이 AI 원문과 다르면 `true`, AI 원문 그대로 확정했으면 `false`다. 생성 작업 조회 API의 `contentEdited`와 같은 기준이다.
+  - `contentConfirmedAt`: Creator가 원문을 확정한 시각이다.
+  - 원문 검토 없이 만든 Quiz(기존 흐름)나 생성 작업이 없는 Quiz는 두 필드 모두 `null`이다. 필드는 생략하지 않고 `"contentEdited": null, "contentConfirmedAt": null`로 내려간다.
+
+오류는 Quiz 상세와 같고, Quiz에 속하지 않은 revision은 `QUIZ_REVISION_NOT_FOUND`(404)다.
+
+## POST /api/creator/quizzes/{quizId}/revisions/{revisionId}/approve
+
+revision을 승인한다. 본문은 없다. 저장 내용을 revision 해시로 검증한 뒤 Judge 평가 근거를 확인해 기록한다. 이미 승인한 revision은 기존 결정을 반환한다.
+
+```json
+{ "quizId": 1, "revisionId": 100, "reviewStatus": "APPROVED", "reason": null, "decidedAt": "2026-10-12T00:30:00Z" }
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `QUIZ_JUDGE_EVALUATION_REQUIRED` | 409 | 평가 없음·진행 중·실패·UNKNOWN 또는 fail/uncertain 판정 |
+| `QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED` | 500 | 저장 평가의 소속·hash·정책 버전 검증 실패 |
+| `QUIZ_REVISION_ALREADY_DECIDED` | 409 | 이미 거절한 revision |
+| `QUIZ_REVISION_INTEGRITY_FAILED` | 500 | 저장 내용이 revision 해시와 다름 |
+| `FORBIDDEN` / `RESOURCE_NOT_FOUND` / `QUIZ_NOT_FOUND` / `QUIZ_REVISION_NOT_FOUND` | 403/404 | 위와 같음 |
+
+## POST /api/creator/quizzes/{quizId}/revisions/{revisionId}/reject
+
+revision을 거절한다. Judge 평가가 없어도 된다. 본문은 생략할 수 있다. 공백뿐인 사유는 저장하지 않는다. 이미 거절한 revision은 기존 결정(처음 사유)을 반환한다.
+
+```json
+{ "reason": "정답이 둘입니다." }
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | 사유가 500자 초과 |
+| `QUIZ_REVISION_ALREADY_DECIDED` | 409 | 이미 승인한 revision |
+| `FORBIDDEN` / `RESOURCE_NOT_FOUND` / `QUIZ_NOT_FOUND` / `QUIZ_REVISION_NOT_FOUND` | 403/404 | 위와 같음 |
+
+## POST /api/creator/quizzes/{quizId}/publish
+
+승인된 최신 revision을 게시한다. 첫 게시 때 그 revision과 해시를 고정하며, 이후(게시 취소 후 포함)에는 고정한 revision만 다시 게시할 수 있다. 게시 직전에 저장 내용과 Judge 승인 근거를 다시 검증한다. 같은 revision을 이미 게시 중이면 현재 상태를 반환한다.
+
+```json
+{ "revisionId": 100 }
+```
+
+```json
+{ "quizId": 1, "publicationStatus": "PUBLISHED", "publishedRevisionId": 100,
+  "publishedAt": "2026-10-12T01:00:00Z", "unpublishedAt": null }
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `revisionId` 없음 |
+| `QUIZ_CONTENT_LOCKED` | 409 | 게시한 적 있는 Quiz에서 고정한 revision이 아니거나, 과거 게시 revision을 확인할 수 없는 기존 Quiz |
+| `QUIZ_REVISION_NOT_LATEST` | 409 | 최신 revision이 아님 |
+| `QUIZ_REVISION_NOT_APPROVED` | 409 | 검토 대기 또는 거절된 revision |
+| `QUIZ_JUDGE_EVALUATION_REQUIRED` | 409 | 승인 근거의 판정이 ALL_PASS가 아님 |
+| `QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED` | 500 | 승인 당시 result ID/hash 또는 저장 평가 무결성 실패 |
+| `QUIZ_REVISION_INTEGRITY_FAILED` | 500 | 저장 내용이 revision 해시와 다름 |
+| `FORBIDDEN` / `RESOURCE_NOT_FOUND` / `QUIZ_NOT_FOUND` / `QUIZ_REVISION_NOT_FOUND` | 403/404 | 위와 같음 |
+
+## POST /api/creator/quizzes/{quizId}/unpublish
+
+게시를 취소한다. 본문은 없다. Judge 상태와 무관하며 revision·결정 기록은 그대로 남는다. 게시 중이 아니면 현재 상태를 반환한다. 응답은 게시와 같은 형식이다. 오류는 Quiz 상세와 같다.
+
+## POST /api/creator/quizzes/generations
+
+YouTube 영상으로 Quiz 생성을 요청한다. 응답 `202`와 생성 작업. 생성은 비동기로 진행되며 아래 상태 조회 API로 확인한다. 성공하면 만들어진 Quiz와 revision을 Quiz 상세·revision 상세 API로 조회한다.
+
+```json
+{ "requestId": "550e8400-e29b-41d4-a716-446655440000", "youtubeUrl": "https://youtu.be/dQw4w9WgXcQ",
+  "title": "물의 순환", "questionCount": 3 }
+```
+
+- `requestId`(UUID)는 필수다. 같은 requestId와 같은 입력(videoId·제목·문항 수)은 기존 작업을 반환한다. URL 표현이 달라도 videoId가 같으면 같은 입력이다. 입력이 다르면 `QUIZ_GENERATION_REQUEST_CONFLICT`다. 기능이 꺼져 있어도 기존 작업 재요청은 같은 응답이다.
+- `youtubeUrl`은 https의 `youtube.com`·`www.youtube.com`·`m.youtube.com`의 `/watch?v=<id>`·`/shorts/<id>`, `youtu.be/<id>`만 받는다. videoId는 11자이며 userinfo·443이 아닌 port·`v` 중복·퍼센트 인코딩된 videoId는 거부한다. 그 밖의 query와 fragment는 무시한다. 서버는 이 URL을 요청하지 않고 videoId만 Grounding에 넘긴다.
+- `title`은 공백일 수 없고 100자 이하다. `questionCount`는 3 또는 5이며 생략하면 3이다. 보기 수는 4로 고정한다.
+- Creator당 진행 중(PENDING·RUNNING) 작업은 하나다. 요청 전에 오래된 작업을 정리한다.
+
+응답(이하 생성 작업):
+
+```json
+{ "generationId": 1, "status": "PENDING", "videoId": "dQw4w9WgXcQ", "title": "물의 순환",
+  "questionCount": 3, "optionCount": 4, "quizId": null, "revisionId": null, "failureCode": null,
+  "requestedAt": "2026-10-12T00:00:00Z", "startedAt": null, "completedAt": null,
+  "reviewStage": "GROUNDING", "contentEdited": null, "contentConfirmedAt": null }
+```
+
+- `reviewStage`: 원문 검토 작업의 단계(`GROUNDING` → `AWAITING_REVIEW` → `GENERATING`). 검토 없이 이어서 생성하는 기존 작업(원문 검토 기능 꺼짐)은 `null`이다. 검토 대기·생성 단계에도 `status`는 `RUNNING`이다.
+- `contentEdited`: 확정 원문이 AI 원문과 다른지. 원문 확정 전이거나 기존 작업이면 `null`이다. `contentConfirmedAt`: 원문을 확정한 시각.
+- 원문 본문은 이 응답에 담지 않는다. 검토할 원문은 [원문 검토 API](content-review-api.md)의 `GET /api/creator/quizzes/generations/current`로 조회한다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | requestId·URL·제목·문항 수 규칙 위반 |
+| `FORBIDDEN` / `RESOURCE_NOT_FOUND` | 403/404 | Creator가 아님 / Member 없음 |
+| `QUIZ_GENERATION_REQUEST_CONFLICT` | 409 | 같은 requestId로 다른 입력의 작업이 있음 |
+| `QUIZ_GENERATION_IN_PROGRESS` | 409 | 진행 중인 생성 작업이 있음 |
+| `QUIZ_GENERATION_DISABLED` | 503 | 생성 기능이 꺼져 있음(`cking.quiz.generation.enabled`) |
+
+## GET /api/creator/quizzes/generations/{generationId}
+
+본인 생성 작업을 조회한다. 응답은 생성 작업이며, 조회하면서 오래된 작업을 정리한다. 원본 텍스트·생성 문항·Provider 오류 원문은 담지 않는다.
+
+| `status` | 의미 |
+| --- | --- |
+| `PENDING` | 접수됨, Worker 시작 전 |
+| `RUNNING` | Grounding·생성 진행 중. 원문 검토 작업은 검토 대기(`reviewStage=AWAITING_REVIEW`)도 여기에 속한다 |
+| `SUCCEEDED` | 저장 완료. `quizId`·`revisionId`가 있다 |
+| `FAILED` | 실패. `failureCode`가 있다 |
+| `UNKNOWN` | 시간 초과 등으로 결과를 알 수 없다. `failureCode`가 있고 이후 결과를 저장하지 않는다 |
+
+`failureCode`: `GROUNDING_REJECTED`(비공개 영상 등 Provider 거부), `GROUNDING_INVALID`, `GENERATION_INVALID`, `DRAFT_INVALID`(저장 길이 상한 등), `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`(UNKNOWN), `DISPATCH_REJECTED`(생성 대기열이 가득 참), `STALE_PENDING`, `STALE_RUNNING`(UNKNOWN), `INTERNAL_ERROR`, `CANCELLED`(Creator가 원문 검토를 취소함). 실패해도 자동으로 다시 시도하지 않으므로 새 requestId로 다시 요청한다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `FORBIDDEN` | 403 | Creator가 아니거나 다른 Creator의 작업 |
+| `RESOURCE_NOT_FOUND` | 404 | Member 없음 |
+| `QUIZ_GENERATION_NOT_FOUND` | 404 | 작업 없음 |
+
+## 원문 검토 API
+
+원문 검토 작업의 진행 중 작업 조회·원문 확정·검토 취소는 [원문 검토 API](content-review-api.md)를 따른다(이슈 #615).
+
+## GET /api/creators/{creatorId}/quizzes
+
+게시 중인 Quiz를 최근 게시 순(`publishedAt` 내림차순, tie-breaker `quizId` 내림차순)으로 조회한다. `page`(기본 0), `size`(기본 20, 최대 100). 미게시·게시 취소된 Quiz는 포함하지 않는다. 없는 Creator는 `RESOURCE_NOT_FOUND`다.
+
+```json
+{
+  "items": [
+    { "quizId": 1, "revisionId": 100, "title": "물의 순환", "questionCount": 3, "publishedAt": "2026-10-12T01:00:00Z" }
+  ],
+  "page": 0, "size": 20, "totalElements": 1, "totalPages": 1, "hasNext": false
+}
+```
+
+## GET /api/creators/{creatorId}/quizzes/{quizId}
+
+게시 중인 revision의 문항과 보기를 조회한다. 정답 index, 해설, sourceEvidence, 원본 텍스트, promptVersion, 해시, 검토 정보는 응답 필드에 없다.
+
+```json
+{
+  "quizId": 1,
+  "creatorId": 10,
+  "revisionId": 100,
+  "videoId": "dQw4w9WgXcQ",
+  "title": "물의 순환",
+  "publishedAt": "2026-10-12T01:00:00Z",
+  "questions": [
+    { "questionNo": 0, "question": "물이 증발하면 무엇이 되나요?",
+      "options": [ { "optionNo": 0, "text": "구름" }, { "optionNo": 1, "text": "돌" },
+        { "optionNo": 2, "text": "흙" }, { "optionNo": 3, "text": "모래" } ] }
+  ]
+}
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `RESOURCE_NOT_FOUND` | 404 | Creator 없음 |
+| `QUIZ_NOT_FOUND` | 404 | Quiz 없음, 미게시·게시 취소, 다른 Creator의 Quiz |
+
+## Fan 응시
+
+[답안 제출·서버 채점·본인 결과 조회 계약](attempt-api.md)을 따른다. 공개 Quiz 조회의 정답 비노출은 유지한다.

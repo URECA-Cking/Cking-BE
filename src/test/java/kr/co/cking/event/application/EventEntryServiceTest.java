@@ -15,6 +15,8 @@ import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
 import kr.co.cking.event.application.service.EntrySpendService;
 import kr.co.cking.event.domain.EntryErrorCode;
 import kr.co.cking.event.domain.EntryResultCode;
+import kr.co.cking.member.application.MemberProfileGuard;
+import kr.co.cking.member.domain.MemberErrorCode;
 import kr.co.cking.ticket.domain.CouponType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +48,9 @@ class EventEntryServiceTest {
 
     @Mock
     private EntrySpendService entrySpendService;
+
+    @Mock
+    private MemberProfileGuard memberProfileGuard;
 
     @Mock
     private EntryAbuseObserver abuseObserver;
@@ -123,6 +128,20 @@ class EventEntryServiceTest {
     }
 
     @Test
+    void 닉네임_미설정_회원의_응모는_차감_전_차단한다() {
+        EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.CREATOR);
+        doThrow(new BusinessException(MemberErrorCode.PROFILE_SETUP_REQUIRED))
+                .when(memberProfileGuard).requireConfigured(10L);
+
+        assertThatThrownBy(() -> eventEntryService.apply(1L, command))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(MemberErrorCode.PROFILE_SETUP_REQUIRED);
+
+        verifyNoInteractions(eventQueryService, entrySpendService, abuseObserver);
+    }
+
+    @Test
     void SPEND_예상치_못한_오류는_원_예외를_유지하고_시스템_실패로_관찰한다() {
         EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.COMMON);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
@@ -143,7 +162,7 @@ class EventEntryServiceTest {
         AbuseObservationExecutor failedExecutor = mock(AbuseObservationExecutor.class);
         doThrow(new IllegalStateException("Redis failure"))
                 .when(failedExecutor).observe(any(AbuseObservationEvent.class));
-        EventEntryService service = new EventEntryService(eventQueryService, entrySpendService,
+        EventEntryService service = new EventEntryService(eventQueryService, entrySpendService, memberProfileGuard,
                 new EntryAbuseObserver(new EntryResultClassifier(), failedExecutor, fixedClock), fixedClock);
         EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.COMMON);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
@@ -159,7 +178,7 @@ class EventEntryServiceTest {
         AbuseObservationExecutor failedExecutor = mock(AbuseObservationExecutor.class);
         doThrow(new IllegalStateException("Redis failure"))
                 .when(failedExecutor).observe(any(AbuseObservationEvent.class));
-        EventEntryService service = new EventEntryService(eventQueryService, entrySpendService,
+        EventEntryService service = new EventEntryService(eventQueryService, entrySpendService, memberProfileGuard,
                 new EntryAbuseObserver(new EntryResultClassifier(), failedExecutor, fixedClock), fixedClock);
         EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.CREATOR);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);

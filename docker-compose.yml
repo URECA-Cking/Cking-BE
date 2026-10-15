@@ -1,6 +1,7 @@
 services:
   mysql:
-    image: mysql:8.4
+    # 개발 RDS와 같은 8.4 LTS 계열을 쓴다.
+    image: mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6
     container_name: cking-mysql
     ports:
       - "3306:3306"
@@ -22,7 +23,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7.2-alpine
+    image: redis:7.2.16-alpine@sha256:29e8589c3f9ba699b5f7aa4b3c7733c58852a3626439e619aa0ee78de08c6ca0
     container_name: cking-redis
     ports:
       - "6379:6379"
@@ -32,7 +33,7 @@ services:
       retries: 10
 
   s3mock:
-    image: adobe/s3mock:5.2.3
+    image: adobe/s3mock:5.2.3@sha256:ab01a6946750f451ca215a47e91030695b260e4003b8a5a6201d25029b8fca92
     container_name: cking-s3mock
     ports:
       - "9090:9090"

@@ -49,7 +49,9 @@ public class EventManagementController {
             @CurrentMemberId Long memberId, @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         Page<Event> events = creatorEventService.findMine(memberId, PageRequest.of(page, size));
-        List<EventManagementResponse.Item> items = events.stream().map(EventManagementResponse.Item::from).toList();
+        var rejectReasons = creatorEventService.findRejectReasons(events.getContent());
+        List<EventManagementResponse.Item> items = events.stream()
+                .map(event -> EventManagementResponse.Item.from(event, rejectReasons.get(event.getEventId()))).toList();
         return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
     }
 

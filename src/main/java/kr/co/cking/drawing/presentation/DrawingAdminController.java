@@ -77,6 +77,19 @@ public class DrawingAdminController {
         return ApiResponse.success(drawingAdminQueryService.getDrawing(drawingId, memberId));
     }
 
+    /** 관리자가 Event ID로 해당 Event의 INITIAL Drawing 실행 정보를 조회한다. */
+    @Operation(
+            summary = "INITIAL Drawing 조회",
+            description = "관리자가 Event의 최초 INITIAL Drawing 상태와 식별자를 조회해 실패 Drawing 재시도 대상을 확인합니다."
+    )
+    @GetMapping("/api/admin/events/{eventId}/drawings/initial")
+    public ApiResponse<DrawingQueryResult> getInitialDrawing(
+            @PathVariable @Positive Long eventId,
+            @CurrentMemberId Long memberId
+    ) {
+        return ApiResponse.success(drawingAdminQueryService.getInitialDrawing(eventId, memberId));
+    }
+
     /** 관리자가 완료된 Drawing의 당첨 결과를 순위대로 조회한다. */
     @Operation(summary = "Drawing 당첨 결과 조회", description = "관리자가 완료된 Drawing의 당첨자를 순위순으로 조회합니다.")
     @GetMapping("/api/admin/drawings/{drawingId}/result")

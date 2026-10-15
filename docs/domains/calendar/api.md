@@ -8,6 +8,7 @@
 - `GET /api/creators/{creatorId}/calendar/schedules`(공개 조회)는 인증이 필요 없다.
 - `PUT`/`DELETE`/`GET /api/me/calendar/schedules`(개인 캘린더)도 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다.
 - 존재하지 않는 Member·Creator·Schedule은 공통 `RESOURCE_NOT_FOUND`로 응답한다.
+- `creatorName`을 포함하는 개인 캘린더 응답의 이름은 Creator의 현재 공개 활동명이다.
 
 ## 일정 필드
 

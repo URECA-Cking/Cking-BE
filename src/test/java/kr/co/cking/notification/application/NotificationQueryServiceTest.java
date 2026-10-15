@@ -44,7 +44,7 @@ class NotificationQueryServiceTest {
         Event event = mock(Event.class);
         Drawing drawing = mock(Drawing.class);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
         when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of(event));
         when(drawingRepository.findAllById(List.of(200L))).thenReturn(List.of(drawing));
@@ -64,7 +64,64 @@ class NotificationQueryServiceTest {
         assertThat(result.drawing()).isEqualTo(new NotificationSummary.DrawingInfo(200L, 1, DrawingType.REDRAW));
         assertThat(result.type()).isEqualTo(NotificationType.REDRAW_WINNER);
         assertThat(result.readAt()).isNull();
-        verify(notificationRepository).findByMemberId(10L, PageRequest.of(0, 20, NOTIFICATION_LIST_SORT));
+        verify(notificationRepository).findByMemberIdAndHiddenAtIsNull(10L, PageRequest.of(0, 20, NOTIFICATION_LIST_SORT));
+    }
+
+    @Test
+    void 제재_알림은_이벤트_추첨_조회_없이_event와_drawing이_null이다() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        NotificationRepository notificationRepository = mock(NotificationRepository.class);
+        EventRepository eventRepository = mock(EventRepository.class);
+        DrawingRepository drawingRepository = mock(DrawingRepository.class);
+        Notification notification = sanctionNotification(NotificationType.COMMENT_RESTRICTION_STARTED);
+        when(memberRepository.existsById(10L)).thenReturn(true);
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+                .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
+        NotificationQueryService service = new NotificationQueryService(
+                memberRepository, notificationRepository, eventRepository, drawingRepository
+        );
+
+        NotificationSummary result = service.findMine(10L, 0, 20).getContent().getFirst();
+
+        assertThat(result.type()).isEqualTo(NotificationType.COMMENT_RESTRICTION_STARTED);
+        assertThat(result.event()).isNull();
+        assertThat(result.drawing()).isNull();
+        assertThat(result.title()).isEqualTo("댓글 작성 제한 안내");
+        verifyNoInteractions(eventRepository, drawingRepository);
+    }
+
+    @Test
+    void 당첨_알림과_제재_알림이_섞이면_당첨_알림의_이벤트_추첨만_조회한다() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        NotificationRepository notificationRepository = mock(NotificationRepository.class);
+        EventRepository eventRepository = mock(EventRepository.class);
+        DrawingRepository drawingRepository = mock(DrawingRepository.class);
+        Notification winner = notification(10L, 100L, 200L, 300L, NotificationType.INITIAL_WINNER);
+        Notification sanction = sanctionNotification(NotificationType.COMMENT_RESTRICTION_RELEASED);
+        Event event = mock(Event.class);
+        Drawing drawing = mock(Drawing.class);
+        when(memberRepository.existsById(10L)).thenReturn(true);
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+                .thenReturn(new PageImpl<>(List.of(sanction, winner), PageRequest.of(0, 20), 2));
+        when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of(event));
+        when(drawingRepository.findAllById(List.of(200L))).thenReturn(List.of(drawing));
+        when(event.getEventId()).thenReturn(100L);
+        when(event.getTitle()).thenReturn("팬미팅 이벤트");
+        when(drawing.getId()).thenReturn(200L);
+        when(drawing.getDrawNo()).thenReturn(0);
+        when(drawing.getDrawType()).thenReturn(DrawingType.INITIAL);
+        NotificationQueryService service = new NotificationQueryService(
+                memberRepository, notificationRepository, eventRepository, drawingRepository
+        );
+
+        List<NotificationSummary> result = service.findMine(10L, 0, 20).getContent();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).type()).isEqualTo(NotificationType.COMMENT_RESTRICTION_RELEASED);
+        assertThat(result.get(0).event()).isNull();
+        assertThat(result.get(0).drawing()).isNull();
+        assertThat(result.get(1).event()).isEqualTo(new NotificationSummary.EventInfo(100L, "팬미팅 이벤트"));
+        assertThat(result.get(1).drawing()).isEqualTo(new NotificationSummary.DrawingInfo(200L, 0, DrawingType.INITIAL));
     }
 
     @Test
@@ -89,7 +146,7 @@ class NotificationQueryServiceTest {
         DrawingRepository drawingRepository = mock(DrawingRepository.class);
         Notification notification = notification(10L, 100L, 200L, 300L, NotificationType.INITIAL_WINNER);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
         when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of());
         NotificationQueryService service = new NotificationQueryService(
@@ -107,7 +164,7 @@ class NotificationQueryServiceTest {
         EventRepository eventRepository = mock(EventRepository.class);
         DrawingRepository drawingRepository = mock(DrawingRepository.class);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(2, 50, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(2, 50, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(2, 50), 0));
         NotificationQueryService service = new NotificationQueryService(
                 memberRepository, notificationRepository, eventRepository, drawingRepository
@@ -119,8 +176,15 @@ class NotificationQueryServiceTest {
         assertThat(result.getNumber()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(50);
         assertThat(result.getTotalElements()).isZero();
-        verify(notificationRepository).findByMemberId(10L, PageRequest.of(2, 50, NOTIFICATION_LIST_SORT));
+        verify(notificationRepository).findByMemberIdAndHiddenAtIsNull(10L, PageRequest.of(2, 50, NOTIFICATION_LIST_SORT));
         verifyNoInteractions(eventRepository, drawingRepository);
+    }
+
+    private Notification sanctionNotification(NotificationType type) {
+        Notification notification = Notification.forSanction(10L, 900L, type, "댓글 작성 제한 안내", "제한 안내 본문");
+        ReflectionTestUtils.setField(notification, "notificationId", 2L);
+        ReflectionTestUtils.setField(notification, "createdAt", Instant.parse("2026-10-13T00:00:00Z"));
+        return notification;
     }
 
     private Notification notification(

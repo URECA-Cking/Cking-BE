@@ -199,10 +199,13 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 범위는 1~20이다. 회원이 고른 관심 분야의 현재 활성 추천 후보와 팔로우한 Creator들의 현재 활성 유사 추천 저장 결과를
 입력 신호에 따라 `HYBRID_PERSONALIZED_V1`·`INTEREST_PERSONALIZED_V1`·`FOLLOW_PERSONALIZED_V2` 중 하나로 합쳐 반환하고, 합친 결과가 비면 팔로워 수 순 인기 Creator(`POPULAR_FALLBACK_V1`)로 대체한다.
 집계식과 정책 분기의 정본은 [개인화 집계](similarity-recommendation.md#개인화-집계issue-410-442)를 따른다.
+응답별 `recommendationRequestId`는 노출을 뜻하지 않는다. 실제 반환 카드/순위/정책과 생성 세대 정보를 서버에 저장한다.
+스냅샷 기록 실패 시 추천은 정상 반환하고 ID는 null이다. 수집/재시도 계약은 [추천 행동 수집](recommendation-events.md)을 따른다.
 
 ```json
 {
   "policyVersion": "HYBRID_PERSONALIZED_V1",
+  "recommendationRequestId": "3be47637-f3b7-4456-a587-7ad2fe85b818",
   "items": [{
     "creatorId": 20,
     "creatorName": "추천 크리에이터",
@@ -235,3 +238,9 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
   seed 평균)로 바뀌었다. 추천 순서는 거의 같고 `policyVersion`과 점수 값이 달라진다. `FOLLOW_PERSONALIZED_V1`은 더 이상 반환하지 않는다.
 - **변경 이력(인기순 fallback)**: 개인화 결과가 비는 회원의 응답은 이전에는 `FOLLOW_PERSONALIZED_V2`와 `items: []`였으나 `POPULAR_FALLBACK_V1`과 인기 Creator 목록으로 바뀐다.
 - 범위를 벗어난 `size`는 `VALIDATION_FAILED`, JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`다.
+
+## POST /api/me/creator-recommendation-events
+
+JWT 회원의 실제 노출/클릭을 최대 50건씩 수집한다. 서버 수신 시각을 사용하고 전체 배치를 원자 처리한다.
+요청 소유권/반환 후보/기본 24시간 유효 기간을 검증하고 eventId와 요청/카드/타입 중복을 차단한다.
+정확한 필드, 응답, 오류 및 FE 지침은 [추천 행동 수집 API 정본](recommendation-events.md)을 따른다.

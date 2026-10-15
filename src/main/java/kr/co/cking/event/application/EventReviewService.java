@@ -98,14 +98,14 @@ public class EventReviewService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Creator creator = java.util.Optional.ofNullable(creatorsById.get(event.getCreatorId()))
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return new PendingEvent(request, event, creator.getName());
+        return new PendingEvent(request, event, creator.publicDisplayName());
     }
 
     /** Event와 Creator 이름을 관리자 운영 목록 항목으로 결합한다. */
     private ManagedEvent toManagedEvent(Event event, Map<Long, Creator> creatorsById) {
         Creator creator = java.util.Optional.ofNullable(creatorsById.get(event.getCreatorId()))
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return new ManagedEvent(event, creator.getName());
+        return new ManagedEvent(event, creator.publicDisplayName());
     }
 
     /** 관리자 승인 대기 목록에 필요한 승인 요청·Event·Creator 정보를 전달한다. */

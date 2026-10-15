@@ -10,6 +10,7 @@ import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceCustomSlug;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.follow.application.CreatorFollowQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -34,12 +36,20 @@ public class CreatorSpaceProfileService {
     private final CreatorRepository creatorRepository;
     private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceSlugRegistry slugRegistry;
+    private final CreatorSpaceProfileImageManager profileImageManager;
     private final Clock clock;
+    private final CreatorFollowQueryService followQueryService;
+    private final CreatorSpaceTemplateImagePinner imagePinner;
 
     /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
         Creator creator = requireCreatorById(creatorId);
-        return new CreatorSpaceView(requireSpace(creatorId), creator.getName());
+        return new CreatorSpaceView(requireSpace(creatorId), creator.publicDisplayName());
+    }
+
+    /** 공개 조회 응답에 담는 팔로워 수. Space 존재 확인은 호출 전 단건 조회가 끝낸 뒤라는 전제로 집계만 한다. */
+    public long countFollowers(Long creatorId) {
+        return followQueryService.countFollowers(creatorId);
     }
 
     /** 공유 URL slug를 Creator ID로 해석해 기존 공개 Creator Space 응답을 만든다. */
@@ -47,7 +57,7 @@ public class CreatorSpaceProfileService {
         CreatorSpace space = spaceRepository.findBySlug(slug)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Creator creator = requireCreatorById(space.getCreatorId());
-        return new CreatorSpaceView(space, creator.getName());
+        return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 
     /**
@@ -60,7 +70,7 @@ public class CreatorSpaceProfileService {
         Map<Long, String> creatorNames = creatorRepository
                 .findByCreatorIdIn(spaces.map(CreatorSpace::getCreatorId).toList())
                 .stream()
-                .collect(Collectors.toMap(Creator::getCreatorId, Creator::getName));
+                .collect(Collectors.toMap(Creator::getCreatorId, Creator::publicDisplayName));
         return spaces.map(space -> new CreatorSpaceView(space, creatorNames.get(space.getCreatorId())));
     }
 
@@ -79,7 +89,15 @@ public class CreatorSpaceProfileService {
     /** 인증된 Creator 본인의 Creator Space를 조회한다. */
     public CreatorSpaceView findMine(Long memberId) {
         Creator creator = requireCreator(memberId);
-        return new CreatorSpaceView(requireSpace(creator.getCreatorId()), creator.getName());
+        return new CreatorSpaceView(requireSpace(creator.getCreatorId()), creator.publicDisplayName());
+    }
+
+    /**
+     * 요청 URL이 실제로 새로 적용되면 그 URL을, 아니면 null을 돌려준다. 업로드한 이미지가 연결돼 있으면({@code linkedKey} 있음)
+     * {@link CreatorSpace#updateProfile}이 URL 입력을 무시하고, 현재 URL과 같으면 바뀌는 것이 없다.
+     */
+    private static String changedUrl(String linkedKey, String currentUrl, String requestedUrl) {
+        return linkedKey == null && !Objects.equals(currentUrl, requestedUrl) ? requestedUrl : null;
     }
 
     /** 인증된 Creator 본인의 Creator Space 프로필 값을 모두 갱신한다. */
@@ -87,8 +105,18 @@ public class CreatorSpaceProfileService {
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
         CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
+        // URL 입력이 실제로 새로 적용되는 경우만 템플릿 이미지를 고정한다. 클라이언트는 현재 URL을 그대로 다시 보내므로,
+        // 바뀌지 않는 URL까지 고정하면 이미 정리된 이미지를 가진 Space는 소개글만 고쳐도 계속 거절된다.
+        imagePinner.pin(
+                changedUrl(space.getProfileImageKey(), space.getProfileImageUrl(), fields.profileImageUrl()),
+                changedUrl(space.getBannerImageKey(), space.getBannerImageUrl(), fields.bannerImageUrl()));
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
-        return new CreatorSpaceView(space, creator.getName());
+        // profileImageKey가 명시되면(특히 null로 기본 이미지 복귀를 요청하면) 일반 URL 수정 뒤에
+        // 연결 상태를 적용해야 삭제 대상인 기존 CDN URL이 다시 저장되지 않는다.
+        profileImageManager.apply(creator, space, fields.profileImageKey(), fields.profileImageKeyProvided());
+        // 배너도 같다. bannerImageKey가 명시되면 일반 URL 수정 뒤에 연결 상태를 적용한다(이슈 #590).
+        profileImageManager.applyBanner(creator, space, fields.bannerImageKey(), fields.bannerImageKeyProvided());
+        return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 
     /**
@@ -97,7 +125,7 @@ public class CreatorSpaceProfileService {
      * 버린 이전 slug는 같은 트랜잭션에서 예약해 다른 Creator가 곧바로 가져가지 못하게 한다(이슈 #301).
      *
      * <p>본인이 예약해 둔 이전 slug로 돌아가는 되돌리기는 14일 변경 제한을 받지 않는다. 이미 쓰던 값이므로
-     * 형식·예약어 검사도 다시 하지 않는다. 대신 변경 시각을 갱신하지 않아 새 slug로의 변경 제한은 그대로다.
+     * 형식 검사는 다시 하지 않지만, 이후 예약어가 된 값으로는 되돌릴 수 없다. 대신 변경 시각을 갱신하지 않아 새 slug로의 변경 제한은 그대로다.
      */
     @Transactional
     public CreatorSpaceView changeSlug(Long memberId, String slug) {
@@ -105,10 +133,14 @@ public class CreatorSpaceProfileService {
         Long creatorId = creator.getCreatorId();
         CreatorSpace space = requireSpaceForUpdate(creatorId);
         if (space.getSlug().equals(slug)) {
-            return new CreatorSpaceView(space, creator.getName());
+            return new CreatorSpaceView(space, creator.publicDisplayName());
         }
         LocalDateTime now = LocalDateTime.now(clock);
         boolean revert = slugRegistry.isReservedBy(slug, creatorId, now);
+        if (revert && CreatorSpaceCustomSlug.isReserved(slug)) {
+            // 예약어가 나중에 추가되면 예전에 버린 slug가 예약어가 될 수 있다. 되돌리기도 막는다.
+            throw new BusinessException(CreatorErrorCode.RESERVED_SLUG);
+        }
         if (!revert) {
             validateNewSlug(space, slug, creatorId, now);
         }
@@ -125,7 +157,7 @@ public class CreatorSpaceProfileService {
         } catch (DataIntegrityViolationException exception) {
             throw new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN);
         }
-        return new CreatorSpaceView(space, creator.getName());
+        return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 
     private void validateNewSlug(CreatorSpace space, String slug, Long creatorId, LocalDateTime now) {

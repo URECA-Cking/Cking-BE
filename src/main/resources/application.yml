@@ -26,6 +26,12 @@ spring:
       max-file-size: 5MB
       max-request-size: 6MB
 
+server:
+  tomcat:
+    # Tomcat 스레드 지표(tomcat_threads_*)는 MBean 등록이 켜져 있어야 수집된다.
+    mbeanregistry:
+      enabled: true
+
 management:
   server:
     # 관리 포트는 호스트에 열지 않는다. 별도 웹 서버라 서비스 포트가 과부하여도 지표가 응답한다.
@@ -46,14 +52,44 @@ management:
   info:
     env:
       enabled: true
+  metrics:
+    distribution:
+      # 서버끼리 합칠 수 있는 구간별 개수로 p95/p99를 계산한다. 기본 히스토그램은 구간이 수십 개라 경계를 직접 둔다.
+      slo:
+        "[http.server.requests]": 10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s
 
 cking:
   recommendation:
+    tracking:
+      request-ttl: ${RECOMMENDATION_TRACKING_REQUEST_TTL:PT24H}
+      attribution-window: ${RECOMMENDATION_TRACKING_ATTRIBUTION_WINDOW:PT24H}
+      retention: ${RECOMMENDATION_TRACKING_RETENTION:P90D}
+      cleanup-enabled: ${RECOMMENDATION_TRACKING_CLEANUP_ENABLED:true}
+      cleanup-interval-ms: ${RECOMMENDATION_TRACKING_CLEANUP_INTERVAL_MS:60000}
+      recovery-enabled: ${RECOMMENDATION_TRACKING_RECOVERY_ENABLED:true}
+      recovery-interval-ms: ${RECOMMENDATION_TRACKING_RECOVERY_INTERVAL_MS:60000}
+      recovery-initial-delay: ${RECOMMENDATION_TRACKING_RECOVERY_INITIAL_DELAY:PT2M}
     # 추천 적재 배치 API Key의 SHA-256 hex(쉼표 구분). 키 교체 중에는 새 키·이전 키를 함께 둔다. 비어 있으면 키 인증은 항상 401.
     api-key-hashes: ${CKING_RECOMMENDATION_API_KEY_HASHES:}
   abuse:
     # Calibration이 완료되고 모든 window/threshold를 주입한 환경에서만 활성화한다.
     enabled: ${CKING_ABUSE_ENABLED:false}
+    youtube-subscription:
+      # 구독 인증은 별도 Calibration 전까지 관측·탐지를 시작하지 않는다.
+      enabled: ${CKING_ABUSE_YOUTUBE_SUBSCRIPTION_ENABLED:false}
+      submission-burst:
+        window: ${CKING_ABUSE_YOUTUBE_SUBMISSION_WINDOW:PT1M}
+        threshold: ${CKING_ABUSE_YOUTUBE_SUBMISSION_THRESHOLD:10}
+      request-id-rotation:
+        window: ${CKING_ABUSE_YOUTUBE_REQUEST_ID_ROTATION_WINDOW:PT5M}
+        distinct-threshold: ${CKING_ABUSE_YOUTUBE_REQUEST_ID_ROTATION_THRESHOLD:5}
+      image-reuse:
+        window: ${CKING_ABUSE_YOUTUBE_IMAGE_REUSE_WINDOW:PT1H}
+        threshold: ${CKING_ABUSE_YOUTUBE_IMAGE_REUSE_THRESHOLD:2}
+      negative-decision-burst:
+        window: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_WINDOW:PT10M}
+        threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_THRESHOLD:5}
+        consecutive-threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_THRESHOLD:3}
   image-processing:
     # 20MP 한 장이 heap 약 80MiB를 쓰고, 동시 4장부터 GCLocker로 OutOfMemoryError가 났다(로컬 측정). CPU 2개라 처리량도 2에서 멈춘다.
     max-concurrent: 2
@@ -61,6 +97,14 @@ cking:
     max-waiting: 4
     # 대기 4명 중 맨 뒤는 앞의 두 장씩 두 묶음이 끝나야 시작한다. 개발 서버에서 20MP 두 장 동시 처리가 최대 1.61초라 약 3.2초를 기다리고, 예열·GC 튐을 더해 5초.
     acquire-timeout: 5s
+  member:
+    profile-image:
+      # local 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
+  creator:
+    space-profile-image:
+      # local Creator Space 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      public-base-url: ${CREATOR_SPACE_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
   verification:
     youtube-subscription:
       # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
@@ -102,6 +146,65 @@ cking:
       connect-timeout: ${GEMINI_CONNECT_TIMEOUT:PT2S}
       read-timeout: ${GEMINI_READ_TIMEOUT:PT30S}
       max-attempts: ${GEMINI_MAX_ATTEMPTS:2}
+    # YouTube 영상 Grounding(Gemini Interactions API). Quiz 생성 설정과 분리하고 API key만 같은 값을 쓴다.
+    # 같은 key라 Quiz 생성과 quota·비용이 합산된다. model·timeout·출력 token은 실제 확인 후 조정한다.
+    grounding:
+      api-key: ${GEMINI_API_KEY:}
+      model: ${QUIZ_GROUNDING_MODEL:gemini-3.8-flash}
+      base-url: ${QUIZ_GROUNDING_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+      connect-timeout: ${QUIZ_GROUNDING_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${QUIZ_GROUNDING_READ_TIMEOUT:PT30S}
+      max-attempts: ${QUIZ_GROUNDING_MAX_ATTEMPTS:3}
+      retry-backoff: ${QUIZ_GROUNDING_RETRY_BACKOFF:PT1S}
+      retry-backoff-max: ${QUIZ_GROUNDING_RETRY_BACKOFF_MAX:PT4S}
+      # 비워 두면 요청에 넣지 않고 Provider 기본값을 따른다.
+      max-output-tokens: ${QUIZ_GROUNDING_MAX_OUTPUT_TOKENS:}
+    # YouTube URL 기반 Quiz 비동기 생성(이슈 #525). 유료·preview Provider를 쓰므로 기본으로 꺼 둔다.
+    # 오래된 작업 기준 시간과 Executor 크기는 운영 확인 전 초기값이다.
+    generation:
+      enabled: ${QUIZ_GENERATION_ENABLED:false}
+      # 켜면 새 작업이 Grounding 뒤 Creator 원문 확정을 기다린다(이슈 #604). 꺼져 있으면 기존처럼 이어서 생성한다.
+      content-review:
+        enabled: ${QUIZ_GENERATION_CONTENT_REVIEW_ENABLED:false}
+      stale-pending: ${QUIZ_GENERATION_STALE_PENDING:PT10M}
+      stale-running: ${QUIZ_GENERATION_STALE_RUNNING:PT15M}
+      executor:
+        pool-size: ${QUIZ_GENERATION_EXECUTOR_POOL_SIZE:2}
+        queue-capacity: ${QUIZ_GENERATION_EXECUTOR_QUEUE_CAPACITY:10}
+        await-termination-seconds: ${QUIZ_GENERATION_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+    # Quiz revision GPT Pointwise Judge(이슈 #529, OpenAI Responses API). 유료 Provider라 기본으로 꺼 둔다.
+    # model·timeout·token 한도는 실제 Provider 검증 전 잠정값이다. 비용 단가는 기본값이 없고 비우면 추정하지 않는다.
+    judge:
+      enabled: ${QUIZ_JUDGE_ENABLED:false}
+      # 오래된 평가 Job 정리 기준. stale-running은 execution-timeout보다 길어야 한다. 운영 확인 전 초기값이다.
+      stale-pending: ${QUIZ_JUDGE_STALE_PENDING:PT15M}
+      stale-running: ${QUIZ_JUDGE_STALE_RUNNING:PT5M}
+      # Quiz 생성과 분리한 Judge 전용 Executor. 운영 확인 전 초기값이다.
+      executor:
+        pool-size: ${QUIZ_JUDGE_EXECUTOR_POOL_SIZE:1}
+        queue-capacity: ${QUIZ_JUDGE_EXECUTOR_QUEUE_CAPACITY:4}
+        await-termination-seconds: ${QUIZ_JUDGE_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${QUIZ_JUDGE_BASE_URL:https://api.openai.com/v1}
+      model: ${QUIZ_JUDGE_MODEL:gpt-6.1-sol}
+      reasoning-effort: ${QUIZ_JUDGE_REASONING_EFFORT:medium}
+      max-output-tokens:
+        three-questions: ${QUIZ_JUDGE_MAX_OUTPUT_TOKENS_3:8192}
+        five-questions: ${QUIZ_JUDGE_MAX_OUTPUT_TOKENS_5:12288}
+      connect-timeout: ${QUIZ_JUDGE_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${QUIZ_JUDGE_READ_TIMEOUT:PT60S}
+      execution-timeout: ${QUIZ_JUDGE_EXECUTION_TIMEOUT:PT150S}
+      http:
+        max-attempts: ${QUIZ_JUDGE_HTTP_MAX_ATTEMPTS:2}
+        retry-backoff: ${QUIZ_JUDGE_RETRY_BACKOFF:PT1S}
+        retry-after-max: ${QUIZ_JUDGE_RETRY_AFTER_MAX:PT5S}
+      # 정책 상한은 200자다. 환경변수로 이를 초과하면 기동 검증에서 거부한다.
+      reason-max-length: ${QUIZ_JUDGE_REASON_MAX_LENGTH:200}
+      pricing:
+        version: ${QUIZ_JUDGE_PRICING_VERSION:}
+        input-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_INPUT:}
+        cached-input-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_CACHED_INPUT:}
+        output-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_OUTPUT:}
   comment-filter:
     # 별도 필터 서비스가 준비될 때까지 꺼 둔다. 꺼져 있으면 댓글은 판정 없이 PENDING으로 남는다.
     enabled: ${COMMENT_FILTER_ENABLED:false}

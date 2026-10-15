@@ -35,7 +35,8 @@ class CreatorSpaceCustomSlugTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"admin", "api", "creator", "space", "me", "cking", "official"})
+    @ValueSource(strings = {"admin", "api", "creator", "space", "me", "cking", "official",
+            "explore", "my-page", "my-entries", "my-winners", "my-calendar", "studio", "onboarding", "assets", "icons"})
     void detectsReservedWords(String slug) {
         assertThat(CreatorSpaceCustomSlug.isReserved(slug)).isTrue();
     }
@@ -43,5 +44,6 @@ class CreatorSpaceCustomSlugTest {
     @Test
     void ordinarySlugIsNotReserved() {
         assertThat(CreatorSpaceCustomSlug.isReserved("iu-official")).isFalse();
+        assertThat(CreatorSpaceCustomSlug.isReserved("explore-kr")).isFalse();
     }
 }

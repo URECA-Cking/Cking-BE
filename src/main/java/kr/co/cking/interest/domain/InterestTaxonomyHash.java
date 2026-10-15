@@ -52,7 +52,7 @@ public final class InterestTaxonomyHash {
         return json.append("]}").toString();
     }
 
-    private static String normalize(String value) {
+    static String normalize(String value) {
         String unified = value.replace("\r\n", "\n").replace('\r', '\n');
         int start = 0;
         int end = unified.length();
@@ -69,7 +69,7 @@ public final class InterestTaxonomyHash {
         return ch == ' ' || ch == '\t' || ch == '\n';
     }
 
-    private static void appendString(StringBuilder json, String value) {
+    static void appendString(StringBuilder json, String value) {
         json.append('"');
         for (int index = 0; index < value.length(); index++) {
             char ch = value.charAt(index);
@@ -93,7 +93,7 @@ public final class InterestTaxonomyHash {
         json.append('"');
     }
 
-    private static String sha256Hex(byte[] bytes) {
+    static String sha256Hex(byte[] bytes) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (NoSuchAlgorithmException exception) {

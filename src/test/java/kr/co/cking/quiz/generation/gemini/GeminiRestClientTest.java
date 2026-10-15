@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import kr.co.cking.quiz.generation.QuizProviderTimeoutException;
@@ -33,7 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class GeminiRestClientTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -76,13 +78,37 @@ class GeminiRestClientTest {
         Map<String, Object> generationConfig = map(body.get("generationConfig"));
         assertThat(generationConfig).doesNotContainKeys("response_mime_type", "response_schema", "responseMimeType", "responseSchema");
         Map<String, Object> textFormat = map(map(generationConfig.get("responseFormat")).get("text"));
-        assertThat(textFormat.get("mimeType")).isEqualTo("application/json");
+        assertThat(textFormat.get("mimeType")).isEqualTo("APPLICATION_JSON");
         Map<String, Object> schema = map(textFormat.get("schema"));
         assertThat(schema.get("type")).isEqualTo("object");
         assertThat(map(schema.get("properties"))).containsKeys("questions", "promptVersion");
         Map<String, Object> questions = map(map(schema.get("properties")).get("questions"));
         assertThat(questions.get("minItems")).isEqualTo(1);
         assertThat(questions.get("maxItems")).isEqualTo(1);
+    }
+
+    @Test
+    void 운영_문항_수의_요청은_APPLICATION_JSON과_보기_4개_정답_인덱스_schema를_전달한다() throws Exception {
+        server.createContext("/v1beta/models/test-model:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 200, "{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"ok\"}]}}]}");
+        });
+
+        for (int questionCount : new int[]{3, 5}) {
+            client(1, 1_000).generateContent("prompt", questionCount, 4);
+
+            Map<String, Object> body = objectMapper.readValue(requestBody.get(), new TypeReference<>() {
+            });
+            Map<String, Object> textFormat = map(map(map(body.get("generationConfig")).get("responseFormat")).get("text"));
+            assertThat(textFormat.get("mimeType")).isEqualTo("APPLICATION_JSON");
+            Map<String, Object> questions = map(map(map(textFormat.get("schema")).get("properties")).get("questions"));
+            assertThat(questions).containsEntry("minItems", questionCount).containsEntry("maxItems", questionCount);
+            Map<String, Object> question = map(map(questions.get("items")).get("properties"));
+            assertThat(map(question.get("options"))).containsEntry("minItems", 4).containsEntry("maxItems", 4);
+            assertThat(map(question.get("correctOptionIndex")))
+                    .containsEntry("type", "integer").containsEntry("minimum", 0).containsEntry("maximum", 3);
+        }
+        assertThat(requestCount).hasValue(2);
     }
 
     @Test
@@ -199,6 +225,42 @@ class GeminiRestClientTest {
         Map<String, Object> part = map(((List<?>) content.get("parts")).get(0));
         assertThat((String) part.get("text"))
                 .contains(input.contentText(), "Prompt version: quiz-mcq-v1", "exactly 1 question(s)");
+    }
+
+    @Test
+    void 실패한_호출은_Provider_오류_상태와_reason을_진단_로그로_남긴다(CapturedOutput output) {
+        server.createContext("/v1beta/models/test-model:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 429, """
+                    {"error": {"code": 429, "message": "quota-secret-5e2b", "status": "RESOURCE_EXHAUSTED", "details": [
+                     {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "RATE_LIMIT_EXCEEDED"}]}}""");
+        });
+
+        assertThatThrownBy(() -> client(2, 1_000).generateContent("prompt text", 1, 4))
+                .isInstanceOf(GeminiApiException.class)
+                .hasMessageContaining("429");
+        assertThat(requestCount).hasValue(2);
+        assertThat(output.getAll())
+                .contains("event=ai_provider_call provider=gemini operation=quiz_generation model=test-model "
+                        + "status=429 errorCode=RATE_LIMIT_EXCEEDED errorType=RESOURCE_EXHAUSTED latencyMs=")
+                .contains("attempt=1 retry=true")
+                .contains("attempt=2 retry=false")
+                .doesNotContain("quota-secret-5e2b", "test-key", "prompt text");
+    }
+
+    @Test
+    void 정상_상태의_잘못된_응답은_invalid_response로_남긴다(CapturedOutput output) {
+        server.createContext("/v1beta/models/test-model:generateContent", exchange -> {
+            capture(exchange);
+            respond(exchange, 200, "{\"candidates\": []}");
+        });
+
+        assertThatThrownBy(() -> client(2, 1_000).generateContent("prompt text", 1, 4))
+                .isInstanceOf(GeminiResponseException.class);
+        assertThat(requestCount).hasValue(1);
+        assertThat(output.getAll())
+                .contains("operation=quiz_generation model=test-model status=200 errorCode=- errorType=invalid_response")
+                .contains("attempt=1 retry=false");
     }
 
     private GeminiRestClient client(int maxAttempts, long readTimeoutMillis) {

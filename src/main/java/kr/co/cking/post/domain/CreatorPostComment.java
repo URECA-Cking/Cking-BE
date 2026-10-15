@@ -74,6 +74,13 @@ public class CreatorPostComment {
     @Column(name = "filter_next_attempt_at")
     private Instant filterNextAttemptAt;
 
+    /** 관리자가 숨긴 시각. null이면 숨기지 않았다. 필터 판정과 별개라 재판정·본문 수정으로 지워지지 않는다. */
+    @Column(name = "admin_hidden_at")
+    private Instant adminHiddenAt;
+
+    @Column(name = "admin_hidden_by")
+    private Long adminHiddenBy;
+
     public CreatorPostComment(Long postId, Long memberId, String content, Instant now) {
         this.postId = Objects.requireNonNull(postId, "postId");
         this.memberId = Objects.requireNonNull(memberId, "memberId");
@@ -132,6 +139,30 @@ public class CreatorPostComment {
      */
     public boolean isBlocked() {
         return filterAction == CommentFilterAction.BLOCK;
+    }
+
+    /**
+     * 관리자가 숨긴다(이슈 #499). 숨김은 되돌리지 않으므로 이미 숨겼으면 처음 숨긴 시각과 관리자를 그대로 둔다.
+     * 필터 판정 필드는 건드리지 않는다.
+     */
+    public void hideByAdmin(Long adminId, Instant now) {
+        if (isHiddenByAdmin()) {
+            return;
+        }
+        this.adminHiddenBy = Objects.requireNonNull(adminId, "adminId");
+        this.adminHiddenAt = Objects.requireNonNull(now, "now");
+    }
+
+    public boolean isHiddenByAdmin() {
+        return adminHiddenAt != null;
+    }
+
+    /**
+     * 작성자 본인이 아닌 조회자에게 원문이 가려지는 댓글이다. 필터가 차단(BLOCK)했거나 관리자가 숨겼다. 이런 댓글은
+     * 새 신고를 받지 않는다.
+     */
+    public boolean isConcealed() {
+        return isBlocked() || isHiddenByAdmin();
     }
 
     /** BLOCK 사유에 개인정보 규칙(privacy:*)이 있다. 이런 댓글은 누구에게도 원문을 보여주지 않는다. */

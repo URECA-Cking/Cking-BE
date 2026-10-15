@@ -25,27 +25,12 @@ jobs:
       group: test-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
       cancel-in-progress: true
 
-    services:
-      mysql:
-        image: mysql:8.4
-        env:
-          # services에는 mysqld 인자를 넘길 수 없다. TZ로 컨테이너 시간대를 UTC에 고정한다.
-          TZ: UTC
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: cking
-          MYSQL_USER: cking
-          MYSQL_PASSWORD: cking
-        ports: ["3306:3306"]
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost -proot"
-          --health-interval=5s
-          --health-retries=10
-      redis:
-        image: redis:7.2-alpine
-        ports: ["6379:6379"]
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # 로컬과 같은 compose로 띄워 이미지·설정을 한 곳에서 관리한다. Dependabot이 이 파일만 갱신한다.
+      - name: MySQL·Redis 기동
+        run: docker compose -f docker-compose.yml up -d --wait mysql redis
 
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -54,17 +39,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
-      # 명세 2.3에 따라 업무 시각은 UTC로 저장한다.
-      # 로컬 compose는 mysqld 파라미터로, CI는 TZ 환경변수로 시간대를 잡아 방식이 다르므로
-      # 값 자체를 비교해 검증한다. time_zone 문자열은 방식에 따라 SYSTEM으로 나올 수 있어 쓰지 않는다.
-      # 러너에 mysql 클라이언트가 있다고 보장할 수 없어 이미지로 실행한다.
+      # 명세 2.3에 따라 업무 시각은 UTC로 저장한다. compose의 시간대 옵션이 빠지면 여기서 실패한다.
       - name: DB 시간대 검증
         run: |
-          docker run --rm --network host mysql:8.4 \
-            mysql -h 127.0.0.1 -uroot -proot -e \
-            "SELECT @@global.time_zone, @@system_time_zone, NOW(), UTC_TIMESTAMP();"
-          docker run --rm --network host mysql:8.4 \
-            mysql -h 127.0.0.1 -uroot -proot -N -B -e \
+          docker compose -f docker-compose.yml exec -T mysql \
+            mysql -uroot -proot -N -B -e \
             "SELECT IF(TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) = 0, 'OK', 'NOT_UTC');" \
             | grep -qx OK || { echo "DB 시간대가 UTC가 아니다"; exit 1; }
 
@@ -73,7 +52,7 @@ jobs:
       # CI 로그에는 테스트 표준 출력이 없어 실패 원인을 보기 어렵다. 실패 시 리포트를 결과물로 남긴다.
       - name: 테스트 리포트 업로드
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-report
           path: build/reports/tests/test
@@ -96,10 +75,31 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: scripts/check-migration-versions.sh "$BASE"
 
+  # 배포 워크플로·스크립트·compose는 develop에 머지된 뒤에야 실행되어, 오류가 배포 때 드러난다.
+  lint:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: lint-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 셸 스크립트 검사
+        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh
+      - name: 워크플로 검사
+        run: >
+          docker run --rm -v "$PWD:/repo:ro" -w /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -no-color
+      # 값은 배포 때 Parameter Store에서 들어오므로 변수 치환 없이 구조만 검사한다.
+      - name: compose 검사
+        run: |
+          docker compose -f docker-compose.dev.yml config --no-interpolate --quiet
+          docker compose -f docker-compose.yml config --no-interpolate --quiet
+
   build-and-push:
     name: Build and Push to GHCR
-    # 테스트를 통과한 커밋만 이미지로 만든다. 이미지 빌드는 -x test라 자체 검증이 없다.
-    needs: [test, migration-version]
+    # 검증을 통과한 커밋만 이미지로 만든다. 이미지 빌드는 -x test라 자체 검증이 없다.
+    needs: [test, migration-version, lint]
     if: github.ref == 'refs/heads/develop'
     # 개발 서버가 t4g(ARM)이므로 ARM 러너에서 네이티브 빌드한다.
     # x86 러너에서 QEMU로 크로스 빌드하면 Gradle 빌드가 몇 배 느려진다.
@@ -125,8 +125,8 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           TIMESTAMP=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')
-          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
@@ -203,7 +203,7 @@ jobs:
         env:
           COMMAND_ID: ${{ steps.send.outputs.command_id }}
         run: |
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             # 전송 직후에는 invocation이 아직 조회되지 않을 수 있다(eventual consistency).
             # 이 오류만 재시도한다. 여기서 죽으면 서버 배포는 계속 도는데 워크플로만 실패로 남는다.
             # 권한·네트워크 등 다른 오류는 기다려도 해결되지 않으므로 즉시 실패시킨다.

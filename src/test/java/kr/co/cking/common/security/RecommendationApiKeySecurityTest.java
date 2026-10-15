@@ -192,6 +192,18 @@ class RecommendationApiKeySecurityTest {
     }
 
     @Test
+    void 일반_회원_JWT는_관리자_응모권_이력_조회에_접근할_수_없다() throws Exception {
+        mockMvc.perform(get("/api/admin/tickets/history")
+                        .header(AUTHORIZATION, "Bearer " + accessToken("USER"))
+                        .queryParam("memberId", "1")
+                        .queryParam("couponType", "COMMON"))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json("{\"code\":\"FORBIDDEN\"}"));
+
+        then(ticketAdminService).shouldHaveNoInteractions();
+    }
+
+    @Test
     void 같은_경로라도_PUT이_아닌_메서드나_후행_슬래시에서는_키를_인증으로_인정하지_않는다() throws Exception {
         mockMvc.perform(get(SIMILAR_URL).header(KEY_HEADER, "current-batch-key"))
                 .andExpect(status().isUnauthorized());

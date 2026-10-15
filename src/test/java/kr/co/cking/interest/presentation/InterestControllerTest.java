@@ -22,9 +22,10 @@ class InterestControllerTest {
 
     @Test
     void 선택_가능한_관심_분야를_분류체계_버전과_함께_반환한다() throws Exception {
-        given(queryService.findSelectable()).willReturn(new SelectableInterests("v0.2", 3, List.of(
-                new SelectableInterests.Item("FITNESS", "운동·건강", 1),
-                new SelectableInterests.Item("FOOD", "요리·푸드", 2))));
+        given(queryService.findSelectable()).willReturn(new SelectableInterests("v0.2", 3, "subtopic-v1", 3, List.of(
+                new SelectableInterests.Item("FITNESS", "운동·건강", 1, List.of(
+                        new SelectableInterests.Subtopic("FITNESS_WEIGHTS", "웨이트", 1))),
+                new SelectableInterests.Item("FOOD", "요리·푸드", 2, List.of()))));
 
         mockMvc.perform(get("/api/interests"))
                 .andExpect(status().isOk())
@@ -34,16 +35,22 @@ class InterestControllerTest {
                 .andExpect(jsonPath("$.data.items[0].interestCode").value("FITNESS"))
                 .andExpect(jsonPath("$.data.items[0].name").value("운동·건강"))
                 .andExpect(jsonPath("$.data.items[1].displayOrder").value(2))
+                .andExpect(jsonPath("$.data.subtopicVersion").value("subtopic-v1"))
+                .andExpect(jsonPath("$.data.maxSubtopicPerParent").value(3))
+                .andExpect(jsonPath("$.data.items[0].subtopics[0].subtopicCode").value("FITNESS_WEIGHTS"))
+                .andExpect(jsonPath("$.data.items[0].subtopics[0].description").doesNotExist())
+                .andExpect(jsonPath("$.data.items[1].subtopics").isEmpty())
                 .andExpect(jsonPath("$.data.items[0].description").doesNotExist());
     }
 
     @Test
     void 활성_분류체계가_없으면_빈_목록을_정상_응답한다() throws Exception {
-        given(queryService.findSelectable()).willReturn(new SelectableInterests(null, 3, List.of()));
+        given(queryService.findSelectable()).willReturn(new SelectableInterests(null, 3, null, 3, List.of()));
 
         mockMvc.perform(get("/api/interests"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.taxonomyVersion").doesNotExist())
+                .andExpect(jsonPath("$.data.subtopicVersion").doesNotExist())
                 .andExpect(jsonPath("$.data.items").isEmpty());
     }
 }

@@ -27,9 +27,12 @@ public class CreatorSpaceTemplateService {
     private final MemberRepository memberRepository;
     private final CreatorSpaceTemplateRepository templateRepository;
     private final CreatorApplicationLockManager lockManager;
+    private final CreatorSpaceTemplateImagePinner imagePinner;
 
     public CreatorSpaceTemplate create(Long adminId, CreatorSpaceTemplateFields fields) {
         requireAdmin(adminId);
+        // 이 저장과 같은 트랜잭션에서 업로드한 템플릿 이미지를 고정한다. 정리 작업이 삭제를 확정한 이미지는 여기서 거절된다.
+        imagePinner.pin(fields.profileImageUrl(), fields.bannerImageUrl());
         return templateRepository.save(new CreatorSpaceTemplate(
                 adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule()
         ));
@@ -50,6 +53,7 @@ public class CreatorSpaceTemplateService {
     public CreatorSpaceTemplate update(Long adminId, Long templateId, CreatorSpaceTemplateFields fields) {
         requireAdmin(adminId);
         CreatorSpaceTemplate template = getTemplate(templateId);
+        imagePinner.pin(fields.profileImageUrl(), fields.bannerImageUrl());
         template.update(
                 adminId, fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl(), fields.slugRule()
         );

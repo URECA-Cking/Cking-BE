@@ -14,7 +14,10 @@ import java.util.List;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.drawing.domain.DrawingType;
+import kr.co.cking.notification.application.NotificationHideResult;
+import kr.co.cking.notification.application.NotificationHideService;
 import kr.co.cking.notification.application.NotificationQueryService;
+import kr.co.cking.notification.application.NotificationReadAllResult;
 import kr.co.cking.notification.application.NotificationReadResult;
 import kr.co.cking.notification.application.NotificationReadService;
 import kr.co.cking.notification.application.dto.NotificationSummary;
@@ -42,6 +45,9 @@ class NotificationControllerTest {
     @MockitoBean
     private NotificationReadService notificationReadService;
 
+    @MockitoBean
+    private NotificationHideService notificationHideService;
+
     @Test
     void 내_알림_목록은_페이지_응답과_알림_상세를_반환한다() throws Exception {
         NotificationSummary summary = summary(null);
@@ -58,6 +64,23 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.data.items[0].readAt").value(nullValue()))
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void 제재_알림은_event와_drawing이_null로_내려간다() throws Exception {
+        NotificationSummary sanction = new NotificationSummary(2L, null, null, NotificationType.COMMENT_RESTRICTION_STARTED,
+                "댓글 작성 제한 안내", "2026-10-16 00:00 UTC까지 댓글을 작성하거나 수정할 수 없습니다.",
+                Instant.parse("2026-10-13T00:00:00Z"), null);
+        when(notificationQueryService.findMine(eq(1L), anyInt(), anyInt()))
+                .thenReturn(new PageImpl<>(List.of(sanction), PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get("/api/me/notifications"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].notificationId").value(2))
+                .andExpect(jsonPath("$.data.items[0].type").value("COMMENT_RESTRICTION_STARTED"))
+                .andExpect(jsonPath("$.data.items[0].event").value(nullValue()))
+                .andExpect(jsonPath("$.data.items[0].drawing").value(nullValue()))
+                .andExpect(jsonPath("$.data.items[0].title").value("댓글 작성 제한 안내"));
     }
 
     @Test
@@ -107,6 +130,26 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.data.readAt").value("2026-09-17T00:00:00Z"));
     }
 
+    /** 전체 읽음 API는 인증된 사용자의 신규 읽음 건수를 반환한다. */
+    @Test
+    void 전체_읽음_성공_응답을_반환한다() throws Exception {
+        when(notificationReadService.readAll(1L)).thenReturn(new NotificationReadAllResult(3));
+
+        mockMvc.perform(patch("/api/me/notifications/read"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.readCount").value(3));
+    }
+
+    /** 전체 읽음 API도 JWT 없이 호출하면 인증 오류를 반환한다. */
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_전체_읽음은_401과_UNAUTHORIZED를_반환한다() throws Exception {
+        mockMvc.perform(patch("/api/me/notifications/read"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
     @Test
     void 읽음_처리_notificationId가_양수가_아니면_400을_반환한다() throws Exception {
         mockMvc.perform(patch("/api/me/notifications/0/read"))
@@ -139,6 +182,53 @@ class NotificationControllerTest {
         when(notificationReadService.read(1L, 10L)).thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 
         mockMvc.perform(patch("/api/me/notifications/10/read"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    /** 숨김 API는 인증된 사용자의 알림을 숨기고 최초 숨김 시각을 UTC로 반환한다. */
+    @Test
+    void 숨김_성공_응답을_반환한다() throws Exception {
+        when(notificationHideService.hide(1L, 10L))
+                .thenReturn(new NotificationHideResult(10L, Instant.parse("2026-10-16T00:00:00Z")));
+
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.notificationId").value(10))
+                .andExpect(jsonPath("$.data.hiddenAt").value("2026-10-16T00:00:00Z"));
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_숨김은_401과_UNAUTHORIZED를_반환한다() throws Exception {
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void 숨김_notificationId가_양수가_아니면_400을_반환한다() throws Exception {
+        mockMvc.perform(patch("/api/me/notifications/0/hide"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/me/notifications/-1/hide"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 숨김에서_존재하지_않는_Notification은_404를_반환한다() throws Exception {
+        when(notificationHideService.hide(1L, 10L)).thenThrow(new BusinessException(NotificationErrorCode.NOTIFICATION_NOT_FOUND));
+
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));
+    }
+
+    @Test
+    void 숨김에서_타_사용자_Notification은_403을_반환한다() throws Exception {
+        when(notificationHideService.hide(1L, 10L)).thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
+
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }

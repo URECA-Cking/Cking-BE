@@ -3,12 +3,14 @@ package kr.co.cking.subscriptionverification.application;
 import java.time.Clock;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
+import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecision;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionPolicy;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisException;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPort;
+import kr.co.cking.subscriptionverification.application.vision.VisionProviderErrorDetails;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRequest;
 import kr.co.cking.subscriptionverification.infrastructure.async.SubscriptionVerificationProcessingExecutorProperties;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class SubscriptionVerificationProcessingWorker {
     private final SubscriptionVerificationDecisionPolicy decisionPolicy;
     private final SubscriptionVerificationProcessingExecutorProperties properties;
     private final Clock clock;
+    private final SubscriptionVerificationAbuseObserver abuseObserver;
     private final Semaphore providerCalls;
 
     /** Claim·완료 Service와 Provider 호출 제한기를 조립한다. */
@@ -40,7 +43,8 @@ public class SubscriptionVerificationProcessingWorker {
             ObjectStorage objectStorage,
             VisionAnalysisPort visionAnalysisPort,
             SubscriptionVerificationProcessingExecutorProperties properties,
-            Clock clock) {
+            Clock clock,
+            SubscriptionVerificationAbuseObserver abuseObserver) {
         this.claimService = claimService;
         this.completionService = completionService;
         this.rewardService = rewardService;
@@ -49,6 +53,7 @@ public class SubscriptionVerificationProcessingWorker {
         this.decisionPolicy = new SubscriptionVerificationDecisionPolicy(CONFIDENCE_THRESHOLD);
         this.properties = properties;
         this.clock = clock;
+        this.abuseObserver = abuseObserver;
         this.providerCalls = new Semaphore(properties.getProviderMaxConcurrentCalls(), true);
     }
 
@@ -96,8 +101,11 @@ public class SubscriptionVerificationProcessingWorker {
                     outcomeOf(decision),
                     decision.reasonCode(),
                     clock.instant());
-            if (completed && decision.status() == SubscriptionVerificationDecisionStatus.APPROVED) {
-                rewardService.reward(claim);
+            if (completed) {
+                abuseObserver.observeDecision(claim, decision.status());
+                if (decision.status() == SubscriptionVerificationDecisionStatus.APPROVED) {
+                    rewardService.reward(claim);
+                }
             }
         } catch (RuntimeException exception) {
             log.warn("구독 인증 판정 결과 저장에 실패해 lease 만료 뒤 복구합니다. verificationId={}",
@@ -142,8 +150,7 @@ public class SubscriptionVerificationProcessingWorker {
             SubscriptionVerificationProcessingClaim claim,
             String reasonCode,
             RuntimeException exception) {
-        log.warn("구독 인증 비동기 처리에 실패했습니다. verificationId={}, reasonCode={}",
-                claim.verificationId(), reasonCode, exception);
+        logProcessingFailure("구독 인증 비동기 처리에 실패했습니다.", claim, reasonCode, exception);
         try {
             completionService.complete(
                     claim.verificationId(),
@@ -162,8 +169,31 @@ public class SubscriptionVerificationProcessingWorker {
             SubscriptionVerificationProcessingClaim claim,
             String reasonCode,
             RuntimeException exception) {
-        log.warn("구독 인증 비동기 처리의 재시도 가능한 실패를 Recovery에 맡깁니다. verificationId={}, reasonCode={}",
-                claim.verificationId(), reasonCode, exception);
+        logProcessingFailure("구독 인증 비동기 처리의 재시도 가능한 실패를 Recovery에 맡깁니다.",
+                claim, reasonCode, exception);
+    }
+
+    /** Vision 예외는 Adapter가 원문 없이 정규화한 Provider 진단값만 남긴다. */
+    private void logProcessingFailure(
+            String message,
+            SubscriptionVerificationProcessingClaim claim,
+            String reasonCode,
+            RuntimeException exception
+    ) {
+        if (exception instanceof VisionAnalysisException visionException) {
+            VisionProviderErrorDetails error = visionException.providerErrorDetails();
+            log.warn("{} verificationId={}, reasonCode={}, failureType={}, httpStatus={}, providerCode={}, providerStatus={}, providerReason={}",
+                    message,
+                    claim.verificationId(),
+                    reasonCode,
+                    visionException.failureType(),
+                    error.httpStatus(),
+                    error.providerCode(),
+                    error.providerStatus(),
+                    error.providerReason());
+            return;
+        }
+        log.warn("{} verificationId={}, reasonCode={}", message, claim.verificationId(), reasonCode, exception);
     }
 
     /** Provider 재시도 대기를 포함한 인터럽트 작업은 상태를 바꾸지 않고 Recovery에 맡긴다. */

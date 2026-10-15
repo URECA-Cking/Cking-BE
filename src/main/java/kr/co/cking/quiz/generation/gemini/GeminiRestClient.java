@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
+import kr.co.cking.common.ai.AiProviderCallLog;
+import kr.co.cking.common.ai.AiProviderCallLog.NoResponse;
 import kr.co.cking.quiz.generation.QuizProviderTimeoutException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -37,27 +39,37 @@ public class GeminiRestClient implements GeminiApiClient {
 
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            AiProviderCallLog.Call call = AiProviderCallLog.start(AiProviderCallLog.Provider.GEMINI, "quiz_generation",
+                    properties.getModel());
             try {
                 String response = request(prompt, questionCount, optionCount);
                 return responseExtractor.extractText(response);
             } catch (RestClientResponseException exception) {
                 int status = exception.getStatusCode().value();
                 if (!isRetryableStatus(status) || attempt == maxAttempts) {
+                    call.httpError(exception, attempt, false);
                     throw new GeminiApiException("Gemini API 요청이 실패했습니다. status=" + status, exception);
                 }
+                call.httpError(exception, attempt, true);
                 pauseBeforeRetry();
             } catch (ResourceAccessException exception) {
                 if (isTimeout(exception)) {
+                    call.noResponse(NoResponse.TIMEOUT, exception, attempt, false);
                     throw new QuizProviderTimeoutException("Gemini API 응답 시간이 초과되었습니다.", exception);
                 } else {
+                    call.noResponse(NoResponse.NETWORK, exception, attempt, false);
                     throw new GeminiApiException("Gemini API 네트워크 요청이 실패했습니다.", exception);
                 }
             } catch (GeminiResponseException exception) {
+                // 정상 상태로 받았지만 후보가 없거나 끝나지 않은 응답이다.
+                call.invalidResponse(200, attempt, false);
                 throw exception;
             } catch (RestClientException exception) {
                 if (isTimeout(exception)) {
+                    call.noResponse(NoResponse.TIMEOUT, exception, attempt, false);
                     throw new QuizProviderTimeoutException("Gemini API 응답 시간이 초과되었습니다.", exception);
                 }
+                call.noResponse(NoResponse.NETWORK, exception, attempt, false);
                 throw new GeminiApiException("Gemini API 요청이 실패했습니다.", exception);
             }
         }
@@ -81,7 +93,7 @@ public class GeminiRestClient implements GeminiApiClient {
 
         Map<String, Object> generationConfig = new LinkedHashMap<>();
         generationConfig.put("responseFormat", Map.of("text", Map.of(
-                "mimeType", "application/json",
+                "mimeType", "APPLICATION_JSON",
                 "schema", GeminiSchemaFactory.quizSchema(questionCount, optionCount))));
 
         Map<String, Object> body = new LinkedHashMap<>();

@@ -10,20 +10,26 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import kr.co.cking.common.storage.ObjectStorage;
+import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisException;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisFailureType;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPort;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisResult;
 import kr.co.cking.subscriptionverification.application.vision.VisionPlatform;
+import kr.co.cking.subscriptionverification.application.vision.VisionProviderErrorDetails;
 import kr.co.cking.subscriptionverification.application.vision.VisionSubscriptionState;
 import kr.co.cking.subscriptionverification.infrastructure.async.SubscriptionVerificationProcessingExecutorProperties;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 class SubscriptionVerificationProcessingWorkerTest {
 
@@ -38,6 +44,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 mock(SubscriptionVerificationRewardService.class);
         ObjectStorage objectStorage = mock(ObjectStorage.class);
         VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
+        SubscriptionVerificationAbuseObserver abuseObserver = mock(SubscriptionVerificationAbuseObserver.class);
         SubscriptionVerificationProcessingExecutorProperties properties =
                 new SubscriptionVerificationProcessingExecutorProperties();
         Clock clock = Clock.fixed(Instant.parse("2026-09-29T00:00:00Z"), ZoneOffset.UTC);
@@ -50,7 +57,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 objectStorage,
                 visionAnalysisPort,
                 properties,
-                clock);
+                clock,
+                abuseObserver);
 
         worker.process(123L);
 
@@ -129,6 +137,39 @@ class SubscriptionVerificationProcessingWorkerTest {
                 eq("PROVIDER_NON_RETRYABLE"),
                 eq(fixture.clock.instant()));
         then(fixture.rewardService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void Provider_실패는_verificationId와_안전한_진단_분류를_함께_기록한다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1});
+        willThrow(new VisionAnalysisException(
+                VisionAnalysisFailureType.NON_RETRYABLE,
+                "Gemini API 요청이 실패했습니다. provider-sensitive-body",
+                new VisionProviderErrorDetails(400, 400, "INVALID_ARGUMENT", "FIELD_VIOLATION")))
+                .given(fixture.visionAnalysisPort).analyze(any());
+        Logger logger = (Logger) LoggerFactory.getLogger(SubscriptionVerificationProcessingWorker.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            fixture.worker.process(123L);
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .singleElement()
+                    .satisfies(message -> assertThat((String) message)
+                            .contains("verificationId=123", "reasonCode=PROVIDER_NON_RETRYABLE",
+                                    "failureType=NON_RETRYABLE", "httpStatus=400", "providerCode=400",
+                                    "providerStatus=INVALID_ARGUMENT", "providerReason=FIELD_VIOLATION")
+                            .doesNotContain("provider-sensitive-body"));
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test
@@ -306,6 +347,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 VisionSubscriptionState.NOT_SUBSCRIBED,
                 true,
                 0.9));
+        given(fixture.completionService.complete(any(), any(), any(), any(), any())).willReturn(true);
 
         fixture.worker.process(123L);
 
@@ -316,6 +358,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 "PLATFORM_MISMATCH",
                 fixture.clock.instant());
         then(fixture.rewardService).shouldHaveNoInteractions();
+        then(fixture.abuseObserver).should().observeDecision(
+                claim, kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus.REJECTED);
     }
 
     @Test
@@ -332,6 +376,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 VisionSubscriptionState.SUBSCRIBED,
                 false,
                 0.9));
+        given(fixture.completionService.complete(any(), any(), any(), any(), any())).willReturn(true);
 
         fixture.worker.process(123L);
 
@@ -342,6 +387,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 "INSUFFICIENT_EVIDENCE",
                 fixture.clock.instant());
         then(fixture.rewardService).shouldHaveNoInteractions();
+        then(fixture.abuseObserver).should().observeDecision(
+                claim, kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus.RETRY_REQUIRED);
     }
 
     private static SubscriptionVerificationProcessingClaim claim() {
@@ -370,6 +417,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 mock(SubscriptionVerificationRewardService.class);
         private final ObjectStorage objectStorage = mock(ObjectStorage.class);
         private final VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
+        private final SubscriptionVerificationAbuseObserver abuseObserver =
+                mock(SubscriptionVerificationAbuseObserver.class);
         private final SubscriptionVerificationProcessingExecutorProperties properties =
                 new SubscriptionVerificationProcessingExecutorProperties();
         private final Clock clock = Clock.fixed(Instant.parse("2026-09-29T00:00:00Z"), ZoneOffset.UTC);
@@ -380,6 +429,7 @@ class SubscriptionVerificationProcessingWorkerTest {
                 objectStorage,
                 visionAnalysisPort,
                 properties,
-                clock);
+                clock,
+                abuseObserver);
     }
 }

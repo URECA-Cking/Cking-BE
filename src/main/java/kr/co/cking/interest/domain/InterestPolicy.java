@@ -6,6 +6,9 @@ public final class InterestPolicy {
     /** 한 회원이 고를 수 있는 관심 분야의 최대 개수(0개도 허용한다). */
     public static final int MAX_SELECTION = 3;
 
+    /** 한 상위 분야 아래에서 고를 수 있는 세부 주제의 최대 개수. */
+    public static final int MAX_SUBTOPIC_PER_PARENT = 3;
+
     private InterestPolicy() {
     }
 }

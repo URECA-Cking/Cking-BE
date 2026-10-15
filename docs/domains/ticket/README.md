@@ -5,7 +5,8 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 ## 문서
 
 - [외부 API](api.md): 잔액·Ledger 이력 조회 및 관리자 보정 API 계약
-- [EARN Lua 원자 처리](lua-api.md): 미션 적립의 멱등성·일일 중복 방지·Stream 발행 계약
+- [관리자 API·보정 회귀 검증](admin-regression-verification.md): TC-07 테스트 범위와 실행 방법
+- [EARN Lua 원자 처리](lua-api.md): 미션 적립의 멱등성·일일 중복 방지·Stream 발행 계약, Quiz 보상 Lua
 
 ## EARN과 Stream 반영
 
@@ -22,7 +23,32 @@ Ticket 도메인은 Creator별 사용자 응모권 잔액과 append-only Ledger�
 - 기존 EARN Stream Consumer, `mission_completion`, Ledger와 DB Balance 반영은 재사용한다. DB Consumer의 `request_id` UNIQUE는 Redis Balance 중복 증가 방어를 대신하지 않는다.
 - `TicketOnceEarnService`는 전역 request claim과 ONCE durable request를 Redis 실행 전에 먼저 claim하고, 둘 다 `PENDING`이면 ONCE Lua를 실행한다. Redis 수락 뒤에는 별도 짧은 Transaction으로 `ACCEPTED`를 기록한다. 따라서 Redis Guard가 유실된 뒤 다른 `requestId`가 와도 DB Business Key가 Redis 잔액 증가 전에 차단한다. Stream에는 정책을 함께 기록하며, DB 완료 키도 DAILY는 UTC 날짜·ONCE는 고정값으로 분리한다.
 
+## Quiz 보상 EARN(이슈 #533)
+
+Fan Quiz 응시(attempt) 보상은 Mission과 다른 적립 원인이다. 정답 1개당 해당 Creator 응모권 1장이며, 가짜 Mission 완료를 만들지 않고 `ticket_quiz_reward_request`를 원장 원인(`ticket_ledger.quiz_reward_request_id`)으로 남긴다. Quiz 도메인은 아래 Ticket 내부 계약만 호출하고 Ticket 테이블·Redis 키를 직접 다루지 않는다. 공개 API는 없다.
+
+- **입력**: `QuizRewardCommand(attemptId, memberId, creatorId, correctCount, rewardRequestId)`. 서버가 채점한 값이며 `rewardRequestId`는 attempt마다 한 번 만들어 재시도·복구에서도 바꾸지 않는다. `correctCount=0`이면 호출하지 않고, Ticket도 0 이하를 거부한다.
+- **접수** `TicketQuizRewardService.admit(command)`: 전역 `ticket_earn_request`(reward_policy=`QUIZ`)와 Quiz 요청(`RECEIVED`)을 한 Transaction에서 만든다. 같은 rewardRequestId·같은 입력은 `REPLAYED`, 다른 입력이나 다른 원인이 쓴 UUID는 `REQUEST_ID_CONFLICT`, 같은 attempt의 다른 rewardRequestId는 `ATTEMPT_CONFLICT`다.
+- **실행** `QuizRewardEarnWorker.run(rewardRequestId)`: 접수가 커밋된 뒤 따로 호출한다. 둘 다 Transaction 밖에서만 호출할 수 있다. 실행권(`ticket_quiz_reward_execution`의 execution token)을 DB에 먼저 커밋한 뒤 `quiz-ticket-earn.lua`를 한 번 부르고, 별도 Transaction에서 결과를 기록한다. 실행권은 `RECEIVED`이거나 직전 실행이 무반영으로 확인된 `RETRYABLE_FAILURE`일 때만 발급하므로 실행 중·수락·UNKNOWN·반영 완료 요청은 다시 실행하지 않는다.
+- **반영**: Lua가 기존 `stream:ticket-earned`에 `sourceType=QUIZ`, `payloadVersion=1` 메시지를 발행하고, 기존 Consumer·PEL 재처리·Dead replay가 `TicketEarnEventDispatcher`로 `QuizRewardLedgerService`에 넘긴다. 메시지와 저장된 요청·fingerprint를 대조하고, 실행권이 이 요청에 저장된 실행이며 무반영 기록이 아닐 때만(`StoredExecutionQuizRewardExecutionPolicy`) 원장·DB 잔액·`APPLIED`를 한 Transaction에 남긴다. 같은 요청은 원장 한 줄이다.
+- **상태 조회** `TicketQuizRewardService.findStatus(rewardRequestId)`: 요청 상태만 돌려준다. `APPLIED`여야 원장·잔액 반영이 끝난 것이다. 실행권·fingerprint는 노출하지 않는다.
+
+| 상태 | 의미 |
+| --- | --- |
+| `RECEIVED` | 접수만 했다 |
+| `EXECUTING` | 실행권을 발급했고 Redis 결과를 아직 기록하지 않았다 |
+| `ACCEPTED` | Redis가 적립·발행했다. 원장 반영 전이다 |
+| `RETRYABLE_FAILURE` | Redis를 바꾸지 않은 것이 확인됐다. 새 실행권으로 다시 실행할 수 있다 |
+| `UNKNOWN` | 적립 여부를 확정할 수 없다. 자동으로 다시 실행하지 않는다. 그 실행권의 메시지가 오면 반영된다 |
+| `APPLIED` | 원장·DB 잔액에 반영했다. 최종 상태다 |
+
+**기본 비활성**: `cking.ticket.quiz-reward.worker-enabled`의 기본값은 `false`이며, 꺼져 있으면 Worker는 아무것도 바꾸지 않는다. 호출 주체는 Fan Quiz 응시(`QuizRewardDelivery`, 이슈 #543)이며, 응시 저장 커밋 뒤 전달과 `QuizRewardDeliveryScheduler`의 누락 재전달을 같은 설정으로 켠다([응시 API](../quiz/attempt-api.md#ticket-보상-지급이슈-543)).
+
+**장애 시 차단**: Redis 응답 유실·형식 오류는 `UNKNOWN`으로 두고 재실행하지 않는다. 결과 기록이 실패하면 요청이 `EXECUTING`으로 남아 새 실행권이 발급되지 않는다. Redis 잔액 키가 없으면 같은 회원·Creator에 원장으로 확정되지 않은 Quiz 지급(다른 요청의 `EXECUTING`·`ACCEPTED`·`UNKNOWN`, 무반영이 확인되지 않은 과거 실행)이 없을 때만 `TicketBalanceKeyLoader`로 적재하고, 아니면 Lua를 부르지 않고 `RETRYABLE_FAILURE`로 기록한다. 메시지가 오지 않는 `UNKNOWN`·멈춘 `EXECUTING`의 복구와 Redis 유실 복구는 아직 없으며 운영자 확인이 필요하다.
+
 ## 정합성 검증과 수동 보정
+
+관리자는 `GET /api/admin/tickets/balance`로 CREATOR·COMMON 응모권의 Redis와 MySQL 잔액을 직접 관측할 수 있다. 키·행 미존재와 조회 실패, 차이 계산의 계약은 [Ticket API](api.md#get-apiadminticketsbalance)를 따른다. 조회는 보정을 수행하지 않는다.
 
 `TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니다). Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
 

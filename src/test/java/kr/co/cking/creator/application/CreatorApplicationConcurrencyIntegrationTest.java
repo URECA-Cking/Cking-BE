@@ -3,6 +3,7 @@ package kr.co.cking.creator.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberNickname;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -39,7 +40,9 @@ class CreatorApplicationConcurrencyIntegrationTest {
 
     @Test
     void simultaneousApplicationsReturnConcurrentCommandForOneRequest() throws Exception {
-        memberId = memberRepository.saveAndFlush(new Member("동시신청", null, null, MemberRole.USER)).getMemberId();
+        Member member = new Member("동시신청", null, null, MemberRole.USER);
+        member.setInitialNickname(MemberNickname.of("동시신청닉네임"));
+        memberId = memberRepository.saveAndFlush(member).getMemberId();
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
         List<Future<String>> results = new ArrayList<>();

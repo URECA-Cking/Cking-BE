@@ -4,8 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import kr.co.cking.abuse.application.AbuseObservationExecutor;
+import kr.co.cking.abuse.application.port.AbuseFeatureStore;
 import kr.co.cking.abuse.application.port.AbuseDetectionRecorder;
 import kr.co.cking.abuse.application.rule.AbuseRuleEvaluator;
+import kr.co.cking.abuse.application.rule.CompositeRuleEvaluator;
+import kr.co.cking.abuse.application.rule.FailureBurstRuleEvaluator;
+import kr.co.cking.abuse.application.rule.RapidEarnSpendRuleEvaluator;
+import kr.co.cking.abuse.application.rule.RequestBurstRuleEvaluator;
+import kr.co.cking.abuse.application.rule.YoutubeSubscriptionRuleEvaluator;
 import kr.co.cking.abuse.domain.AbuseType;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -90,6 +96,25 @@ class AbuseConfigurationTest {
         contextRunner
                 .withPropertyValues(properties)
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void 실제_Abuse_관측_구성에서_RuleEvaluator는_운영_생성자로_주입된다() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(AbuseConfiguration.class)
+                .withPropertyValues("cking.abuse.enabled=false")
+                .withBean(AbuseFeatureStore.class, () -> mock(AbuseFeatureStore.class))
+                .withBean(RequestBurstRuleEvaluator.class, () -> mock(RequestBurstRuleEvaluator.class))
+                .withBean(FailureBurstRuleEvaluator.class, () -> mock(FailureBurstRuleEvaluator.class))
+                .withBean(RapidEarnSpendRuleEvaluator.class, () -> mock(RapidEarnSpendRuleEvaluator.class))
+                .withBean(CompositeRuleEvaluator.class, () -> mock(CompositeRuleEvaluator.class))
+                .withBean(YoutubeSubscriptionRuleEvaluator.class, () -> mock(YoutubeSubscriptionRuleEvaluator.class))
+                .withBean(AbuseDetectionRecorder.class, () -> mock(AbuseDetectionRecorder.class))
+                .withBean(AbuseRuleEvaluator.class)
+                .run(context -> assertThat(context)
+                        .hasNotFailed()
+                        .hasSingleBean(AbuseRuleEvaluator.class)
+                        .hasSingleBean(AbuseObservationExecutor.class));
     }
 
     private String[] enabledProperties() {

@@ -68,6 +68,27 @@ class UserTicketBalanceRepositoryJpaTest {
                 .contains(member3);
     }
 
+    @Test
+    void 지정한_크리에이터의_해당_회원_잔액만_한_번에_조회한다() {
+        long member = insertMember();
+        long otherMember = insertMember();
+        long creator1 = insertCreator(insertMember());
+        long creator2 = insertCreator(insertMember());
+        long creator3 = insertCreator(insertMember());
+        insertBalance(member, creator1);
+        insertBalance(member, creator3);
+        insertBalance(otherMember, creator1);
+        entityManager.flush();
+        entityManager.clear();
+
+        // creator2는 잔액 행이 없고, creator3는 요청 목록에 없으며, otherMember의 행은 다른 회원 것이다.
+        List<UserTicketBalance> result = repository.findByMemberIdAndCreatorIdIn(member, List.of(creator1, creator2));
+
+        assertThat(result)
+                .extracting(UserTicketBalance::getMemberId, UserTicketBalance::getCreatorId)
+                .containsExactly(org.assertj.core.api.Assertions.tuple(member, creator1));
+    }
+
     private long insertMember() {
         entityManager.createNativeQuery("INSERT INTO member (name, role) VALUES ('잔액테스트', 'USER')")
                 .executeUpdate();
@@ -75,7 +96,7 @@ class UserTicketBalanceRepositoryJpaTest {
     }
 
     private long insertCreator(long memberId) {
-        entityManager.createNativeQuery("INSERT INTO creator (member_id, name) VALUES (:memberId, '잔액크리에이터')")
+        entityManager.createNativeQuery("INSERT INTO creator (member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (:memberId, '잔액크리에이터', (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)")
                 .setParameter("memberId", memberId)
                 .executeUpdate();
         return ((Number) entityManager.createNativeQuery("SELECT LAST_INSERT_ID()").getSingleResult()).longValue();

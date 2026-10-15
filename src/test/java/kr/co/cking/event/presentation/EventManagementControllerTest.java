@@ -156,6 +156,24 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.items[0].createdAt").exists());
     }
 
+    /** Creator Event 목록 API가 description과 반려 사유를 반환하고 사유가 없으면 null로 두는지 검증한다. */
+    @Test
+    void creatorEventListReturnsDescriptionAndRejectReason() throws Exception {
+        Event rejected = event(7L, "팬미팅");
+        Event other = event(8L, "팬사인회");
+        given(creatorEventService.findMine(org.mockito.ArgumentMatchers.eq(1L), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(rejected, other)));
+        given(creatorEventService.findRejectReasons(any()))
+                .willReturn(java.util.Map.of(7L, "일정 확인이 필요합니다."));
+
+        mockMvc.perform(get("/api/creator/events"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].description").value("설명"))
+                .andExpect(jsonPath("$.data.items[0].rejectReason").value("일정 확인이 필요합니다."))
+                .andExpect(jsonPath("$.data.items[1].description").value("설명"))
+                .andExpect(jsonPath("$.data.items[1].rejectReason").value(org.hamcrest.Matchers.nullValue()));
+    }
+
     /** UUID 형식이 아닌 생성 requestId는 Controller 입력 검증에서 거부하는지 검증한다. */
     @Test
     void createEventRejectsNonUuidRequestId() throws Exception {

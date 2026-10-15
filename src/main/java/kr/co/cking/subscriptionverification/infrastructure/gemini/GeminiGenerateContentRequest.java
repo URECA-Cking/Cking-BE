@@ -23,7 +23,7 @@ record GeminiGenerateContentRequest(
 
         Map<String, Object> generationConfig = new LinkedHashMap<>();
         generationConfig.put("responseFormat", Map.of("text", Map.of(
-                "mimeType", "application/json",
+                "mimeType", "APPLICATION_JSON",
                 "schema", GeminiVisionSchemaFactory.analysisSchema())));
         generationConfig.put("thinkingConfig", Map.of("thinkingLevel", "minimal"));
         generationConfig.put("maxOutputTokens", Math.max(1, properties.getMaxOutputTokens()));

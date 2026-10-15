@@ -21,6 +21,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -113,6 +118,36 @@ class CreatorApprovalSpaceCreationIntegrationTest {
         CreatorSpace firstSpace = creatorSpaceRepository.findByCreatorId(firstCreator.getCreatorId()).orElseThrow();
         CreatorSpace secondSpace = creatorSpaceRepository.findByCreatorId(secondCreator.getCreatorId()).orElseThrow();
         assertThat(firstSpace.getSlug()).isNotEqualTo(secondSpace.getSlug());
+    }
+
+    @Test
+    void 동시_승인은_같은_레거시_이름이어도_접미사_활동명으로_모두_성공한다() throws Exception {
+        Member admin = createMember("동시승인관리자", MemberRole.ADMIN);
+        String sharedLegacyName = "a" + Long.toString(System.nanoTime(), 36);
+        Member firstApplicant = createMember(sharedLegacyName, MemberRole.USER);
+        Member secondApplicant = createMember(sharedLegacyName, MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        CreatorApplication firstApplication = createApplication(firstApplicant.getMemberId());
+        CreatorApplication secondApplication = createApplication(secondApplicant.getMemberId());
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first = executor.submit(() -> approveAfterStart(start, admin.getMemberId(), firstApplication.getId()));
+            Future<?> second = executor.submit(() -> approveAfterStart(start, admin.getMemberId(), secondApplication.getId()));
+
+            start.countDown();
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+
+            assertThat(List.of(
+                    creatorRepository.findByMemberId(firstApplicant.getMemberId()).orElseThrow().getActivityName(),
+                    creatorRepository.findByMemberId(secondApplicant.getMemberId()).orElseThrow().getActivityName()))
+                    .containsExactlyInAnyOrder(sharedLegacyName, sharedLegacyName + "-2");
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -229,5 +264,17 @@ class CreatorApprovalSpaceCreationIntegrationTest {
         CreatorApplication application = creatorApplicationRepository.saveAndFlush(new CreatorApplication(applicantId));
         applicationIds.add(application.getId());
         return application;
+    }
+
+    private void approveAfterStart(CountDownLatch start, Long adminId, Long applicationId) {
+        try {
+            if (!start.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("동시 승인 시작 대기 시간이 초과되었습니다.");
+            }
+            creatorApplicationService.approve(adminId, applicationId);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(exception);
+        }
     }
 }

@@ -42,7 +42,7 @@ abstract class RedrawRequestCreateIntegrationFixture {
                 "INSERT INTO member (name, role) VALUES (?, ?)", "member_id", "결원 당첨자", "USER"
         );
         creatorId = insertAndReturnId(
-                "INSERT INTO creator (member_id, name) VALUES (?, ?)", "creator_id", adminId, "재추첨 테스트 크리에이터"
+                "INSERT INTO creator (member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)", "creator_id", adminId, "재추첨 테스트 크리에이터"
         );
         eventId = insertAndReturnId("""
                 INSERT INTO event (

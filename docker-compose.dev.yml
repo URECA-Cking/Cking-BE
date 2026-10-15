@@ -3,7 +3,7 @@
 
 services:
   redis:
-    image: redis:7.2-alpine
+    image: redis:7.2.16-alpine@sha256:29e8589c3f9ba699b5f7aa4b3c7733c58852a3626439e619aa0ee78de08c6ca0
     container_name: cking-redis
     restart: unless-stopped
     # maxmemory: 인프라 명세 3.4의 초기 배분값. noeviction은 한도가 있어야 동작한다.
@@ -22,6 +22,8 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+        # 수집기가 로그를 서비스별로 나누도록 서비스 이름을 로그 줄에 함께 기록한다.
+        labels: "com.docker.compose.service"
 
   app:
     # 태그는 배포 시점에 deploy.sh가 지정한다. latest는 동시 빌드 시 과거 이미지로 덮어써질 수 있다.
@@ -45,18 +47,23 @@ services:
       OAUTH_KAKAO_CLIENT_ID: ${OAUTH_KAKAO_CLIENT_ID:?OAUTH_KAKAO_CLIENT_ID가 지정되지 않았습니다}
       OAUTH_KAKAO_CLIENT_SECRET: ${OAUTH_KAKAO_CLIENT_SECRET:?OAUTH_KAKAO_CLIENT_SECRET이 지정되지 않았습니다}
       SUBSCRIPTION_GEMINI_API_KEY: ${SUBSCRIPTION_GEMINI_API_KEY:?SUBSCRIPTION_GEMINI_API_KEY가 지정되지 않았습니다}
-      # 추천 적재 배치 API Key의 SHA-256 hex(쉼표 구분). 등록 전에는 비워 두면 키 인증만 비활성화되고 배포는 계속된다.
-      CKING_RECOMMENDATION_API_KEY_HASHES: ${CKING_RECOMMENDATION_API_KEY_HASHES:-}
-      ADMIN_ACCOUNT_SEED_ENABLED: "true"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY가 지정되지 않았습니다}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY가 지정되지 않았습니다}
       ADMIN_ACCOUNT_LOGIN_ID: ${ADMIN_ACCOUNT_LOGIN_ID:?ADMIN_ACCOUNT_LOGIN_ID가 지정되지 않았습니다}
       ADMIN_ACCOUNT_PASSWORD: ${ADMIN_ACCOUNT_PASSWORD:?ADMIN_ACCOUNT_PASSWORD가 지정되지 않았습니다}
       IMAGE_TAG: ${IMAGE_TAG}
       REDIS_HOST: redis
+      # 상한을 걸면 JVM이 힙(상한의 25%)과 GC를 다시 고르므로 상한 전 값(힙 460MiB, G1)을 고정한다.
+      JDK_JAVA_OPTIONS: "-Xmx460m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+    # memswap_limit을 mem_limit과 같게 두어 컨테이너가 swap을 쓰지 않게 한다.
+    mem_limit: 1000m
+    memswap_limit: 1000m
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
+        labels: "com.docker.compose.service"
 
 volumes:
   redis-data:

@@ -20,7 +20,10 @@ import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
 import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.member.application.MemberProfile;
+import kr.co.cking.member.application.MemberProfileImageUploadService;
+import kr.co.cking.member.application.MemberProfileUpdateService;
 import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.presentation.MemberController;
 import org.junit.jupiter.api.Test;
@@ -37,6 +40,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +57,7 @@ import static org.springframework.http.HttpHeaders.ORIGIN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -61,6 +66,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = {MemberController.class, AuthController.class})
 @Import({
         SecurityConfigTest.AdminSecurityTestController.class,
+        SecurityConfigTest.CreatorSpaceProfileImageSecurityTestController.class,
         SecurityConfig.class,
         JwtConfig.class,
         JwtAuthenticationConverterConfig.class,
@@ -89,6 +95,18 @@ class SecurityConfigTest {
     private MemberQueryService memberQueryService;
 
     @MockitoBean
+    private kr.co.cking.member.application.MemberOnboardingService memberOnboardingService;
+
+    @MockitoBean
+    private MemberProfileImageUploadService memberProfileImageUploadService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
+
+    @MockitoBean
+    private MemberProfileUpdateService memberProfileUpdateService;
+
+    @MockitoBean
     private CreatorQueryService creatorQueryService;
 
     @MockitoBean
@@ -113,6 +131,28 @@ class SecurityConfigTest {
     private OAuth2LoginFailureHandler oauth2LoginFailureHandler;
 
     /** 인증 전환 전 Event API 경로가 인증 없이 Security에서 차단되지 않는지 검증한다. */
+    @Test
+    void 팬_응시_API는_인증이_필수다() throws Exception {
+        mockMvc.perform(post("/api/creators/1/quizzes/2/attempts")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/creators/1/quizzes/2/my-attempt")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void Creator_Space_프로필_이미지_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(post("/api/creator/space/profile-images"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/creator/space/profile-image"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void Creator_Space_배너_이미지_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(post("/api/creator/space/banner-images"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/creator/space/banner-image"))
+                .andExpect(status().isUnauthorized());
+    }
+
     @Test
     void 인증_전환_전_API는_인증_없이_호출할_수_있다() throws Exception {
         mockMvc.perform(get("/api/events"))
@@ -139,7 +179,8 @@ class SecurityConfigTest {
     @Test
     void 유효한_Access_JWT로_현재_사용자를_조회한다() throws Exception {
         when(memberQueryService.getProfile(17L))
-                .thenReturn(new MemberProfile(17L, "홍길동", "hong@example.com", MemberRole.USER));
+                .thenReturn(new MemberProfile(
+                        17L, "홍길동", null, null, "hong@example.com", MemberRole.USER, true, null, null));
         when(creatorQueryService.isCreatorMember(17L)).thenReturn(false);
 
         mockMvc.perform(get("/api/me")
@@ -185,6 +226,20 @@ class SecurityConfigTest {
                 .andExpect(content().string("admin-api"));
     }
 
+    /** 새 관리자 잔액 조회 경로에 기존 ADMIN 1차 인가 규칙이 적용되는지 검증한다. */
+    @Test
+    void 관리자_응모권_잔액_조회는_ADMIN_JWT가_필요하다() throws Exception {
+        mockMvc.perform(get("/api/admin/tickets/balance"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/tickets/balance")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(content().string("ticket-balance"));
+    }
+
     /** USER·ADMIN 공용 Winner 이력 API도 JWT 인증 없이는 호출할 수 없다. */
     @Test
     void Winner_상태_이력_API는_미인증_요청을_401로_거절한다() throws Exception {
@@ -207,6 +262,41 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/me/creator-recommendations"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** Creator AI Quiz API는 조회·명령 모두 JWT 인증 없이는 호출할 수 없다. */
+    @Test
+    void Creator_Quiz_API는_미인증_요청을_401로_거절한다() throws Exception {
+        mockMvc.perform(post("/api/creator/quizzes/1/revisions/100/judge-evaluations"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/creator/quizzes/1/revisions/100/judge-evaluations/40"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/creator/quizzes"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/1/revisions/100/approve"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/1/unpublish"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(post("/api/creator/quizzes/generations"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+        mockMvc.perform(get("/api/creator/quizzes/generations/1"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
+    }
+
+    /** 게시 Quiz 공개 조회 경로는 인증 없이 Security를 통과한다. */
+    @Test
+    void 공개_Quiz_조회는_인증_없이_호출할_수_있다() throws Exception {
+        mockMvc.perform(get("/api/creators/1/quizzes"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("public-quizzes"));
+        mockMvc.perform(get("/api/creators/1/quizzes/2"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("public-quiz"));
     }
 
     /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
@@ -432,11 +522,59 @@ class SecurityConfigTest {
     /** ADMIN 역할 JWT가 통과한 뒤 테스트에서 사용할 최소 관리자 API 응답을 제공한다. */
     @RestController
     static class AdminSecurityTestController {
+        @org.springframework.web.bind.annotation.PostMapping("/api/creators/{creatorId}/quizzes/{quizId}/attempts")
+        String attempt() { return "ok"; }
+        @GetMapping("/api/creators/{creatorId}/quizzes/{quizId}/my-attempt")
+        String myAttempt() { return "ok"; }
+
 
         /** 관리자 Event 운영 목록 경로가 인가된 요청에 성공 응답을 반환한다. */
         @GetMapping("/api/admin/events")
         String accessManagedEventList() {
             return "admin-api";
+        }
+
+        /** 관리자 잔액 조회 경로의 Security 통과 여부를 확인할 응답을 제공한다. */
+        @GetMapping("/api/admin/tickets/balance")
+        String accessTicketBalance() {
+            return "ticket-balance";
+        }
+
+        /** 공개 Quiz 목록 경로가 인증 없이 도달하는지 확인한다. */
+        @GetMapping("/api/creators/{creatorId}/quizzes")
+        String publicQuizList() {
+            return "public-quizzes";
+        }
+
+        /** 공개 Quiz 상세 경로가 인증 없이 도달하는지 확인한다. */
+        @GetMapping("/api/creators/{creatorId}/quizzes/{quizId}")
+        String publicQuizDetail() {
+            return "public-quiz";
+        }
+    }
+
+    /** 새 Space 프로필 이미지 경로가 /api/** 공개 규칙보다 먼저 인증을 요구하는지 검증할 최소 endpoint다. */
+    @RestController
+    static class CreatorSpaceProfileImageSecurityTestController {
+
+        @org.springframework.web.bind.annotation.PostMapping("/api/creator/space/profile-images")
+        String upload() {
+            return "uploaded";
+        }
+
+        @PutMapping("/api/creator/space/profile-image")
+        String link() {
+            return "linked";
+        }
+
+        @org.springframework.web.bind.annotation.PostMapping("/api/creator/space/banner-images")
+        String uploadBanner() {
+            return "uploaded";
+        }
+
+        @PutMapping("/api/creator/space/banner-image")
+        String linkBanner() {
+            return "linked";
         }
     }
 

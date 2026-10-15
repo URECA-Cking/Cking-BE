@@ -17,6 +17,27 @@ repositories {
 	mavenCentral()
 }
 
+// 운영 패키지에 포함하지 않는 순수 엔진 확률 검증 도구. DB/Redis가 필요하지 않다.
+sourceSets {
+	simulation {
+		compileClasspath = sourceSets.main.output
+		runtimeClasspath = output + compileClasspath
+	}
+	test {
+		compileClasspath += sourceSets.simulation.output
+		runtimeClasspath += sourceSets.simulation.output
+	}
+}
+
+tasks.register('weightedDistributionSimulation', JavaExec) {
+	group = 'verification'
+	description = '고정 기준으로 WEIGHTED_V1 대량 확률 분포를 검증하고 CSV와 실행 환경을 저장한다.'
+	classpath = sourceSets.simulation.runtimeClasspath
+	mainClass = 'kr.co.cking.drawing.simulation.WeightedDistributionSimulation'
+	maxHeapSize = '1g'
+	args layout.buildDirectory.dir('reports/weighted-distribution').get().asFile.absolutePath
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
@@ -54,7 +75,7 @@ tasks.named('test') {
 	useJUnitPlatform {
 		// 부하 테스트(NFR-06)는 수백 건 동시 요청 + Consumer Drain 대기가 있어 매 빌드마다
 		// 돌리지 않는다. 별도로 필요할 때 ./gradlew loadTest로 실행한다.
-		excludeTags 'load'
+		excludeTags 'load', 'drawing-memory'
 	}
 	// 테스트 프로필 설정을 모든 테스트 컨텍스트에 추가해 Hikari 연결 수를 제한한다.
 	systemProperty 'spring.config.additional-location', 'optional:classpath:/application-test.yml'
@@ -71,6 +92,28 @@ tasks.named('test') {
 	}
 }
 
+tasks.register('drawingMemoryTest', Test) {
+	group = 'verification'
+	description = '128MiB 힙에서 가중 추첨의 티켓 총합·후보 수별 스레드 할당량을 측정한다.'
+	useJUnitPlatform {
+		includeTags 'drawing-memory'
+	}
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	minHeapSize = '128m'
+	maxHeapSize = '128m'
+	maxParallelForks = 1
+	systemProperty 'junit.jupiter.execution.parallel.enabled', 'false'
+	systemProperty 'drawing.memory.report', layout.buildDirectory.file('reports/drawing-memory/allocation.csv').get().asFile.absolutePath
+	// 실행할 때마다 현재 JVM의 할당량과 메타데이터를 다시 기록한다.
+	outputs.upToDateWhen { false }
+	outputs.cacheIf { false }
+	testLogging {
+		events 'passed', 'failed', 'standard_out'
+		exceptionFormat 'full'
+	}
+}
+
 tasks.register('loadTest', Test) {
 	group = 'verification'
 	description = 'NFR-06 응모 Lua 동시성 부하 테스트만 실행한다(TPS·p95·p99·오류율 로그 확인용).'
@@ -83,5 +126,42 @@ tasks.register('loadTest', Test) {
 	testLogging {
 		events "passed", "skipped", "failed", "standard_out"
 		exceptionFormat "full"
+	}
+}
+
+// 개발 전용 비교 코드와 운영 아티팩트를 분리한다. 외부 벤치마크 의존성은 추가하지 않는다.
+sourceSets {
+	benchmark {
+		compileClasspath += sourceSets.main.output
+		runtimeClasspath += sourceSets.main.output
+	}
+	test {
+		compileClasspath += sourceSets.benchmark.output
+		runtimeClasspath += sourceSets.benchmark.output
+	}
+}
+
+tasks.register('weightedRandomBenchmark', JavaExec) {
+	group = 'verification'
+	description = '개발 전용 가중치 비복원 추첨 비교. 일반 test/check에서는 실행하지 않는다.'
+	classpath = sourceSets.benchmark.runtimeClasspath
+	mainClass = 'kr.co.cking.drawing.domain.engine.WeightedRandomBenchmark'
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+	jvmArgs '-Xms512m', '-Xmx512m', '-XX:+UseG1GC'
+	systemProperty 'benchmark.cpu', providers.gradleProperty('benchmarkCpu')
+			.getOrElse(System.getenv('PROCESSOR_IDENTIFIER') ?: 'unknown')
+	systemProperty 'benchmark.revision', providers.gradleProperty('benchmarkRevision').getOrElse('unrecorded')
+	doFirst {
+		def output = providers.gradleProperty('benchmarkOutput')
+				.getOrElse(layout.buildDirectory.dir('weighted-random-' + System.currentTimeMillis()).get().asFile.path)
+		file(output).absoluteFile.parentFile.mkdirs()
+		args output,
+				providers.gradleProperty('benchmarkWarmups').getOrElse('5'),
+				providers.gradleProperty('benchmarkIterations').getOrElse('20'),
+				providers.gradleProperty('benchmarkSeed').getOrElse('0123456789abcdef'.repeat(4)),
+				providers.gradleProperty('benchmarkMaxTickets').getOrElse('1000000'),
+				providers.gradleProperty('benchmarkMaxTicketBytes').getOrElse('8388608')
 	}
 }

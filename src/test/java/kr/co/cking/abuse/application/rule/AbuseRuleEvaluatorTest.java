@@ -44,6 +44,15 @@ class AbuseRuleEvaluatorTest {
     }
 
     @Test
+    void 구독_인증_탐지가_비활성이면_Feature_Store를_호출하지_않는다() {
+        AbuseRuleEvaluator youtubeDisabled = evaluator(properties(true));
+
+        assertThat(youtubeDisabled.evaluate(youtube("SUBMISSION_CREATED", ResultClassification.NEW_SUCCESS))).isEmpty();
+
+        verifyNoInteractions(featureStore);
+    }
+
+    @Test
     void 하나의_Snapshot으로_기본_Rule과_Rotation과_Composite를_평가한다() {
         AbuseObservationEvent observation = mission("DUPLICATE_MISSION", ResultClassification.BUSINESS_FAILURE);
         stub(observation, Map.of(
@@ -245,6 +254,13 @@ class AbuseRuleEvaluatorTest {
         return new AbuseObservationEvent(UUID.randomUUID(), 17L, AbuseActionType.EVENT_ENTRY,
                 UUID.randomUUID(), resultCode, classification, 5L, eventId, null, null,
                 balanceScope, null, OBSERVED_AT.minusMillis(10), OBSERVED_AT);
+    }
+
+    private AbuseObservationEvent youtube(String resultCode, ResultClassification classification) {
+        return new AbuseObservationEvent(UUID.randomUUID(), 17L, AbuseActionType.YOUTUBE_SUBSCRIPTION,
+                UUID.randomUUID(), resultCode, classification, 5L, null, 103L, null,
+                BalanceScope.creator(5L), "MISSION:CREATOR:ONCE:17:5:103",
+                OBSERVED_AT.minusMillis(10), OBSERVED_AT);
     }
 
     private AbuseProperties properties(boolean enabled) {

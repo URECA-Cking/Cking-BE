@@ -59,6 +59,19 @@ class PublicationServiceTest {
     }
 
     @Test
+    void INITIAL_최초_공개에는_미당첨자_알림_생성도_위임한다() {
+        DrawingPublicationResult expected = new DrawingPublicationResult(
+                10L, 20L, DrawingVisibility.PUBLIC,
+                Instant.parse("2026-09-18T12:00:00Z"), PublicationOutcome.PUBLISHED
+        );
+        when(drawingPublicationService.publish(10L, 1L)).thenReturn(expected);
+
+        publicationService.publish(10L, 1L);
+
+        verify(winnerNotificationService).createNonWinnerNotifications(10L);
+    }
+
+    @Test
     void 멱등_공개_재요청에는_Winner_조회와_Notification_생성을_하지_않는다() {
         DrawingPublicationResult expected = new DrawingPublicationResult(
                 10L, 20L, DrawingVisibility.PUBLIC,
@@ -70,6 +83,9 @@ class PublicationServiceTest {
 
         assertThat(actual).isSameAs(expected);
         verify(winnerRepository, never()).findAllByDrawingIdOrderByRankInDrawingAsc(10L);
+        verify(winnerNotificationService, never()).createNonWinnerNotifications(
+                org.mockito.ArgumentMatchers.any()
+        );
         verify(winnerNotificationService, never()).createInitialWinnerNotifications(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
@@ -98,6 +114,9 @@ class PublicationServiceTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyList()
+        );
+        verify(winnerNotificationService, never()).createNonWinnerNotifications(
+                org.mockito.ArgumentMatchers.any()
         );
     }
 }

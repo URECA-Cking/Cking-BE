@@ -15,7 +15,12 @@ public record PersonalizedCreatorRecommendationView(
             String profileImageUrl,
             BigDecimal aggregateScore,
             List<String> interestCodes,
-            List<Long> seedCreatorIds
+            List<Long> seedCreatorIds,
+            List<RecommendationSource> sources
     ) {
+        public Item(Long creatorId, String creatorName, String introText, String profileImageUrl,
+                    BigDecimal aggregateScore, List<String> interestCodes, List<Long> seedCreatorIds) {
+            this(creatorId, creatorName, introText, profileImageUrl, aggregateScore, interestCodes, seedCreatorIds, List.of());
+        }
     }
 }

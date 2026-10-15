@@ -65,7 +65,7 @@ class DrawingPublicationServiceIntegrationTest {
                 INSERT INTO member (member_id, name, role) VALUES (?, ?, ?)
                 """, CREATOR_OWNER_ID, "크리에이터", "USER");
         jdbcTemplate.update("""
-                INSERT INTO creator (creator_id, member_id, name) VALUES (?, ?, ?)
+                INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)
                 """, CREATOR_ID, CREATOR_OWNER_ID, "테스트 크리에이터");
         jdbcTemplate.update("""
                 INSERT INTO draw_seed (id, seed_value) VALUES (?, ?)

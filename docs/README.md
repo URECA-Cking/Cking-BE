@@ -24,29 +24,41 @@
 
 - [Snapshot](domains/snapshot/README.md): 공식 후보 확정, 멱등 생성, Snapshot Hash 정규화 계약
 - [Drawing](domains/drawing/README.md): 추첨 엔진 알고리즘과 당첨 결과 영속성 경계
+- [가중 추첨 확률 분포 검증](domains/drawing/weighted-distribution-verification.md): 고정 Seed 회귀, 대량 시뮬레이션, 조건부·포함 확률과 통계 판정 기준
+- [가중치 추첨 비교](domains/drawing/weighted-random-benchmark.md): 개발 전용 네 가지 비복원 선정 방식, 실행 및 실측 결과
+- [가중 추첨 메모리·경계값 검증](domains/drawing/weighted-memory-boundaries.md): 대규모 long 가중치 회귀 테스트와 128MiB 힙 할당량 측정
 - [Drawing 재현 검증 API](domains/drawing/verification-api.md): 원본 Seed 결정적 재현과 새 Seed 독립 재실행 검증
-- [Drawing API](domains/drawing/api.md): 관리자 Drawing 요청·공개 API 계약
+- [Drawing 실행·재시도·공개 API](domains/drawing/api.md): INITIAL 실행, 실패 Drawing 재시도·결과 공개 API 계약
+- [Drawing 조회 API](domains/drawing/admin-query-api.md): INITIAL Drawing·Drawing 상세·당첨 결과 조회 API 계약
 - [Redraw](domains/redraw/README.md): 재추첨 요청의 결원 고정·점유·멱등성 계약
 - [Redraw API](domains/redraw/api.md): 관리자 재추첨 요청 생성 API 계약
 - [Event](domains/event/README.md): 이벤트 조회·응모·마감의 외부 API와 내부 마감 계약
 - [Ticket](domains/ticket/README.md): 응모권 조회·EARN·정합성 보정 계약
+- [관리자 응모권 회귀 검증](domains/ticket/admin-regression-verification.md): TC-07 관리자 API·보정 검증 범위와 실행 방법
 - [Stream](domains/stream/README.md): EARN·SPEND Consumer, PEL 회수, Dead Stream replay 계약
 - [Stream API](domains/stream/api.md): 관리자 Dead Stream 목록 조회와 수동 replay API 계약
 - [Winner](domains/winner/README.md): Winner 불변 원본과 운영 상태 전이·동시성 계약
 - [Winner API](domains/winner/api.md): 공개 Winner 조회 API 계약
 - [Notification](domains/notification/README.md): 인앱 알림 조회와 읽음 상태
+- [Sanction](domains/sanction/README.md): 댓글 숨김 경고 누적과 기간제 댓글 작성 제한, 크리에이터의 스페이스 댓글 차단 정책
+- [Sanction API](domains/sanction/api.md): 관리자 제재 목록·수동 제한·해제와 크리에이터 스페이스 댓글 차단 API 계약
 - [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계
 - [Mission API](domains/mission/api.md): 미션 완료 API 계약
+- [웰컴 퀘스트 API](domains/mission/welcome-quest.md): 신규 회원 단계·독립 보너스의 상태 조회와 지급 목표 계약
 - [YouTube 구독 인증](domains/subscription-verification/README.md): 채널 설정, 이미지 제출, ONCE 인증과 보상 경계
 - [YouTube 구독 인증 API](domains/subscription-verification/api.md): 채널 설정·Verification 제출 및 상태 조회 계약
 - [YouTube 구독 인증 비동기 처리](domains/subscription-verification/processing.md): VLM 판정, Processing Claim과 Recovery 계약
 - [Creator](domains/creator/README.md): 신청·승인, 기본 템플릿, 승인 시 Creator Space 자동 생성 책임 경계
 - [Creator 유사 추천 결과](domains/creator/similarity-recommendation.md): LLM 후보 묶음 검증, 세대 이력·현재 포인터와 저장 결과 공개 조회 계약
+- [추천 행동 수집 API](domains/creator/recommendation-events.md): 추천 응답 스냅샷, 노출·클릭 수집, 신규 팔로우 귀속과 FE 지침
+- [추천 행동 운영](operations/creator-recommendation-events.md): 실패 격리, 지표 SQL, 보존과 삭제
 - [Creator Space Template API](domains/creator/space-template-api.md): 관리자 기본 크리에이터 스페이스 템플릿 관리 API 계약
 - [Creator Space API](domains/creator/space-api.md): Creator Space 조회, 홈·프로필 수정, 커스텀 slug 변경 API 계약
 - [Creator Space slug 정책](domains/creator/space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 - [Auth](domains/auth/README.md): OAuth2, Access JWT, Login Code와 인증·인가 책임 경계
 - [Auth API](domains/auth/api.md): OAuth 로그인과 Login Code 기반 Access JWT 교환 계약
+- [Member](domains/member/README.md): 공개 닉네임의 형식·중복·변경·복귀 정책
+- [Member API](domains/member/api.md): 현재 사용자 프로필과 닉네임 상태 조회 계약
 - [관리자 백오피스 통합 검증](domains/auth/admin-backoffice-verification.md): 관리자 인증·CORS·운영 API 연결 검증 범위와 프런트엔드 연동 조건
 - [Calendar](domains/calendar/README.md): 크리에이터 일정과 Event 분리 경계
 - [Calendar API](domains/calendar/api.md): 크리에이터 일정 CRUD·공개 조회 API 계약
@@ -57,7 +69,16 @@
 - [Post](domains/post/README.md): Creator Space 게시글 공개 범위, 이미지 업로드 기록 상태와 정리 규칙
 - [Post API](domains/post/api.md): 게시글 작성·수정·삭제, 이미지 업로드, 공개 조회 API 계약
 - [Post Comment API](domains/post/comment-api.md): 게시글 댓글 조회·작성·수정·삭제 API 계약
+- [AI Quiz](domains/quiz/README.md): 비동기 생성·GPT Judge 평가, 불변 revision·결과, Creator 승인·게시와 해시 검증
+- [AI Quiz API](domains/quiz/api.md): Creator Quiz 조회·승인·거절·게시·게시 취소와 공개 조회 API 계약
+- [Creator 문항 구성](domains/quiz/composition-api.md): 선택·수동 편집·책임 승인, 멱등성·계보 계약
+- [Fan Quiz 응시](domains/quiz/attempt-api.md): JWT 답안 제출·서버 채점·본인 결과·보상 연동 경계
+- [Quiz Judge API](domains/quiz/judge-api.md): Creator 평가 요청·조회, attempt·멱등성·실패 코드
+- [Quiz 원문 검토 API](domains/quiz/content-review-api.md): 진행 중 생성 작업 조회, Grounding 원문 확정·검토 취소, 권한·멱등성·동시성
+- [Quiz Judge 검증 목록](domains/quiz/judge-verification.md): #529 완료 조건별 구현·테스트와 로컬/CI 검증 경계
+- [AI Quiz 서비스 연결 설계](domains/quiz/integration-design.md): 생성·Grounding·Judge·승인·게시 책임 경계와 후속 작업 분리
 - [비정상 행동 탐지](domains/abuse-detection/README.md): Mission·Entry 행동 패턴 탐지, Redis feature, Evidence와 Fail Open 계약
+- [YouTube 구독 인증 어뷰징 관측](domains/abuse-detection/youtube-subscription.md): 제출·이미지 재사용·음성 판정 Rule과 Fail Open 계약
 - [비정상 행동 탐지 API](domains/abuse-detection/api.md): 관리자 Detection 목록·상세·검토 API 계약
 
 빈 도메인 문서나 디렉터리는 미리 만들지 않는다. 문서는 원칙적으로 300줄 이하로 유지하며, 이를 넘으면 관심사별 파일로 분리한다.

@@ -101,7 +101,11 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/creators/*/quizzes/*/attempts").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/creators/*/quizzes/*/my-attempt").authenticated()
                         .requestMatchers("/api/winners/*/history").authenticated()
+                        .requestMatchers("/api/creator/quizzes/*/revisions/*/judge-evaluations",
+                                "/api/creator/quizzes/*/revisions/*/judge-evaluations/*").authenticated()
                         .requestMatchers(
                                 "/api/creators/*/missions",
                                 "/api/creators/*/missions/*/complete",
@@ -114,8 +118,11 @@ public class SecurityConfig {
                                 "/api/creators/*/tickets/history",
                                 "/api/creators/*/follow",
                                 "/api/me/follows",
+                                "/api/me/tickets",
                                 "/api/me/creator-recommendations",
+                                "/api/me/creator-recommendation-events",
                                 "/api/me/interests",
+                                "/api/me/onboarding/complete",
                                 "/api/tickets/common",
                                 "/api/tickets/common/history",
                                 "/api/events/*",
@@ -129,17 +136,28 @@ public class SecurityConfig {
                                 "/api/me/calendar/**",
                                 "/api/creator/applications",
                                 "/api/creator/applications/me",
+                                "/api/creator/profile",
                                 "/api/creator/space",
                                 "/api/creator/calendar/**",
+                                "/api/creator/comment-blocks",
+                                "/api/creator/comment-blocks/**",
                                 "/api/creator/posts",
                                 "/api/creator/posts/**",
+                                "/api/creator/quizzes",
+                                "/api/creator/quizzes/**",
                                 "/api/creator/youtube-channel",
-                                "/api/creator/space/slug"
+                                "/api/creator/space/slug",
+                                "/api/creator/space/profile-images",
+                                "/api/creator/space/profile-image",
+                                "/api/creator/space/banner-images",
+                                "/api/creator/space/banner-image"
                         ).authenticated()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/comments").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/creators/*/posts/*/comments/*").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/creators/*/posts/*/comments/*").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/likes").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/creators/*/posts/*/likes").authenticated()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/creators/*/calendar/schedules",
@@ -147,6 +165,8 @@ public class SecurityConfig {
                                 "/api/creators/*/posts",
                                 "/api/creators/*/posts/*",
                                 "/api/creators/*/posts/*/comments",
+                                "/api/creators/*/quizzes",
+                                "/api/creators/*/quizzes/*",
                                 "/api/creators/*/youtube-channel"
                         ).permitAll()
                         .requestMatchers("/api/**", "/oauth2/**", "/login/**").permitAll()
