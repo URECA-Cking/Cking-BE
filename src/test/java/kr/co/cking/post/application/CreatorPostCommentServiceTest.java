@@ -3,9 +3,10 @@ package kr.co.cking.post.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.exception.ErrorCode;
-import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.application.CreatorPublicProfileQueryService;
+import kr.co.cking.creator.application.CreatorQueryService;
+import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.creator.repository.CreatorRepository;
-import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
@@ -66,16 +67,18 @@ class CreatorPostCommentServiceTest {
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
-    private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+    private final CreatorPublicProfileQueryService creatorPublicProfileQueryService = mock(CreatorPublicProfileQueryService.class);
+    private final CreatorQueryService creatorQueryService = mock(CreatorQueryService.class);
     private final ProfileImageUrlResolver profileImageUrlResolver = mock(ProfileImageUrlResolver.class);
     private final SanctionQueryService sanctionQueryService = mock(SanctionQueryService.class);
     private final CreatorPostCommentService service = new CreatorPostCommentService(
             new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
-            commentRepository, memberRepository, spaceRepository, profileImageUrlResolver,
+            commentRepository, memberRepository, creatorPublicProfileQueryService, creatorQueryService, profileImageUrlResolver,
             Clock.fixed(LATER, ZoneOffset.UTC), mock(ApplicationEventPublisher.class), sanctionQueryService);
 
     @BeforeEach
     void setUp() {
+        given(creatorPublicProfileQueryService.findByMemberIds(any())).willReturn(java.util.Map.of());
         given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator(CREATOR_ID, OWNER_MEMBER_ID)));
         for (Long postId : List.of(PUBLIC_POST_ID, FOLLOWERS_POST_ID)) {
             PostVisibility visibility = postId.equals(PUBLIC_POST_ID) ? PostVisibility.PUBLIC : PostVisibility.FOLLOWERS;
@@ -99,6 +102,9 @@ class CreatorPostCommentServiceTest {
                 comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID), comment(2L, PUBLIC_POST_ID, OWNER_MEMBER_ID)), PAGE, 2));
         given(memberRepository.findAllById(Set.of(FAN_MEMBER_ID, OWNER_MEMBER_ID)))
                 .willReturn(List.of(member(FAN_MEMBER_ID), member(OWNER_MEMBER_ID)));
+        given(creatorPublicProfileQueryService.findByMemberIds(Set.of(FAN_MEMBER_ID, OWNER_MEMBER_ID)))
+                .willReturn(java.util.Map.of(OWNER_MEMBER_ID,
+                        creatorProfile(OWNER_MEMBER_ID, CREATOR_ID, "creator-" + CREATOR_ID, null)));
 
         List<CreatorPostCommentView> comments =
                 service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent();
@@ -240,6 +246,24 @@ class CreatorPostCommentServiceTest {
 
         assertThat(created.writtenByCreator()).isTrue();
         verify(followQueryService, never()).isFollowing(OWNER_MEMBER_ID, CREATOR_ID);
+    }
+
+    @Test
+    void Creator는_Member_닉네임이_없어도_활동명_프로필로_댓글을_작성한다() {
+        Member creatorMember = new Member("OAuth 이름", null, null, kr.co.cking.member.domain.MemberRole.USER);
+        ReflectionTestUtils.setField(creatorMember, "memberId", OWNER_MEMBER_ID);
+        given(memberRepository.findByIdForUpdate(OWNER_MEMBER_ID)).willReturn(Optional.of(creatorMember));
+        given(creatorQueryService.isCreatorMember(OWNER_MEMBER_ID)).willReturn(true);
+        given(creatorPublicProfileQueryService.findByMemberIds(Set.of(OWNER_MEMBER_ID)))
+                .willReturn(java.util.Map.of(OWNER_MEMBER_ID,
+                        creatorProfile(OWNER_MEMBER_ID, CREATOR_ID, "공개활동명", "https://cdn.example.com/space/1.png")));
+
+        CreatorPostCommentView created =
+                service.create(OWNER_MEMBER_ID, CREATOR_ID, FOLLOWERS_POST_ID, "고마워요");
+
+        assertThat(created.authorName()).isEqualTo("공개활동명");
+        assertThat(created.authorProfileImageUrl()).isEqualTo("https://cdn.example.com/space/1.png");
+        assertThat(created.writtenByCreator()).isTrue();
     }
 
     @Test
@@ -499,15 +523,11 @@ class CreatorPostCommentServiceTest {
 
         assertThat(views).extracting(CreatorPostCommentView::authorProfileImageUrl)
                 .containsExactly("https://cdn.example.com/member-profile-images/20/a.jpg", null);
-        // Creator 본인 댓글이 없으면 Space를 조회하지 않는다.
-        verify(spaceRepository, never()).findByCreatorId(any());
+        verify(creatorPublicProfileQueryService).findByMemberIds(Set.of(FAN_MEMBER_ID, STRANGER_MEMBER_ID));
     }
 
     @Test
     void Creator_본인_댓글은_Space_프로필_사진을_쓰고_댓글이_여럿이어도_Space는_한_번만_읽는다() {
-        CreatorSpace space = mock(CreatorSpace.class);
-        given(space.getProfileImageUrl()).willReturn("https://cdn.example.com/space/profile.png");
-        given(spaceRepository.findByCreatorId(CREATOR_ID)).willReturn(Optional.of(space));
         Member owner = member(OWNER_MEMBER_ID);
         owner.updateProfileImageKey("member-profile-images/10/own.jpg");
         given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
@@ -515,13 +535,17 @@ class CreatorPostCommentServiceTest {
                 comment(3L, PUBLIC_POST_ID, FAN_MEMBER_ID)), PAGE, 3));
         given(memberRepository.findAllById(Set.of(OWNER_MEMBER_ID, FAN_MEMBER_ID)))
                 .willReturn(List.of(owner, member(FAN_MEMBER_ID)));
+        given(creatorPublicProfileQueryService.findByMemberIds(Set.of(OWNER_MEMBER_ID, FAN_MEMBER_ID)))
+                .willReturn(java.util.Map.of(OWNER_MEMBER_ID,
+                        creatorProfile(OWNER_MEMBER_ID, CREATOR_ID, "creator-" + CREATOR_ID,
+                                "https://cdn.example.com/space/profile.png")));
 
         List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent();
 
         // 회원 개인 사진이 있어도 Creator 본인 댓글은 Space 사진이다.
         assertThat(views).extracting(CreatorPostCommentView::authorProfileImageUrl)
                 .containsExactly("https://cdn.example.com/space/profile.png", "https://cdn.example.com/space/profile.png", null);
-        verify(spaceRepository, times(1)).findByCreatorId(CREATOR_ID);
+        verify(creatorPublicProfileQueryService).findByMemberIds(Set.of(OWNER_MEMBER_ID, FAN_MEMBER_ID));
         verify(profileImageUrlResolver, never()).resolve("member-profile-images/10/own.jpg");
     }
 
@@ -530,11 +554,33 @@ class CreatorPostCommentServiceTest {
         given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
                 comment(1L, PUBLIC_POST_ID, OWNER_MEMBER_ID)), PAGE, 1));
         given(memberRepository.findAllById(Set.of(OWNER_MEMBER_ID))).willReturn(List.of(member(OWNER_MEMBER_ID)));
+        given(creatorPublicProfileQueryService.findByMemberIds(Set.of(OWNER_MEMBER_ID)))
+                .willReturn(java.util.Map.of(OWNER_MEMBER_ID,
+                        creatorProfile(OWNER_MEMBER_ID, CREATOR_ID, "creator-" + CREATOR_ID, null)));
 
         CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent().get(0);
 
         assertThat(view.authorProfileImageUrl()).isNull();
         assertThat(view.authorName()).isEqualTo("creator-" + CREATOR_ID);
+    }
+
+    @Test
+    void 다른_Creator가_작성한_댓글도_게시글_소유자_여부와_관계없이_활동명과_Space_사진을_쓴다() {
+        Member otherCreator = member(STRANGER_MEMBER_ID);
+        otherCreator.updateProfileImageKey("member-profile-images/30/private.jpg");
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
+                comment(1L, PUBLIC_POST_ID, STRANGER_MEMBER_ID)), PAGE, 1));
+        given(memberRepository.findAllById(Set.of(STRANGER_MEMBER_ID))).willReturn(List.of(otherCreator));
+        given(creatorPublicProfileQueryService.findByMemberIds(Set.of(STRANGER_MEMBER_ID)))
+                .willReturn(java.util.Map.of(STRANGER_MEMBER_ID,
+                        creatorProfile(STRANGER_MEMBER_ID, 2L, "다른크리에이터", "https://cdn.example.com/space/2.png")));
+
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent().get(0);
+
+        assertThat(view.authorName()).isEqualTo("다른크리에이터");
+        assertThat(view.authorProfileImageUrl()).isEqualTo("https://cdn.example.com/space/2.png");
+        assertThat(view.writtenByCreator()).isFalse();
+        verify(profileImageUrlResolver, never()).resolve("member-profile-images/30/private.jpg");
     }
 
     @Test
@@ -613,9 +659,10 @@ class CreatorPostCommentServiceTest {
 
     @Test
     void Creator_본인이_작성하면_응답의_사진은_Space_프로필_사진이다() {
-        CreatorSpace space = mock(CreatorSpace.class);
-        given(space.getProfileImageUrl()).willReturn("https://cdn.example.com/space/profile.png");
-        given(spaceRepository.findByCreatorId(CREATOR_ID)).willReturn(Optional.of(space));
+        given(creatorPublicProfileQueryService.findByMemberIds(Set.of(OWNER_MEMBER_ID)))
+                .willReturn(java.util.Map.of(OWNER_MEMBER_ID,
+                        creatorProfile(OWNER_MEMBER_ID, CREATOR_ID, "creator-" + CREATOR_ID,
+                                "https://cdn.example.com/space/profile.png")));
 
         CreatorPostCommentView created = service.create(OWNER_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "공지예요");
 
@@ -701,6 +748,11 @@ class CreatorPostCommentServiceTest {
         CreatorPostComment comment = new CreatorPostComment(postId, memberId, "댓글 " + commentId, NOW);
         ReflectionTestUtils.setField(comment, "commentId", commentId);
         return comment;
+    }
+
+    private CreatorPublicProfile creatorProfile(
+            Long memberId, Long creatorId, String activityName, String profileImageUrl) {
+        return new CreatorPublicProfile(creatorId, activityName, profileImageUrl);
     }
 
     private void assertError(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable, ErrorCode expected) {

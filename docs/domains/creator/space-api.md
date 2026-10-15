@@ -9,6 +9,8 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 - 본인 API(`/api/creator/space`, `/api/creator/space/slug`, `/api/creator/space/profile-images`, `/api/creator/space/profile-image`, `/api/creator/space/banner-images`, `/api/creator/space/banner-image`, `/api/creator/profile`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 공유 URL은 프론트엔드의 `/space/{slug}` 형식이다. slug는 이 공개 조회의 탐색에만 사용하고, 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용한다. slug를 업무 기록에 저장하지 않는다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
+- 승인된 Creator의 공개 이름·사진은 활동명과 Space 프로필 사진으로 단일화한다. Member 프로필 수정 API는 Creator의
+  공개 표시를 바꾸지 않으며, Creator는 Space 편집에서만 공개 프로필을 관리한다.
 - 탭(홈·미션·게시물·이벤트) 노출 설정은 없다(이슈 #290). 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다.
 - slug 형식·예약어·중복 규칙은 [space-slug-policy.md](space-slug-policy.md)를 따른다.
 

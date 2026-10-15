@@ -28,4 +28,6 @@ public interface CreatorRepository extends JpaRepository<Creator, Long> {
     boolean existsByActivityNameNormalized(String activityNameNormalized);
 
     List<Creator> findByCreatorIdIn(Collection<Long> creatorIds);
+
+    List<Creator> findByMemberIdIn(Collection<Long> memberIds);
 }

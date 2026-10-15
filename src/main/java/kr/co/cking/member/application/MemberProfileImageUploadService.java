@@ -6,6 +6,8 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.image.NormalizedImage;
 import kr.co.cking.common.storage.ObjectStorage;
+import kr.co.cking.creator.application.CreatorQueryService;
+import kr.co.cking.member.domain.MemberErrorCode;
 import kr.co.cking.member.application.image.MemberProfileImageProcessor;
 import kr.co.cking.member.domain.MemberProfileImage;
 import kr.co.cking.member.repository.MemberProfileImageRepository;
@@ -21,6 +23,7 @@ public class MemberProfileImageUploadService {
     static final String CONTENT_TYPE = "image/jpeg";
 
     private final MemberRepository memberRepository;
+    private final CreatorQueryService creatorQueryService;
     private final MemberProfileImageProcessor imageProcessor;
     private final MemberProfileImageRepository profileImageRepository;
     private final ObjectStorage objectStorage;
@@ -29,6 +32,9 @@ public class MemberProfileImageUploadService {
     public String upload(Long memberId, byte[] imageBytes) {
         if (!memberRepository.existsById(memberId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+        if (creatorQueryService.isCreatorMember(memberId)) {
+            throw new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE);
         }
         NormalizedImage image = imageProcessor.process(imageBytes);
         String objectKey = objectKey(memberId);

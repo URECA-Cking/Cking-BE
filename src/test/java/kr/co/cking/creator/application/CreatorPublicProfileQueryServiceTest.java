@@ -67,9 +67,33 @@ class CreatorPublicProfileQueryServiceTest {
         assertThat(result).containsOnlyKeys(1L);
     }
 
+    @Test
+    void Member_ID로도_활동명과_Space_프로필_사진을_일괄_조회한다() {
+        List<Long> memberIds = List.of(10L, 20L);
+        Creator first = creator(1L, 10L, "첫째");
+        Creator second = creator(2L, 20L, "둘째");
+        CreatorSpace secondSpace = space(2L, "https://img/2");
+        given(creatorRepository.findByMemberIdIn(memberIds)).willReturn(List.of(first, second));
+        given(creatorSpaceRepository.findByCreatorIdIn(List.of(1L, 2L)))
+                .willReturn(List.of(secondSpace));
+
+        Map<Long, CreatorPublicProfile> result = service.findByMemberIds(memberIds);
+
+        assertThat(result).containsOnlyKeys(10L, 20L);
+        assertThat(result.get(10L)).isEqualTo(new CreatorPublicProfile(1L, "첫째", null));
+        assertThat(result.get(20L)).isEqualTo(new CreatorPublicProfile(2L, "둘째", "https://img/2"));
+        verify(creatorRepository).findByMemberIdIn(memberIds);
+        verify(creatorSpaceRepository).findByCreatorIdIn(List.of(1L, 2L));
+    }
+
     private static Creator creator(long creatorId, String name) {
+        return creator(creatorId, creatorId, name);
+    }
+
+    private static Creator creator(long creatorId, long memberId, String name) {
         Creator creator = mock(Creator.class);
         given(creator.getCreatorId()).willReturn(creatorId);
+        given(creator.getMemberId()).willReturn(memberId);
         given(creator.publicDisplayName()).willReturn(name);
         return creator;
     }

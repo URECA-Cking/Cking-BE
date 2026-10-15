@@ -14,8 +14,8 @@
 | --- | --- |
 | `commentId`, `postId` | 댓글·게시글 ID |
 | `authorMemberId` | 작성자 회원 ID |
-| `authorName` | 작성자 공개 이름(닉네임). Creator 본인의 댓글은 활동명이다. **원문이 가려진 댓글(`filtered`)이면 `null`** |
-| `authorProfileImageUrl` | 작성자 프로필 사진의 공개 URL(만료되지 않는 CDN 주소). Creator 본인의 댓글은 **Creator Space 프로필 사진**이다. 사진을 설정하지 않았거나 Space가 없으면 `null`이고, **원문이 가려진 댓글(`filtered`)이면 `null`** |
+| `authorName` | 작성자 공개 이름. 팬은 닉네임, 승인된 Creator는 게시글 소유 여부와 관계없이 활동명이다. **원문이 가려진 댓글(`filtered`)이면 `null`** |
+| `authorProfileImageUrl` | 작성자 프로필 사진의 공개 URL(만료되지 않는 CDN 주소). 팬은 Member 사진, 승인된 Creator는 게시글 소유 여부와 관계없이 **Creator Space 프로필 사진**이다. 사진을 설정하지 않았거나 Space가 없으면 `null`이고, **원문이 가려진 댓글(`filtered`)이면 `null`** |
 | `writtenByCreator` | 게시글을 작성한 Creator 본인이 단 댓글이면 true |
 | `content` | 본문 (1~500자). **필터링된 댓글(`filtered`)이면 `null`** |
 | `filtered` | 필터가 차단(BLOCK)했거나 관리자가 숨겨 원문을 가린 댓글이면 true. **작성자 본인에게는 항상 false**다 |

@@ -5,9 +5,9 @@ import java.time.Instant;
 /**
  * 게시글 댓글.
  *
- * @param authorName 작성자 이름. 원문이 가려진 댓글(filtered)이면 null이다. Creator 본인의 댓글은 활동명이다.
+ * @param authorName 작성자 이름. 원문이 가려진 댓글(filtered)이면 null이다. Creator 계정의 댓글은 활동명이다.
  * @param authorProfileImageUrl 작성자 프로필 사진 공개 URL. 사진이 없거나 원문이 가려진 댓글(filtered)이면 null이다.
- *                              Creator 본인의 댓글은 Creator Space 프로필 사진이다.
+ *                              Creator 계정의 댓글은 Creator Space 프로필 사진이다.
  * @param writtenByCreator 게시글을 작성한 Creator 본인이 단 댓글이면 true
  * @param content 원문이 가려진 댓글(filtered)이면 null이다. 필터가 차단한 댓글의 원문만 별도 요청으로 받을 수 있다.
  * @param filtered 필터가 BLOCK했거나 관리자가 숨긴 댓글이고 조회자가 작성자 본인이 아니다. 작성자 본인에게는 항상 false다.
