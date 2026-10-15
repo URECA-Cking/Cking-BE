@@ -1,5 +1,6 @@
 package kr.co.cking.notification.application;
 
+import java.time.Instant;
 import java.util.List;
 import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
@@ -46,14 +47,15 @@ public class WinnerNotificationService {
         );
     }
 
-    /** INITIAL Drawing의 미당첨자마다 '이벤트 결과 발표' Notification을 저장한다. */
-    public void createNonWinnerNotifications(Long eventId, Long drawingId, List<Long> nonWinnerMemberIds) {
-        List<Notification> notifications = nonWinnerMemberIds.stream()
-                .map(memberId -> Notification.forNonWinner(
-                        memberId, eventId, drawingId, NON_WINNER_TITLE, NON_WINNER_BODY
-                ))
-                .toList();
-        notificationRepository.saveAll(notifications);
+    /**
+     * INITIAL Drawing의 미당첨자(Snapshot 후보 중 Winner가 아닌 Member)에게 '이벤트 결과 발표' Notification을 일괄 저장한다.
+     * 대상 산정과 저장을 DB에서 한 번에 처리하며 저장한 알림 수를 반환한다.
+     */
+    public int createNonWinnerNotifications(Long drawingId) {
+        return notificationRepository.insertNonWinnerNotifications(
+                drawingId, NotificationType.INITIAL_NON_WINNER.name(),
+                NON_WINNER_TITLE, NON_WINNER_BODY, Instant.now()
+        );
     }
 
     /** 지정한 알림 유형·문구로 대상 Winner별 Notification을 만들고 일괄 저장한다. */

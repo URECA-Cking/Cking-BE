@@ -57,13 +57,7 @@ public class PublicationService {
             List<WinnerNotificationTarget> targets
     ) {
         winnerNotificationService.createInitialWinnerNotifications(result.eventId(), result.drawingId(), targets);
-        createNonWinnerNotifications(result);
-    }
-
-    /** INITIAL Drawing의 Snapshot 후보 중 당첨되지 못한 Member에게 결과 발표 알림 생성을 위임한다. */
-    private void createNonWinnerNotifications(DrawingPublicationResult result) {
-        List<Long> nonWinnerMemberIds = winnerRepository.findUnselectedMemberIdsByDrawingId(result.drawingId());
-        winnerNotificationService.createNonWinnerNotifications(result.eventId(), result.drawingId(), nonWinnerMemberIds);
+        winnerNotificationService.createNonWinnerNotifications(result.drawingId());
     }
 
     /** REDRAW Drawing의 당첨자에게 재추첨 당첨 알림 생성을 위임한다. */

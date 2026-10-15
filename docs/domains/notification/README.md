@@ -16,7 +16,7 @@
   참조한다. 따라서 개별 ID가 존재하더라도 서로 다른 Winner·Member·Event·Drawing을 섞어 저장할 수 없다.
 - `type`은 당첨 알림 `INITIAL_WINNER`·`REDRAW_WINNER`, 미당첨 알림 `INITIAL_NON_WINNER`, 제재 알림 `COMMENT_RESTRICTION_STARTED`(댓글 작성 제한 시작)·`COMMENT_RESTRICTION_RELEASED`(제한이 모두 풀림)다.
 - 제재 알림은 이벤트·추첨·당첨과 무관하므로 `event_id`·`drawing_id`·`winner_id`가 NULL이고 대신 `sanction_id`로 `member_sanction`을 가리킨다(`V71`). 세 컬럼은 **모두 NULL이거나 모두 NOT NULL**이어야 한다(`ck_notification_winner_lineage_all_or_none`). MySQL은 복합 FK의 컬럼 중 하나라도 NULL이면 그 FK를 검사하지 않으므로, 이 CHECK가 없으면 `winner_id`만 채운 행이 계보 보장을 우회한다.
-- 미당첨 알림은 최초 추첨(INITIAL) 공개에서만 만든다. 대상은 Drawing이 사용한 Snapshot 후보 중 해당 Drawing의 Winner가 아닌 Member이며(`WinnerRepository.findUnselectedMemberIdsByDrawingId`), 재추첨 공개에는 만들지 않는다. 이 알림은 `winner_id`가 NULL이고 `event_id`·`drawing_id`는 채운다(`V76`).
+- 미당첨 알림은 최초 추첨(INITIAL) 공개에서만 만든다. 대상은 Drawing이 사용한 Snapshot 후보 중 해당 Drawing의 Winner가 아닌 Member이며재추첨 공개에는 만들지 않는다. 응모자 규모에 비례하므로 엔티티를 적재하지 않고 `NotificationRepository.insertNonWinnerNotifications`의 단일 `INSERT ... SELECT`로 호출자 트랜잭션 안에서 저장한다. 이 알림은 `winner_id`가 NULL이고 `event_id`·`drawing_id`는 채운다(`V76`).
 - `event_id`·`drawing_id`·`winner_id`의 조합은 유형별 CHECK(`ck_notification_lineage_by_type`, `V76`)가 강제한다: 제재 알림은 세 값 모두 NULL, 당첨 알림은 모두 NOT NULL, `INITIAL_NON_WINNER`는 `winner_id`만 NULL이다. 예전 "모두 NULL 또는 모두 NOT NULL" CHECK(`ck_notification_winner_lineage_all_or_none`)는 교체되었다.
 - `(event_id, member_id, type)`은 유일하므로 같은 이벤트에서 한 Member에게 같은 종류의 결과 알림이 중복 생성되지 않는다(미당첨 알림의 최종 멱등 방어). Winner가 `(event_id, member_id)` 유일이라 기존 당첨 알림 데이터는 이 키를 이미 만족한다.
 - `(winner_id, type)`은 유일하므로 같은 당첨 결과에 같은 종류의 알림이 중복 생성되지 않는다.

@@ -23,6 +23,32 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Query("select notification from Notification notification where notification.notificationId = :notificationId")
     Optional<Notification> findByIdForUpdate(@Param("notificationId") Long notificationId);
 
+    /**
+     * Drawing이 사용한 Snapshot 후보 중 해당 Drawing의 Winner가 아닌 Member에게 미당첨 알림을 한 번의 INSERT ... SELECT로 저장한다.
+     * 대규모 응모자에서도 엔티티 적재와 건별 INSERT 없이 DB 안에서 처리하며, 호출자의 트랜잭션에 참여한다.
+     * 같은 이벤트·Member·유형의 알림이 이미 있으면 유니크 제약이 거부하므로 최초 공개에서만 호출해야 한다.
+     *
+     * @return 저장한 알림 수
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            INSERT INTO notification (member_id, event_id, drawing_id, type, title, body, created_at)
+            SELECT c.member_id, d.event_id, d.id, :type, :title, :body, :createdAt
+            FROM drawing d
+            JOIN draw_snapshot_candidate c ON c.snapshot_id = d.snapshot_id
+            WHERE d.id = :drawingId
+              AND NOT EXISTS (
+                  SELECT 1 FROM winner w WHERE w.drawing_id = d.id AND w.member_id = c.member_id
+              )
+            ORDER BY c.member_id
+            """, nativeQuery = true)
+    int insertNonWinnerNotifications(
+            @Param("drawingId") Long drawingId,
+            @Param("type") String type,
+            @Param("title") String title,
+            @Param("body") String body,
+            @Param("createdAt") Instant createdAt);
+
     /** 요청 Member의 아직 읽지 않은 모든 Notification에 최초 읽음 시각을 기록한다. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Notification notification set notification.readAt = :readAt "

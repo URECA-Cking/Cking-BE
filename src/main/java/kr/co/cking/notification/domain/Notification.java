@@ -92,12 +92,6 @@ public class Notification {
         return notification;
     }
 
-    /** 최초 추첨에서 당첨되지 못한 Member에게 결과 발표를 알리는 Notification을 만든다. Winner가 없어 {@code winnerId}는 비운다. */
-    public static Notification forNonWinner(
-            Long memberId, Long eventId, Long drawingId, String title, String body) {
-        return new Notification(memberId, eventId, drawingId, null, NotificationType.INITIAL_NON_WINNER, title, body);
-    }
-
     /** 저장 직전에 생성 시각이 비어 있으면 현재 시각을 설정한다. */
     @PrePersist
     void assignCreatedAtIfMissing() {
