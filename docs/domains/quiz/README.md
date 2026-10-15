@@ -13,7 +13,7 @@ AI 생성(`quiz.generation`)은 결과만 반환하며 저장 전에 같은 `Qui
 
 ## 소유 데이터
 
-V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다. V73이 revision 계보·승인 정책·게시 고정 컬럼과 제약을 더한다([Creator 편집 기반](#creator-편집-revision과-책임-승인-기반-이슈-581)).
+V55의 Quiz·revision·문항·보기·결정, V56의 `quiz_generation`, V58의 Judge series·Job·JobCall·result·resultItem을 소유한다. V73이 revision 계보·승인 정책·게시 고정 컬럼과 제약을 더한다([Creator 편집 기반](#creator-편집-revision과-책임-승인-기반-이슈-581)). V77이 생성 작업에 원문 검토 컬럼과 제약을 더한다([원문 검토 데이터 기반](#원문-검토-데이터-기반-이슈-602)).
 
 - **quiz**: Creator 소유. `quiz_id`는 revision이 바뀌어도 그대로다. 원본 YouTube `videoId`, 생성 입력 `content_text`와 그 SHA-256은 생성 후 바꾸지 않는다.
 - **quiz_revision·quiz_question·quiz_option**: INSERT 후 바꾸지 않는다. 수정은 새 revision(`revision_no` + 1)으로 만든다. `question_no`·`option_no`는 0부터의 표시 순서이고 `correct_option_index`는 0-based `option_no`다.
@@ -179,6 +179,17 @@ MySQL DDL은 문장마다 암묵적으로 커밋되므로 V73은 원자적으로
 - 오래된 작업: 별도 Scheduler 없이 생성 요청과 상태 조회 때 해당 Creator의 작업을 정리한다. 접수 후 `stale-pending`(기본 10분)이 지난 PENDING은 FAILED(`STALE_PENDING`), 시작 후 `stale-running`(기본 15분)이 지난 RUNNING은 UNKNOWN(`STALE_RUNNING`)이다. 늦게 끝난 Worker는 작업 행을 잠근 뒤 RUNNING이 아니면 결과를 저장하지 않는다.
 - 설정: `cking.quiz.generation.*`(enabled 기본 false, stale-pending, stale-running, executor.pool-size·queue-capacity·await-termination-seconds). 꺼져 있으면 새 요청은 503이고 기존 작업 조회는 된다. Executor 크기와 기준 시간은 운영 확인 전 초기값이다.
 - 로그에는 작업 ID·상태·실패 코드만 남기고 contentText·Provider 오류 원문·API key는 남기지 않는다.
+
+### 원문 검토 데이터 기반 (이슈 #602)
+
+Quiz 생성 전에 Creator가 Grounding 원문을 검토·확정하는 흐름을 위해 V77이 `quiz_generation`에 컬럼과 CHECK를 더한다. 이 단계에서는 저장 구조만 있고 생성 흐름은 바뀌지 않는다(모든 작업의 `review_stage`가 NULL).
+
+- 상태는 기존 5종을 그대로 쓰고 세부 단계는 `review_stage`(GROUNDING → AWAITING_REVIEW → GENERATING)로 구분한다. NULL은 검토 없이 Grounding과 생성을 이어서 하는 기존 작업이다. 검토 대기 중에도 status가 RUNNING이라 `active_creator_id`가 Creator당 진행·검토 대기 작업을 하나로 계속 제한한다.
+- AWAITING_REVIEW 이후에는 AI 원문(`ai_content_text`)·facts(JSON 배열, 최대 200개)·Grounding 모델·prompt 버전이 함께 있다. GENERATING에는 Creator 확정 원문(정규화 없이 저장)·SHA-256(`QuizRevisionFingerprint.contentTextSha256`과 같은 방식)·확정자·확정 시각이 함께 있다. `generation_started_at`은 GENERATING에서만 쓴다. facts 직렬화 크기(512KB)는 서버가 검증한다.
+- 단계별 status: GROUNDING은 SUCCEEDED가 될 수 없고, AWAITING_REVIEW는 RUNNING·FAILED(취소 `CANCELLED`)·UNKNOWN, GENERATING은 PENDING이 될 수 없으며 SUCCEEDED면 생성 시작 시각이 있다.
+- 이전 버전 서버의 오래된 작업 정리(PENDING → FAILED, RUNNING → UNKNOWN)는 `review_stage`를 보지 않으므로 CHECK가 어느 단계에서도 이 전이를 막지 않는다. 막으면 이전 버전으로 되돌렸을 때 정리 UPDATE가 실패해 해당 Creator의 생성 요청이 막힌다.
+- 실패 코드 `CANCELLED`는 이전 버전으로 되돌려도 읽을 수 있도록 기록 기능보다 먼저 추가했다.
+- 기존 Quiz의 `content_text`와 revision·Judge·게시·응시 데이터는 바꾸지 않는다. 컬럼·FK·CHECK는 한 ALTER 문장으로 추가하며, 기존 데이터 보존과 CHECK 반례는 `QuizGenerationContentReviewMigrationTest`(별도 MySQL 컨테이너, Docker 필요)가 확인한다.
 
 ## Fan 응시와 결과
 
