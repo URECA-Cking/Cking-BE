@@ -17,12 +17,20 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 
+import javax.sql.DataSource;
+
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +54,9 @@ import static org.mockito.Mockito.verify;
 /**
  * Grounding 원문 검토 흐름(이슈 #604)을 실제 MySQL과 Executor로 검증한다. Provider는 테스트용 Fake다.
  * 단계별 오래된 작업 정리는 시각 컬럼을 과거로 옮겨 실제 SQL 조건으로 확인한다.
+ *
+ * <p>공용·로컬 DB를 쓰지 않도록 이 클래스 전용 MySQL·Redis 컨테이너를 띄우고 {@link DynamicPropertySource}로 연결한다.
+ * Docker가 없으면 컨테이너 시작에서 실패하며 Spring Context를 만들지 않으므로 기본 datasource로 넘어가지 않는다.
  */
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -57,6 +68,41 @@ class QuizGenerationContentReviewIntegrationTest {
     private static final String REVIEWED = QuizGenerationFixtures.CONTENT_TEXT + " Creator가 고친 문장이다.";
     private static final FakeVideoGrounder GROUNDER = new FakeVideoGrounder();
     private static final List<QuizGenerationInput> GENERATION_INPUTS = new CopyOnWriteArrayList<>();
+    /** 생성 Provider 응답을 붙잡아 생성 중인 단계를 만든다. */
+    private static volatile CountDownLatch generationGate = new CountDownLatch(0);
+
+    private static final GenericContainer<?> MYSQL = new GenericContainer<>("mysql:8.4.10")
+            .withEnv("MYSQL_ROOT_PASSWORD", "root")
+            .withEnv("MYSQL_DATABASE", "cking")
+            .withEnv("MYSQL_USER", "cking")
+            .withEnv("MYSQL_PASSWORD", "cking")
+            .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci",
+                    "--default-time-zone=+00:00")
+            .withExposedPorts(3306)
+            .waitingFor(Wait.forLogMessage(".*ready for connections.*port: 3306.*", 1)
+                    .withStartupTimeout(Duration.ofMinutes(3)));
+    private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.16-alpine")
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*", 1));
+
+    static {
+        MYSQL.start();
+        REDIS.start();
+    }
+
+    @DynamicPropertySource
+    static void isolatedStores(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", QuizGenerationContentReviewIntegrationTest::jdbcUrl);
+        registry.add("spring.datasource.username", () -> "cking");
+        registry.add("spring.datasource.password", () -> "cking");
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+    }
+
+    private static String jdbcUrl() {
+        return "jdbc:mysql://" + MYSQL.getHost() + ":" + MYSQL.getMappedPort(3306) + "/cking?characterEncoding=UTF-8"
+                + "&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true&useSSL=false";
+    }
 
     @TestBean
     private VideoGrounder videoGrounder;
@@ -70,6 +116,10 @@ class QuizGenerationContentReviewIntegrationTest {
     private QuizGenerationService generationService;
     @Autowired
     private QuizGenerationStore generationStore;
+    @Autowired
+    private QuizGenerationWorker worker;
+    @Autowired
+    private DataSource dataSource;
     @Autowired
     private QuizDraftService draftService;
     @Autowired
@@ -90,14 +140,17 @@ class QuizGenerationContentReviewIntegrationTest {
         FakeQuizGenerator generator = new FakeQuizGenerator();
         return input -> {
             GENERATION_INPUTS.add(input);
+            await(generationGate);
             return generator.generate(input);
         };
     }
 
     @BeforeEach
     void setUp() {
+        assertThat(((HikariDataSource) dataSource).getJdbcUrl()).as("이 클래스 전용 컨테이너 DB만 쓴다").isEqualTo(jdbcUrl());
         GROUNDER.reset();
         GENERATION_INPUTS.clear();
+        generationGate = new CountDownLatch(0);
         data = new QuizIntegrationData(memberRepository, creatorRepository, draftService, jdbcTemplate);
     }
 
@@ -105,6 +158,7 @@ class QuizGenerationContentReviewIntegrationTest {
     @AfterEach
     void cleanUp() throws InterruptedException {
         GROUNDER.release();
+        generationGate.countDown();
         for (int attempt = 0; attempt < 50 && workingCount() > 0; attempt++) {
             Thread.sleep(100);
         }
@@ -260,6 +314,70 @@ class QuizGenerationContentReviewIntegrationTest {
         assertThat(state(id)).isIn("RUNNING:GENERATING:-", "FAILED:AWAITING_REVIEW:CANCELLED");
     }
 
+    @Test
+    void 생성_Worker_두_개가_동시에_시작해도_생성_Provider는_한_번만_부른다() throws Exception {
+        doReturn(true).when(dispatcher).dispatchGeneration(anyLong());
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+        generationService.confirmContent(creator.getMemberId(), id, REVIEWED);
+
+        concurrently(() -> run(() -> worker.runGeneration(id)), () -> run(() -> worker.runGeneration(id)));
+
+        assertThat(state(id)).isEqualTo("SUCCEEDED:GENERATING:-");
+        assertThat(GENERATION_INPUTS).hasSize(1);
+        assertThat(quizCount(creator)).isEqualTo(1);
+    }
+
+    @Test
+    void 정리와_생성_시작이_겹쳐도_한쪽만_적용된다() throws Exception {
+        doReturn(true).when(dispatcher).dispatchGeneration(anyLong());
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+        generationService.confirmContent(creator.getMemberId(), id, REVIEWED);
+        shift(id, "content_confirmed_at", "INTERVAL 11 MINUTE");
+
+        concurrently(() -> run(() -> expire(creator)), () -> run(() -> worker.runGeneration(id)));
+
+        if (state(id).startsWith("FAILED")) {
+            assertThat(state(id)).isEqualTo("FAILED:GENERATING:STALE_PENDING");
+            assertThat(GENERATION_INPUTS).as("정리가 먼저면 Provider를 부르지 않는다").isEmpty();
+            assertThat(quizCount(creator)).isZero();
+        } else {
+            assertThat(state(id)).isEqualTo("SUCCEEDED:GENERATING:-");
+            assertThat(GENERATION_INPUTS).hasSize(1);
+            assertThat(quizCount(creator)).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void 생성_중_정리된_작업은_늦게_끝난_결과를_저장하지_않는다() throws Exception {
+        doReturn(true).when(dispatcher).dispatchGeneration(anyLong());
+        Creator creator = creator();
+        long id = awaitingReview(creator);
+        generationService.confirmContent(creator.getMemberId(), id, REVIEWED);
+        generationGate = new CountDownLatch(1);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> running = executor.submit(() -> worker.runGeneration(id));
+            for (int attempt = 0; attempt < 100 && GENERATION_INPUTS.isEmpty(); attempt++) {
+                sleep();
+            }
+            assertThat(GENERATION_INPUTS).as("생성 Provider 호출 중").hasSize(1);
+            shift(id, "generation_started_at", "INTERVAL 16 MINUTE");
+            expire(creator);
+            assertThat(state(id)).isEqualTo("UNKNOWN:GENERATING:STALE_RUNNING");
+
+            generationGate.countDown();
+            running.get(10, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(state(id)).isEqualTo("UNKNOWN:GENERATING:STALE_RUNNING");
+        assertThat(row(id).get("quiz_id")).isNull();
+        assertThat(quizCount(creator)).isZero();
+    }
+
     private Creator creator() {
         Creator creator = data.creator();
         creators.add(creator);
@@ -275,6 +393,27 @@ class QuizGenerationContentReviewIntegrationTest {
         long id = request(creator);
         awaitState(id, "RUNNING", "AWAITING_REVIEW");
         return id;
+    }
+
+    private int quizCount(Creator creator) {
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM quiz WHERE creator_id = ?", Integer.class,
+                creator.getCreatorId());
+    }
+
+    private static Object run(Runnable task) {
+        task.run();
+        return "done";
+    }
+
+    private static void await(CountDownLatch gate) {
+        try {
+            if (!gate.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("생성 대기 시간이 지났습니다.");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
     }
 
     private void expire(Creator creator) {
