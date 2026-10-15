@@ -82,19 +82,33 @@ class CreatorRecommendationEndToEndIntegrationTest {
 
     @AfterEach
     void cleanUp() throws Exception {
-        executor.submit(() -> { }).get(15, TimeUnit.SECONDS);
+        try {
+            executor.submit(() -> { }).get(15, TimeUnit.SECONDS);
+        } finally {
+            restoreRecommendationState();
+            deleteFixtures();
+        }
+    }
+
+    /** 현재 포인터가 이 테스트가 만든 세대일 때만 원래 세대로 되돌려, 그 사이 다른 작업이 바꾼 포인터는 건드리지 않는다. */
+    private void restoreRecommendationState() {
+        String ours = "(SELECT generation_id FROM interest_recommendation_generation WHERE generation_id > ? AND model_version = ?)";
         if (originalGeneration == null) {
-            jdbc.update("DELETE FROM interest_recommendation_state WHERE taxonomy_version = ? AND interest_code = ?",
-                    taxonomyVersion, interestCode);
+            jdbc.update("DELETE FROM interest_recommendation_state WHERE taxonomy_version = ? AND interest_code = ? "
+                    + "AND current_generation_id IN " + ours, taxonomyVersion, interestCode, maxGenerationBefore, MODEL);
         } else {
             jdbc.update("UPDATE interest_recommendation_state SET current_generation_id = ? "
-                    + "WHERE taxonomy_version = ? AND interest_code = ?", originalGeneration, taxonomyVersion, interestCode);
+                    + "WHERE taxonomy_version = ? AND interest_code = ? AND current_generation_id IN " + ours,
+                    originalGeneration, taxonomyVersion, interestCode, maxGenerationBefore, MODEL);
         }
         jdbc.update("DELETE FROM interest_recommendation_candidate WHERE generation_id IN "
                 + "(SELECT generation_id FROM interest_recommendation_generation WHERE generation_id > ? AND model_version = ?)",
                 maxGenerationBefore, MODEL);
         jdbc.update("DELETE FROM interest_recommendation_generation WHERE generation_id > ? AND model_version = ?",
                 maxGenerationBefore, MODEL);
+    }
+
+    private void deleteFixtures() {
         for (Member member : fixtureMembers) {
             jdbc.update("DELETE FROM creator_follow WHERE member_id = ?", member.getMemberId());
             jdbc.update("DELETE FROM creator_recommendation_request WHERE member_id = ?", member.getMemberId());
@@ -116,15 +130,15 @@ class CreatorRecommendationEndToEndIntegrationTest {
         Creator third = creatorWithSpace(member().getMemberId());
         Creator withoutSpace = creator(member().getMemberId());
 
-        // 1. 관심 분야 저장: 검증 실패는 기존 선택을 바꾸지 않고, 같은 요청 반복은 선택 시각을 바꾸지 않는다.
+        // 1. 관심 분야 저장: 정상 저장 뒤 잘못된 요청은 기존 선택과 선택 시각을 바꾸지 않고, 같은 요청 반복도 마찬가지다.
         assertThat(call("GET", "/api/me/interests", null, null, null).statusCode()).isEqualTo(401);
+        assertThat(putInterests(fanToken, List.of(interestCode)).statusCode()).isEqualTo(200);
+        Object selectedAt = selectedAt(fan);
         assertThat(putInterests(fanToken, List.of(interestCode, interestCode)).statusCode()).isEqualTo(400);
+        assertThat(selectedInterests(fanToken)).containsExactly(interestCode);
+        assertThat(selectedAt(fan)).isEqualTo(selectedAt);
         assertThat(putInterests(fanToken, List.of(interestCode)).statusCode()).isEqualTo(200);
-        Object selectedAt = jdbc.queryForObject("SELECT selected_at FROM member_interest WHERE member_id = ?",
-                Object.class, fan.getMemberId());
-        assertThat(putInterests(fanToken, List.of(interestCode)).statusCode()).isEqualTo(200);
-        assertThat(jdbc.queryForObject("SELECT selected_at FROM member_interest WHERE member_id = ?",
-                Object.class, fan.getMemberId())).isEqualTo(selectedAt);
+        assertThat(selectedAt(fan)).isEqualTo(selectedAt);
 
         // 2. 적재 전에는 우리 후보가 관심 분야 추천으로 나오지 않는다. 기존 세대가 없는 DB에서는 인기순 대체에 섞일 수 있다.
         JsonNode beforeIngest = recommend(fanToken, 20);
@@ -133,8 +147,8 @@ class CreatorRecommendationEndToEndIntegrationTest {
         }
 
         // 3. 후보 적재: 인증·권한, 신규 세대, 같은 payload 재전송, 낮은 실행 번호.
-        // 빈 DB에서도 "낮은 실행 번호"(sequence - 1)가 1 이상이도록 +2로 시작한다.
-        long sequence = jdbc.queryForObject("SELECT COALESCE(MAX(application_sequence), 0) + 2 "
+        // V47이 기존 이력을 음수 실행 번호로 바꿨으므로, 빈 DB와 음수 이력만 있는 DB에서도 sequence - 1이 1 이상이도록 한다.
+        long sequence = jdbc.queryForObject("SELECT GREATEST(COALESCE(MAX(application_sequence), 0), 0) + 2 "
                 + "FROM interest_recommendation_generation", Long.class);
         List<Creator> ranked = List.of(own, first, withoutSpace, second, third);
         Map<String, Object> batch = batch(sequence, ranked);
@@ -183,6 +197,17 @@ class CreatorRecommendationEndToEndIntegrationTest {
         executor.submit(() -> { }).get(15, TimeUnit.SECONDS);
         assertThat(jdbc.queryForObject("SELECT request_id FROM creator_recommendation_conversion WHERE member_id = ?",
                 String.class, fan.getMemberId())).isEqualTo(requestId);
+    }
+
+    private Object selectedAt(Member member) {
+        return jdbc.queryForObject("SELECT selected_at FROM member_interest WHERE member_id = ?", Object.class, member.getMemberId());
+    }
+
+    private List<String> selectedInterests(String token) throws Exception {
+        List<String> codes = new ArrayList<>();
+        json.readTree(call("GET", "/api/me/interests", token, null, null).body()).get("data").get("interestCodes")
+                .forEach(code -> codes.add(code.asText()));
+        return codes;
     }
 
     private JsonNode recommend(String token, int size) throws Exception {
