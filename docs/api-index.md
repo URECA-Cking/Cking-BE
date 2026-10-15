@@ -186,4 +186,5 @@
 | 182 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/profile-images` | 템플릿 기본 프로필 이미지 업로드(JPEG/PNG 5MB 이하, 최소 200×200px, CDN `imageUrl` 반환) | - |
 | 183 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/banner-images` | 템플릿 기본 배너 이미지 업로드(JPEG/PNG 5MB 이하, 최소 600×200px, CDN `imageUrl` 반환) | - |
 | 184 | 외부 | Notification | USER | PATCH | `/api/me/notifications/read` | 내 미확인 알림 전체 읽음 | 상태 기반 |
+| 185 | 외부 | Notification | USER | PATCH | `/api/me/notifications/{notificationId}/hide` | 내 알림 하나를 알림함에서 숨김(삭제 아님, 숨긴 알림은 목록·읽음에서 제외, 반복 요청은 멱등) | 상태 기반 |
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

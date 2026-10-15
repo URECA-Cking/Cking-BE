@@ -44,7 +44,7 @@ class NotificationQueryServiceTest {
         Event event = mock(Event.class);
         Drawing drawing = mock(Drawing.class);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
         when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of(event));
         when(drawingRepository.findAllById(List.of(200L))).thenReturn(List.of(drawing));
@@ -64,7 +64,7 @@ class NotificationQueryServiceTest {
         assertThat(result.drawing()).isEqualTo(new NotificationSummary.DrawingInfo(200L, 1, DrawingType.REDRAW));
         assertThat(result.type()).isEqualTo(NotificationType.REDRAW_WINNER);
         assertThat(result.readAt()).isNull();
-        verify(notificationRepository).findByMemberId(10L, PageRequest.of(0, 20, NOTIFICATION_LIST_SORT));
+        verify(notificationRepository).findByMemberIdAndHiddenAtIsNull(10L, PageRequest.of(0, 20, NOTIFICATION_LIST_SORT));
     }
 
     @Test
@@ -75,7 +75,7 @@ class NotificationQueryServiceTest {
         DrawingRepository drawingRepository = mock(DrawingRepository.class);
         Notification notification = sanctionNotification(NotificationType.COMMENT_RESTRICTION_STARTED);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
         NotificationQueryService service = new NotificationQueryService(
                 memberRepository, notificationRepository, eventRepository, drawingRepository
@@ -101,7 +101,7 @@ class NotificationQueryServiceTest {
         Event event = mock(Event.class);
         Drawing drawing = mock(Drawing.class);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(sanction, winner), PageRequest.of(0, 20), 2));
         when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of(event));
         when(drawingRepository.findAllById(List.of(200L))).thenReturn(List.of(drawing));
@@ -146,7 +146,7 @@ class NotificationQueryServiceTest {
         DrawingRepository drawingRepository = mock(DrawingRepository.class);
         Notification notification = notification(10L, 100L, 200L, 300L, NotificationType.INITIAL_WINNER);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(notification), PageRequest.of(0, 20), 1));
         when(eventRepository.findByEventIdIn(List.of(100L))).thenReturn(List.of());
         NotificationQueryService service = new NotificationQueryService(
@@ -164,7 +164,7 @@ class NotificationQueryServiceTest {
         EventRepository eventRepository = mock(EventRepository.class);
         DrawingRepository drawingRepository = mock(DrawingRepository.class);
         when(memberRepository.existsById(10L)).thenReturn(true);
-        when(notificationRepository.findByMemberId(eq(10L), eq(PageRequest.of(2, 50, NOTIFICATION_LIST_SORT))))
+        when(notificationRepository.findByMemberIdAndHiddenAtIsNull(eq(10L), eq(PageRequest.of(2, 50, NOTIFICATION_LIST_SORT))))
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(2, 50), 0));
         NotificationQueryService service = new NotificationQueryService(
                 memberRepository, notificationRepository, eventRepository, drawingRepository
@@ -176,7 +176,7 @@ class NotificationQueryServiceTest {
         assertThat(result.getNumber()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(50);
         assertThat(result.getTotalElements()).isZero();
-        verify(notificationRepository).findByMemberId(10L, PageRequest.of(2, 50, NOTIFICATION_LIST_SORT));
+        verify(notificationRepository).findByMemberIdAndHiddenAtIsNull(10L, PageRequest.of(2, 50, NOTIFICATION_LIST_SORT));
         verifyNoInteractions(eventRepository, drawingRepository);
     }
 

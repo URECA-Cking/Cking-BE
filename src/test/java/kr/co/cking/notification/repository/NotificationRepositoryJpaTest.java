@@ -72,7 +72,7 @@ class NotificationRepositoryJpaTest {
         );
         entityManager.clear();
 
-        List<Notification> result = notificationRepository.findByMemberId(
+        List<Notification> result = notificationRepository.findByMemberIdAndHiddenAtIsNull(
                 fixture.memberId(), PageRequest.of(0, 20, NOTIFICATION_LIST_SORT)
         ).getContent();
 
@@ -101,7 +101,7 @@ class NotificationRepositoryJpaTest {
         Notification otherMember = saveNotification(
                 fixture.otherMemberId(), fixture.eventId(), fixture.drawingId(), fixture.otherMemberWinnerId(),
                 NotificationType.INITIAL_WINNER, "타인 알림", Instant.parse("2026-09-19T00:00:00Z"), null);
-        assertThat(notificationRepository.findByMemberId(fixture.memberId(),
+        assertThat(notificationRepository.findByMemberIdAndHiddenAtIsNull(fixture.memberId(),
                 PageRequest.of(0, 1, NOTIFICATION_LIST_SORT)).getContent()).hasSize(1);
         entityManager.clear();
 
@@ -227,6 +227,218 @@ class NotificationRepositoryJpaTest {
         }
     }
 
+    /** 숨긴 알림은 목록 조회에서 빠지고 총 개수에도 세지 않으며 행은 그대로 남는다. */
+    @Test
+    void 숨긴_알림은_목록과_총_개수에서_제외되고_행은_남는다() {
+        Fixture fixture = fixture();
+        Notification visible = saveNotification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.INITIAL_WINNER, "보이는 알림", Instant.parse("2026-09-17T00:00:00Z"), null);
+        Notification hidden = saveNotification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.REDRAW_WINNER, "숨긴 알림", Instant.parse("2026-09-18T00:00:00Z"), null);
+        hidden.hide(Instant.parse("2026-10-16T00:00:00Z"));
+        notificationRepository.saveAndFlush(hidden);
+        entityManager.clear();
+
+        var page = notificationRepository.findByMemberIdAndHiddenAtIsNull(
+                fixture.memberId(), PageRequest.of(0, 20, NOTIFICATION_LIST_SORT));
+
+        assertThat(page.getContent()).extracting(Notification::getNotificationId)
+                .containsExactly(visible.getNotificationId());
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(notificationRepository.findById(hidden.getNotificationId()).orElseThrow().getHiddenAt())
+                .isEqualTo(Instant.parse("2026-10-16T00:00:00Z"));
+    }
+
+    /** 전체 읽음은 숨긴 알림을 건드리지 않아 건수에 세지 않고 읽음 시각도 기록하지 않는다. */
+    @Test
+    void 전체_읽음은_숨긴_알림을_변경하지_않는다() {
+        Fixture fixture = fixture();
+        Notification visible = saveNotification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.INITIAL_WINNER, "보이는 미확인 알림", Instant.parse("2026-09-17T00:00:00Z"), null);
+        Notification hidden = saveNotification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.REDRAW_WINNER, "숨긴 미확인 알림", Instant.parse("2026-09-18T00:00:00Z"), null);
+        hidden.hide(Instant.parse("2026-10-16T00:00:00Z"));
+        notificationRepository.saveAndFlush(hidden);
+        entityManager.clear();
+
+        Instant bulkReadAt = Instant.parse("2026-10-16T01:00:00Z");
+        assertThat(notificationRepository.markAllUnreadAsRead(fixture.memberId(), bulkReadAt)).isEqualTo(1);
+        entityManager.clear();
+
+        assertThat(notificationRepository.findById(visible.getNotificationId()).orElseThrow().getReadAt())
+                .isEqualTo(bulkReadAt);
+        assertThat(notificationRepository.findById(hidden.getNotificationId()).orElseThrow().getReadAt()).isNull();
+    }
+
+    /** 숨김이 행 잠금을 먼저 잡으면 전체 읽음은 커밋을 기다린 뒤 숨긴 행을 빼고 나머지만 처리한다. */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 숨김이_먼저_잠그면_전체_읽음은_숨긴_알림을_제외한다() throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        ConcurrencyFixture fixture = transaction.execute(status -> concurrencyFixture());
+        Instant hiddenAt = Instant.parse("2026-10-16T01:00:00Z");
+        Instant bulkReadAt = hiddenAt.plusSeconds(1);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch bulkStarted = new CountDownLatch(1);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> hide = executor.submit(() -> transaction.execute(status -> {
+                notificationRepository.findByIdForUpdate(fixture.targetId()).orElseThrow().hide(hiddenAt);
+                entityManager.flush();
+                locked.countDown();
+                await(release);
+                return null;
+            }));
+            await(locked);
+            Future<Integer> bulk = executor.submit(() -> transaction.execute(status -> {
+                bulkStarted.countDown();
+                return notificationRepository.markAllUnreadAsRead(fixture.memberId(), bulkReadAt);
+            }));
+            await(bulkStarted);
+            assertThatThrownBy(() -> bulk.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+
+            hide.get(10, TimeUnit.SECONDS);
+            assertThat(bulk.get(10, TimeUnit.SECONDS)).isEqualTo(1);
+            transaction.execute(status -> {
+                Notification target = notificationRepository.findById(fixture.targetId()).orElseThrow();
+                assertThat(target.getHiddenAt()).isEqualTo(hiddenAt);
+                assertThat(target.getReadAt()).isNull();
+                assertThat(notificationRepository.findById(fixture.otherId()).orElseThrow().getReadAt())
+                        .isEqualTo(bulkReadAt);
+                return null;
+            });
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            try {
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                transaction.execute(status -> {
+                    deleteConcurrencyFixture(fixture);
+                    return null;
+                });
+            }
+        }
+    }
+
+    /** 전체 읽음이 먼저 갱신한 행은 숨김이 잠금을 기다린 뒤에도 읽음 시각을 유지하고 숨김만 기록한다. */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 전체_읽음이_먼저_잠그면_숨김은_읽음_시각을_유지한다() throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        ConcurrencyFixture fixture = transaction.execute(status -> concurrencyFixture());
+        Instant bulkReadAt = Instant.parse("2026-10-16T01:00:00Z");
+        Instant hiddenAt = bulkReadAt.plusSeconds(1);
+        CountDownLatch updated = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch hideStarted = new CountDownLatch(1);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> bulk = executor.submit(() -> transaction.execute(status -> {
+                int count = notificationRepository.markAllUnreadAsRead(fixture.memberId(), bulkReadAt);
+                updated.countDown();
+                await(release);
+                return count;
+            }));
+            await(updated);
+            Future<Instant> hide = executor.submit(() -> transaction.execute(status -> {
+                hideStarted.countDown();
+                Notification notification = notificationRepository.findByIdForUpdate(fixture.targetId()).orElseThrow();
+                notification.hide(hiddenAt);
+                return notification.getHiddenAt();
+            }));
+            await(hideStarted);
+            assertThatThrownBy(() -> hide.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+
+            assertThat(bulk.get(10, TimeUnit.SECONDS)).isEqualTo(2);
+            assertThat(hide.get(10, TimeUnit.SECONDS)).isEqualTo(hiddenAt);
+            transaction.execute(status -> {
+                Notification target = notificationRepository.findById(fixture.targetId()).orElseThrow();
+                assertThat(target.getReadAt()).isEqualTo(bulkReadAt);
+                assertThat(target.getHiddenAt()).isEqualTo(hiddenAt);
+                return null;
+            });
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            try {
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                transaction.execute(status -> {
+                    deleteConcurrencyFixture(fixture);
+                    return null;
+                });
+            }
+        }
+    }
+
+    /** 같은 알림에 숨김 요청이 동시에 들어오면 둘 다 성공하고 먼저 잠근 요청의 hiddenAt이 그대로 남는다. */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 같은_알림의_동시_숨김은_둘_다_성공하고_최초_hiddenAt을_유지한다() throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        ConcurrencyFixture fixture = transaction.execute(status -> concurrencyFixture());
+        Instant firstHiddenAt = Instant.parse("2026-10-16T01:00:00Z");
+        Instant secondHiddenAt = firstHiddenAt.plusSeconds(1);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch secondStarted = new CountDownLatch(1);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Instant> first = executor.submit(() -> transaction.execute(status -> {
+                Notification notification = notificationRepository.findByIdForUpdate(fixture.targetId()).orElseThrow();
+                notification.hide(firstHiddenAt);
+                entityManager.flush();
+                locked.countDown();
+                await(release);
+                return notification.getHiddenAt();
+            }));
+            await(locked);
+            Future<Instant> second = executor.submit(() -> transaction.execute(status -> {
+                secondStarted.countDown();
+                Notification notification = notificationRepository.findByIdForUpdate(fixture.targetId()).orElseThrow();
+                notification.hide(secondHiddenAt);
+                return notification.getHiddenAt();
+            }));
+            await(secondStarted);
+            // 두 번째 요청은 첫 요청이 커밋할 때까지 행 잠금에서 기다린다.
+            assertThatThrownBy(() -> second.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+
+            // 둘 다 오류 없이 끝나고, 기다렸던 요청은 커밋된 최초 시각을 읽어 덮어쓰지 않는다.
+            assertThat(first.get(10, TimeUnit.SECONDS)).isEqualTo(firstHiddenAt);
+            assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo(firstHiddenAt);
+            transaction.execute(status -> {
+                Notification target = notificationRepository.findById(fixture.targetId()).orElseThrow();
+                assertThat(target.getHiddenAt()).isEqualTo(firstHiddenAt);
+                assertThat(target.getReadAt()).isNull();
+                assertThat(notificationRepository.findById(fixture.otherId()).orElseThrow().getHiddenAt()).isNull();
+                return null;
+            });
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            try {
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                transaction.execute(status -> {
+                    deleteConcurrencyFixture(fixture);
+                    return null;
+                });
+            }
+        }
+    }
+
     /** 경합 테스트에 사용할 회원·제재·미확인 알림 두 건을 별도 트랜잭션에서 저장한다. */
     private ConcurrencyFixture concurrencyFixture() {
         Member member = new Member("알림 경합 회원", null, null, MemberRole.USER);
@@ -285,7 +497,7 @@ class NotificationRepositoryJpaTest {
         assertThat(found.getEventId()).isNull();
         assertThat(found.getDrawingId()).isNull();
         assertThat(found.getWinnerId()).isNull();
-        assertThat(notificationRepository.findByMemberId(memberId, PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))
+        assertThat(notificationRepository.findByMemberIdAndHiddenAtIsNull(memberId, PageRequest.of(0, 20, NOTIFICATION_LIST_SORT))
                 .getContent()).extracting(Notification::getNotificationId).containsExactly(saved.getNotificationId());
     }
 
@@ -381,13 +593,13 @@ class NotificationRepositoryJpaTest {
                 fixture.drawingId(), NotificationType.INITIAL_NON_WINNER.name(), "이벤트 결과 발표", "본문", Instant.now());
 
         assertThat(created).isEqualTo(1);
-        List<Notification> saved = notificationRepository.findByMemberId(nonWinnerId, PageRequest.of(0, 10)).getContent();
+        List<Notification> saved = notificationRepository.findByMemberIdAndHiddenAtIsNull(nonWinnerId, PageRequest.of(0, 10)).getContent();
         assertThat(saved).hasSize(1);
         assertThat(saved.get(0).getType()).isEqualTo(NotificationType.INITIAL_NON_WINNER);
         assertThat(saved.get(0).getEventId()).isEqualTo(fixture.eventId());
         assertThat(saved.get(0).getDrawingId()).isEqualTo(fixture.drawingId());
         assertThat(saved.get(0).getWinnerId()).isNull();
-        assertThat(notificationRepository.findByMemberId(fixture.memberId(), PageRequest.of(0, 10))).isEmpty();
+        assertThat(notificationRepository.findByMemberIdAndHiddenAtIsNull(fixture.memberId(), PageRequest.of(0, 10))).isEmpty();
     }
 
     @Test

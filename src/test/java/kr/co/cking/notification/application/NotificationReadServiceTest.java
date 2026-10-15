@@ -105,6 +105,35 @@ class NotificationReadServiceTest {
         assertThat(notification.getReadAt()).isNull();
     }
 
+    /** 숨긴 Notification은 사용자에게 없는 알림이라 읽음 처리하지 않고 NOT_FOUND다. */
+    @Test
+    void 숨긴_Notification은_읽음_처리할_수_없다() {
+        Notification notification = notificationOf(1L, null);
+        notification.hide(Instant.parse("2026-10-16T00:00:00Z"));
+        given(memberRepository.existsById(1L)).willReturn(true);
+        given(notificationRepository.findByIdForUpdate(10L)).willReturn(Optional.of(notification));
+
+        assertThatThrownBy(() -> notificationReadService.read(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(NotificationErrorCode.NOTIFICATION_NOT_FOUND);
+        assertThat(notification.getReadAt()).isNull();
+    }
+
+    /** 타인이 숨긴 알림이라도 소유자 검증이 먼저라 존재 여부 대신 FORBIDDEN을 돌려준다. */
+    @Test
+    void 타_사용자의_숨긴_Notification도_FORBIDDEN이다() {
+        Notification notification = notificationOf(2L, null);
+        notification.hide(Instant.parse("2026-10-16T00:00:00Z"));
+        given(memberRepository.existsById(1L)).willReturn(true);
+        given(notificationRepository.findByIdForUpdate(10L)).willReturn(Optional.of(notification));
+
+        assertThatThrownBy(() -> notificationReadService.read(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
+    }
+
     /** 전체 읽음은 요청 사용자만 대상으로 미확인 알림의 변경 건수를 반환한다. */
     @Test
     void 전체_읽음은_새로_읽은_알림_건수를_반환한다() {

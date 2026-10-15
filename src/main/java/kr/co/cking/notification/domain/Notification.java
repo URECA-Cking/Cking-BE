@@ -58,6 +58,10 @@ public class Notification {
     @Column(name = "read_at")
     private Instant readAt;
 
+    /** 사용자가 알림함에서 숨긴 시각. null이면 보이는 알림이며 숨김은 되돌리지 않는다. */
+    @Column(name = "hidden_at")
+    private Instant hiddenAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -103,6 +107,18 @@ public class Notification {
     /** 요청 사용자가 이 Notification의 소유자인지 확인한다. */
     public boolean isOwnedBy(Long userId) {
         return memberId.equals(userId);
+    }
+
+    /** 숨긴 알림인지 확인한다. */
+    public boolean isHidden() {
+        return hiddenAt != null;
+    }
+
+    /** 아직 숨기지 않은 경우에만 최초 숨김 시각을 기록한다. 이미 숨겼으면 기존 시각을 유지한다. */
+    public void hide(Instant hiddenAt) {
+        if (this.hiddenAt == null) {
+            this.hiddenAt = hiddenAt;
+        }
     }
 
     /** 아직 읽지 않은 경우에만 최초 읽음 시각을 기록한다. */

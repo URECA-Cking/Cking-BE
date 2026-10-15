@@ -14,6 +14,8 @@ import java.util.List;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.drawing.domain.DrawingType;
+import kr.co.cking.notification.application.NotificationHideResult;
+import kr.co.cking.notification.application.NotificationHideService;
 import kr.co.cking.notification.application.NotificationQueryService;
 import kr.co.cking.notification.application.NotificationReadAllResult;
 import kr.co.cking.notification.application.NotificationReadResult;
@@ -42,6 +44,9 @@ class NotificationControllerTest {
 
     @MockitoBean
     private NotificationReadService notificationReadService;
+
+    @MockitoBean
+    private NotificationHideService notificationHideService;
 
     @Test
     void 내_알림_목록은_페이지_응답과_알림_상세를_반환한다() throws Exception {
@@ -177,6 +182,53 @@ class NotificationControllerTest {
         when(notificationReadService.read(1L, 10L)).thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 
         mockMvc.perform(patch("/api/me/notifications/10/read"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    /** 숨김 API는 인증된 사용자의 알림을 숨기고 최초 숨김 시각을 UTC로 반환한다. */
+    @Test
+    void 숨김_성공_응답을_반환한다() throws Exception {
+        when(notificationHideService.hide(1L, 10L))
+                .thenReturn(new NotificationHideResult(10L, Instant.parse("2026-10-16T00:00:00Z")));
+
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.notificationId").value(10))
+                .andExpect(jsonPath("$.data.hiddenAt").value("2026-10-16T00:00:00Z"));
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithAnonymousUser
+    void JWT가_없으면_숨김은_401과_UNAUTHORIZED를_반환한다() throws Exception {
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void 숨김_notificationId가_양수가_아니면_400을_반환한다() throws Exception {
+        mockMvc.perform(patch("/api/me/notifications/0/hide"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/me/notifications/-1/hide"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 숨김에서_존재하지_않는_Notification은_404를_반환한다() throws Exception {
+        when(notificationHideService.hide(1L, 10L)).thenThrow(new BusinessException(NotificationErrorCode.NOTIFICATION_NOT_FOUND));
+
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));
+    }
+
+    @Test
+    void 숨김에서_타_사용자_Notification은_403을_반환한다() throws Exception {
+        when(notificationHideService.hide(1L, 10L)).thenThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
+
+        mockMvc.perform(patch("/api/me/notifications/10/hide"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
