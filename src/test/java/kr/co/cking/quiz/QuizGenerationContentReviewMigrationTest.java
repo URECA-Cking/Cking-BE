@@ -49,22 +49,25 @@ class QuizGenerationContentReviewMigrationTest {
         String database = "quiz_generation_review_legacy";
         MigrationVersion previous = migrateToPreviousVersion(database);
         String[] tables = {"quiz", "quiz_revision", "quiz_question", "quiz_option", "quiz_revision_decision",
-                "quiz_judge_job", "quiz_judge_result", "quiz_attempt"};
+                "quiz_judge_series", "quiz_judge_job", "quiz_judge_job_call", "quiz_judge_result",
+                "quiz_judge_result_item", "quiz_attempt", "quiz_attempt_answer"};
         Map<String, String> checksumsBefore;
         String generationsBefore;
         try (Connection connection = connect(database); Statement statement = connection.createStatement()) {
             baseData(statement, 3);
             quiz(statement, 1);
+            publishedHistory(statement);
             legacy(statement, 1, "PENDING", null, false, false, null);
             legacy(statement, 2, "RUNNING", null, true, false, null);
             legacy(statement, 3, "SUCCEEDED", null, true, true, 1);
             legacy(statement, 1, "FAILED", "PROVIDER_ERROR", true, true, null);
             legacy(statement, 1, "UNKNOWN", "STALE_RUNNING", true, true, null);
             checksumsBefore = checksums(statement, tables);
+            assertThat(checksumsBefore.values()).as("비교 대상 테이블마다 데이터가 있다").noneMatch(value -> value.startsWith("0:"));
             generationsBefore = generations(statement);
         }
 
-        migrate(database, null);
+        migrate(database, REVIEW_MIGRATION);
 
         try (Connection connection = connect(database); Statement statement = connection.createStatement()) {
             assertThat(query(statement, "SELECT CONCAT(COUNT(*), ':', MIN(success)) FROM flyway_schema_history "
@@ -86,7 +89,7 @@ class QuizGenerationContentReviewMigrationTest {
     @Test
     void 단계별로_가능한_원문_검토_조합만_저장된다() throws SQLException {
         String database = "quiz_generation_review_checks";
-        migrate(database, null);
+        migrate(database, REVIEW_MIGRATION);
         try (Connection connection = connect(database); Statement statement = connection.createStatement()) {
             baseData(statement, 1);
             quiz(statement, 1);
@@ -158,7 +161,7 @@ class QuizGenerationContentReviewMigrationTest {
     @Test
     void 검토_대기도_Creator당_진행_작업_하나로_제한된다() throws SQLException {
         String database = "quiz_generation_review_active";
-        migrate(database, null);
+        migrate(database, REVIEW_MIGRATION);
         try (Connection connection = connect(database); Statement statement = connection.createStatement()) {
             baseData(statement, 1);
             insert(statement, awaiting("RUNNING"));
@@ -180,7 +183,7 @@ class QuizGenerationContentReviewMigrationTest {
     @Test
     void 이전_버전의_오래된_작업_정리가_검토_단계_작업에도_적용된다() throws SQLException {
         String database = "quiz_generation_review_rollback";
-        migrate(database, null);
+        migrate(database, REVIEW_MIGRATION);
         try (Connection connection = connect(database); Statement statement = connection.createStatement()) {
             baseData(statement, 4);
             insert(statement, with(row("GROUNDING", "PENDING"), "creator_id", "1"));
@@ -316,6 +319,60 @@ class QuizGenerationContentReviewMigrationTest {
                 + "question_count, option_count, revision_sha256, origin, hash_version, created_at) VALUES (" + quizId
                 + ", " + quizId + ", 1, '제목', 'quiz-mcq-v1', 1, 4, SHA2('revision', 256), 'AI_GENERATED', "
                 + "'quiz-revision-v1', UTC_TIMESTAMP(6))");
+    }
+
+    /**
+     * Quiz 1(revision 1)의 문항·보기, Judge 평가와 호출 기록·결과, 기존 Judge 승인, 게시 고정, Fan 응시와 답안.
+     * 운영 흐름과 같은 FK·CHECK를 모두 지킨다.
+     */
+    private static void publishedHistory(Statement statement) throws SQLException {
+        String revisionSha = "(SELECT revision_sha256 FROM quiz_revision WHERE revision_id = 1)";
+        statement.execute("INSERT INTO member (member_id, name, role) VALUES (8, 'fan', 'USER')");
+        statement.execute("INSERT INTO quiz_question (question_id, revision_id, question_no, question_text, "
+                + "correct_option_index, explanation, source_evidence) VALUES (1, 1, 0, '질문', 0, '해설', '원문')");
+        for (int optionNo = 0; optionNo < 4; optionNo++) {
+            statement.execute("INSERT INTO quiz_option (question_id, option_no, option_text) VALUES (1, " + optionNo
+                    + ", '보기 " + optionNo + "')");
+        }
+        statement.execute("INSERT INTO quiz_judge_series (series_id, quiz_id, revision_id, content_text_sha256, "
+                + "revision_sha256, input_sha256, settings_fingerprint, model, reasoning_effort, max_output_tokens, "
+                + "reason_max_length, prompt_version, rubric_version, schema_version, policy_version, "
+                + "instructions_sha256, schema_sha256, allocated_attempts, created_at, updated_at) VALUES (1, 1, 1, "
+                + "SHA2('원문', 256), " + revisionSha + ", REPEAT('i', 64), REPEAT('s', 64), 'gpt-6.1-sol', 'medium', "
+                + "8192, 200, 'p', 'r', 's', 'v', REPEAT('n', 64), REPEAT('c', 64), 1, UTC_TIMESTAMP(6), "
+                + "UTC_TIMESTAMP(6))");
+        statement.execute("INSERT INTO quiz_judge_job (job_id, series_id, quiz_id, revision_id, creator_id, "
+                + "requested_by_member_id, request_id, attempt_no, status, requested_at, started_at, completed_at, "
+                + "updated_at, requested_model, response_model, http_request_count, usage_complete) VALUES (1, 1, 1, 1, "
+                + "1, 7, UUID(), 1, 'SUCCEEDED', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), "
+                + "UTC_TIMESTAMP(6), 'gpt-6.1-sol', 'gpt-6.1-sol', 1, TRUE)");
+        statement.execute("INSERT INTO quiz_judge_job_call (job_id, call_no, http_status, response_id, response_model, "
+                + "input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens) VALUES (1, 1, 200, "
+                + "'resp_1', 'gpt-6.1-sol', 100, 0, 50, 20, 150)");
+        statement.execute("INSERT INTO quiz_judge_result (result_id, job_id, series_id, revision_id, input_sha256, "
+                + "settings_fingerprint, policy_version, aggregation, question_count, result_sha256, completed_at) "
+                + "VALUES (1, 1, 1, 1, REPEAT('i', 64), REPEAT('s', 64), 'v', 'ALL_PASS', 1, REPEAT('j', 64), "
+                + "UTC_TIMESTAMP(6))");
+        for (String rubric : new String[]{"TEXT_ANSWER_CORRECT", "UNIQUE_ANSWER", "EVIDENCE_SUPPORTS_ANSWER",
+                "QUESTION_CLARITY", "KOREAN_QUALITY", "DISTRACTOR_QUALITY", "TEXT_FAITHFULNESS"}) {
+            statement.execute("INSERT INTO quiz_judge_result_item (result_id, question_no, rubric, verdict, reason) "
+                    + "VALUES (1, 0, '" + rubric + "', 'PASS', '근거와 일치한다')");
+        }
+        statement.execute("INSERT INTO quiz_revision_decision (revision_id, decision, decided_by_member_id, "
+                + "judge_evaluation_id, judge_evaluation_sha256, approval_policy, approved_revision_sha256, decided_at) "
+                + "VALUES (1, 'APPROVED', 7, 1, REPEAT('j', 64), 'LEGACY_JUDGE_V1', " + revisionSha
+                + ", UTC_TIMESTAMP(6))");
+        statement.execute("UPDATE quiz SET publication_status = 'PUBLISHED', published_revision_id = 1, "
+                + "published_at = UTC_TIMESTAMP(6), content_locked = TRUE, locked_revision_id = 1, "
+                + "locked_revision_sha256 = " + revisionSha + " WHERE quiz_id = 1");
+        statement.execute("INSERT INTO quiz_attempt (attempt_id, member_id, creator_id, quiz_id, revision_id, "
+                + "request_id, request_fingerprint, revision_sha256, snapshot_sha256, title, video_id, question_count, "
+                + "correct_count, reward_amount, reward_request_id, reward_status, submitted_at) VALUES (1, 8, 1, 1, 1, "
+                + "UUID(), REPEAT('f', 64), " + revisionSha + ", REPEAT('t', 64), '제목', 'dQw4w9WgXcQ', 1, 1, 1, "
+                + "UUID(), 'NOT_INTEGRATED', UTC_TIMESTAMP(6))");
+        statement.execute("INSERT INTO quiz_attempt_answer (attempt_id, question_no, question_text, options_json, "
+                + "option_count, selected_option_index, correct_option_index, correct, explanation, source_evidence) "
+                + "VALUES (1, 0, '질문', '[\"보기 0\",\"보기 1\",\"보기 2\",\"보기 3\"]', 4, 0, 0, TRUE, '해설', '원문')");
     }
 
     private static Map<String, String> checksums(Statement statement, String[] tables) throws SQLException {
