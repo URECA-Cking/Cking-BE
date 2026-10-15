@@ -58,4 +58,26 @@ class WinnerNotificationServiceTest {
         assertThat(captor.getValue()).extracting(Notification::getType)
                 .containsOnly(NotificationType.REDRAW_WINNER);
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 미당첨자별로_결과_발표_알림을_Winner_없이_저장한다() {
+        winnerNotificationService.createNonWinnerNotifications(20L, 10L, List.of(4L, 5L));
+
+        ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
+        verify(notificationRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).extracting(
+                Notification::getEventId,
+                Notification::getDrawingId,
+                Notification::getWinnerId,
+                Notification::getMemberId,
+                Notification::getType,
+                Notification::getTitle
+        ).containsExactly(
+                org.assertj.core.groups.Tuple.tuple(
+                        20L, 10L, null, 4L, NotificationType.INITIAL_NON_WINNER, "이벤트 결과 발표"),
+                org.assertj.core.groups.Tuple.tuple(
+                        20L, 10L, null, 5L, NotificationType.INITIAL_NON_WINNER, "이벤트 결과 발표")
+        );
+    }
 }

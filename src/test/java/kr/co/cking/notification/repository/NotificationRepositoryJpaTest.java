@@ -21,6 +21,7 @@ import kr.co.cking.notification.domain.Notification;
 import kr.co.cking.notification.domain.NotificationType;
 import kr.co.cking.sanction.domain.MemberSanction;
 import kr.co.cking.sanction.repository.MemberSanctionRepository;
+import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -50,6 +51,9 @@ class NotificationRepositoryJpaTest {
 
     @Autowired
     private MemberSanctionRepository sanctionRepository;
+
+    @Autowired
+    private WinnerRepository winnerRepository;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -323,6 +327,71 @@ class NotificationRepositoryJpaTest {
                 fixture.memberId(), fixture.eventId(), fixture.drawingId(), null,
                 NotificationType.INITIAL_WINNER, "제목", "본문")))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 미당첨자_알림은_Winner_없이_이벤트와_추첨만_채워_저장된다() {
+        Fixture fixture = fixture();
+        long nonWinnerId = insertMember("미당첨 회원");
+
+        Notification saved = notificationRepository.saveAndFlush(Notification.forNonWinner(
+                nonWinnerId, fixture.eventId(), fixture.drawingId(), "이벤트 결과 발표", "본문"));
+
+        assertThat(saved.getNotificationId()).isNotNull();
+        assertThat(saved.getWinnerId()).isNull();
+        assertThat(saved.getType()).isEqualTo(NotificationType.INITIAL_NON_WINNER);
+    }
+
+    @Test
+    void 같은_이벤트와_회원의_미당첨_알림은_중복_저장할_수_없다() {
+        Fixture fixture = fixture();
+        long nonWinnerId = insertMember("중복 미당첨 회원");
+        notificationRepository.saveAndFlush(Notification.forNonWinner(
+                nonWinnerId, fixture.eventId(), fixture.drawingId(), "이벤트 결과 발표", "본문"));
+
+        assertThatThrownBy(() -> notificationRepository.saveAndFlush(Notification.forNonWinner(
+                nonWinnerId, fixture.eventId(), fixture.drawingId(), "이벤트 결과 발표", "본문")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 미당첨_유형이_아닌_알림은_Winner_없이_이벤트만_채울_수_없다() {
+        Fixture fixture = fixture();
+        long nonWinnerId = insertMember("유형 위반 회원");
+
+        assertThatThrownBy(() -> notificationRepository.saveAndFlush(new Notification(
+                nonWinnerId, fixture.eventId(), fixture.drawingId(), null,
+                NotificationType.REDRAW_WINNER, "제목", "본문")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 미당첨_유형은_Winner를_가질_수_없다() {
+        Fixture fixture = fixture();
+
+        assertThatThrownBy(() -> notificationRepository.saveAndFlush(new Notification(
+                fixture.memberId(), fixture.eventId(), fixture.drawingId(), fixture.memberWinnerId(),
+                NotificationType.INITIAL_NON_WINNER, "제목", "본문")))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 미당첨_대상은_Snapshot_후보에서_해당_Drawing_Winner를_뺀_Member다() {
+        Fixture fixture = fixture();
+        long nonWinnerId = insertMember("미당첨 후보");
+        long snapshotId = ((Number) entityManager
+                .createNativeQuery("SELECT snapshot_id FROM drawing WHERE id = :id")
+                .setParameter("id", fixture.drawingId()).getSingleResult()).longValue();
+        for (long memberId : new long[]{fixture.memberId(), fixture.otherMemberId(), nonWinnerId}) {
+            entityManager.createNativeQuery("INSERT INTO draw_snapshot_candidate "
+                            + "(snapshot_id, member_id, ticket_count) VALUES (:snapshotId, :memberId, 1)")
+                    .setParameter("snapshotId", snapshotId)
+                    .setParameter("memberId", memberId)
+                    .executeUpdate();
+        }
+
+        assertThat(winnerRepository.findUnselectedMemberIdsByDrawingId(fixture.drawingId()))
+                .containsExactly(nonWinnerId);
     }
 
     @Test
