@@ -132,6 +132,8 @@ Creator Space 공유 완료를 Creator별 SHARE 미션 보상으로 처리한다
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 응답 형식은 위 API와 같다(`type`은 `CommonMissionType`).
 
+웰컴 퀘스트는 이 목록에 포함하지 않는다. 상태 조회·보상 지급은 [웰컴 퀘스트 API](welcome-quest.md)의 전용 경로를 따른다.
+
 ### 공용 출석과 기존 Creator 출석의 전환 규칙
 
 공용 ATTENDANCE 신규 요청은 공용 requestId replay를 먼저 확인한 뒤, 활성 검증을 통과하면 같은 사용자·같은 UTC `periodKey`의 기존 Creator ATTENDANCE 완료 기록을 조회한다. 기록이 있으면 `DUPLICATE_MISSION`으로 종료하고 `CommonTicketEarnService#earn()`을 호출하지 않는다. 기존 Creator 응모권과 완료 이력은 보존한다.
@@ -153,7 +155,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 처리 순서는 위와 동일하되 3~5단계가 `CommonTicketEarnService#findExisting()`/`#earn()`을 사용하고, Redis 키에 `creatorId` 축이 없다(`ticket:balance:common:{userId}`, `mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd}`).
 
-**`BALANCE_MAINTENANCE`는 아직 발생하지 않는다** — 공용 응모권의 수동 보정(`TicketCompensationService` 대응) 기능이 아직 없다(이슈 #219 범위 밖, 후속 작업).
+공용 응모권 수동 보정 중에는 `BALANCE_MAINTENANCE`(503)를 반환한다([Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219)).
 
 ## 게시글 좋아요 보상
 

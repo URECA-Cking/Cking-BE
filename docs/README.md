@@ -44,6 +44,7 @@
 - [Sanction API](domains/sanction/api.md): 관리자 제재 목록·수동 제한·해제와 크리에이터 스페이스 댓글 차단 API 계약
 - [Mission](domains/mission/README.md): 미션 완료 판정과 EARN 연동 경계
 - [Mission API](domains/mission/api.md): 미션 완료 API 계약
+- [웰컴 퀘스트 API](domains/mission/welcome-quest.md): 신규 회원 단계·독립 보너스의 상태 조회와 지급 목표 계약
 - [YouTube 구독 인증](domains/subscription-verification/README.md): 채널 설정, 이미지 제출, ONCE 인증과 보상 경계
 - [YouTube 구독 인증 API](domains/subscription-verification/api.md): 채널 설정·Verification 제출 및 상태 조회 계약
 - [YouTube 구독 인증 비동기 처리](domains/subscription-verification/processing.md): VLM 판정, Processing Claim과 Recovery 계약
