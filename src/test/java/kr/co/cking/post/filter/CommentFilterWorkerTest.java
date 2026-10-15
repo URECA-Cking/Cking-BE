@@ -62,7 +62,7 @@ class CommentFilterWorkerTest {
                 .contains("reasons=[privacy:phone, spam:link]")
                 .contains("ruleVersion=local-1")
                 .contains("modelVersion=threat-ctx-v1-reviewed")
-                .contains("elapsedMs=")
+                .contains("latencyMs=")
                 .doesNotContain(CONTENT);
     }
 
@@ -146,24 +146,55 @@ class CommentFilterWorkerTest {
     void 필터가_요청을_거절하면_실패로_기록하고_error로_남긴다(CapturedOutput output) {
         givenTarget(CONTENT);
         given(client.moderate(COMMENT_ID, CONTENT))
-                .willThrow(new CommentFilterRejectedException("필터 서비스가 요청을 거절했습니다. status=400", null));
+                .willThrow(new CommentFilterRejectedException("필터 서비스가 요청을 거절했습니다. status=400", 400, null));
 
         worker.process(COMMENT_ID);
 
         verify(resultService).saveFailure(COMMENT_ID, CONTENT);
         verify(resultService, never()).saveResult(anyLong(), anyString(), any());
-        assertThat(output.getAll()).contains("필터 서비스가 요청을 거절했습니다").doesNotContain("판정을 저장했습니다");
+        assertThat(output.getAll())
+                .contains("필터 서비스가 요청을 거절했습니다")
+                .contains("httpStatus=400", "failureKind=REJECTED", "latencyMs=")
+                .doesNotContain("판정을 저장했습니다");
+    }
+
+    @Test
+    void 실패_로그에는_예외_cause에_담긴_응답_본문_속_댓글_원문을_남기지_않는다(CapturedOutput output) {
+        // 필터가 422 응답에 요청 값(input)을 되돌려 주면 RestClientResponseException 메시지에 댓글 원문이 담긴다.
+        RuntimeException cause = new IllegalStateException("422 Unprocessable Entity: [{\"input\":\"" + CONTENT + "\"}]");
+        givenTarget(CONTENT);
+        given(client.moderate(COMMENT_ID, CONTENT))
+                .willThrow(new CommentFilterRejectedException("필터 서비스가 요청을 거절했습니다. status=422", 422, cause))
+                .willThrow(new CommentFilterException("필터 서비스가 오류를 응답했습니다. status=503",
+                        CommentFilterFailureType.SERVER_ERROR, 503, cause))
+                .willThrow(new RuntimeException("예상하지 못한 예외: " + CONTENT, cause));
+
+        worker.process(COMMENT_ID);
+        worker.process(COMMENT_ID);
+        worker.process(COMMENT_ID);
+
+        assertThat(output.getAll())
+                .contains("httpStatus=422", "failureKind=REJECTED")
+                .contains("httpStatus=503", "failureKind=SERVER_ERROR")
+                .contains("failureKind=UNKNOWN", "exception=RuntimeException")
+                .doesNotContain(CONTENT)
+                .doesNotContain("IllegalStateException")
+                .doesNotContain("Unprocessable");
+        verify(resultService, org.mockito.Mockito.times(3)).saveFailure(COMMENT_ID, CONTENT);
     }
 
     @Test
     void 필터_장애는_실패로_기록하고_판정_로그는_남기지_않는다(CapturedOutput output) {
         givenTarget(CONTENT);
-        given(client.moderate(COMMENT_ID, CONTENT)).willThrow(new CommentFilterException("필터 서비스 호출에 실패했습니다."));
+        given(client.moderate(COMMENT_ID, CONTENT)).willThrow(new CommentFilterException("필터 서비스 호출에 실패했습니다.", CommentFilterFailureType.NETWORK));
 
         worker.process(COMMENT_ID);
 
         verify(resultService).saveFailure(COMMENT_ID, CONTENT);
-        assertThat(output.getAll()).contains("필터 서비스 호출에 실패했습니다").doesNotContain("판정을 저장했습니다");
+        assertThat(output.getAll())
+                .contains("필터 서비스 호출에 실패했습니다")
+                .contains("failureKind=NETWORK", "latencyMs=")
+                .doesNotContain("판정을 저장했습니다");
     }
 
     @Test
@@ -193,7 +224,7 @@ class CommentFilterWorkerTest {
     @Test
     void 실패를_기록하지_못해도_예외를_밖으로_던지지_않는다() {
         givenTarget(CONTENT);
-        given(client.moderate(COMMENT_ID, CONTENT)).willThrow(new CommentFilterException("장애"));
+        given(client.moderate(COMMENT_ID, CONTENT)).willThrow(new CommentFilterException("장애", CommentFilterFailureType.SERVER_ERROR));
         willThrow(new IllegalStateException("db down")).given(resultService).saveFailure(COMMENT_ID, CONTENT);
 
         assertThatCode(() -> worker.process(COMMENT_ID)).doesNotThrowAnyException();

@@ -25,6 +25,9 @@ import java.util.regex.Pattern;
  *       {@value #INVALID_VALUE}다.</li>
  * </ul>
  * 저장하는 값은 바꾸지 않는다.
+ *
+ * <p>호출이 실패하면 예외 객체를 로그에 넘기지 않고 {@code httpStatus}, {@code failureKind}, {@code latencyMs}만 남긴다. 예외
+ * cause의 메시지에 필터가 되돌려 준 응답 본문(댓글 원문 포함 가능)이 들어 있을 수 있어서다.
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -53,16 +56,25 @@ public class CommentFilterWorker {
             try {
                 result = client.moderate(commentId, judgedContent);
             } catch (CommentFilterRejectedException exception) {
-                log.error("필터 서비스가 요청을 거절했습니다. 요청 형식을 확인하세요. commentId={}", commentId, exception);
+                // 예외 객체는 넘기지 않는다. cause 메시지에 필터 응답 본문(댓글 원문 포함 가능)이 들어 있다.
+                log.error("필터 서비스가 요청을 거절했습니다. 요청 형식을 확인하세요. commentId={}, httpStatus={}, failureKind={}, latencyMs={}",
+                        commentId, exception.httpStatus(), exception.type(), elapsedMillis(startedAt));
+                recordFailure(commentId, judgedContent);
+                return;
+            } catch (CommentFilterException exception) {
+                log.warn("필터 서비스 호출에 실패했습니다. 재필터링이 다시 처리합니다. commentId={}, httpStatus={}, failureKind={}, latencyMs={}",
+                        commentId, exception.httpStatus(), exception.type(), elapsedMillis(startedAt));
                 recordFailure(commentId, judgedContent);
                 return;
             } catch (RuntimeException exception) {
-                log.warn("필터 서비스 호출에 실패했습니다. 재필터링이 다시 처리합니다. commentId={}", commentId, exception);
+                // 필터 클라이언트가 분류하지 못한 예외. 메시지에 무엇이 들어 있을지 모르므로 클래스 이름만 남긴다.
+                log.warn("필터 서비스 호출에 실패했습니다. 재필터링이 다시 처리합니다. commentId={}, httpStatus=0, failureKind=UNKNOWN, exception={}, latencyMs={}",
+                        commentId, exception.getClass().getSimpleName(), elapsedMillis(startedAt));
                 recordFailure(commentId, judgedContent);
                 return;
             }
 
-            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+            long latencyMillis = elapsedMillis(startedAt);
 
             boolean saved;
             try {
@@ -76,12 +88,16 @@ public class CommentFilterWorker {
                 log.debug("판정 중 댓글이 수정·삭제되어 결과를 버렸습니다. commentId={}", commentId);
                 return;
             }
-            log.info("댓글 필터 판정을 저장했습니다. commentId={}, action={}, reasons={}, ruleVersion={}, modelVersion={}, elapsedMs={}",
+            log.info("댓글 필터 판정을 저장했습니다. commentId={}, action={}, reasons={}, ruleVersion={}, modelVersion={}, latencyMs={}",
                     commentId, result.action(), loggableReasons(result.reasons()), loggableVersion(result.ruleVersion()),
-                    loggableVersion(result.modelVersion()), elapsedMillis);
+                    loggableVersion(result.modelVersion()), latencyMillis);
         } catch (RuntimeException exception) {
             log.error("댓글 필터 처리 중 예기치 못한 오류가 났습니다. commentId={}", commentId, exception);
         }
+    }
+
+    private static long elapsedMillis(long startedAt) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
     }
 
     private static List<String> loggableReasons(List<String> reasons) {
