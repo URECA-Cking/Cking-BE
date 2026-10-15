@@ -24,9 +24,10 @@ import org.springframework.stereotype.Service;
  */
 @Service @RequiredArgsConstructor
 public class CreatorSpaceProfileImageUploadService {
-    private static final ImagePolicy PROFILE_POLICY = new ImagePolicy(200, 200, 2048);
+    /** 관리자 템플릿 이미지 업로드({@link CreatorSpaceTemplateImageUploadService})도 같은 정책을 쓴다. */
+    static final ImagePolicy PROFILE_POLICY = new ImagePolicy(200, 200, 2048);
     /** 배너는 가로로 넓게 쓰이므로 가로를 더 크게 요구한다. 가로세로 비율은 강제하지 않고 화면이 잘라 보여 준다. */
-    private static final ImagePolicy BANNER_POLICY = new ImagePolicy(600, 200, 2048);
+    static final ImagePolicy BANNER_POLICY = new ImagePolicy(600, 200, 2048);
     private static final String KEY_PREFIX = "creator-space-profile-images/";
     private final CreatorRepository creatorRepository;
     private final CreatorSpaceRepository spaceRepository;
