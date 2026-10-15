@@ -1,6 +1,6 @@
 # Creator 도메인
 
-Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승인된 Creator(`creator`), 관리자 기본 Creator Space 템플릿(`creator_space_template`), 승인된 Creator 전용 Creator Space(`creator_space`)를 소유한다.
+Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승인된 Creator(`creator`), 관리자 기본 Creator Space 템플릿(`creator_space_template`)과 그 이미지 업로드 기록(`creator_space_template_image`), 승인된 Creator 전용 Creator Space(`creator_space`)를 소유한다.
 
 ## 문서
 
