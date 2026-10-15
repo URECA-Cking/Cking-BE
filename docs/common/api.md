@@ -47,6 +47,7 @@
   되돌아가지 않고 키만 판단하며, 헤더가 없으면 위 ADMIN JWT 규칙과 Application의 ADMIN 재검증을 그대로 따른다.
   상세는 [Creator API](../domains/creator/api.md#put-apiadmincreatorscreatoridsimilar)를 따른다.
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
+- 웰컴 퀘스트 `GET /api/me/welcome-quest`와 `POST /api/me/welcome-quest/{step}/claim`은 Bearer JWT와 `@CurrentMemberId`를 사용한다. 요청에 호출자 `userId`를 받지 않으며 상세 계약은 [웰컴 퀘스트 API](../domains/mission/welcome-quest.md)를 따른다.
 - 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
 
 Controller는 전환 API에서는 인증된 `memberId`, 그 외에는 요청의 호출자 `userId`를 기존

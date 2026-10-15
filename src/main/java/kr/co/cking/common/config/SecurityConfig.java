@@ -152,7 +152,8 @@ public class SecurityConfig {
                                 "/api/creator/space/banner-images",
                                 "/api/creator/space/banner-image"
                         ).authenticated()
-                        .requestMatchers("/api/me").authenticated()
+                        .requestMatchers("/api/me", "/api/me/welcome-quest", "/api/me/welcome-quest/*/claim")
+                        .authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/comments").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/creators/*/posts/*/comments/*").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/creators/*/posts/*/comments/*").authenticated()

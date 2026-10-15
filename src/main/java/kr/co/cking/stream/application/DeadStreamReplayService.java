@@ -14,12 +14,11 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.repository.DeadStreamMessageRepository;
-import kr.co.cking.ticket.application.CommonMissionEarnLedgerService;
+import kr.co.cking.ticket.application.CommonEarnEventDispatcher;
 import kr.co.cking.ticket.application.TicketEarnEventDispatcher;
 import kr.co.cking.ticket.application.QuizRewardLedgerService;
 import kr.co.cking.ticket.application.TicketEarnLedgerService;
 import kr.co.cking.ticket.application.TicketSpendLedgerService;
-import kr.co.cking.ticket.application.dto.CommonEarnCommand;
 import kr.co.cking.ticket.application.dto.SpendCommand;
 import lombok.RequiredArgsConstructor;
 
@@ -38,7 +37,7 @@ public class DeadStreamReplayService {
     private final DeadStreamMessageRepository deadStreamMessageRepository;
     private final TicketEarnEventDispatcher earnEventDispatcher;
     private final TicketSpendLedgerService ticketSpendLedgerService;
-    private final CommonMissionEarnLedgerService commonMissionEarnLedgerService;
+    private final CommonEarnEventDispatcher commonEarnEventDispatcher;
     private final ObjectMapper objectMapper;
 
     /**
@@ -59,7 +58,7 @@ public class DeadStreamReplayService {
             // 정상 소비와 같은 적립 원인·버전 분기를 쓴다. Quiz 메시지를 Mission으로 바꾸지 않는다.
             case EARN -> earnEventDispatcher.apply(fields);
             case SPEND -> ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
-            case COMMON_EARN -> commonMissionEarnLedgerService.apply(CommonEarnCommand.fromStreamFields(fields));
+            case COMMON_EARN -> commonEarnEventDispatcher.apply(fields);
             // PR #250 리뷰(문구): enum switch 문은 case 누락을 컴파일러가 잡아주지 않는다 -
             // DeadStreamType에 값이 추가되고 case를 빠뜨리면 아무것도 재적용하지 않은 채
             // 조용히 RESOLVED로 표시될 뻔했다. default를 명시해 그 경로를 막는다.

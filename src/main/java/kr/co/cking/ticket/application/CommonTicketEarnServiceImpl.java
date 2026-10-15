@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.application.dto.CommonEarnCommand;
+import kr.co.cking.ticket.application.dto.CommonOnceEarnCommand;
 import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
@@ -43,6 +44,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
     private final ObjectMapper objectMapper;
     private final TicketEarnRequestClaimService requestClaimService;
 
+    /** 기존 공용 Lua와 Redis Stream 설정을 주입한다. */
     public CommonTicketEarnServiceImpl(
             StringRedisTemplate redisTemplate,
             @Qualifier("commonTicketEarnLuaScript") DefaultRedisScript<List> commonTicketEarnLuaScript,
@@ -57,6 +59,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         this.requestClaimService = requestClaimService;
     }
 
+    /** 공용 미션의 일일 EARN 요청을 선점하고 Lua로 승인한다. */
     @Override
     public EarnResult earn(CommonEarnCommand command) {
         EarnResult preClaimResult = preClaimResult(command);
@@ -99,13 +102,14 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
             return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
         }
 
-        EarnResult earnResult = parse(result, command);
+        EarnResult earnResult = parse(result, requestId);
         if (earnResult.code() == EarnResultCode.EARN_ACCEPTED || earnResult.code() == EarnResultCode.ALREADY_PROCESSED) {
             requestClaimService.accept(requestId);
         }
         return earnResult;
     }
 
+    /** 동일 공용 미션 requestId의 기존 승인 또는 충돌을 조회한다. */
     @Override
     public EarnLookupResult findExisting(CommonEarnCommand command) {
         EarnLookupResult preClaimResult = findPreClaimResult(command);
@@ -171,6 +175,57 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE);
     }
 
+    /** 이미 영속 선점된 공용 평생 1회 적립을 기존 Lua로 실행한다. */
+    EarnResult earnOnceClaimed(CommonOnceEarnCommand command) {
+        String requestId = command.requestId().toString();
+        List<?> result;
+        try {
+            result = redisTemplate.execute(commonTicketEarnLuaScript, List.of(
+                            CommonTicketRedisKeys.idemOnce(requestId),
+                            CommonTicketRedisKeys.onceGuard(command.userId(), command.rewardType()),
+                            CommonTicketRedisKeys.balance(command.userId()),
+                            CommonTicketRedisKeys.maintenance(command.userId())),
+                    String.valueOf(command.amount()), command.computeFingerprint(), streamKey,
+                    "0", "0", requestId, String.valueOf(command.userId()), command.rewardType(),
+                    "0", "ONCE", "ONCE", command.rewardType());
+        } catch (QueryTimeoutException e) {
+            log.error("공용 ONCE EARN 결과를 확인할 수 없습니다. requestId={}", requestId, e);
+            return new EarnResult(EarnResultCode.EARN_STATUS_UNKNOWN);
+        } catch (DataAccessException e) {
+            log.error("공용 ONCE EARN Redis 접근에 실패했습니다. requestId={}", requestId, e);
+            return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
+        }
+        return parse(result, requestId);
+    }
+
+    /** 선점된 공용 평생 1회 요청의 Redis 승인 흔적만 조회한다. */
+    EarnLookupResult findExistingOnceClaimed(CommonOnceEarnCommand command) {
+        String requestId = command.requestId().toString();
+        try {
+            String stored = redisTemplate.opsForValue().get(CommonTicketRedisKeys.idemOnce(requestId));
+            if (stored == null) {
+                return new EarnLookupResult(EarnLookupStatus.NOT_FOUND);
+            }
+            Map<String, Object> record = objectMapper.readValue(stored, new TypeReference<Map<String, Object>>() {});
+            if (!command.computeFingerprint().equals(record.get("fingerprint"))) {
+                return new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
+            }
+            if ("COMPLETED".equals(record.get("status"))) {
+                return new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED);
+            }
+            Object storedGuard = record.get("guardKey");
+            String guardKey = storedGuard instanceof String key ? key
+                    : CommonTicketRedisKeys.onceGuard(command.userId(), command.rewardType());
+            String value = redisTemplate.opsForValue().get(guardKey);
+            return new EarnLookupResult((requestId + ":" + command.computeFingerprint()).equals(value)
+                    ? EarnLookupStatus.ALREADY_PROCESSED : EarnLookupStatus.UNAVAILABLE);
+        } catch (DataAccessException | JacksonException e) {
+            log.error("공용 ONCE EARN 승인 조회에 실패했습니다. requestId={}", requestId, e);
+            return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE);
+        }
+    }
+
+    /** 공용 일일 Guard에 사용할 UTC 날짜를 yyyyMMdd로 바꾼다. */
     private String toGuardPeriodKey(String periodKey) {
         try {
             LocalDate date = LocalDate.parse(periodKey, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -180,6 +235,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         }
     }
 
+    /** 공용 미션 전역 requestId 선점 결과를 EARN 코드로 변환한다. */
     private EarnResult preClaimResult(CommonEarnCommand command) {
         return switch (requestClaimService.claim(command)) {
             case PENDING -> null;
@@ -188,6 +244,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         };
     }
 
+    /** Redis 조회 전에 공용 미션의 영속 requestId 상태를 확인한다. */
     private EarnLookupResult findPreClaimResult(CommonEarnCommand command) {
         TicketEarnRequestClaim claim = requestClaimService.find(command);
         if (claim == null || claim == TicketEarnRequestClaim.PENDING) {
@@ -198,9 +255,10 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
                 : new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT);
     }
 
-    private EarnResult parse(List<?> luaResult, CommonEarnCommand command) {
+    /** Lua 응답 첫 항목을 적립 결과 코드로 변환한다. */
+    private EarnResult parse(List<?> luaResult, String requestId) {
         if (luaResult == null || luaResult.isEmpty()) {
-            log.error("알 수 없는 공용 EARN Lua 결과입니다. requestId={}, result={}", command.requestId(), luaResult);
+            log.error("알 수 없는 공용 EARN Lua 결과입니다. requestId={}, result={}", requestId, luaResult);
             return new EarnResult(EarnResultCode.EARN_STATUS_UNKNOWN);
         }
 
@@ -209,7 +267,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         try {
             code = EarnResultCode.valueOf(String.valueOf(luaResult.get(0)));
         } catch (IllegalArgumentException e) {
-            log.error("알 수 없는 공용 EARN Lua 결과코드입니다. requestId={}, result={}", command.requestId(), luaResult, e);
+            log.error("알 수 없는 공용 EARN Lua 결과코드입니다. requestId={}, result={}", requestId, luaResult, e);
             return new EarnResult(EarnResultCode.EARN_STATUS_UNKNOWN);
         }
 
