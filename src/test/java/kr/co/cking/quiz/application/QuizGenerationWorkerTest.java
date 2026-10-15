@@ -27,6 +27,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -57,7 +58,7 @@ class QuizGenerationWorkerTest {
     private final VideoGrounder grounder = mock(VideoGrounder.class);
     private final QuizGenerator generator = mock(QuizGenerator.class);
     private final QuizGenerationWorker worker =
-            new QuizGenerationWorker(store, grounder, generator, Clock.fixed(NOW, ZoneOffset.UTC));
+            new QuizGenerationWorker(store, grounder, generator, Clock.fixed(NOW, ZoneOffset.UTC), new ObjectMapper());
     private final GeneratedQuiz generated = QuizGenerationFixtures.generated(5);
 
     @BeforeEach

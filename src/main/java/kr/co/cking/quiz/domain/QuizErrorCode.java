@@ -26,6 +26,8 @@ public enum QuizErrorCode implements ErrorCode {
     QUIZ_GENERATION_REQUEST_CONFLICT(HttpStatus.CONFLICT, "같은 requestId로 다른 내용의 생성 요청이 이미 있습니다."),
     QUIZ_GENERATION_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 Quiz 생성 작업이 있습니다."),
     QUIZ_GENERATION_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "지금은 Quiz를 생성할 수 없습니다."),
+    QUIZ_GENERATION_NOT_AWAITING_REVIEW(HttpStatus.CONFLICT, "원문 검토를 기다리는 생성 작업이 아닙니다."),
+    QUIZ_GENERATION_CONTENT_CONFLICT(HttpStatus.CONFLICT, "이미 다른 원문으로 확정한 생성 작업입니다."),
     QUIZ_JUDGE_EVALUATION_NOT_FOUND(HttpStatus.NOT_FOUND, "평가 작업을 찾을 수 없습니다."),
     QUIZ_JUDGE_REQUEST_CONFLICT(HttpStatus.CONFLICT, "같은 requestId로 다른 평가 요청이 있습니다."),
     QUIZ_JUDGE_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 평가가 있습니다."),

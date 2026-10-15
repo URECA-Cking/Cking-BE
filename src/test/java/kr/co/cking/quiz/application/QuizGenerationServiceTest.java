@@ -86,6 +86,23 @@ class QuizGenerationServiceTest {
     }
 
     @Test
+    void 원문_검토_플래그를_켜면_새_작업은_Grounding_단계로_만들고_끄면_기존_흐름이다() {
+        given(store.find(1L)).willAnswer(invocation -> Optional.of(created()));
+        ArgumentCaptor<QuizGeneration> saved = ArgumentCaptor.forClass(QuizGeneration.class);
+
+        service.request(MEMBER_ID, command(URL, "제목", 3));
+        properties.getContentReview().setEnabled(true);
+        service.request(MEMBER_ID, new QuizGenerationCommand(UUID.randomUUID(), URL, "제목", 3));
+
+        verify(store, org.mockito.Mockito.times(2)).create(saved.capture());
+        assertThat(saved.getAllValues().get(0).getReviewStage()).isNull();
+        assertThat(saved.getAllValues().get(1).getReviewStage())
+                .isEqualTo(kr.co.cking.quiz.domain.QuizGenerationReviewStage.GROUNDING);
+        verify(dispatcher, org.mockito.Mockito.times(2)).dispatch(1L);
+        verify(dispatcher, never()).dispatchGeneration(anyLong());
+    }
+
+    @Test
     void 문항_수는_3과_5만_허용한다() {
         given(store.find(1L)).willAnswer(invocation -> Optional.of(created()));
         assertThat(service.request(MEMBER_ID, command(URL, "제목", 5)).generationId()).isEqualTo(1L);

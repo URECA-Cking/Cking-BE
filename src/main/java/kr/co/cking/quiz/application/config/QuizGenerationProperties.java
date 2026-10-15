@@ -21,6 +21,7 @@ public class QuizGenerationProperties {
     /** 시작 후 이 시간이 지나도 RUNNING이면 UNKNOWN으로 본다. */
     private Duration staleRunning = Duration.ofMinutes(15);
     private Executor executor = new Executor();
+    private ContentReview contentReview = new ContentReview();
 
     /** 0이나 음수면 모든 작업이 곧바로 오래된 작업으로 정리되므로 기동을 막는다. */
     @AssertTrue(message = "cking.quiz.generation.stale-pending과 stale-running은 양수여야 합니다.")
@@ -62,6 +63,31 @@ public class QuizGenerationProperties {
 
     public void setExecutor(Executor executor) {
         this.executor = executor;
+    }
+
+    public ContentReview getContentReview() {
+        return contentReview;
+    }
+
+    public void setContentReview(ContentReview contentReview) {
+        this.contentReview = contentReview;
+    }
+
+    /**
+     * Grounding 원문을 Creator가 확정한 뒤 Quiz를 생성하는 흐름(이슈 #604). 작업을 만들 때의 값으로 흐름이 정해지며, 이미
+     * 만든 작업은 값이 바뀌어도 자기 흐름을 유지한다.
+     */
+    public static class ContentReview {
+
+        private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 
     public static class Executor {

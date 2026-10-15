@@ -127,6 +127,12 @@ public class QuizGeneration {
 
     public QuizGeneration(Long creatorId, Long requestedByMemberId, String requestId, String videoId, String title,
                           int questionCount, Instant now) {
+        this(creatorId, requestedByMemberId, requestId, videoId, title, questionCount, now, false);
+    }
+
+    /** {@code contentReview}면 Grounding 뒤 Creator 원문 확정을 기다리는 작업(GROUNDING 단계)으로 만든다. */
+    public QuizGeneration(Long creatorId, Long requestedByMemberId, String requestId, String videoId, String title,
+                          int questionCount, Instant now, boolean contentReview) {
         this.creatorId = Objects.requireNonNull(creatorId, "creatorId");
         this.requestedByMemberId = Objects.requireNonNull(requestedByMemberId, "requestedByMemberId");
         this.requestId = Objects.requireNonNull(requestId, "requestId");
@@ -138,10 +144,47 @@ public class QuizGeneration {
         this.status = QuizGenerationStatus.PENDING;
         this.requestedAt = Objects.requireNonNull(now, "now");
         this.updatedAt = now;
+        this.reviewStage = contentReview ? QuizGenerationReviewStage.GROUNDING : null;
     }
 
     public boolean isOwnedBy(Long creatorId) {
         return this.creatorId.equals(creatorId);
+    }
+
+    /** 원문 확정이나 취소를 받을 수 있는 상태. */
+    public boolean isAwaitingReview() {
+        return status == QuizGenerationStatus.RUNNING && reviewStage == QuizGenerationReviewStage.AWAITING_REVIEW;
+    }
+
+    public boolean isCancelled() {
+        return status == QuizGenerationStatus.FAILED && failureCode == QuizGenerationFailure.CANCELLED;
+    }
+
+    /**
+     * Creator가 검토한 원문을 확정하고 생성 단계로 넘긴다. 원문은 정규화하지 않는다. 호출자는 행을 잠근 뒤 검토 대기임을
+     * 확인하고 부른다.
+     */
+    public void confirmContent(String contentText, String contentTextSha256, Long memberId, Instant now) {
+        if (!isAwaitingReview()) {
+            throw new IllegalStateException("원문 검토 대기 작업만 확정할 수 있습니다.");
+        }
+        this.reviewedContentText = Objects.requireNonNull(contentText, "contentText");
+        this.reviewedContentSha256 = Objects.requireNonNull(contentTextSha256, "contentTextSha256");
+        this.contentConfirmedByMemberId = Objects.requireNonNull(memberId, "memberId");
+        this.contentConfirmedAt = Objects.requireNonNull(now, "now");
+        this.reviewStage = QuizGenerationReviewStage.GENERATING;
+        this.updatedAt = now;
+    }
+
+    /** 검토 대기 작업을 취소한다. 저장한 AI 원문은 남는다. 호출자는 행을 잠근 뒤 검토 대기임을 확인하고 부른다. */
+    public void cancelReview(Instant now) {
+        if (!isAwaitingReview()) {
+            throw new IllegalStateException("원문 검토 대기 작업만 취소할 수 있습니다.");
+        }
+        this.status = QuizGenerationStatus.FAILED;
+        this.failureCode = QuizGenerationFailure.CANCELLED;
+        this.completedAt = Objects.requireNonNull(now, "now");
+        this.updatedAt = now;
     }
 
     /** RUNNING 작업의 결과를 기록한다. 호출자는 행을 잠근 뒤 RUNNING임을 확인하고 부른다. */

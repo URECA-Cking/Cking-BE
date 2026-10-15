@@ -163,6 +163,9 @@ cking:
     # 오래된 작업 기준 시간과 Executor 크기는 운영 확인 전 초기값이다.
     generation:
       enabled: ${QUIZ_GENERATION_ENABLED:false}
+      # 켜면 새 작업이 Grounding 뒤 Creator 원문 확정을 기다린다(이슈 #604). 꺼져 있으면 기존처럼 이어서 생성한다.
+      content-review:
+        enabled: ${QUIZ_GENERATION_CONTENT_REVIEW_ENABLED:false}
       stale-pending: ${QUIZ_GENERATION_STALE_PENDING:PT10M}
       stale-running: ${QUIZ_GENERATION_STALE_RUNNING:PT15M}
       executor:

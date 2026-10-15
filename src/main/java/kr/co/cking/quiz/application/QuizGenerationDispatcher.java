@@ -20,8 +20,17 @@ public class QuizGenerationDispatcher {
     }
 
     public boolean dispatch(Long generationId) {
+        return submit(() -> worker.run(generationId));
+    }
+
+    /** Creator가 원문을 확정한 작업의 Quiz 생성 단계를 제출한다(이슈 #604). */
+    public boolean dispatchGeneration(Long generationId) {
+        return submit(() -> worker.runGeneration(generationId));
+    }
+
+    private boolean submit(Runnable task) {
         try {
-            executor.execute(() -> worker.run(generationId));
+            executor.execute(task);
             return true;
         } catch (RejectedExecutionException exception) {
             return false;
