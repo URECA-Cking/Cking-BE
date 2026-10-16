@@ -50,6 +50,19 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 `UPCOMING`, `OPEN`은 현재 시각이 `endAt` 전이면 `IN_PROGRESS`, 이후와 `CLOSING` 이후 상태는
 `CLOSED`로 표시한다.
 
+## GET /api/events/counts
+
+인증이 필요 없다. 공개 Event 수를 표시 상태별로 한 번의 집계 쿼리로 반환한다. 삭제·비공개 상태
+(`DRAFT`, `PENDING_APPROVAL`, `REJECTED`) 제외와 표시 상태 분류는 `GET /api/events`와 같은 규칙이라, 각 값은
+같은 시점의 `GET /api/events?status=`의 `totalElements`와 같다. `total`은 세 값의 합이다. 상태마다 따로
+호출할 때 생기던 조회 시점 차이로 합이 어긋나는 일이 없다. 보관(archived) Event도 제외한다. 응답은 `GET /api/events`와 같은 정책으로 캐시한다(TTL 5초, 가장 임박한 `OPEN` Event의 `endAt`을 넘기지 않음).
+
+```json
+{ "total": 46, "upcoming": 5, "inProgress": 28, "closed": 13 }
+```
+
+`upcoming`은 `UPCOMING`, `inProgress`는 `IN_PROGRESS`, `closed`는 `CLOSED` 표시 상태의 개수다.
+
 ## GET /api/events/{eventId}
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 공개 Event 정보와 해당 Event의 Creator 기준 요청 사용자의 보유 응모권 수를

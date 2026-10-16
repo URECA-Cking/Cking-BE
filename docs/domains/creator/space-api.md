@@ -40,7 +40,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 }
 ```
 
-목록(`GET /api/creators`) 항목은 `followerCount` 없이 위 필드만 담는다. 항목마다 집계가 늘어나는 것을 피하기 위해서이며, 목록에 팔로워 수가 필요하면 별도 이슈에서 일괄 집계로 다룬다.
+목록(`GET /api/creators`) 항목은 `followerCount` 없이 위 필드에 `openEventCount`를 더해 담는다. 항목마다 집계가 늘어나는 것을 피하기 위해서이며, 목록에 팔로워 수가 필요하면 별도 이슈에서 일괄 집계로 다룬다.
 
 본인 API 응답(`GET`·`PATCH /api/creator/space`, `PATCH /api/creator/space/slug`)은 공통 프로필 필드(`creatorId`, `creatorName`, `slug`, `introText`, `profileImageUrl`, `bannerImageUrl`)와 `slugChangeableAt`을 담는다. `followerCount`는 담지 않는다.
 
@@ -66,7 +66,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 | `size` | 20 | 1~100 |
 | `keyword` | 없음 | 최대 50자. Creator 이름에 포함된 항목만 반환한다(대소문자 무시). 없거나 공백이면 전체를 반환한다. 앞뒤 공백은 무시하고 `%`·`_`는 문자 그대로 찾는다 |
 
-정렬은 Creator 이름 오름차순이며, 이름이 같으면 `creatorId` 오름차순이다. 항상 같은 순서를 보장하므로 페이지를 순회해도 항목이 누락되거나 중복되지 않는다(순회 중 Creator가 추가·삭제되면 경계 항목이 이동할 수 있다). 응답은 [공통 API 규약](../../common/api.md)의 `PageResponse`이며 각 `items` 항목은 위 공개 조회 응답과 같은 필드다. 결과가 없으면 `items`가 빈 배열이고 `totalElements`가 0이다.
+정렬은 Creator 이름 오름차순이며, 이름이 같으면 `creatorId` 오름차순이다. 항상 같은 순서를 보장하므로 페이지를 순회해도 항목이 누락되거나 중복되지 않는다(순회 중 Creator가 추가·삭제되면 경계 항목이 이동할 수 있다). 응답은 [공통 API 규약](../../common/api.md)의 `PageResponse`이며 각 `items` 항목은 위 공개 조회 응답과 같은 필드에 `openEventCount`를 더한 것이다. `openEventCount`는 해당 Creator의 삭제되지 않은 Event 중 표시 상태가 `IN_PROGRESS`(`OPEN`이면서 `endAt` 전)인 개수(0 이상 정수)로, `GET /api/events?creatorId={id}&status=IN_PROGRESS`의 `totalElements`와 같다. 진행 중 Event가 없으면 필드를 빼지 않고 `0`을 준다. 한 페이지의 Creator 전체를 `GROUP BY creator_id` 한 번으로 집계하므로 쿼리 수가 `size`에 비례하지 않는다. 결과가 없으면 `items`가 빈 배열이고 `totalElements`가 0이다.
 
 ```json
 {
@@ -77,7 +77,8 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
       "slug": "iu-official",
       "introText": "크리에이터와 함께하는 공간이에요",
       "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
-      "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png"
+      "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
+      "openEventCount": 2
     }
   ],
   "page": 0,

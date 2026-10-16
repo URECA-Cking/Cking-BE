@@ -159,6 +159,13 @@ class SecurityConfigTest {
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }
 
+    /** 상태별 개수는 공개 API라, 이벤트 상세(/api/events/*)의 인증 규칙에 걸리지 않는다. */
+    @Test
+    void 이벤트_상태별_개수는_인증_없이_호출할_수_있다() throws Exception {
+        mockMvc.perform(get("/api/events/counts"))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
     /** 서명 또는 형식이 잘못된 Bearer JWT는 공통 UNAUTHORIZED 응답으로 거절하는지 검증한다. */
     @Test
     void 유효하지_않은_Bearer_JWT는_401로_거절한다() throws Exception {

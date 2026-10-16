@@ -4,7 +4,7 @@
 
 | No. | 구분 | 도메인 | 역할 | Method | 경로·호출 | 기능 | 멱등성 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 3 | 외부 | Creator Space | PUBLIC | GET | `/api/creators` | 공개 Creator 목록 조회(이름 검색·페이지) | - |
+| 3 | 외부 | Creator Space | PUBLIC | GET | `/api/creators` | 공개 Creator 목록 조회(이름 검색·페이지, 진행 중 이벤트 수 `openEventCount` 포함) | - |
 | 5 | 외부 | Mission | USER | GET | `/api/creators/{creatorId}/missions` | 미션 조회 | - |
 | 6 | 외부 | Mission | USER | POST | `/api/creators/{creatorId}/missions/{missionId}/complete` | 미션 완료 | `requestId` |
 | 7 | 외부 | Ticket | USER | GET | `/api/creators/{creatorId}/tickets` | Balance 조회 | - |
@@ -194,4 +194,5 @@
 | 190 | 외부 | Mission | USER | POST | `/api/me/welcome-quest/{step}/claim` | [웰컴 퀘스트 단계·보너스 지급](domains/mission/welcome-quest.md#post-apimewelcome-queststepclaim) | `requestId`·회원/단계 평생 1회 |
 | 191 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/archive` | PUBLISHED Event 전역 보관(사용자 조회·응모·당첨·알림 제외) | 상태 기반 |
 | 192 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/unarchive` | 보관 PUBLISHED Event 복원 | 상태 기반 |
+| 193 | 외부 | Event | PUBLIC | GET | `/api/events/counts` | [Event 표시 상태별 개수 조회](domains/event/api.md#get-apieventscounts) | - |
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

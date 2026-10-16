@@ -54,7 +54,7 @@ class EventQueryServiceTest {
                 .thenReturn(new PageImpl<>(List.of(event)));
         EventQueryService service =
                 new EventQueryService(eventRepository, clock, mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class),
-                        mock(EventCache.class), mock(EventListCache.class), mock(MemberRepository.class));
+                        mock(EventCache.class), mock(EventListCache.class), mock(EventCountsCache.class), mock(MemberRepository.class));
 
         Page<EventSummary> result = service.getEvents(1L, DisplayStatus.IN_PROGRESS, null, 0, 10);
 
@@ -74,7 +74,7 @@ class EventQueryServiceTest {
         when(eventRepository.search(any(), nullable(DisplayStatus.class), any(), any())).thenReturn(new PageImpl<>(List.of()));
         EventQueryService service =
                 new EventQueryService(eventRepository, clock, mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class),
-                        mock(EventCache.class), mock(EventListCache.class), mock(MemberRepository.class));
+                        mock(EventCache.class), mock(EventListCache.class), mock(EventCountsCache.class), mock(MemberRepository.class));
 
         service.getEvents(null, null, null, 2, 50);
 
@@ -95,7 +95,7 @@ class EventQueryServiceTest {
         EventRepository eventRepository = mock(EventRepository.class);
         EventQueryService service =
                 new EventQueryService(eventRepository, clock, mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class),
-                        mock(EventCache.class), eventListCache, mock(MemberRepository.class));
+                        mock(EventCache.class), eventListCache, mock(EventCountsCache.class), mock(MemberRepository.class));
 
         Page<EventSummary> result = service.getEvents(1L, DisplayStatus.IN_PROGRESS, null, 0, 10);
 
@@ -126,7 +126,7 @@ class EventQueryServiceTest {
         when(eventListCache.find(1L, DisplayStatus.IN_PROGRESS, 0, 10)).thenReturn(Optional.empty());
         EventQueryService service =
                 new EventQueryService(eventRepository, clock, mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class),
-                        mock(EventCache.class), eventListCache, mock(MemberRepository.class));
+                        mock(EventCache.class), eventListCache, mock(EventCountsCache.class), mock(MemberRepository.class));
 
         service.getEvents(1L, DisplayStatus.IN_PROGRESS, null, 0, 10);
 
@@ -149,7 +149,7 @@ class EventQueryServiceTest {
         when(memberRepository.existsById(100L)).thenReturn(true);
         EventQueryService service = new EventQueryService(eventRepository, clock,
                 mock(TicketBalanceQueryService.class), common, mock(EventCache.class), mock(EventListCache.class),
-                memberRepository);
+                mock(EventCountsCache.class), memberRepository);
 
         assertThat(service.getEvents(null, null, 100L, 0, 10).getContent().get(0).myCommonTicketBalance()).isEqualTo(9L);
         assertThat(service.getEvents(null, null, null, 0, 10).getContent().get(0).myCommonTicketBalance()).isNull();

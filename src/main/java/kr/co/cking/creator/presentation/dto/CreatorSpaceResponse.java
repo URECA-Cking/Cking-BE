@@ -12,20 +12,21 @@ public final class CreatorSpaceResponse {
     private CreatorSpaceResponse() {
     }
 
-    /** 공개 조회 응답. slug 변경 이력은 본인에게만 필요하므로 담지 않는다. */
+    /** 공개 목록 항목. openEventCount는 진행 중(IN_PROGRESS) 이벤트 수이며 없으면 0이다. slug 변경 이력은 본인에게만 필요하므로 담지 않는다. */
     public record Detail(
             Long creatorId,
             String creatorName,
             String slug,
             String introText,
             String profileImageUrl,
-            String bannerImageUrl
+            String bannerImageUrl,
+            long openEventCount
     ) {
-        public static Detail from(CreatorSpaceView view) {
+        public static Detail from(CreatorSpaceView view, long openEventCount) {
             CreatorSpace space = view.space();
             return new Detail(
                     space.getCreatorId(), view.creatorName(), space.getSlug(), space.getIntroText(),
-                    space.getProfileImageUrl(), space.getBannerImageUrl()
+                    space.getProfileImageUrl(), space.getBannerImageUrl(), openEventCount
             );
         }
     }

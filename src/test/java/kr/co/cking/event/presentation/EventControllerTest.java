@@ -56,6 +56,19 @@ class EventControllerTest {
     }
 
     @Test
+    void 상태별_개수는_인증_없이_조회하고_한_번에_반환한다() throws Exception {
+        when(eventQueryService.getEventCounts())
+                .thenReturn(new kr.co.cking.event.application.dto.EventCounts(46, 5, 28, 13));
+
+        mockMvc.perform(get("/api/events/counts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(46))
+                .andExpect(jsonPath("$.data.upcoming").value(5))
+                .andExpect(jsonPath("$.data.inProgress").value(28))
+                .andExpect(jsonPath("$.data.closed").value(13));
+    }
+
+    @Test
     void page가_음수면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/events").param("page", "-1"))
                 .andExpect(status().isBadRequest())

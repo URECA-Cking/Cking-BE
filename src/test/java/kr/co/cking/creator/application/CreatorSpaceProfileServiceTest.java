@@ -15,6 +15,7 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
+import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
             creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, imagePinner);
+            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner);
 
     private Creator creator;
     private CreatorSpace space;
@@ -277,7 +278,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, imagePinner);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner);
 
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
                 "새 소개", "https://cdn/current.jpg", "https://img/b2.png", null, true));
@@ -313,7 +314,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, imagePinner);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner);
 
         // 클라이언트가 현재 배너 URL(업로드 이미지)을 그대로 보내도 기본 배너로 저장되지 않아야 한다.
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
