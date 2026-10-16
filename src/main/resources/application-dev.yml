@@ -63,6 +63,9 @@ cking:
   quiz:
     generation:
       enabled: ${QUIZ_GENERATION_ENABLED:true}
+      # FE–BE 통합 검증을 위해 dev의 새 생성 작업은 Grounding 뒤 Creator 원문 확정을 기다린다(이슈 #634).
+      content-review:
+        enabled: ${QUIZ_GENERATION_CONTENT_REVIEW_ENABLED:true}
     judge:
       enabled: ${QUIZ_JUDGE_ENABLED:true}
 
