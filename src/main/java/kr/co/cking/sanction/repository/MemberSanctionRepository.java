@@ -19,8 +19,12 @@ public interface MemberSanctionRepository extends JpaRepository<MemberSanction, 
 
     Optional<MemberSanction> findByCauseCommentId(Long causeCommentId);
 
-    /** since 이후에 시작된 자동 경고 수. 집계 기간 안의 경고만 센다(기록은 지우지 않는다). */
-    long countByMemberIdAndSourceAndStartedAtGreaterThanEqual(Long memberId, SanctionSource source, Instant since);
+    /**
+     * 한 스페이스에서 since 이후에 시작된 자동 경고 수. 집계 기간 안의 경고만 센다(기록은 지우지 않는다). 경고는 스페이스별로
+     * 세므로 다른 스페이스의 경고와 플랫폼 범위였던 예전 경고는 포함하지 않는다.
+     */
+    long countByMemberIdAndSourceAndSpaceCreatorIdAndStartedAtGreaterThanEqual(
+            Long memberId, SanctionSource source, Long spaceCreatorId, Instant since);
 
     /**
      * 지금 유효한 제한 중 가장 늦게 끝나는 시각. 제한이 겹치면 종료 시각이 더 늦은 쪽이 유지되는 효과를 낸다.

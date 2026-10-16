@@ -14,11 +14,12 @@ class MemberSanctionTest {
     private static final Long ADMIN_ID = 1L;
 
     @Test
-    void 자동_경고는_원인_댓글을_갖고_사유가_없으며_플랫폼_댓글_제한이다() {
-        MemberSanction sanction = MemberSanction.automatic(MEMBER_ID, 500L, ADMIN_ID, START, Duration.ofDays(3));
+    void 자동_경고는_원인_댓글을_갖고_사유가_없으며_그_스페이스의_댓글_제한이다() {
+        MemberSanction sanction = MemberSanction.automaticSpace(MEMBER_ID, 5L, 500L, ADMIN_ID, START, Duration.ofDays(3));
 
         assertThat(sanction.getSource()).isEqualTo(SanctionSource.AUTOMATIC);
-        assertThat(sanction.getScope()).isEqualTo(SanctionScope.PLATFORM);
+        assertThat(sanction.getScope()).isEqualTo(SanctionScope.SPACE);
+        assertThat(sanction.getSpaceCreatorId()).isEqualTo(5L);
         assertThat(sanction.getType()).isEqualTo(SanctionType.COMMENT_RESTRICTION);
         assertThat(sanction.getCauseCommentId()).isEqualTo(500L);
         assertThat(sanction.getReason()).isNull();
@@ -52,12 +53,13 @@ class MemberSanctionTest {
     @Test
     void 플랫폼_제한은_스페이스_주인이_없다() {
         assertThat(MemberSanction.manual(MEMBER_ID, ADMIN_ID, "사유", START, Duration.ofDays(1)).getSpaceCreatorId()).isNull();
-        assertThat(MemberSanction.automatic(MEMBER_ID, 500L, ADMIN_ID, START, Duration.ofDays(1)).getSpaceCreatorId()).isNull();
+        assertThat(MemberSanction.manual(MEMBER_ID, ADMIN_ID, "사유", START, Duration.ofDays(1)).getScope())
+                .isEqualTo(SanctionScope.PLATFORM);
     }
 
     @Test
     void 제한은_시작_시각을_포함하고_종료_시각은_포함하지_않는다() {
-        MemberSanction sanction = MemberSanction.automatic(MEMBER_ID, 500L, ADMIN_ID, START, Duration.ofDays(1));
+        MemberSanction sanction = MemberSanction.automaticSpace(MEMBER_ID, 5L, 500L, ADMIN_ID, START, Duration.ofDays(1));
 
         assertThat(sanction.isActiveAt(START.minusMillis(1))).isFalse();
         assertThat(sanction.isActiveAt(START)).isTrue();

@@ -1,5 +1,7 @@
 package kr.co.cking.sanction.repository;
 
+import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -38,7 +40,11 @@ class MemberSanctionRepositoryTest {
     private MemberRepository memberRepository;
     @Autowired
     private MemberSanctionRepository sanctionRepository;
+    @Autowired
+    private CreatorRepository creatorRepository;
 
+    private Long spaceCreatorId;
+    private Long otherSpaceCreatorId;
     private Long memberId;
     private Long otherMemberId;
     private Long adminId;
@@ -48,24 +54,30 @@ class MemberSanctionRepositoryTest {
         memberId = memberRepository.saveAndFlush(new Member("제재 테스트 회원", null, null, MemberRole.USER)).getMemberId();
         otherMemberId = memberRepository.saveAndFlush(new Member("제재 테스트 다른 회원", null, null, MemberRole.USER)).getMemberId();
         adminId = memberRepository.saveAndFlush(new Member("제재 테스트 관리자", null, null, MemberRole.ADMIN)).getMemberId();
+        spaceCreatorId = space("제재 테스트 스페이스 주인 A");
+        otherSpaceCreatorId = space("제재 테스트 스페이스 주인 B");
     }
 
     @Test
-    void 경고_횟수는_집계_시작_시각_이상의_자동_경고만_센다() {
+    void 경고_횟수는_그_스페이스에서_집계_시작_시각_이상의_자동_경고만_센다() {
         Instant since = NOW.minus(Duration.ofDays(90));
         automatic(memberId, 1L, since.minusMillis(1));
         automatic(memberId, 2L, since);
         automatic(memberId, 3L, NOW.minus(Duration.ofDays(10)));
         manual(memberId, NOW.minus(Duration.ofDays(1)), Duration.ofDays(3));
         automatic(otherMemberId, 4L, NOW.minus(Duration.ofDays(1)));
+        // 다른 스페이스의 경고는 이 스페이스의 횟수에 세지 않는다.
+        automaticIn(otherSpaceCreatorId, memberId, 5L, NOW.minus(Duration.ofDays(2)));
 
-        assertThat(sanctionRepository.countByMemberIdAndSourceAndStartedAtGreaterThanEqual(
-                memberId, SanctionSource.AUTOMATIC, since)).isEqualTo(2);
+        assertThat(sanctionRepository.countByMemberIdAndSourceAndSpaceCreatorIdAndStartedAtGreaterThanEqual(
+                memberId, SanctionSource.AUTOMATIC, spaceCreatorId, since)).isEqualTo(2);
+        assertThat(sanctionRepository.countByMemberIdAndSourceAndSpaceCreatorIdAndStartedAtGreaterThanEqual(
+                memberId, SanctionSource.AUTOMATIC, otherSpaceCreatorId, since)).isEqualTo(1);
     }
 
     @Test
     void 유효한_제한이_여럿이면_가장_늦게_끝나는_시각을_돌려준다() {
-        MemberSanction shortOne = automatic(memberId, 1L, NOW.minus(Duration.ofHours(1)), Duration.ofDays(1));
+        MemberSanction shortOne = manual(memberId, NOW.minus(Duration.ofHours(1)), Duration.ofDays(1));
         MemberSanction longOne = manual(memberId, NOW.minus(Duration.ofHours(2)), Duration.ofDays(7));
 
         assertThat(active(memberId)).contains(longOne.getEndsAt());
@@ -74,8 +86,8 @@ class MemberSanctionRepositoryTest {
 
     @Test
     void 끝났거나_아직_시작하지_않았거나_해제한_제한은_유효하지_않다() {
-        automatic(memberId, 1L, NOW.minus(Duration.ofDays(3)), Duration.ofDays(1));
-        automatic(memberId, 2L, NOW.plus(Duration.ofHours(1)), Duration.ofDays(1));
+        manual(memberId, NOW.minus(Duration.ofDays(3)), Duration.ofDays(1));
+        manual(memberId, NOW.plus(Duration.ofHours(1)), Duration.ofDays(1));
         MemberSanction released = manual(memberId, NOW.minus(Duration.ofHours(1)), Duration.ofDays(7));
         released.release(adminId, NOW.minus(Duration.ofMinutes(1)));
         sanctionRepository.flush();
@@ -85,7 +97,7 @@ class MemberSanctionRepositoryTest {
 
     @Test
     void 종료_시각_정각에는_유효하지_않고_직전까지는_유효하다() {
-        MemberSanction sanction = automatic(memberId, 1L, NOW.minus(Duration.ofDays(1)), Duration.ofDays(1));
+        MemberSanction sanction = manual(memberId, NOW.minus(Duration.ofDays(1)), Duration.ofDays(1));
 
         assertThat(sanctionRepository.findActiveEndsAt(memberId, SanctionScope.PLATFORM,
                 SanctionType.COMMENT_RESTRICTION, sanction.getEndsAt())).isEmpty();
@@ -95,16 +107,16 @@ class MemberSanctionRepositoryTest {
 
     @Test
     void 다른_회원의_제한은_영향을_주지_않는다() {
-        automatic(otherMemberId, 1L, NOW.minus(Duration.ofHours(1)), Duration.ofDays(1));
+        manual(otherMemberId, NOW.minus(Duration.ofHours(1)), Duration.ofDays(1));
 
         assertThat(active(memberId)).isEmpty();
     }
 
     @Test
     void 목록은_최신_시작_순이고_회원과_유효_여부로_거른다() {
-        MemberSanction oldExpired = automatic(memberId, 1L, NOW.minus(Duration.ofDays(30)), Duration.ofDays(1));
+        MemberSanction oldExpired = manual(memberId, NOW.minus(Duration.ofDays(30)), Duration.ofDays(1));
         MemberSanction recentActive = manual(memberId, NOW.minus(Duration.ofHours(1)), Duration.ofDays(2));
-        MemberSanction others = automatic(otherMemberId, 2L, NOW.minus(Duration.ofHours(2)), Duration.ofDays(1));
+        MemberSanction others = manual(otherMemberId, NOW.minus(Duration.ofHours(2)), Duration.ofDays(1));
         PageRequest page = PageRequest.of(0, 20);
 
         Page<MemberSanction> all = sanctionRepository.search(null, false, NOW, page);
@@ -163,7 +175,20 @@ class MemberSanctionRepositoryTest {
     }
 
     private MemberSanction automatic(Long member, Long causeCommentId, Instant startedAt, Duration duration) {
-        return sanctionRepository.saveAndFlush(MemberSanction.automatic(member, CAUSE_BASE + causeCommentId, adminId, startedAt, duration));
+        return sanctionRepository.saveAndFlush(MemberSanction.automaticSpace(
+                member, spaceCreatorId, CAUSE_BASE + causeCommentId, adminId, startedAt, duration));
+    }
+
+    private MemberSanction automaticIn(Long spaceCreator, Long member, Long causeCommentId, Instant startedAt) {
+        return sanctionRepository.saveAndFlush(MemberSanction.automaticSpace(
+                member, spaceCreator, CAUSE_BASE + causeCommentId, adminId, startedAt, Duration.ofDays(1)));
+    }
+
+    /** 스페이스 범위 제재가 가리킬 크리에이터를 만든다(space_creator_id는 creator 테이블을 참조한다). */
+    private Long space(String ownerName) {
+        Member owner = memberRepository.saveAndFlush(new Member(ownerName, null, null, MemberRole.USER));
+        return creatorRepository.saveAndFlush(
+                new Creator(owner.getMemberId(), "sanction-space-" + owner.getMemberId())).getCreatorId();
     }
 
     private MemberSanction manual(Long member, Instant startedAt, Duration duration) {

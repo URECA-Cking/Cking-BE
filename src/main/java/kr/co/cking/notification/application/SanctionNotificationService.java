@@ -35,19 +35,6 @@ public class SanctionNotificationService {
 
     private final NotificationRepository notificationRepository;
 
-    /**
-     * 관리자가 신고된 댓글을 숨겨 경고가 기록되고 댓글 작성 제한이 시작됐음을 알린다.
-     *
-     * @param warningCount 집계 기간 안의 누적 경고 횟수(이번 경고 포함)
-     * @param endsAt       댓글 작성 제한이 모두 풀리는 시각. 이번 제재 하나가 아니라 지금 유효한 제한 중 가장 늦게 끝나는 시각이다
-     */
-    public void createCommentRestrictionStartedByWarning(
-            Long memberId, Long sanctionId, long warningCount, Instant endsAt) {
-        String body = "신고된 댓글이 관리자에 의해 숨김 처리되어 경고 " + warningCount + "회가 기록되었습니다. "
-                + startedTail(endsAt);
-        save(memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, STARTED_TITLE, body);
-    }
-
     /** 관리자가 직접 댓글 작성을 제한했음을 알린다. {@code endsAt}은 제한이 모두 풀리는(가장 늦은) 시각이다. */
     public void createCommentRestrictionStartedManually(Long memberId, Long sanctionId, Instant endsAt) {
         String body = "관리자가 댓글 작성을 제한했습니다. " + startedTail(endsAt);
@@ -65,6 +52,19 @@ public class SanctionNotificationService {
      */
     public void createSpaceCommentBlockStarted(Long memberId, Long sanctionId, String creatorName, Instant endsAt) {
         String body = creatorName + "의 스페이스에서 댓글 작성이 제한되었습니다. "
+                + ENDS_AT_FORMAT.format(ceilToMinute(endsAt)) + "까지 이 스페이스에서 댓글을 작성하거나 수정할 수 없습니다.";
+        save(memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, SPACE_STARTED_TITLE, body);
+    }
+
+    /**
+     * 관리자가 신고된 댓글을 숨겨 그 스페이스에서 경고가 기록되고 댓글 작성 제한이 시작됐음을 알린다(이슈 #643).
+     *
+     * @param warningCount 그 스페이스에서의 집계 기간 안 누적 경고 횟수(이번 경고 포함)
+     * @param endsAt       그 스페이스의 차단이 모두 풀리는 시각. 이번 제재 하나가 아니라 지금 유효한 차단 중 가장 늦게 끝나는 시각이다
+     */
+    public void createSpaceCommentRestrictionStartedByWarning(
+            Long memberId, Long sanctionId, String creatorName, long warningCount, Instant endsAt) {
+        String body = creatorName + "의 스페이스에서 신고된 댓글이 관리자에 의해 숨김 처리되어 경고 " + warningCount + "회가 기록되었습니다. "
                 + ENDS_AT_FORMAT.format(ceilToMinute(endsAt)) + "까지 이 스페이스에서 댓글을 작성하거나 수정할 수 없습니다.";
         save(memberId, sanctionId, NotificationType.COMMENT_RESTRICTION_STARTED, SPACE_STARTED_TITLE, body);
     }
