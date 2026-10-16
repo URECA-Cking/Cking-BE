@@ -5,8 +5,9 @@
 ## 인증
 
 - `/api/creator/posts/**`(작성·수정·삭제·이미지 업로드)는 Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별한다. 없는 Member는 `RESOURCE_NOT_FOUND`(404), Creator가 아니면 `FORBIDDEN`(403)이다.
-- Creator는 공개 활동명 설정을 마친 뒤에만 게시글·게시글 이미지를 작성할 수 있다. 기존 이관 Creator가 활동명을
-  설정하지 않았으면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 반환한다.
+- Creator는 공개 활동명 설정을 마친 뒤에만 게시글·게시글 이미지를 작성하거나 게시글을 수정할 수 있다. 기존 이관 Creator가
+  활동명을 설정하지 않았으면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 반환한다. 기존 게시글 삭제는 활동명 설정 전에도
+  허용해 기존 데이터를 정리할 수 있다.
 - `GET /api/creators/{creatorId}/posts/**`(공개 조회)는 인증이 필요 없다. 로그인했다면 Access JWT를 함께 보내야 팔로워 공개 게시글을 볼 수 있다.
 
 ## 게시글 응답

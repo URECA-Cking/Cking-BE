@@ -46,7 +46,7 @@ class PostImageUploadServiceTest {
 
     @Test
     void 기록을_UPLOADING으로_먼저_남기고_put_후_UPLOADED로_바꾼다() {
-        given(authorLookup.requireCreator(MEMBER_ID)).willReturn(creator(CREATOR_ID, MEMBER_ID));
+        given(authorLookup.requireConfiguredCreator(MEMBER_ID)).willReturn(creator(CREATOR_ID, MEMBER_ID));
         given(imageProcessor.process(SOURCE)).willReturn(normalized());
 
         String imageKey = service.upload(MEMBER_ID, SOURCE);
@@ -65,7 +65,7 @@ class PostImageUploadServiceTest {
 
     @Test
     void Creator가_아니면_이미지를_처리하지_않는다() {
-        given(authorLookup.requireCreator(MEMBER_ID)).willThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
+        given(authorLookup.requireConfiguredCreator(MEMBER_ID)).willThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
 
         assertThatThrownBy(() -> service.upload(MEMBER_ID, SOURCE)).isInstanceOf(BusinessException.class);
 
@@ -74,7 +74,7 @@ class PostImageUploadServiceTest {
 
     @Test
     void 잘못된_이미지는_기록과_저장소에_남기지_않는다() {
-        given(authorLookup.requireCreator(MEMBER_ID)).willReturn(creator(CREATOR_ID, MEMBER_ID));
+        given(authorLookup.requireConfiguredCreator(MEMBER_ID)).willReturn(creator(CREATOR_ID, MEMBER_ID));
         given(imageProcessor.process(SOURCE)).willThrow(new BusinessException(PostErrorCode.INVALID_POST_IMAGE));
 
         assertThatThrownBy(() -> service.upload(MEMBER_ID, SOURCE)).isInstanceOf(BusinessException.class);
@@ -84,7 +84,7 @@ class PostImageUploadServiceTest {
 
     @Test
     void put이_실패하면_UPLOADING_기록이_남아_정리_대상이_된다() {
-        given(authorLookup.requireCreator(MEMBER_ID)).willReturn(creator(CREATOR_ID, MEMBER_ID));
+        given(authorLookup.requireConfiguredCreator(MEMBER_ID)).willReturn(creator(CREATOR_ID, MEMBER_ID));
         given(imageProcessor.process(SOURCE)).willReturn(normalized());
         willThrow(new IllegalStateException("storage down"))
                 .given(objectStorage).put(anyString(), any(), anyString());

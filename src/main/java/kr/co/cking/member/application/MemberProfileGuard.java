@@ -19,7 +19,7 @@ public class MemberProfileGuard {
     public void requireConfigured(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        if (creatorQueryService.requireActivityNameConfiguredIfCreator(memberId)) {
+        if (creatorQueryService.requireActivityNameConfiguredForCreator(memberId)) {
             return;
         }
         member.requireProfileConfigured();

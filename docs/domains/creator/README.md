@@ -19,8 +19,9 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
   Creator 안에서만 중복되지 않는 별도 namespace다.
 - 최초 Creator 승인 시 Member 닉네임을 후보로 쓴다. 충돌하면 20자 안에서 `-2`, `-3`을 붙여 승인은 실패하지 않는다.
 - 기존 Creator는 V59에서 `creator-{creatorId}` 임시 활동명으로 이관되고 `activityNameConfigured=false`가 된다. 이
-  상태에서는 공개 활동 주체를 확정할 수 없으므로 댓글·게시글·Event 작성과 이벤트 응모를
-  `ACTIVITY_NAME_SETUP_REQUIRED`로 막는다. Space 편집에서 최초 활동명을 설정한 뒤 이용할 수 있다.
+  상태에서는 공개 활동 주체를 확정할 수 없으므로 댓글 작성·수정, 게시글·Event 생성·수정, Event 승인 요청과 이벤트 응모를
+  `ACTIVITY_NAME_SETUP_REQUIRED`로 막는다. 기존 콘텐츠와 내 Event 목록 조회, 기존 게시글·DRAFT·REJECTED Event 삭제는
+  데이터 확인·정리를 위해 허용한다. Space 편집에서 최초 활동명을 설정한 뒤 모든 공개 활동을 이용할 수 있다.
 - 최초 설정 후 실제 변경은 14일 간격이며, 바로 이전 활동명은 14일 예약돼 즉시 되돌릴 수 있다.
 - Space·Event·Calendar·Follow·추천·유사 추천과 Space 소유 Creator 댓글은 조회 시점의 현재 활동명을 사용한다. 콘텐츠에 이름을
   snapshot하지 않으므로 활동명을 바꾸면 기존 콘텐츠에도 새 이름이 표시된다.

@@ -93,6 +93,26 @@ class CreatorEventServiceIntegrationTest {
                 .isEqualTo(kr.co.cking.creator.domain.CreatorErrorCode.ACTIVITY_NAME_SETUP_REQUIRED);
     }
 
+    @Test
+    void 활동명_미설정_기존_Creator도_기존_Event를_조회하고_삭제할_수_있다() {
+        Member member = saveMember(new Member("기존크리에이터", null, null, MemberRole.USER));
+        Creator legacyCreator = new Creator(member.getMemberId(), member.getName());
+        ReflectionTestUtils.setField(legacyCreator, "activityNameConfigured", false);
+        saveCreator(legacyCreator);
+        Event event = eventRepository.save(new Event(
+                legacyCreator.getCreatorId(), "기존 이벤트", null,
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                1, DrawMethod.WEIGHTED, member.getMemberId(), "550e8400-e29b-41d4-a716-446655440097"));
+
+        assertThat(creatorEventService.findMine(member.getMemberId(), PageRequest.of(0, 20)).getContent())
+                .extracting(Event::getEventId)
+                .contains(event.getEventId());
+
+        creatorEventService.delete(member.getMemberId(), event.getEventId());
+
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getDeletedAt()).isNotNull();
+    }
+
     /** 동일 요청 식별자와 동일 본문은 새 Event 대신 기존 Event를 반환하는지 검증한다. */
     @Test
     void sameRequestIdAndBodyReturnsExistingEvent() {

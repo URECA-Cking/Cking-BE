@@ -23,7 +23,7 @@ class MemberProfileGuardTest {
     @Test
     void 닉네임이_없는_회원의_공개_활동을_막는다() {
         given(memberRepository.findById(1L)).willReturn(Optional.of(new Member("OAuth", null, null, MemberRole.USER)));
-        given(creatorQueryService.requireActivityNameConfiguredIfCreator(1L)).willReturn(false);
+        given(creatorQueryService.requireActivityNameConfiguredForCreator(1L)).willReturn(false);
 
         assertThatThrownBy(() -> guard.requireConfigured(1L))
                 .isInstanceOf(BusinessException.class)
@@ -36,7 +36,7 @@ class MemberProfileGuardTest {
         Member member = new Member("OAuth", null, null, MemberRole.USER);
         member.setInitialNickname(MemberNickname.of("fan"));
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-        given(creatorQueryService.requireActivityNameConfiguredIfCreator(1L)).willReturn(false);
+        given(creatorQueryService.requireActivityNameConfiguredForCreator(1L)).willReturn(false);
 
         guard.requireConfigured(1L);
     }
@@ -44,7 +44,7 @@ class MemberProfileGuardTest {
     @Test
     void 활동명이_설정된_Creator는_Member_닉네임_없이도_공개_활동을_할_수_있다() {
         given(memberRepository.findById(1L)).willReturn(Optional.of(new Member("OAuth", null, null, MemberRole.USER)));
-        given(creatorQueryService.requireActivityNameConfiguredIfCreator(1L)).willReturn(true);
+        given(creatorQueryService.requireActivityNameConfiguredForCreator(1L)).willReturn(true);
 
         guard.requireConfigured(1L);
     }

@@ -253,7 +253,7 @@ class CreatorPostCommentServiceTest {
         Member creatorMember = new Member("OAuth 이름", null, null, kr.co.cking.member.domain.MemberRole.USER);
         ReflectionTestUtils.setField(creatorMember, "memberId", OWNER_MEMBER_ID);
         given(memberRepository.findByIdForUpdate(OWNER_MEMBER_ID)).willReturn(Optional.of(creatorMember));
-        given(creatorQueryService.requireActivityNameConfiguredIfCreator(OWNER_MEMBER_ID)).willReturn(true);
+        given(creatorQueryService.requireActivityNameConfiguredForCreator(OWNER_MEMBER_ID)).willReturn(true);
         given(creatorPublicProfileQueryService.findByMemberIds(Set.of(OWNER_MEMBER_ID)))
                 .willReturn(java.util.Map.of(OWNER_MEMBER_ID,
                         creatorProfile(OWNER_MEMBER_ID, CREATOR_ID, "공개활동명", "https://cdn.example.com/space/1.png")));
@@ -272,7 +272,7 @@ class CreatorPostCommentServiceTest {
         ReflectionTestUtils.setField(creatorMember, "memberId", OWNER_MEMBER_ID);
         given(memberRepository.findByIdForUpdate(OWNER_MEMBER_ID)).willReturn(Optional.of(creatorMember));
         willThrow(new BusinessException(kr.co.cking.creator.domain.CreatorErrorCode.ACTIVITY_NAME_SETUP_REQUIRED))
-                .given(creatorQueryService).requireActivityNameConfiguredIfCreator(OWNER_MEMBER_ID);
+                .given(creatorQueryService).requireActivityNameConfiguredForCreator(OWNER_MEMBER_ID);
 
         assertError(() -> service.create(OWNER_MEMBER_ID, CREATOR_ID, FOLLOWERS_POST_ID, "고마워요"),
                 kr.co.cking.creator.domain.CreatorErrorCode.ACTIVITY_NAME_SETUP_REQUIRED);

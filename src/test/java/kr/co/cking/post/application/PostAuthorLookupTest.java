@@ -23,23 +23,32 @@ class PostAuthorLookupTest {
     private final PostAuthorLookup lookup = new PostAuthorLookup(memberRepository, creatorRepository);
 
     @Test
-    void 활동명이_설정된_Creator만_게시글_작성자로_반환한다() {
+    void 활동명이_설정된_Creator만_새_게시글_작성자로_반환한다() {
         Creator creator = creator(10L, true);
         given(memberRepository.findById(10L)).willReturn(Optional.of(new Member("OAuth", null, null, MemberRole.USER)));
         given(creatorRepository.findByMemberId(10L)).willReturn(Optional.of(creator));
 
-        assertThat(lookup.requireCreator(10L)).isSameAs(creator);
+        assertThat(lookup.requireConfiguredCreator(10L)).isSameAs(creator);
     }
 
     @Test
-    void 활동명_미설정_Creator는_게시글_작성자가_될_수_없다() {
+    void 활동명_미설정_Creator는_새_게시글_작성자가_될_수_없다() {
         given(memberRepository.findById(10L)).willReturn(Optional.of(new Member("OAuth", null, null, MemberRole.USER)));
         given(creatorRepository.findByMemberId(10L)).willReturn(Optional.of(creator(10L, false)));
 
-        assertThatThrownBy(() -> lookup.requireCreator(10L))
+        assertThatThrownBy(() -> lookup.requireConfiguredCreator(10L))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CreatorErrorCode.ACTIVITY_NAME_SETUP_REQUIRED);
+    }
+
+    @Test
+    void 활동명_미설정_Creator도_기존_게시글을_삭제할_수_있도록_소유_Creator로_조회한다() {
+        Creator creator = creator(10L, false);
+        given(memberRepository.findById(10L)).willReturn(Optional.of(new Member("OAuth", null, null, MemberRole.USER)));
+        given(creatorRepository.findByMemberId(10L)).willReturn(Optional.of(creator));
+
+        assertThat(lookup.requireCreator(10L)).isSameAs(creator);
     }
 
     private Creator creator(Long memberId, boolean activityNameConfigured) {

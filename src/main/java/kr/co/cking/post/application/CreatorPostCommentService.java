@@ -223,7 +223,7 @@ public class CreatorPostCommentService {
     }
 
     private void requireCommentProfileConfigured(Member author, Long memberId) {
-        if (creatorQueryService.requireActivityNameConfiguredIfCreator(memberId)) {
+        if (creatorQueryService.requireActivityNameConfiguredForCreator(memberId)) {
             return;
         }
         author.requireProfileConfigured();

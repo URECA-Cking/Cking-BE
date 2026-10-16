@@ -22,6 +22,12 @@ class PostAuthorLookup {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        return creator;
+    }
+
+    /** 새 공개 게시글·이미지를 만드는 Creator는 활동명을 먼저 확정해야 한다. */
+    Creator requireConfiguredCreator(Long memberId) {
+        Creator creator = requireCreator(memberId);
         creator.requireActivityNameConfigured();
         return creator;
     }

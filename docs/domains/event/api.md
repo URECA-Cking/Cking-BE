@@ -5,8 +5,9 @@
 ## 권한과 상태 전이
 
 - Creator는 승인된 `creator` 레코드가 존재해야 하며, 자신의 Event만 관리할 수 있다.
-- Creator는 공개 활동명 설정을 마친 뒤에만 Event를 생성·수정·삭제하거나 승인 요청을 할 수 있다. 기존 이관 Creator가
-  활동명을 설정하지 않았으면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 반환한다.
+- Creator는 공개 활동명 설정을 마친 뒤에만 Event를 생성·수정하거나 승인 요청을 할 수 있다. 기존 이관 Creator가
+  활동명을 설정하지 않았으면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 반환한다. 내 Event 목록 조회와 기존 DRAFT·REJECTED
+  Event 삭제는 활동명 설정 전에도 허용해 기존 데이터를 확인·정리할 수 있다.
 - 관리자 목록·승인·거절은 `member.role == ADMIN`만 가능하다.
 - Event 상태는 Repository로 직접 변경하지 않는다. 아래 전이는 `EventCommandService`를 사용한다.
 
