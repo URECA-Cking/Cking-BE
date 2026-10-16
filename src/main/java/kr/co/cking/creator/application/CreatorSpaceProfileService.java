@@ -10,6 +10,7 @@ import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceCustomSlug;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -39,12 +41,18 @@ public class CreatorSpaceProfileService {
     private final CreatorSpaceProfileImageManager profileImageManager;
     private final Clock clock;
     private final CreatorFollowQueryService followQueryService;
+    private final EventQueryService eventQueryService;
     private final CreatorSpaceTemplateImagePinner imagePinner;
 
     /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
         Creator creator = requireCreatorById(creatorId);
         return new CreatorSpaceView(requireSpace(creatorId), creator.publicDisplayName());
+    }
+
+    /** 목록 응답에 담는 크리에이터별 진행 중 이벤트 수. 진행 중이 없는 크리에이터는 키가 없다. */
+    public Map<Long, Long> countOpenEvents(Collection<Long> creatorIds) {
+        return eventQueryService.countInProgressByCreatorIds(creatorIds);
     }
 
     /** 공개 조회 응답에 담는 팔로워 수. Space 존재 확인은 호출 전 단건 조회가 끝낸 뒤라는 전제로 집계만 한다. */

@@ -144,4 +144,60 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     default Page<Event> search(Long creatorId, DisplayStatus displayStatus, Instant now, Pageable pageable) {
         return search(creatorId, displayStatus == null ? null : displayStatus.name(), now, pageable);
     }
+
+    /** 크리에이터별 집계 한 행. {@link #countInProgressByCreatorIds}의 결과다. */
+    interface CreatorEventCount {
+        Long getCreatorId();
+
+        long getTotal();
+    }
+
+    /** 표시 상태별 총 개수 한 행. 합이 곧 전체 개수다. */
+    interface DisplayStatusCounts {
+        long getUpcoming();
+
+        long getInProgress();
+
+        long getClosed();
+    }
+
+    /**
+     * 한 페이지 크리에이터의 진행 중(IN_PROGRESS) 이벤트 수를 한 번에 센다. 조건은 {@link #search}의
+     * IN_PROGRESS 필터와 같다. 진행 중 이벤트가 없는 크리에이터는 결과에 없다.
+     */
+    @Query("""
+            select e.creatorId as creatorId, count(e) as total from Event e
+            where e.deletedAt is null
+              and e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now
+              and e.creatorId in :creatorIds
+            group by e.creatorId
+            """)
+    List<CreatorEventCount> countInProgressByCreatorIds(
+            @Param("creatorIds") Collection<Long> creatorIds,
+            @Param("now") Instant now
+    );
+
+    /** 공개 이벤트를 표시 상태별로 한 번에 센다. 분류 규칙은 {@link #search}와 같다. */
+    @Query("""
+            select
+              coalesce(sum(case when e.status = kr.co.cking.event.domain.EventStatus.SCHEDULED
+                                then 1L else 0L end), 0L) as upcoming,
+              coalesce(sum(case when e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now
+                                then 1L else 0L end), 0L) as inProgress,
+              coalesce(sum(case when (e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt <= :now)
+                                  or e.status in (
+                                    kr.co.cking.event.domain.EventStatus.CLOSING,
+                                    kr.co.cking.event.domain.EventStatus.CLOSED,
+                                    kr.co.cking.event.domain.EventStatus.DRAW_COMPLETED,
+                                    kr.co.cking.event.domain.EventStatus.PUBLISHED)
+                                then 1L else 0L end), 0L) as closed
+            from Event e
+            where e.deletedAt is null
+              and e.status not in (
+                  kr.co.cking.event.domain.EventStatus.DRAFT,
+                  kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL,
+                  kr.co.cking.event.domain.EventStatus.REJECTED
+              )
+            """)
+    DisplayStatusCounts countByDisplayStatus(@Param("now") Instant now);
 }
