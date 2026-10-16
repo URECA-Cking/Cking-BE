@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Long> {
@@ -38,6 +39,17 @@ public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Lo
 
     /** 크리에이터의 팔로워 수. idx_creator_follow_creator로 집계한다. */
     long countByCreatorId(Long creatorId);
+
+    /**
+     * 여러 크리에이터의 팔로워 수를 한 번의 그룹 쿼리로 센다. idx_creator_follow_creator를 쓰며, 팔로워가 0명인 크리에이터는 행이 없다.
+     */
+    @Query("""
+            select new kr.co.cking.follow.repository.CreatorFollowerCount(f.creatorId, count(f.followId))
+            from CreatorFollow f
+            where f.creatorId in :creatorIds
+            group by f.creatorId
+            """)
+    List<CreatorFollowerCount> countFollowersByCreatorIds(@Param("creatorIds") Collection<Long> creatorIds);
 
     /** 회원이 현재 팔로우 중인 Creator 수를 상태 변경 없이 조회한다. */
     long countByMemberId(Long memberId);

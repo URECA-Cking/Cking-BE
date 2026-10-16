@@ -43,7 +43,9 @@ class CreatorRecommendationControllerTest {
                         "https://example.com/profile.png",
                         new BigDecimal("0.01626124"),
                         List.of("FITNESS", "FOOD"),
-                        List.of(1L, 2L)))));
+                        List.of(1L, 2L),
+                        List.of(),
+                        1280L))));
 
         mockMvc.perform(get("/api/me/creator-recommendations"))
                 .andExpect(status().isOk())
@@ -59,7 +61,8 @@ class CreatorRecommendationControllerTest {
                 .andExpect(jsonPath("$.data.items[0].interestCodes[0]").value("FITNESS"))
                 .andExpect(jsonPath("$.data.items[0].interestCodes[1]").value("FOOD"))
                 .andExpect(jsonPath("$.data.items[0].seedCreatorIds[0]").value(1))
-                .andExpect(jsonPath("$.data.items[0].seedCreatorIds[1]").value(2));
+                .andExpect(jsonPath("$.data.items[0].seedCreatorIds[1]").value(2))
+                .andExpect(jsonPath("$.data.items[0].followerCount").value(1280));
 
         then(queryService).should().findForMember(7L, 10);
     }

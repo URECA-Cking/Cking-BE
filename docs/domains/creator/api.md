@@ -213,7 +213,8 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
     "profileImageUrl": "https://example.com/profile.png",
     "aggregateScore": 0.01626124,
     "interestCodes": ["FOOD"],
-    "seedCreatorIds": [2]
+    "seedCreatorIds": [2],
+    "followerCount": 1280
   }]
 }
 ```
@@ -227,6 +228,9 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 - `interestCodes`는 이 후보의 점수에 기여한 관심 분야(ASCII 사전순), `seedCreatorIds`는 기여한 팔로우 seed(숫자 오름차순)이며
   기여하지 않은 쪽은 빈 배열이다.
+- `followerCount`는 이 Creator를 팔로우한 회원 수(0 이상 정수)로 모든 `policyVersion`의 항목에 담긴다. 카드 표시용이며 `aggregateScore`·정렬·추천 선택에는 쓰이지 않는다.
+  `creator_follow`를 요청 시점에 세며, 개인화 경로는 `size` 적용 뒤 선택된 Creator 전체를 그룹 쿼리 한 번으로 센다(Creator마다 조회하지 않는다).
+  `POPULAR_FALLBACK_V1`에서는 정렬에 쓴 팔로워 수가 `aggregateScore`와 같은 값으로 들어간다.
 - `aggregateScore`는 확률이나 절대 관련도가 아니라 해당 `policyVersion` 안에서만 의미 있는 정렬 점수다. 서로 다른
   `policyVersion`의 점수는 비교할 수 없다. M2/M3/M4 raw score가 아니라 rank 기반 RRF 기여도로 만든다.
 - 이미 팔로우한 Creator와 호출자 본인의 Creator, Creator Space가 없는 Creator는 반환하지 않는다.
