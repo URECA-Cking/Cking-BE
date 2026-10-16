@@ -55,7 +55,7 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 인증이 필요 없다. 공개 Event 수를 표시 상태별로 한 번의 집계 쿼리로 반환한다. 삭제·비공개 상태
 (`DRAFT`, `PENDING_APPROVAL`, `REJECTED`) 제외와 표시 상태 분류는 `GET /api/events`와 같은 규칙이라, 각 값은
 같은 시점의 `GET /api/events?status=`의 `totalElements`와 같다. `total`은 세 값의 합이다. 상태마다 따로
-호출할 때 생기던 조회 시점 차이로 합이 어긋나는 일이 없다. 응답은 캐시하지 않는다(단일 집계 쿼리).
+호출할 때 생기던 조회 시점 차이로 합이 어긋나는 일이 없다. 보관(archived) Event도 제외한다. 응답은 `GET /api/events`와 같은 정책으로 캐시한다(TTL 5초, 가장 임박한 `OPEN` Event의 `endAt`을 넘기지 않음).
 
 ```json
 { "total": 46, "upcoming": 5, "inProgress": 28, "closed": 13 }

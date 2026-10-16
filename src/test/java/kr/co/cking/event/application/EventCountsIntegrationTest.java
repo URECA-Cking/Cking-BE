@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.event.application.dto.EventCounts;
@@ -40,8 +41,12 @@ class EventCountsIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
     @BeforeEach
     void setUp() {
+        redisTemplate.delete("cache:event:counts");
         cleanUp();
         insertCreator(OWNER_MEMBER_ID, CREATOR_ID);
         insertCreator(OTHER_OWNER_MEMBER_ID, OTHER_CREATOR_ID);
@@ -60,6 +65,8 @@ class EventCountsIntegrationTest {
         insertEvent(CREATOR_ID, "OPEN", "2099-01-01 00:00:00", false);
         insertEvent(CREATOR_ID, "OPEN", "2020-01-01 00:00:00", false); // endAt 지남 → 종료
         insertEvent(CREATOR_ID, "OPEN", "2099-01-01 00:00:00", true);  // 삭제 → 제외
+        archive(insertEvent(CREATOR_ID, "PUBLISHED", "2020-01-01 00:00:00", false)); // 보관 → 제외
+        archive(insertEvent(CREATOR_ID, "OPEN", "2099-01-01 00:00:00", false)); // 보관 → 제외
         insertEvent(CREATOR_ID, "SCHEDULED", "2099-01-01 00:00:00", false);
         insertEvent(CREATOR_ID, "CLOSED", "2020-01-01 00:00:00", false);
         insertEvent(CREATOR_ID, "DRAFT", "2099-01-01 00:00:00", false);
@@ -80,6 +87,7 @@ class EventCountsIntegrationTest {
         insertEvent(CREATOR_ID, "CLOSING", "2020-01-01 00:00:00", false);
         insertEvent(CREATOR_ID, "PUBLISHED", "2020-01-01 00:00:00", false);
         insertEvent(CREATOR_ID, "SCHEDULED", "2099-01-01 00:00:00", true);
+        archive(insertEvent(CREATOR_ID, "PUBLISHED", "2020-01-01 00:00:00", false)); // 보관 → 제외
         insertEvent(CREATOR_ID, "PENDING_APPROVAL", "2099-01-01 00:00:00", false);
         insertEvent(CREATOR_ID, "REJECTED", "2099-01-01 00:00:00", false);
 
@@ -92,6 +100,15 @@ class EventCountsIntegrationTest {
         assertThat(counts.total()).isEqualTo(listTotal(null, null));
     }
 
+    @Test
+    void 개수는_5초_캐시를_쓰고_캐시가_있으면_DB_변경이_바로_보이지_않는다() {
+        EventCounts first = eventQueryService.getEventCounts();
+        insertEvent(CREATOR_ID, "SCHEDULED", "2099-01-01 00:00:00", false);
+
+        assertThat(eventQueryService.getEventCounts()).isEqualTo(first);
+        assertThat(redisTemplate.getExpire("cache:event:counts")).isBetween(1L, 5L);
+    }
+
     private long listTotal(Long creatorId, DisplayStatus status) {
         return eventRepository.search(creatorId, status, Instant.now(), PageRequest.of(0, 1)).getTotalElements();
     }
@@ -102,7 +119,11 @@ class EventCountsIntegrationTest {
                 creatorId, memberId, "집계 크리에이터");
     }
 
-    private void insertEvent(long creatorId, String status, String endAt, boolean deleted) {
+    private void archive(long eventId) {
+        jdbcTemplate.update("UPDATE event SET archived_at = NOW(6), archived_by = ? WHERE event_id = ?", OWNER_MEMBER_ID, eventId);
+    }
+
+    private long insertEvent(long creatorId, String status, String endAt, boolean deleted) {
         jdbcTemplate.update("""
                 INSERT INTO event (creator_id, title, start_at, end_at, winner_count, draw_method,
                                     status, request_id, created_by, deleted_at)
@@ -110,5 +131,6 @@ class EventCountsIntegrationTest {
                 """, creatorId, "집계 이벤트", endAt, status, UUID.randomUUID().toString(),
                 creatorId == CREATOR_ID ? OWNER_MEMBER_ID : OTHER_OWNER_MEMBER_ID,
                 deleted ? "2026-01-01 00:00:00" : null);
+        return jdbcTemplate.queryForObject("SELECT MAX(event_id) FROM event WHERE creator_id = ?", Long.class, creatorId);
     }
 }

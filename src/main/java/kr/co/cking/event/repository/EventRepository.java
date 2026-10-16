@@ -168,6 +168,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("""
             select e.creatorId as creatorId, count(e) as total from Event e
             where e.deletedAt is null
+              and e.archivedAt is null
               and e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now
               and e.creatorId in :creatorIds
             group by e.creatorId
@@ -193,6 +194,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
                                 then 1L else 0L end), 0L) as closed
             from Event e
             where e.deletedAt is null
+              and e.archivedAt is null
               and e.status not in (
                   kr.co.cking.event.domain.EventStatus.DRAFT,
                   kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL,
@@ -200,4 +202,13 @@ public interface EventRepository extends JpaRepository<Event, Long> {
               )
             """)
     DisplayStatusCounts countByDisplayStatus(@Param("now") Instant now);
+
+    /** 진행 중(OPEN, endAt 전) 이벤트 중 가장 임박한 endAt. 개수 캐시 TTL이 이 시각을 넘지 않게 하는 데 쓴다. */
+    @Query("""
+            select min(e.endAt) from Event e
+            where e.deletedAt is null
+              and e.archivedAt is null
+              and e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now
+            """)
+    Optional<Instant> findEarliestOpenEndAt(@Param("now") Instant now);
 }
