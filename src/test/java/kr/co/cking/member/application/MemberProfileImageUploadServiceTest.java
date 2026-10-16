@@ -19,6 +19,8 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.image.NormalizedImage;
 import kr.co.cking.common.storage.ObjectStorage;
+import kr.co.cking.creator.application.CreatorQueryService;
+import kr.co.cking.member.domain.MemberErrorCode;
 import kr.co.cking.member.application.image.MemberProfileImageProcessor;
 import kr.co.cking.member.domain.MemberProfileImage;
 import kr.co.cking.member.domain.MemberProfileImageStatus;
@@ -36,11 +38,13 @@ class MemberProfileImageUploadServiceTest {
     private static final byte[] NORMALIZED = {9, 9};
 
     private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final CreatorQueryService creatorQueryService = mock(CreatorQueryService.class);
     private final MemberProfileImageProcessor imageProcessor = mock(MemberProfileImageProcessor.class);
     private final MemberProfileImageRepository imageRepository = mock(MemberProfileImageRepository.class);
     private final ObjectStorage objectStorage = mock(ObjectStorage.class);
     private final MemberProfileImageUploadService service = new MemberProfileImageUploadService(
-            memberRepository, imageProcessor, imageRepository, objectStorage, Clock.fixed(NOW, ZoneOffset.UTC));
+            memberRepository, creatorQueryService, imageProcessor, imageRepository, objectStorage,
+            Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
     void 업로드_기록을_먼저_남기고_저장소_성공_뒤_연결_가능_상태로_바꾼다() {
@@ -82,6 +86,19 @@ class MemberProfileImageUploadServiceTest {
 
         verify(imageRepository).save(any(MemberProfileImage.class));
         verify(imageRepository, never()).markUploaded(anyString(), any());
+    }
+
+    @Test
+    void Creator는_개인_프로필_이미지를_업로드할_수_없다() {
+        given(memberRepository.existsById(MEMBER_ID)).willReturn(true);
+        given(creatorQueryService.isCreatorMember(MEMBER_ID)).willReturn(true);
+
+        assertThatThrownBy(() -> service.upload(MEMBER_ID, SOURCE))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE);
+
+        verifyNoInteractions(imageProcessor, imageRepository, objectStorage);
     }
 
     private NormalizedImage normalized() {

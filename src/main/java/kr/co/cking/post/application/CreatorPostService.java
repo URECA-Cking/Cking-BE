@@ -48,7 +48,7 @@ public class CreatorPostService {
      * @return 작성자 기준 게시글. Commit 뒤에 실패할 단계를 남기지 않도록 응답을 이 Transaction 안에서 만든다.
      */
     public CreatorPostView create(Long memberId, CreatorPostFields fields) {
-        Creator creator = authorLookup.requireCreator(memberId);
+        Creator creator = authorLookup.requireConfiguredCreator(memberId);
         List<String> imageKeys = validate(fields);
         Instant now = clock.instant();
 
@@ -63,7 +63,7 @@ public class CreatorPostService {
      * @return 작성자 기준 게시글. Commit 뒤에 실패할 단계를 남기지 않도록 응답을 이 Transaction 안에서 만든다.
      */
     public CreatorPostView update(Long memberId, Long postId, CreatorPostFields fields) {
-        Creator creator = authorLookup.requireCreator(memberId);
+        Creator creator = authorLookup.requireConfiguredCreator(memberId);
         CreatorPost post = requireOwnedPostForUpdate(postId, creator.getCreatorId());
         List<String> imageKeys = validate(fields);
         Instant now = clock.instant();

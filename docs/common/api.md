@@ -157,9 +157,10 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 
 - `creator`는 JWT role이 아니라 `creator.member_id` 존재 여부다.
 - JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
-- `name`은 OAuth 제공자 원본 이름이고 본인 조회에서만 반환한다. 공개 응답은 닉네임을 사용한다. `profileConfigured`
-  가 `false`인 회원은 댓글 작성·수정, Creator 신청, 이벤트 응모를 할 수 없다. 상세는
-  [Member API](../domains/member/api.md)를 따른다.
+- `name`은 OAuth 제공자 원본 이름이고 본인 조회에서만 반환한다. 팬 공개 응답은 닉네임·Member 사진을, 승인된 Creator
+  공개 응답은 활동명·Creator Space 사진을 사용한다. `profileConfigured`가 `false`인 팬 회원은 댓글 작성·수정,
+  Creator 신청, 이벤트 응모를 할 수 없다. Creator는 Member 닉네임 대신 활동명이 설정돼야 댓글·게시글·Event 작성과
+  이벤트 응모를 할 수 있다. 상세는 [Member API](../domains/member/api.md)를 따른다.
 
 ### GET /api/creators
 

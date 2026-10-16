@@ -5,6 +5,8 @@ import java.util.Map;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.EventExistenceQueryService;
+import kr.co.cking.creator.application.CreatorPublicProfileQueryService;
+import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.winner.repository.PublicWinnerProjection;
@@ -24,6 +26,7 @@ public class PublicWinnerQueryService {
     private final EventExistenceQueryService eventExistenceQueryService;
     private final WinnerRepository winnerRepository;
     private final MemberQueryService memberQueryService;
+    private final CreatorPublicProfileQueryService creatorPublicProfileQueryService;
 
     /** Event의 공개된 INITIAL·REDRAW Winner를 추첨 순서대로 마스킹해 반환한다. */
     public PublicWinnerQueryResult getPublicWinners(Long eventId) {
@@ -33,8 +36,12 @@ public class PublicWinnerQueryService {
         Map<Long, MemberInfo> members = memberQueryService.findMemberInfosByIds(
                 winners.stream().map(PublicWinnerProjection::memberId).toList()
         );
+        Map<Long, CreatorPublicProfile> creatorProfiles = creatorPublicProfileQueryService.findByMemberIds(
+                winners.stream().map(PublicWinnerProjection::memberId).toList()
+        );
         List<PublicWinnerResult> results = winners.stream()
-                .map(winner -> PublicWinnerResult.from(winner, findMember(members, winner.memberId())))
+                .map(winner -> PublicWinnerResult.from(
+                        winner, findMember(members, winner.memberId()), creatorProfiles.get(winner.memberId())))
                 .toList();
         return new PublicWinnerQueryResult(eventId, results);
     }

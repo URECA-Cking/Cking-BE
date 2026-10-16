@@ -12,8 +12,9 @@
 - 각 Winner는 `drawNo`와 `drawType`으로 INITIAL·REDRAW 이력을 구분한다. 운영 상태는 공개하지 않는다.
 - 각 Winner에 Snapshot에서 확정되어 저장된 `prizeKey`, `prizeDisplayName`, `prizePriority`를 함께 반환한다.
   상품 추첨 도입 전 생성된 레거시 Winner는 해당 필드가 `null`일 수 있다.
-- 응답을 만들 때만 이름과 전화번호를 마스킹한다. Winner와 Member의 원본 데이터는 바꾸지 않으며,
-  관리자 결과 조회 및 당첨자 본인 조회의 원본 개인정보 정책과 분리한다.
+- 팬 당첨자는 응답을 만들 때만 공개 닉네임과 전화번호를 마스킹한다. Creator 당첨자는 공개 활동명을 그대로
+  반환하고 전화번호만 마스킹한다. Winner와 Member의 원본 데이터는 바꾸지 않으며, 관리자 결과 조회 및 당첨자 본인
+  조회의 원본 개인정보 정책과 분리한다.
 
 #### 조회 경계
 

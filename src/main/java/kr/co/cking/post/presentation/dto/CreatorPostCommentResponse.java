@@ -5,8 +5,8 @@ import kr.co.cking.post.application.dto.CreatorPostCommentView;
 import java.time.Instant;
 
 /**
- * @param authorName 작성자 이름. 원문이 가려진 댓글(filtered)이면 null이다.
- * @param authorProfileImageUrl 작성자 프로필 사진 URL. 사진이 없거나 원문이 가려진 댓글(filtered)이면 null이다.
+ * @param authorName 작성자 공개 이름. 원문이 가려진 댓글(filtered)이면 null이다.
+ * @param authorProfileImageUrl 작성자 공개 사진 URL. 사진이 없거나 원문이 가려진 댓글(filtered)이면 null이다.
  * @param writtenByCreator 게시글을 작성한 Creator 본인이 단 댓글이면 true
  * @param content 원문이 가려진 댓글(filtered)이면 null이다.
  * @param filtered 필터가 차단했거나 관리자가 숨겨 원문이 가려진 댓글이면 true. 작성자 본인에게는 항상 false다.
