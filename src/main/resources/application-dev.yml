@@ -59,6 +59,9 @@ cking:
   verification:
     youtube-subscription:
       submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:true}
+  ticket:
+    quiz-reward:
+      worker-enabled: true
   # Quiz는 OpenAI 사용 한도와 모델 접근 권한을 확인한 뒤 켠다.
   quiz:
     generation:
