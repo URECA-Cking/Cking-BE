@@ -131,7 +131,8 @@ public class SpaceCommentBlockService {
 
     /**
      * 호출한 크리에이터가 건 차단을 지금 푼다. 이미 끝났거나 해제된 차단을 다시 풀면 아무것도 바꾸지 않고 성공한다. 다른
-     * 크리에이터의 차단이나 플랫폼 제재는 존재 여부를 드러내지 않도록 {@code RESOURCE_NOT_FOUND}다.
+     * 크리에이터의 차단, 플랫폼 제재, 관리자의 댓글 숨김으로 생긴 자동 제한은 존재 여부를 드러내지 않도록
+     * {@code RESOURCE_NOT_FOUND}다.
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public SpaceCommentBlockView release(Long creatorMemberId, Long sanctionId) {
@@ -139,6 +140,8 @@ public class SpaceCommentBlockService {
         MemberSanction block = sanctionRepository.findByIdForUpdate(sanctionId)
                 .filter(found -> found.getScope() == SanctionScope.SPACE)
                 .filter(found -> creator.getCreatorId().equals(found.getSpaceCreatorId()))
+                // 관리자가 댓글을 숨겨 생긴 자동 경고 제한은 중재 기록이라 크리에이터가 풀 수 없다. 관리자만 푼다.
+                .filter(found -> found.getSource() == SanctionSource.MANUAL)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return releaseLocked(block, creator, creatorMemberId, true);
     }
@@ -173,7 +176,10 @@ public class SpaceCommentBlockService {
         return view(block, now);
     }
 
-    /** 호출한 크리에이터가 건 차단을 최신 시작 순으로 조회한다. {@code activeOnly}면 지금 유효한 차단만 돌려준다. */
+    /**
+     * 호출한 크리에이터가 건 차단을 최신 시작 순으로 조회한다. {@code activeOnly}면 지금 유효한 차단만 돌려준다. 관리자의 댓글
+     * 숨김으로 생긴 자동 제한은 포함하지 않는다(크리에이터가 풀 수 없는 중재 기록이라 목록에도 두지 않는다).
+     */
     @Transactional(readOnly = true)
     public Page<SpaceCommentBlockView> findBlocks(Long creatorMemberId, boolean activeOnly, Pageable pageable) {
         Creator creator = requireCreator(creatorMemberId);

@@ -67,10 +67,14 @@ public interface MemberSanctionRepository extends JpaRepository<MemberSanction, 
     java.util.List<MemberSanction> findActiveSpaceBlocks(
             @Param("creatorId") Long creatorId, @Param("memberId") Long memberId, @Param("now") Instant now);
 
-    /** 크리에이터의 차단 목록. 최신 시작 순이며 activeOnly면 지금 유효한 차단만 돌려준다. */
+    /**
+     * 크리에이터의 차단 목록. 최신 시작 순이며 activeOnly면 지금 유효한 차단만 돌려준다. 크리에이터가 건 수동 차단만 돌려주고,
+     * 관리자가 댓글을 숨겨 생긴 자동 경고 제한(이슈 #643)은 중재 기록이라 포함하지 않는다.
+     */
     @Query(value = """
             select s from MemberSanction s
             where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE and s.spaceCreatorId = :creatorId
+              and s.source = kr.co.cking.sanction.domain.SanctionSource.MANUAL
               and (:activeOnly = false
                    or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
             order by s.startedAt desc, s.sanctionId desc
@@ -78,6 +82,7 @@ public interface MemberSanctionRepository extends JpaRepository<MemberSanction, 
             countQuery = """
             select count(s) from MemberSanction s
             where s.scope = kr.co.cking.sanction.domain.SanctionScope.SPACE and s.spaceCreatorId = :creatorId
+              and s.source = kr.co.cking.sanction.domain.SanctionSource.MANUAL
               and (:activeOnly = false
                    or (s.startedAt <= :now and s.endsAt > :now and (s.releasedAt is null or s.releasedAt > :now)))
             """)

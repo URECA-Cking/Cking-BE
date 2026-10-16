@@ -316,6 +316,35 @@ class SpaceCommentBlockServiceTest {
     }
 
     @Test
+    void 크리에이터는_관리자의_숨김으로_생긴_자동_제한을_풀_수_없고_바뀌지_않는다() {
+        MemberSanction automatic = MemberSanction.automaticSpace(
+                TARGET_ID, CREATOR_ID, 500L, 1L, NOW.minusSeconds(3600), Duration.ofDays(1));
+        ReflectionTestUtils.setField(automatic, "sanctionId", 903L);
+        given(sanctionRepository.findByIdForUpdate(903L)).willReturn(Optional.of(automatic));
+
+        assertError(() -> service.release(CREATOR_MEMBER_ID, 903L), CommonErrorCode.RESOURCE_NOT_FOUND);
+
+        assertThat(automatic.getReleasedAt()).isNull();
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 관리자는_숨김으로_생긴_자동_제한도_해제할_수_있다() {
+        stubMember(ADMIN_ID, MemberRole.ADMIN);
+        MemberSanction automatic = MemberSanction.automaticSpace(
+                TARGET_ID, CREATOR_ID, 500L, ADMIN_ID, NOW.minusSeconds(3600), Duration.ofDays(1));
+        ReflectionTestUtils.setField(automatic, "sanctionId", 903L);
+        given(sanctionRepository.findByIdForUpdate(903L)).willReturn(Optional.of(automatic));
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        SpaceCommentBlockView view = service.releaseByAdmin(ADMIN_ID, 903L);
+
+        assertThat(view.active()).isFalse();
+        assertThat(automatic.getReleasedBy()).isEqualTo(ADMIN_ID);
+        verify(notificationService).createSpaceCommentBlockReleased(TARGET_ID, 903L, creator.publicDisplayName());
+    }
+
+    @Test
     void Creator가_아니면_해제할_수_없다() {
         given(creatorRepository.findByMemberId(77L)).willReturn(Optional.empty());
 

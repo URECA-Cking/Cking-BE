@@ -137,6 +137,27 @@ class MemberSanctionRepositoryTest {
     }
 
     @Test
+    void 크리에이터_목록은_수동_차단만_돌려주고_관리자_목록은_자동_제한도_돌려준다() {
+        MemberSanction automatic = automatic(memberId, 1L, NOW.minus(Duration.ofHours(2)), Duration.ofDays(1));
+        MemberSanction manualBlock = sanctionRepository.saveAndFlush(MemberSanction.spaceBlock(
+                memberId, spaceCreatorId, adminId, NOW.minus(Duration.ofHours(1)), Duration.ofDays(7)));
+        PageRequest page = PageRequest.of(0, 20);
+
+        Page<MemberSanction> forCreator = sanctionRepository.searchSpaceBlocks(spaceCreatorId, false, NOW, page);
+        Page<MemberSanction> activeForCreator = sanctionRepository.searchSpaceBlocks(spaceCreatorId, true, NOW, page);
+        Page<MemberSanction> forAdmin = sanctionRepository.searchSpaceBlocksForAdmin(
+                spaceCreatorId, null, false, NOW, page);
+
+        assertThat(forCreator.getContent()).extracting(MemberSanction::getSanctionId)
+                .containsExactly(manualBlock.getSanctionId());
+        assertThat(forCreator.getTotalElements()).isEqualTo(1);
+        assertThat(activeForCreator.getContent()).extracting(MemberSanction::getSanctionId)
+                .containsExactly(manualBlock.getSanctionId());
+        assertThat(forAdmin.getContent()).extracting(MemberSanction::getSanctionId)
+                .contains(manualBlock.getSanctionId(), automatic.getSanctionId());
+    }
+
+    @Test
     void 같은_원인_댓글로_경고를_두_번_저장하면_유니크_제약이_거부한다() {
         automatic(memberId, 1L, NOW.minusSeconds(60));
 
