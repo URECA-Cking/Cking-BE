@@ -7,6 +7,7 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.follow.application.dto.FollowedCreatorView;
 import kr.co.cking.follow.domain.CreatorFollow;
 import kr.co.cking.follow.repository.CreatorFollowRepository;
+import kr.co.cking.follow.repository.CreatorFollowerCount;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -15,6 +16,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -60,6 +62,25 @@ class CreatorFollowQueryServiceTest {
         assertThat(service.countFollowers(null)).isZero();
 
         verify(followRepository, never()).countByCreatorId(null);
+    }
+
+    @Test
+    void 여러_크리에이터의_팔로워_수는_한_번의_일괄_집계로_세고_팔로워가_없으면_0으로_채운다() {
+        given(followRepository.countFollowersByCreatorIds(List.of(1L, 2L, 3L)))
+                .willReturn(List.of(new CreatorFollowerCount(1L, 1280L), new CreatorFollowerCount(3L, 4L)));
+
+        Map<Long, Long> counts = service.countFollowersByCreatorIds(List.of(1L, 2L, 3L));
+
+        assertThat(counts).containsExactlyInAnyOrderEntriesOf(Map.of(1L, 1280L, 2L, 0L, 3L, 4L));
+        verify(followRepository).countFollowersByCreatorIds(List.of(1L, 2L, 3L));
+    }
+
+    @Test
+    void 팔로워_수_일괄_집계는_ID가_비어_있으면_조회하지_않고_빈_결과를_반환한다() {
+        assertThat(service.countFollowersByCreatorIds(List.of())).isEmpty();
+        assertThat(service.countFollowersByCreatorIds(null)).isEmpty();
+
+        verify(followRepository, never()).countFollowersByCreatorIds(any());
     }
 
     @Test

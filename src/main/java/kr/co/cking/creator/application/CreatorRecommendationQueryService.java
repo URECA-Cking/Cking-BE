@@ -49,6 +49,10 @@ public class CreatorRecommendationQueryService {
     private final PopularCreatorQueryRepository popularRepository;
     private final PersonalizedCreatorRecommendationPolicy policy;
 
+    /**
+     * 회원의 개인화 추천을 만든다. 팔로우·관심 분야 저장 후보를 합쳐 정렬하고 {@code size}를 적용한 뒤, 선택된 Creator의
+     * 프로필·Space와 팔로워 수를 각각 일괄 조회해 카드로 만든다. 합친 결과가 비면 인기순 대체 결과를 반환한다.
+     */
     public PersonalizedCreatorRecommendationView findForMember(Long memberId, int size) {
         List<Long> followedCreatorIds = followQueryService.findFollowedCreatorIds(memberId);
         var excludedCreatorIds = new HashSet<>(followedCreatorIds);
@@ -79,6 +83,7 @@ public class CreatorRecommendationQueryService {
         if (creators.size() != selectedCreatorIds.size()) {
             throw new BusinessException(CommonErrorCode.SYSTEM_ERROR);
         }
+        Map<Long, Long> followerCounts = followQueryService.countFollowersByCreatorIds(selectedCreatorIds);
         var sources = new ArrayList<SourceRow>();
         followRows.forEach(row -> sources.add(new SourceRow(row.candidateCreatorId(),
                 new RecommendationSource(RecommendationSourceType.FOLLOW, row.seedCreatorId().toString(),
@@ -96,7 +101,9 @@ public class CreatorRecommendationQueryService {
                         .map(candidate -> toItem(
                                 candidate,
                                 creators.get(candidate.creatorId()),
-                                spaces.get(candidate.creatorId()), sourcesByCreator.getOrDefault(candidate.creatorId(), List.of())))
+                                spaces.get(candidate.creatorId()),
+                                sourcesByCreator.getOrDefault(candidate.creatorId(), List.of()),
+                                followerCounts.getOrDefault(candidate.creatorId(), 0L)))
                         .toList());
     }
 
@@ -119,15 +126,19 @@ public class CreatorRecommendationQueryService {
                                 candidate.profileImageUrl(),
                                 BigDecimal.valueOf(candidate.followerCount()),
                                 List.of(),
-                                List.of()))
+                                List.of(),
+                                List.of(),
+                                candidate.followerCount()))
                         .toList());
     }
 
+    /** 정렬된 후보 한 건에 Creator·Space 프로필, 추천 근거 출처, 팔로워 수를 붙여 응답용 카드로 만든다. */
     private PersonalizedCreatorRecommendationView.Item toItem(
             PersonalizedCreatorRecommendationPolicy.Item candidate,
             Creator creator,
             CreatorSpace space,
-            List<RecommendationSource> sources
+            List<RecommendationSource> sources,
+            long followerCount
     ) {
         return new PersonalizedCreatorRecommendationView.Item(
                 candidate.creatorId(),
@@ -136,7 +147,7 @@ public class CreatorRecommendationQueryService {
                 space.getProfileImageUrl(),
                 candidate.aggregateScore(),
                 candidate.interestCodes(),
-                candidate.seedCreatorIds(), List.copyOf(sources));
+                candidate.seedCreatorIds(), List.copyOf(sources), followerCount);
     }
 
     private record SourceRow(Long creatorId, RecommendationSource source) { }

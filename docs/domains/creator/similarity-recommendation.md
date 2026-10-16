@@ -62,6 +62,12 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호�
 
 적재는 배치용 추천 적재 API Key(`X-Cking-Recommendation-Key`) 또는 ADMIN JWT로 인증한다. JWT는 Security 인가와 Application의 DB ADMIN 재검증을 모두 통과해야 하고, 적재 서비스(`CreatorSimilarityResultService.replace`)는 인증 방식과 회원 ID에 의존하지 않는다. 공개 조회의 기본 `size`는 5, 범위는 1~20이다. 활성 결과가 없으면 메타데이터 없이 `candidates: []`를 반환한다. 상세 Request·Response와 오류는 [Creator API](api.md#creator-유사-추천-결과-api이슈-393)를 따른다.
 
+### 카드 팔로워 수(`followerCount`)
+
+모든 정책의 응답 항목에 해당 Creator의 팔로워 수를 담는다. 점수·정렬·유효 source 판정과 무관한 표시 값이라 집계식과 `policyVersion`은 바뀌지 않는다.
+개인화 경로는 집계·정렬·`size` 적용 뒤 선택된 Creator ID를 `CreatorFollowQueryService#countFollowersByCreatorIds`로 한 번에 센다(그룹 쿼리 1회, 팔로워가 없는 Creator는 0).
+인기순 대체는 정렬에 쓴 집계값을 그대로 쓰므로 추가 조회가 없다. 집계 컬럼·캐시는 아직 없다.
+
 ## 요구사항 추적
 
 추천 응답의 실제 노출/클릭과 팔로우 전환은 [추천 행동 수집](recommendation-events.md)에서 별도로 관리한다.
@@ -139,4 +145,5 @@ Creator Space가 없어 추천 카드를 만들 수 없는 후보는 집계 전�
 | 본인·기팔로우·Space 없음·중복 제외와 size 정렬 | 집계 정책·Query Service 단위 테스트, MySQL 통합 테스트 |
 | JWT API와 size 검증 | `CreatorRecommendationController`, MVC·Security 테스트 |
 | Creator·Space 카드와 `interestCodes`·seed 근거 | bulk profile 조회와 Response DTO |
+| 카드 팔로워 수 일괄 집계 | `countFollowersByCreatorIds` 그룹 쿼리, Query Service·Repository 통합·MVC 테스트 |
 | 빈/부분 source와 모델 장애 독립 | 저장 Repository만 사용하는 Query Service와 빈 결과 테스트 |

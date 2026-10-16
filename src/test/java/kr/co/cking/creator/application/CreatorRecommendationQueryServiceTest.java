@@ -13,6 +13,7 @@ import kr.co.cking.creator.repository.PopularCreatorCandidate;
 import kr.co.cking.creator.repository.PopularCreatorQueryRepository;
 import kr.co.cking.creator.repository.ActiveCreatorRecommendationCandidate;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageRequest;
@@ -20,6 +21,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,6 +102,10 @@ class CreatorRecommendationQueryServiceTest {
         assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::creatorId)
                 .containsExactly(2L, 3L);
         assertThat(result.items().getFirst().aggregateScore()).isEqualByComparingTo("5");
+        // 인기순은 정렬에 쓴 집계값을 followerCount로 그대로 쓰므로 추가 조회가 없다.
+        assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::followerCount)
+                .containsExactly(5L, 0L);
+        then(followQueryService).should(never()).countFollowersByCreatorIds(any());
         assertThat(result.items().getFirst().interestCodes()).isEmpty();
         assertThat(result.items().getFirst().seedCreatorIds()).isEmpty();
     }
@@ -255,6 +261,74 @@ class CreatorRecommendationQueryServiceTest {
 
         assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::creatorId)
                 .containsExactly(10L, 11L);
+    }
+
+    @Test
+    void 팔로우_정책_결과의_팔로워_수는_선택된_후보를_일괄_조회해_채운다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of(1L));
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
+        given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
+        given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L)))
+                .willReturn(List.of(row(1L, 10L, 1), row(1L, 11L, 2)));
+        stubProfiles(10L, 11L);
+        given(followQueryService.countFollowersByCreatorIds(List.of(10L, 11L))).willReturn(Map.of(10L, 1280L, 11L, 0L));
+
+        PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
+
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
+        assertThat(result.items()).extracting(
+                        PersonalizedCreatorRecommendationView.Item::creatorId,
+                        PersonalizedCreatorRecommendationView.Item::followerCount)
+                .containsExactly(Tuple.tuple(10L, 1280L), Tuple.tuple(11L, 0L));
+        then(followQueryService).should().countFollowersByCreatorIds(List.of(10L, 11L));
+    }
+
+    @Test
+    void 관심_분야_정책_결과의_팔로워_수는_점수와_정렬을_바꾸지_않고_채운다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of());
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
+        given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of(
+                interestRow("FOOD", 10L, 1), interestRow("FOOD", 11L, 2)));
+        stubProfiles(10L, 11L);
+        // 순위가 낮은 11번이 팔로워가 훨씬 많아도 순서와 점수는 그대로다.
+        given(followQueryService.countFollowersByCreatorIds(List.of(10L, 11L))).willReturn(Map.of(10L, 3L, 11L, 99999L));
+
+        PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
+
+        assertThat(result.policyVersion()).isEqualTo("INTEREST_PERSONALIZED_V1");
+        assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::creatorId)
+                .containsExactly(10L, 11L);
+        assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::followerCount)
+                .containsExactly(3L, 99999L);
+        assertThat(result.items().getFirst().aggregateScore()).isEqualByComparingTo("0.01639344");
+        assertThat(result.items().get(1).aggregateScore()).isEqualByComparingTo("0.01612903");
+    }
+
+    @Test
+    void 혼합_정책_결과의_팔로워_수는_size가_적용된_후보만_일괄_조회한다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of(1L));
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
+        given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of(interestRow("FOOD", 10L, 1)));
+        given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L)))
+                .willReturn(List.of(row(1L, 10L, 1), row(1L, 11L, 2)));
+        stubProfiles(10L);
+        given(followQueryService.countFollowersByCreatorIds(List.of(10L))).willReturn(Map.of(10L, 7L));
+
+        PersonalizedCreatorRecommendationView result = service.findForMember(7L, 1);
+
+        assertThat(result.policyVersion()).isEqualTo("HYBRID_PERSONALIZED_V1");
+        assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::followerCount)
+                .containsExactly(7L);
+        then(followQueryService).should().countFollowersByCreatorIds(List.of(10L));
+    }
+
+    /** 지정한 Creator들의 Creator·Space 프로필 조회를 준비한다. */
+    private void stubProfiles(Long... creatorIds) {
+        List<Long> ids = List.of(creatorIds);
+        given(creatorRepository.findByCreatorIdIn(ids))
+                .willReturn(ids.stream().map(id -> creator(id, "c" + id)).toList());
+        given(spaceRepository.findByCreatorIdIn(ids))
+                .willReturn(ids.stream().map(id -> space(id, "소개" + id, "profile" + id)).toList());
     }
 
     private ActiveInterestRecommendationCandidate interestRow(String interestCode, Long creatorId, int rank) {
