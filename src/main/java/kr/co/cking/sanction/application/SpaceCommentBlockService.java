@@ -14,6 +14,7 @@ import kr.co.cking.sanction.application.dto.SpaceCommentBlockView;
 import kr.co.cking.sanction.domain.MemberSanction;
 import kr.co.cking.sanction.domain.SanctionErrorCode;
 import kr.co.cking.sanction.domain.SanctionScope;
+import kr.co.cking.sanction.domain.SanctionSource;
 import kr.co.cking.sanction.repository.MemberSanctionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -35,9 +36,11 @@ import java.util.stream.Collectors;
  * 같은 차단을 걸고 풀 수 있다(이슈 #584). 호출 주체(actor)만 다르고 검증·알림 규칙은 같다. 잠금은 호출 주체에 따라 다르다
  * ({@link #lockMembers} 참고).
  *
- * <p>차단은 {@code member_sanction}의 {@link SanctionScope#SPACE} 행이다. 그 스페이스에서만 막고, 경고 횟수에 세지 않으며
- * 플랫폼 제재 단계에도 영향을 주지 않는다. 기간제(1~365일)이고 영구 차단은 없다. 같은 크리에이터가 같은 회원에게 이미
- * 유효한 차단이 있으면 새로 만들지 않고 기존 차단을 그대로 돌려준다(기간을 바꾸려면 해제 후 다시 건다).
+ * <p>차단은 {@code member_sanction}의 {@link SanctionScope#SPACE} 행이다. 그 스페이스에서만 막고, 수동 차단은 경고 횟수에
+ * 세지 않는다. 기간제(1~365일)이고 영구 차단은 없다. 같은 스페이스에서 같은 회원에게 이미 유효한 <b>수동</b> 차단이 있으면
+ * 새로 만들지 않고 기존 차단을 그대로 돌려준다(기간을 바꾸려면 해제 후 다시 건다). 댓글 숨김으로 생긴 자동 경고 제한
+ * ({@link SanctionSource#AUTOMATIC}, 이슈 #643)은 이 판정에 포함하지 않아 자동 제한 중에도 수동 차단을 걸 수 있고, 둘이 겹치면
+ * 작성 가드는 가장 늦게 끝나는 쪽을 쓴다. 해제 알림은 그 스페이스에 다른 유효한 제한이 남아 있지 않을 때만 보낸다.
  *
  * <p>크리에이터가 차단·해제하면 대상 회원과 크리에이터의 회원 행을 <b>회원 ID 오름차순으로 둘 다</b> 쓰기 잠금으로 먼저 읽는다.
  * 제재 INSERT·해제 UPDATE는 {@code created_by}·{@code released_by} FK 검사로 크리에이터 회원 행의 공유 잠금이 필요한데(READ_COMMITTED에서도
@@ -107,20 +110,29 @@ public class SpaceCommentBlockService {
             throw new BusinessException(SanctionErrorCode.CANNOT_BLOCK_ADMIN);
         }
         Instant now = clock.instant();
-        List<MemberSanction> active = sanctionRepository.findActiveSpaceBlocks(creator.getCreatorId(), targetMemberId, now);
-        if (!active.isEmpty()) {
-            return view(active.get(0), now);
+        // 수동 차단만 같은 (스페이스, 회원) 쌍에 하나로 유지한다. 댓글 숨김으로 생긴 자동 경고 제한(AUTOMATIC)은 경고 기록이라
+        // 수동 차단 요청을 대신하지 않는다. 그렇지 않으면 1일 자동 제한 중에 건 30일 차단이 만들어지지 않는다.
+        List<MemberSanction> activeManual = sanctionRepository
+                .findActiveSpaceBlocks(creator.getCreatorId(), targetMemberId, now).stream()
+                .filter(active -> active.getSource() == SanctionSource.MANUAL)
+                .toList();
+        if (!activeManual.isEmpty()) {
+            return view(activeManual.get(0), now);
         }
         MemberSanction block = sanctionRepository.save(MemberSanction.spaceBlock(
                 targetMemberId, creator.getCreatorId(), actorMemberId, now, Duration.ofDays(days)));
+        // 알림이 안내하는 시각은 이 차단 하나가 아니라 그 스페이스의 유효한 제한 중 가장 늦게 끝나는 시각이다(작성 가드와 같다).
         notificationService.createSpaceCommentBlockStarted(
-                targetMemberId, block.getSanctionId(), creator.publicDisplayName(), block.getEndsAt());
+                targetMemberId, block.getSanctionId(), creator.publicDisplayName(),
+                sanctionRepository.findActiveSpaceBlockEndsAt(creator.getCreatorId(), targetMemberId, now)
+                        .orElse(block.getEndsAt()));
         return view(block, now);
     }
 
     /**
      * 호출한 크리에이터가 건 차단을 지금 푼다. 이미 끝났거나 해제된 차단을 다시 풀면 아무것도 바꾸지 않고 성공한다. 다른
-     * 크리에이터의 차단이나 플랫폼 제재는 존재 여부를 드러내지 않도록 {@code RESOURCE_NOT_FOUND}다.
+     * 크리에이터의 차단, 플랫폼 제재, 관리자의 댓글 숨김으로 생긴 자동 제한은 존재 여부를 드러내지 않도록
+     * {@code RESOURCE_NOT_FOUND}다.
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public SpaceCommentBlockView release(Long creatorMemberId, Long sanctionId) {
@@ -128,6 +140,8 @@ public class SpaceCommentBlockService {
         MemberSanction block = sanctionRepository.findByIdForUpdate(sanctionId)
                 .filter(found -> found.getScope() == SanctionScope.SPACE)
                 .filter(found -> creator.getCreatorId().equals(found.getSpaceCreatorId()))
+                // 관리자가 댓글을 숨겨 생긴 자동 경고 제한은 중재 기록이라 크리에이터가 풀 수 없다. 관리자만 푼다.
+                .filter(found -> found.getSource() == SanctionSource.MANUAL)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return releaseLocked(block, creator, creatorMemberId, true);
     }
@@ -153,14 +167,19 @@ public class SpaceCommentBlockService {
         Instant now = clock.instant();
         boolean wasActive = block.isActiveAt(now);
         block.release(releasedByMemberId, now);
-        if (wasActive) {
+        // 같은 스페이스에 다른 유효한 제한(수동 차단이나 숨김 경고 제한)이 남아 있으면 여전히 막힌 상태라 알리지 않는다.
+        if (wasActive && sanctionRepository.findActiveSpaceBlockEndsAt(
+                block.getSpaceCreatorId(), block.getMemberId(), now).isEmpty()) {
             notificationService.createSpaceCommentBlockReleased(
                     block.getMemberId(), block.getSanctionId(), creator.publicDisplayName());
         }
         return view(block, now);
     }
 
-    /** 호출한 크리에이터가 건 차단을 최신 시작 순으로 조회한다. {@code activeOnly}면 지금 유효한 차단만 돌려준다. */
+    /**
+     * 호출한 크리에이터가 건 차단을 최신 시작 순으로 조회한다. {@code activeOnly}면 지금 유효한 차단만 돌려준다. 관리자의 댓글
+     * 숨김으로 생긴 자동 제한은 포함하지 않는다(크리에이터가 풀 수 없는 중재 기록이라 목록에도 두지 않는다).
+     */
     @Transactional(readOnly = true)
     public Page<SpaceCommentBlockView> findBlocks(Long creatorMemberId, boolean activeOnly, Pageable pageable) {
         Creator creator = requireCreator(creatorMemberId);

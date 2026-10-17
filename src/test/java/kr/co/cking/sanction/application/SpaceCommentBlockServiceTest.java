@@ -122,6 +122,52 @@ class SpaceCommentBlockServiceTest {
     }
 
     @Test
+    void 숨김으로_생긴_자동_제한_중에도_수동_차단은_새로_만든다() {
+        MemberSanction automatic = MemberSanction.automaticSpace(
+                TARGET_ID, CREATOR_ID, 500L, 1L, NOW.minusSeconds(3600), Duration.ofDays(1));
+        ReflectionTestUtils.setField(automatic, "sanctionId", 800L);
+        given(sanctionRepository.findActiveSpaceBlocks(CREATOR_ID, TARGET_ID, NOW)).willReturn(List.of(automatic));
+
+        SpaceCommentBlockView view = service.block(CREATOR_MEMBER_ID, TARGET_ID, 30);
+
+        // 1일 자동 제한이 있어도 30일 수동 차단이 따로 만들어진다.
+        ArgumentCaptor<MemberSanction> captor = ArgumentCaptor.forClass(MemberSanction.class);
+        verify(sanctionRepository).save(captor.capture());
+        assertThat(captor.getValue().getSource()).isEqualTo(SanctionSource.MANUAL);
+        assertThat(captor.getValue().getEndsAt()).isEqualTo(NOW.plus(Duration.ofDays(30)));
+        assertThat(view.sanctionId()).isEqualTo(900L);
+    }
+
+    @Test
+    void 수동_차단과_자동_제한이_함께_있어도_수동_차단이_이미_있으면_새로_만들지_않는다() {
+        MemberSanction automatic = MemberSanction.automaticSpace(
+                TARGET_ID, CREATOR_ID, 500L, 1L, NOW.minusSeconds(3600), Duration.ofDays(1));
+        MemberSanction manual = MemberSanction.spaceBlock(
+                TARGET_ID, CREATOR_ID, CREATOR_MEMBER_ID, NOW.minusSeconds(7200), Duration.ofDays(3));
+        ReflectionTestUtils.setField(manual, "sanctionId", 801L);
+        given(sanctionRepository.findActiveSpaceBlocks(CREATOR_ID, TARGET_ID, NOW))
+                .willReturn(List.of(automatic, manual));
+
+        SpaceCommentBlockView view = service.block(CREATOR_MEMBER_ID, TARGET_ID, 30);
+
+        assertThat(view.sanctionId()).isEqualTo(801L);
+        verify(sanctionRepository, never()).save(any(MemberSanction.class));
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 차단_시작_알림은_그_스페이스에서_가장_늦게_끝나는_제한의_시각을_안내한다() {
+        Instant automaticEndsAt = NOW.plus(Duration.ofDays(60));
+        given(sanctionRepository.findActiveSpaceBlockEndsAt(CREATOR_ID, TARGET_ID, NOW))
+                .willReturn(Optional.of(automaticEndsAt));
+
+        service.block(CREATOR_MEMBER_ID, TARGET_ID, 7);
+
+        verify(notificationService).createSpaceCommentBlockStarted(
+                TARGET_ID, 900L, creator.publicDisplayName(), automaticEndsAt);
+    }
+
+    @Test
     void 차단은_두_회원_행을_회원_ID_오름차순으로_잠근_뒤_유효한_차단을_읽고_READ_COMMITTED로_실행한다() throws Exception {
         service.block(CREATOR_MEMBER_ID, TARGET_ID, 1);
 
@@ -214,6 +260,20 @@ class SpaceCommentBlockServiceTest {
     }
 
     @Test
+    void 같은_스페이스에_다른_유효한_제한이_남아_있으면_해제해도_해제_알림을_보내지_않는다() {
+        MemberSanction block = block(900L, TARGET_ID, CREATOR_ID, NOW.minusSeconds(3600), Duration.ofDays(7));
+        given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(block));
+        // 숨김 경고로 생긴 자동 제한이 아직 유효하다.
+        given(sanctionRepository.findActiveSpaceBlockEndsAt(CREATOR_ID, TARGET_ID, NOW))
+                .willReturn(Optional.of(NOW.plus(Duration.ofDays(1))));
+
+        SpaceCommentBlockView view = service.release(CREATOR_MEMBER_ID, 900L);
+
+        assertThat(view.active()).isFalse();
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
     void 이미_끝난_차단을_해제하면_알리지_않는다() {
         MemberSanction expired = block(900L, TARGET_ID, CREATOR_ID, NOW.minus(Duration.ofDays(3)), Duration.ofDays(1));
         given(sanctionRepository.findByIdForUpdate(900L)).willReturn(Optional.of(expired));
@@ -253,6 +313,35 @@ class SpaceCommentBlockServiceTest {
         assertThat(otherSpace.getReleasedAt()).isNull();
         assertThat(platform.getReleasedAt()).isNull();
         verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 크리에이터는_관리자의_숨김으로_생긴_자동_제한을_풀_수_없고_바뀌지_않는다() {
+        MemberSanction automatic = MemberSanction.automaticSpace(
+                TARGET_ID, CREATOR_ID, 500L, 1L, NOW.minusSeconds(3600), Duration.ofDays(1));
+        ReflectionTestUtils.setField(automatic, "sanctionId", 903L);
+        given(sanctionRepository.findByIdForUpdate(903L)).willReturn(Optional.of(automatic));
+
+        assertError(() -> service.release(CREATOR_MEMBER_ID, 903L), CommonErrorCode.RESOURCE_NOT_FOUND);
+
+        assertThat(automatic.getReleasedAt()).isNull();
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 관리자는_숨김으로_생긴_자동_제한도_해제할_수_있다() {
+        stubMember(ADMIN_ID, MemberRole.ADMIN);
+        MemberSanction automatic = MemberSanction.automaticSpace(
+                TARGET_ID, CREATOR_ID, 500L, ADMIN_ID, NOW.minusSeconds(3600), Duration.ofDays(1));
+        ReflectionTestUtils.setField(automatic, "sanctionId", 903L);
+        given(sanctionRepository.findByIdForUpdate(903L)).willReturn(Optional.of(automatic));
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        SpaceCommentBlockView view = service.releaseByAdmin(ADMIN_ID, 903L);
+
+        assertThat(view.active()).isFalse();
+        assertThat(automatic.getReleasedBy()).isEqualTo(ADMIN_ID);
+        verify(notificationService).createSpaceCommentBlockReleased(TARGET_ID, 903L, creator.publicDisplayName());
     }
 
     @Test

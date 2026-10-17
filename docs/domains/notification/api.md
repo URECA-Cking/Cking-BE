@@ -37,8 +37,8 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
   "event": null,
   "drawing": null,
   "type": "COMMENT_RESTRICTION_STARTED",
-  "title": "댓글 작성 제한 안내",
-  "body": "신고된 댓글이 관리자에 의해 숨김 처리되어 경고 1회가 기록되었습니다. 2026-10-14 00:00 UTC까지 댓글을 작성하거나 수정할 수 없습니다.",
+  "title": "스페이스 댓글 작성 제한 안내",
+  "body": "홍길동의 스페이스에서 신고된 댓글이 관리자에 의해 숨김 처리되어 경고 1회가 기록되었습니다. 2026-10-14 00:00 UTC까지 이 스페이스에서 댓글을 작성하거나 수정할 수 없습니다.",
   "createdAt": "2026-10-13T00:00:00Z",
   "readAt": null
 }

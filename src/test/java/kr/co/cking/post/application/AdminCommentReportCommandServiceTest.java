@@ -44,6 +44,7 @@ class AdminCommentReportCommandServiceTest {
     private static final Long COMMENT_ID = 500L;
     private static final Long POST_ID = 100L;
     private static final Long AUTHOR_ID = 20L;
+    private static final Long CREATOR_ID = 1L;
     private static final Instant LATER = NOW.plusSeconds(60);
 
     private final MemberQueryService memberQueryService = mock(MemberQueryService.class);
@@ -64,7 +65,7 @@ class AdminCommentReportCommandServiceTest {
         given(commentRepository.findPostIdByCommentId(COMMENT_ID)).willReturn(Optional.of(POST_ID));
         given(commentRepository.findMemberIdByCommentId(COMMENT_ID)).willReturn(Optional.of(AUTHOR_ID));
         given(postRepository.findByIdForShare(POST_ID))
-                .willReturn(Optional.of(post(POST_ID, 1L, PostVisibility.PUBLIC)));
+                .willReturn(Optional.of(post(POST_ID, CREATOR_ID, PostVisibility.PUBLIC)));
         given(commentRepository.findByIdForUpdate(COMMENT_ID)).willReturn(Optional.of(comment));
         given(reportRepository.countByCommentId(COMMENT_ID)).willReturn(3L);
     }
@@ -82,8 +83,8 @@ class AdminCommentReportCommandServiceTest {
         assertThat(comment.getAdminHiddenBy()).isEqualTo(ADMIN_ID);
         // 필터 판정은 건드리지 않는다.
         assertThat(comment.isBlocked()).isFalse();
-        // 작성자에게 경고가 기록된다.
-        verify(sanctionService).recordCommentHide(AUTHOR_ID, COMMENT_ID, ADMIN_ID, LATER);
+        // 작성자에게 경고가 기록되고, 제한은 숨긴 댓글이 달린 게시글의 스페이스(크리에이터)에서만 걸린다.
+        verify(sanctionService).recordCommentHide(AUTHOR_ID, COMMENT_ID, CREATOR_ID, ADMIN_ID, LATER);
     }
 
     @Test
@@ -98,7 +99,7 @@ class AdminCommentReportCommandServiceTest {
         assertThat(comment.getAdminHiddenAt()).isEqualTo(NOW);
         verify(reportRepository, never()).markHandled(anyLong(), any(), anyLong(), any());
         // 이미 숨긴 댓글을 다시 숨겨도 경고를 새로 쌓지 않는다.
-        verify(sanctionService, never()).recordCommentHide(anyLong(), anyLong(), anyLong(), any());
+        verify(sanctionService, never()).recordCommentHide(anyLong(), anyLong(), anyLong(), anyLong(), any());
     }
 
     @Test
@@ -107,7 +108,7 @@ class AdminCommentReportCommandServiceTest {
 
         assertError(() -> service.hide(ADMIN_ID, COMMENT_ID), PostErrorCode.COMMENT_REPORT_ALREADY_HANDLED);
         assertThat(comment.isHiddenByAdmin()).isFalse();
-        verify(sanctionService, never()).recordCommentHide(anyLong(), anyLong(), anyLong(), any());
+        verify(sanctionService, never()).recordCommentHide(anyLong(), anyLong(), anyLong(), anyLong(), any());
     }
 
     @Test
@@ -121,7 +122,7 @@ class AdminCommentReportCommandServiceTest {
         assertThat(comment.isHiddenByAdmin()).isFalse();
         // 반려는 경고를 쌓지 않고 작성자 행도 잠그지 않는다.
         verify(sanctionService, never()).lockSubject(anyLong());
-        verify(sanctionService, never()).recordCommentHide(anyLong(), anyLong(), anyLong(), any());
+        verify(sanctionService, never()).recordCommentHide(anyLong(), anyLong(), anyLong(), anyLong(), any());
     }
 
     @Test
@@ -188,7 +189,7 @@ class AdminCommentReportCommandServiceTest {
         order.verify(postRepository).findByIdForShare(POST_ID);
         order.verify(commentRepository).findByIdForUpdate(COMMENT_ID);
         order.verify(reportRepository).markHandled(COMMENT_ID, CommentReportStatus.RESOLVED, ADMIN_ID, LATER);
-        order.verify(sanctionService).recordCommentHide(AUTHOR_ID, COMMENT_ID, ADMIN_ID, LATER);
+        order.verify(sanctionService).recordCommentHide(AUTHOR_ID, COMMENT_ID, CREATOR_ID, ADMIN_ID, LATER);
     }
 
     /**

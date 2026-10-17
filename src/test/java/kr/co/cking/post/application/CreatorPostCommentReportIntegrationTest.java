@@ -25,6 +25,8 @@ import kr.co.cking.post.repository.CreatorPostCommentReportRepository;
 import kr.co.cking.post.repository.CreatorPostCommentRepository;
 import kr.co.cking.post.repository.CreatorPostRepository;
 import kr.co.cking.sanction.application.SanctionService;
+import kr.co.cking.sanction.application.SpaceCommentBlockService;
+import kr.co.cking.sanction.domain.SanctionScope;
 import kr.co.cking.sanction.domain.SanctionSource;
 import kr.co.cking.sanction.domain.SanctionErrorCode;
 import kr.co.cking.sanction.repository.MemberSanctionRepository;
@@ -90,6 +92,8 @@ class CreatorPostCommentReportIntegrationTest {
     @Autowired
     private SanctionService sanctionService;
     @Autowired
+    private SpaceCommentBlockService spaceCommentBlockService;
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     private final List<Member> members = new ArrayList<>();
@@ -104,9 +108,9 @@ class CreatorPostCommentReportIntegrationTest {
             postRepository.findAll().stream()
                     .filter(post -> post.getCreatorId().equals(creator.getCreatorId()))
                     .forEach(post -> postService.delete(creator.getMemberId(), post.getPostId()));
-            creatorRepository.delete(creator);
         }
-        // 관리자가 댓글을 숨기면 작성자에게 제재가 생기고 회원 FK(대상·처리 관리자)가 걸리므로 회원보다 먼저 지운다.
+        // 관리자가 댓글을 숨기면 작성자에게 그 스페이스의 제재가 생기고 회원 FK(대상·처리 관리자)와 크리에이터 FK
+        // (space_creator_id)가 걸리므로 회원과 크리에이터보다 먼저 지운다.
         List<Long> memberIds = members.stream().map(Member::getMemberId).toList();
         // 제재 알림은 회원과 제재를 FK로 참조하므로 제재보다 먼저 지운다.
         notificationRepository.deleteAll(notificationRepository.findAll().stream()
@@ -117,6 +121,9 @@ class CreatorPostCommentReportIntegrationTest {
                         || memberIds.contains(sanction.getCreatedBy())
                         || memberIds.contains(sanction.getReleasedBy()))
                 .toList());
+        if (creator != null) {
+            creatorRepository.delete(creator);
+        }
         memberRepository.deleteAll(members);
     }
 
@@ -527,7 +534,7 @@ class CreatorPostCommentReportIntegrationTest {
             mayCommit.countDown();
             hideTransaction.get(30, TimeUnit.SECONDS);
             assertThat(write.get(30, TimeUnit.SECONDS)).isInstanceOfSatisfying(BusinessException.class,
-                    exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.COMMENT_RESTRICTED));
+                    exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.SPACE_COMMENT_BLOCKED));
         } finally {
             mayCommit.countDown();
             executor.shutdownNow();
@@ -623,25 +630,26 @@ class CreatorPostCommentReportIntegrationTest {
                         || notification.getMemberId().equals(admin.getMemberId()))).isEmpty();
     }
 
-    /** 기존에 더 오래가는 수동 제한이 있으면 경고 알림은 새 1일 제한이 아니라 실제로 풀리는 시각을 안내해야 한다. */
+    /** 같은 스페이스에 더 오래가는 차단이 있으면 경고 알림은 새 1일 제한이 아니라 그 스페이스에서 실제로 풀리는 시각을 안내해야 한다. */
     @Test
-    void 이미_30일_수동_제한이_있으면_숨김_알림은_30일_뒤_시각을_안내한다() {
+    void 같은_스페이스에_이미_30일_차단이_있으면_숨김_알림은_30일_뒤_시각을_안내한다() {
         Long commentId = commentOnPublicPost();
         Member reporter = member(MemberRole.USER);
         Member admin = member(MemberRole.ADMIN);
         reportService.report(reporter.getMemberId(), creator.getCreatorId(), postId, commentId,
                 CommentReportReason.ABUSE, null);
-        sanctionService.createManual(admin.getMemberId(), author.getMemberId(), 30, "반복 욕설");
-        Instant manualEndsAt = sanctionRepository.findAll().stream()
+        spaceCommentBlockService.blockByAdmin(admin.getMemberId(), creator.getCreatorId(), author.getMemberId(), 30);
+        Instant blockEndsAt = sanctionRepository.findAll().stream()
                 .filter(sanction -> sanction.getMemberId().equals(author.getMemberId()))
+                .filter(sanction -> sanction.getScope() == SanctionScope.SPACE)
                 .filter(sanction -> sanction.getSource() == SanctionSource.MANUAL)
                 .findFirst().orElseThrow().getEndsAt();
         // 알림은 초 이하를 버리지 않고 다음 분으로 올려 안내한다.
-        Instant manualEndsAtCeiledToMinute = manualEndsAt.truncatedTo(ChronoUnit.MINUTES).equals(manualEndsAt)
-                ? manualEndsAt
-                : manualEndsAt.truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES);
+        Instant blockEndsAtCeiledToMinute = blockEndsAt.truncatedTo(ChronoUnit.MINUTES).equals(blockEndsAt)
+                ? blockEndsAt
+                : blockEndsAt.truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES);
         String expectedUntil = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
-                .withZone(ZoneOffset.UTC).format(manualEndsAtCeiledToMinute);
+                .withZone(ZoneOffset.UTC).format(blockEndsAtCeiledToMinute);
 
         adminCommandService.hide(admin.getMemberId(), commentId);
 
@@ -650,6 +658,30 @@ class CreatorPostCommentReportIntegrationTest {
                 .filter(notification -> notification.getBody().contains("경고 1회"))
                 .findFirst().orElseThrow();
         assertThat(warningNotification.getBody()).contains(expectedUntil + "까지");
+    }
+
+    /** 숨김이 만드는 경고와 제한은 숨긴 댓글이 달린 스페이스의 것이다. 모든 스페이스를 막는 플랫폼 제한이 아니다. */
+    @Test
+    void 숨기면_그_스페이스에서만_작성이_제한되고_플랫폼_제한은_생기지_않는다() {
+        Long commentId = commentOnPublicPost();
+        Member reporter = member(MemberRole.USER);
+        Member admin = member(MemberRole.ADMIN);
+        reportService.report(reporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+
+        adminCommandService.hide(admin.getMemberId(), commentId);
+
+        List<kr.co.cking.sanction.domain.MemberSanction> sanctions = sanctionRepository.findAll().stream()
+                .filter(sanction -> sanction.getMemberId().equals(author.getMemberId()))
+                .toList();
+        assertThat(sanctions).hasSize(1);
+        assertThat(sanctions.get(0).getScope()).isEqualTo(SanctionScope.SPACE);
+        assertThat(sanctions.get(0).getSource()).isEqualTo(SanctionSource.AUTOMATIC);
+        assertThat(sanctions.get(0).getSpaceCreatorId()).isEqualTo(creator.getCreatorId());
+        assertThat(sanctions.get(0).getCauseCommentId()).isEqualTo(commentId);
+        assertThatThrownBy(() -> commentService.create(author.getMemberId(), creator.getCreatorId(), postId, "제한 중에 쓴 댓글"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.SPACE_COMMENT_BLOCKED));
     }
 
     private List<Long> reportedIds(Member admin, CommentReportStatus status) {

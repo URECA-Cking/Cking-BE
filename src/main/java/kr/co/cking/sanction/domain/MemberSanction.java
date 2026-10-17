@@ -87,12 +87,18 @@ public class MemberSanction {
         this.createdBy = createdBy;
     }
 
-    /** 관리자가 댓글을 숨겨 자동으로 만들어지는 경고 겸 댓글 작성 제한. */
-    public static MemberSanction automatic(
-            Long memberId, Long causeCommentId, Long adminId, Instant startedAt, Duration duration) {
+    /**
+     * 관리자가 댓글을 숨겨 자동으로 만들어지는 경고 겸 그 스페이스의 댓글 작성 제한(이슈 #643). 숨긴 댓글이 달린 스페이스에서만
+     * 막고, 경고 횟수는 같은 스페이스 안에서 센다. 이전에는 모든 스페이스를 막는 플랫폼 범위 경고였고, 그때 만든 행은 그대로 남아 있다.
+     *
+     * @param spaceCreatorId 숨긴 댓글이 달린 게시글의 스페이스 주인(Creator ID)
+     * @param adminId        댓글을 숨긴 관리자의 Member ID
+     */
+    public static MemberSanction automaticSpace(
+            Long memberId, Long spaceCreatorId, Long causeCommentId, Long adminId, Instant startedAt, Duration duration) {
         return new MemberSanction(
-                memberId, SanctionScope.PLATFORM, null, SanctionSource.AUTOMATIC, causeCommentId, null, startedAt, duration,
-                adminId);
+                memberId, SanctionScope.SPACE, spaceCreatorId, SanctionSource.AUTOMATIC, causeCommentId, null, startedAt,
+                duration, adminId);
     }
 
     /** 관리자가 직접 거는 댓글 작성 제한. 경고 횟수에 세지 않는다. */
