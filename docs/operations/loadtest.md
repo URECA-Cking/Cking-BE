@@ -64,7 +64,7 @@ P=/cking/loadtest; R=ap-northeast-2
 DB_HOST=$(aws ssm get-parameter --region $R --name $P/DB_HOST --query Parameter.Value --output text)
 MYSQL_PWD=$(aws ssm get-parameter --region $R --name $P/DB_PASSWORD --with-decryption --query Parameter.Value --output text); export MYSQL_PWD
 docker run --rm -i -e MYSQL_PWD --network host -v "$PWD:/lt:ro" mysql:8.4 \
-  mysql -h "$DB_HOST" -u admin cking -e "SET @creators = 5, @members = 10000, @start_balance = 12, @entry_hours = 24, @race_members = 40, @race_balance = 11; source /lt/seed.sql"
+  mysql -h "$DB_HOST" -u admin cking -e "SET @creators = 5, @members = 10000, @start_balance = 100, @entry_hours = 24, @race_members = 40, @race_balance = 11; source /lt/seed.sql"
 ```
 
 출력의 `admin_member_id`는 추첨에, `race_first_member_id`는 동시 요청에 쓴다. 이벤트 게이트는 앱 스케줄러가 10초 안에 Redis에 올린다.
@@ -87,7 +87,7 @@ mkdir -p results
 | 단계 | 명령(공통 옵션 생략) | 비고 |
 | --- | --- | --- |
 | 예열 | `k6 run warmup.js` | 응답 코드가 `SUCCESS`인지, 대시보드에 지표가 잡히는지 확인. 지표가 안정되는 시간과 흔들림 폭을 기록 |
-| 응모 한계 측정 | `START_RATE=10 STEP_RATE=10 STEPS=10 HOLD=3m k6 run entry-limit.js` | 계획의 한계 판단 기준(p95 급증, 실패율, 자원 포화) 직전 단계가 한계 |
+| 응모 한계 측정 | 넓게: `START_RATE=50 STEP_RATE=50 STEPS=20 HOLD=1m k6 run entry-limit.js`(1,000까지. 500에서 무너지면 그 자리에서 멈춘다) → 좁게: 무너진 구간을 작은 간격·`HOLD=3m`으로 | 계획의 한계 판단 기준(p95 급증, 실패율, 자원 포화) 직전 단계가 한계. 1,000에서도 버티면 "1,000 이상"으로 기록 |
 | SLO v0 | | 응모 한계 측정 결과로 확정. DB 반영 지연·마감 시간·처리량은 팀 확인 |
 | 응모 지속 측정 | `RATE=<SLO 처리량> DURATION=<예열 + 관찰 구간> SLO_P95_MS=1000 SLO_FAIL_RATE=0.001 k6 run entry-sustain.js` | 관찰 구간 최소 15분(잔액 대조 주기 5분 × 3) |
 | 마감 직전 몰림 | 테스트 앱 서버에서 `seed-closing.sql` 실행(`SET @closing_creator = 1, @closing_minutes = 5;`) → 출력의 `closing_event_id`, `end_at_ms`로 `CLOSING_EVENT_ID=… END_AT_MS=… RATE=… DURATION=… k6 run closing-burst.js` | 종료 시각 전에 시작해 종료 뒤까지 이어지게 DURATION을 정한다 |
