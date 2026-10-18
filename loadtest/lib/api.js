@@ -1,4 +1,5 @@
 import http from 'k6/http';
+import { SharedArray } from 'k6/data';
 import { Counter } from 'k6/metrics';
 import { tokenFactory } from './token.js';
 
@@ -13,8 +14,16 @@ export const CREATORS = positiveInt('CREATORS');
 export const MEMBERS = positiveInt('MEMBERS');
 const TICKET_COUNT = Number(__ENV.TICKET_COUNT || '1');
 
-const token = tokenFactory(__ENV.JWT_SECRET || '', positiveInt('TOKEN_TTL_SECONDS', 7200));
-const tokens = {};
+// VU마다 전역 변수가 따로 생겨, VU별로 캐시하면 VU 수만큼 토큰이 복제된다.
+// SharedArray는 처음 한 번만 만들고 모든 VU가 읽기만 한다(회원 1만 명이면 수 MB).
+const tokens = new SharedArray('member-tokens', () => {
+  const sign = tokenFactory(__ENV.JWT_SECRET || '', positiveInt('TOKEN_TTL_SECONDS', 7200));
+  const list = [];
+  for (let memberId = CREATORS + 1; memberId <= CREATORS + MEMBERS; memberId += 1) {
+    list.push(sign(memberId));
+  }
+  return list;
+});
 
 const entryResults = new Counter('loadtest_entry_results');
 
@@ -52,8 +61,7 @@ export function enter(memberId, eventId, tags = {}) {
 }
 
 function tokenOf(memberId) {
-  if (!tokens[memberId]) tokens[memberId] = token(memberId);
-  return tokens[memberId];
+  return tokens[memberId - CREATORS - 1];
 }
 
 function codeOf(response) {
