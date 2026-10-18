@@ -4,20 +4,21 @@
 
 서버 이름: **테스트 앱 서버**(`loadtest-cking-app`, 앱·Redis), **k6 서버**(`loadtest-cking-k6`), **테스트 RDS**(`loadtest-cking-mysql`). 개발 서버(`dev-cking-app`)와는 별개다.
 
-시나리오 순서: 예열 → 응모 한계 측정 → 응모 지속 측정 → 마감 직전 몰림 → 추첨. 정합성 검증은 시나리오가 끝난 뒤의 확인이고, 장애 복구 실험은 기준선 뒤 별도로 한다.
+시나리오 순서: 예열 → 응모 한계 측정 → 응모 지속 측정 → 마감 직전 몰림 → 추첨 → 동시 요청. 정합성 검증은 시나리오가 끝난 뒤의 확인이고, 장애 복구 실험은 기준선 뒤 별도로 한다.
 
 ## 구성
 
 | 파일 | 실행 위치 | 단계 | 내용 |
 | --- | --- | --- | --- |
-| `seed.sql` | 테스트 앱 서버 | 준비 | 회원·크리에이터·응모용 이벤트·시작 잔액(같은 금액의 원장 행)·관리자 회원 |
+| `seed.sql` | 테스트 앱 서버 | 준비 | 회원·크리에이터·응모용 이벤트·시작 잔액(같은 금액의 원장 행)·관리자 회원·동시 요청용 회원 |
 | `seed-closing.sql` | 테스트 앱 서버 | 마감 직전 몰림 전 | 정한 분 수 뒤에 끝나는 마감 측정 이벤트 |
 | `warmup.js` | k6 서버 | 예열 | 회원 × 크리에이터 조합마다 응모 1번. Redis 잔액 적재. 측정값은 쓰지 않는다 |
 | `entry-limit.js` | k6 서버 | 응모 한계 측정 | 도착률을 단계마다 올려 한계를 찾는다 |
 | `entry-sustain.js` | k6 서버 | 응모 지속 측정 | SLO 처리량으로 유지. SLO를 합격선(thresholds)으로 판정 |
 | `closing-burst.js` | k6 서버 | 마감 직전 몰림 | 종료 시각 전후로 일정한 도착률 |
 | `draw.js` | k6 서버 | 추첨 | 마감된 이벤트로 추첨 실행 → 재현 검증 |
-| `verify.sh` | 테스트 앱 서버 | 검증 | 처리 완료, Redis·DB 잔액, 잔액·원장, 마감 경계 |
+| `race.js` | k6 서버 | 동시 요청 | 같은 requestId 동시 재전송, 잔액보다 많은 동시 응모 |
+| `verify.sh` | 테스트 앱 서버 | 검증 | 처리 완료, Redis·DB 잔액, 잔액·원장, 마감 경계, Snapshot 생성 시간, 동시 요청 회원 잔액 |
 | `lib/token.js`, `lib/api.js` | | | Access Token 생성(HS256, 메모리에서만), 응모 요청·결과 기록 |
 
 응모권은 시작 잔액으로만 준다. 적립 경로(게시글 좋아요)는 측정 대상이 아니다.
@@ -32,6 +33,13 @@
 시작 잔액      = 조합당 사용량 + 1
 마감 이벤트 크리에이터 = 위 값 + ceil(마감 직전 몰림 요청 수 ÷ MEMBERS)  (마감 이벤트는 크리에이터 하나만 쓴다)
 요청 수        = 도착률 × 시간(초)
+```
+
+동시 요청용 회원(`@race_members`, 이름 `lt-race-N`)은 위 계산과 별개이며 크리에이터 1의 잔액 `@race_balance`만 가진다. `race.js`는 라운드마다 회원 한 명을 쓰고 같은 요청 라운드 `ROUNDS`번, 잔액 초과 라운드 `ROUNDS`번을 돈다.
+
+```text
+@race_members = ROUNDS × 2
+@race_balance - 1 < CONCURRENCY   (예열 1건 뒤 남은 잔액보다 동시 요청이 많아야 잔액 초과가 된다)
 ```
 
 시작 잔액이 모자라면 응답이 `INSUFFICIENT_BALANCE`로 바뀌어 Stream·DB 반영 없이 바로 거절된다. 측정이 거절 속도를 재게 되므로 실행 전에 계산한다.
@@ -56,10 +64,10 @@ P=/cking/loadtest; R=ap-northeast-2
 DB_HOST=$(aws ssm get-parameter --region $R --name $P/DB_HOST --query Parameter.Value --output text)
 MYSQL_PWD=$(aws ssm get-parameter --region $R --name $P/DB_PASSWORD --with-decryption --query Parameter.Value --output text); export MYSQL_PWD
 docker run --rm -i -e MYSQL_PWD --network host -v "$PWD:/lt:ro" mysql:8.4 \
-  mysql -h "$DB_HOST" -u admin cking -e "SET @creators = 5, @members = 10000, @start_balance = 12, @entry_hours = 24; source /lt/seed.sql"
+  mysql -h "$DB_HOST" -u admin cking -e "SET @creators = 5, @members = 10000, @start_balance = 12, @entry_hours = 24, @race_members = 40, @race_balance = 11; source /lt/seed.sql"
 ```
 
-출력의 `admin_member_id`는 추첨에 쓴다. 이벤트 게이트는 앱 스케줄러가 10초 안에 Redis에 올린다.
+출력의 `admin_member_id`는 추첨에, `race_first_member_id`는 동시 요청에 쓴다. 이벤트 게이트는 앱 스케줄러가 10초 안에 Redis에 올린다.
 
 ### 3. k6 실행 준비 (k6 서버)
 
@@ -84,6 +92,7 @@ mkdir -p results
 | 응모 지속 측정 | `RATE=<SLO 처리량> DURATION=<예열 + 관찰 구간> SLO_P95_MS=1000 SLO_FAIL_RATE=0.001 k6 run entry-sustain.js` | 관찰 구간 최소 15분(잔액 대조 주기 5분 × 3) |
 | 마감 직전 몰림 | 테스트 앱 서버에서 `seed-closing.sql` 실행(`SET @closing_creator = 1, @closing_minutes = 5;`) → 출력의 `closing_event_id`, `end_at_ms`로 `CLOSING_EVENT_ID=… END_AT_MS=… RATE=… DURATION=… k6 run closing-burst.js` | 종료 시각 전에 시작해 종료 뒤까지 이어지게 DURATION을 정한다 |
 | 추첨 | 이벤트가 CLOSED가 된 뒤 `CLOSING_EVENT_ID=… ADMIN_MEMBER_ID=… k6 run draw.js` | `verify.sh <이벤트 ID>`의 status로 CLOSED 확인 |
+| 동시 요청 | `RACE_FIRST_MEMBER_ID=… ROUNDS=20 CONCURRENCY=50 k6 run race.js` | 회원마다 예열 1건 뒤, 라운드마다 모든 VU가 같은 시각에 보낸다(`ROUND_GAP_MS`, 기본 1초) |
 
 k6가 목표 도착률을 못 맞추면(`dropped_iterations`) 실행이 멈춘다. 부하 발생기 한계이므로 k6 서버 크기를 올린다.
 
@@ -120,8 +129,29 @@ for l in open(sys.argv[1]):
 print("마감 뒤 성공", n)' results/<마감 직전 몰림 실행 이름>.log <end_at_ms>
 ```
 
+k6 서버, 동시 요청 라운드별 판정(같은 요청 = 성공 1건·나머지 `DUPLICATE_REPLAY`, 잔액 초과 = 성공 `@race_balance - 1`건·나머지 `INSUFFICIENT_BALANCE`). 송신 간격은 라운드 안에서 가장 이른 요청과 늦은 요청의 차이다:
+
+```bash
+python3 -c 'import json,sys,collections
+bal=int(sys.argv[2]); r=collections.defaultdict(list); bad=0
+for l in open(sys.argv[1]):
+    if l.startswith("{"):
+        d=json.loads(l)
+        if d.get("phase") in ("race_same","race_over"): r[(int(d["round"]),d["phase"])].append(d)
+for (n,p),ds in sorted(r.items()):
+    c=collections.Counter(d["code"] for d in ds)
+    want,rest=(1,"DUPLICATE_REPLAY") if p=="race_same" else (bal-1,"INSUFFICIENT_BALANCE")
+    ok=c["SUCCESS"]==want and c["SUCCESS"]+c[rest]==len(ds)
+    bad+=not ok
+    spread=max(d["sentAt"] for d in ds)-min(d["sentAt"] for d in ds)
+    print("PASS" if ok else "FAIL",p,"round",n,dict(c),"송신 간격",spread,"ms")
+print("실패 라운드",bad)' results/<동시 요청 실행 이름>.log <@race_balance>
+```
+
+DB 쪽은 `verify.sh`의 6번에서 같은 요청 라운드 회원이 `@race_balance - 2`, 잔액 초과 라운드 회원이 0인지 본다. 음수 잔액과 원장 일치는 3·4번이 모든 회원에 대해 확인한다.
+
 ### 6. 반복과 정리
 
-- 같은 시나리오를 3번 돌려 중앙값을 쓴다. 실행 사이에는 데이터를 처음 상태로 되돌린다: 앱 정지 → Redis `FLUSHALL` → DB `DROP DATABASE cking; CREATE DATABASE cking;` → 앱 배포(Flyway) → 2번 시딩
+- 같은 시나리오를 3번 돌려 중앙값을 쓴다. 추첨은 실행마다 1번이라 백분위수를 낼 수 없으므로 3회 측정값과 최대를 그대로 적는다. 실행 사이에는 데이터를 처음 상태로 되돌린다: 앱 정지 → Redis `FLUSHALL` → DB `DROP DATABASE cking; CREATE DATABASE cking;` → 앱 배포(Flyway) → 2번 시딩
 - 기록: 이 저장소 커밋, Infra 커밋, 시딩·시나리오 변수, k6 요약, 해당 시간대 대시보드, `verify.sh` 출력, 인스턴스 사용 시간
 - 끝나면 Cking-Infra `envs/loadtest`에서 `terraform destroy`, Parameter Store 비밀값 삭제

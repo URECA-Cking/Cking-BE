@@ -43,12 +43,12 @@ export function entryEventOf(creatorId) {
   return creatorId;
 }
 
-export function enter(memberId, eventId, tags = {}) {
-  const requestId = uuid();
+// 동시 요청 측정은 requestId를 직접 정하고, 시딩 범위 밖 회원이라 토큰도 직접 넘긴다.
+export function enter(memberId, eventId, tags = {}, { requestId = uuid(), token = tokenOf(memberId) } = {}) {
   const sentAt = Date.now();
   const response = http.post(`${BASE_URL}/api/events/${eventId}/entries`,
     JSON.stringify({ requestId, ticketCount: TICKET_COUNT, couponType: 'CREATOR' }), {
-      headers: { Authorization: `Bearer ${tokenOf(memberId)}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       responseCallback: http.expectedStatuses(200),
       tags: { name: 'entry', ...tags },
     });
@@ -56,7 +56,7 @@ export function enter(memberId, eventId, tags = {}) {
   entryResults.add(1, { code });
   // 정합성 검증(성공 요청 ID와 DB 대조)의 입력. 토큰·본문은 남기지 않는다.
   console.log(JSON.stringify({ kind: 'entry', sentAt, at: Date.now(), requestId, memberId, eventId,
-    status: response.status, code }));
+    phase: tags.phase, round: tags.round, status: response.status, code }));
   return { requestId, status: response.status, code };
 }
 
@@ -72,7 +72,7 @@ function codeOf(response) {
   }
 }
 
-function uuid() {
+export function uuid() {
   if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
   }

@@ -87,7 +87,15 @@ if [[ -n "$CLOSING_EVENT_ID" ]]; then
   read -r candidates snapshot_tickets entry_members entry_tickets <<< "${snapshot:-x x x x}"
   if [[ "$candidates" == "$entry_members" && "$snapshot_tickets" == "$entry_tickets" ]]; then status=PASS; else status=FAIL; fi
   result "Snapshot·응모" "$status" "후보=$candidates/응모 회원=$entry_members 응모권=$snapshot_tickets/$entry_tickets"
+  sql "SELECT TIMESTAMPDIFF(MICROSECOND, e.closed_at, s.created_at) / 1000
+       FROM event e JOIN draw_snapshot s USING (event_id) WHERE e.event_id = $CLOSING_EVENT_ID" |
+    awk '{printf "      CLOSED→Snapshot 생성=%sms\n", $1}'
 fi
+
+echo "== 6. 동시 요청 회원 잔액 (race.js 실행 시. 같은 요청 라운드 = 시작 잔액 - 2, 잔액 초과 라운드 = 0)"
+sql "SELECT b.balance, COUNT(*) FROM user_ticket_balance b JOIN member m USING (member_id)
+     WHERE m.name LIKE 'lt-race-%' GROUP BY b.balance ORDER BY b.balance" |
+  awk '{printf "      balance=%s 회원=%s\n", $1, $2}'
 
 echo "== 결과: 실패 $failures건"
 exit $(( failures > 0 ))
