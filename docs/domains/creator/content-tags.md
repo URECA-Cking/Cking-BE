@@ -106,7 +106,7 @@ BE DB를 복원하면 LLM ledger와 결과 포인터를 대조하고 새로운 �
 이를 소비하지 못한다. 프로세스 재시작/중복 전달은 lease 만료 후 재전달한다. 최대 5회 시도 후
 FAILED 및 오류 로그로 알리고 `/retry`로 수동 재등록한다. claim은 소진 작업을 FAILED로 전환한 뒤
 같은 요청에서 다음 후보를 계속 선점한다. backoff는 60초부터 최대 1시간이다.
-`completed_at`은 성공 완료 때만 기록하고 retry/FAILED ack에서는 NULL로 유지한다.
+`completed_at`은 성공 완료 때만 기록하고 retry/FAILED ack와 수동 재등록에서는 NULL로 초기화한다.
 
 LLM의 정기/수동/이벤트 실행은 같은 파일 잠금·캐시·체크포인트를 쓴다. 잠금 충돌 전에 작업을 claim하지 않는다.
 일일 전체 스캔은 유실 보정이며 추천/태그가 모두 성공해야 이벤트를 완료한다.
@@ -119,6 +119,8 @@ claimed_at, completed_at, attempt_count, next_retry_at, status로 지연/재시�
 서비스/MVC/공용 hash fixture 테스트와 LLM 소유 실제 HTTP/MySQL E2E를 실행한다.
 BE 기본 test source set의 `ContentTagReviewIntegrationTest`는 apply/코드·근거 검증/confirm/claim/ack/
 reconcile 및 실제 동시 트랜잭션의 조회·보정 잠금 범위를 검사하므로 BE CI에서도 실행된다.
+전역 claim 반복은 Repository 후보를 제어하는 단위 테스트로 검증한다. DB lease/retry 회귀는
+자기 fixture만 대상으로 하며 기존 PENDING 작업을 선점하거나 큐를 일괄 삭제하지 않는다.
 E2E 명령: LLM 저장소에서 `python -m src.recommendation.e2e.runner --suite content --be-dir ../Cking-BE`.
 전용 MySQL 8.4·Redis 7.2, 임시 자격 증명, loopback HTTP, 합성 provider와 격리 테스트 taxonomy만 사용한다.
 결과는 LLM results/recommendation/e2e/<run>/report.json에 저장한다.
