@@ -184,8 +184,9 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
 
         ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
 
+        SimpleMeterRegistry redeliveryMetrics = new SimpleMeterRegistry();
         SpendStreamListener redeliveryListener = new SpendStreamListener(
-                ticketSpendLedgerService, redisTemplate, new SimpleMeterRegistry(), Clock.systemUTC(),
+                ticketSpendLedgerService, redisTemplate, redeliveryMetrics, Clock.systemUTC(),
                 REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
         SpendStreamPelRecoveryScheduler redeliveryScheduler = new SpendStreamPelRecoveryScheduler(
                 redisTemplate, redeliveryListener, deadStreamMessageRepository, objectMapper,
@@ -207,6 +208,7 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
         assertThat(ledgerCount).isEqualTo(1);
         assertThat(balance).isEqualTo(95L);
         assertThat(pending.isEmpty()).isTrue();
+        assertThat(redeliveryMetrics.get("cking.stream.apply.delay").timer().count()).isZero();
     }
 
     @Test

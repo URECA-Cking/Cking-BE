@@ -38,12 +38,23 @@ class SpendStreamListenerTest {
     @Test
     void DB에_반영하면_승인부터_반영까지_걸린_시간을_기록한다() {
         given(redisTemplate.opsForStream()).willReturn(streamOperations);
+        given(ledgerService.apply(any())).willReturn(true);
 
         assertThat(listener.process(entry())).isTrue();
 
         Timer timer = applyDelay();
         assertThat(timer.count()).isEqualTo(1);
         assertThat(timer.totalTime(TimeUnit.MILLISECONDS)).isEqualTo(1_500);
+    }
+
+    @Test
+    void 이미_반영된_메시지가_재전달되면_ACK하고_기록하지_않는다() {
+        given(redisTemplate.opsForStream()).willReturn(streamOperations);
+        given(ledgerService.apply(any())).willReturn(false);
+
+        assertThat(listener.process(entry())).isTrue();
+
+        assertThat(applyDelay().count()).isZero();
     }
 
     @Test

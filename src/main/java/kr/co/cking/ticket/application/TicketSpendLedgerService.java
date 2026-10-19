@@ -46,8 +46,9 @@ public class TicketSpendLedgerService {
     private final CommonTicketLedgerRepository commonTicketLedgerRepository;
     private final UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
 
+    /** 새로 반영했으면 true, 이미 반영된 요청의 재전달이면 false. */
     @Transactional
-    public void apply(SpendCommand command) {
+    public boolean apply(SpendCommand command) {
         String requestId = command.requestId();
 
         // 교차 정합성(CLAUDE.md §11): SPEND Ledger.creator_id는 Event.creator_id와
@@ -72,7 +73,7 @@ public class TicketSpendLedgerService {
         if (existing.isPresent()) {
             verifySameRequest(existing.get(), command);
             log.info("이미 반영된 SPEND 요청이라 재차감하지 않습니다. requestId={}", requestId);
-            return;
+            return false;
         }
 
         Instant now = Instant.now();
@@ -95,6 +96,7 @@ public class TicketSpendLedgerService {
         } else {
             applyCreator(command, entry, now);
         }
+        return true;
     }
 
     private void applyCreator(SpendCommand command, EventEntry entry, Instant now) {

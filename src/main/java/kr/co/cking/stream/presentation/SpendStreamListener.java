@@ -71,8 +71,10 @@ public class SpendStreamListener implements StreamListener<String, MapRecord<Str
         try {
             if (!BARRIER_TYPE_VALUE.equals(fields.get(BARRIER_TYPE_FIELD))) {
                 SpendCommand command = SpendCommand.fromStreamFields(fields);
-                ticketSpendLedgerService.apply(command);
-                recordApplyDelay(message.getId().getTimestamp());
+                // 이미 반영된 메시지의 재전달은 PEL 회수 대기 시간까지 더해지므로 기록하지 않는다.
+                if (ticketSpendLedgerService.apply(command)) {
+                    recordApplyDelay(message.getId().getTimestamp());
+                }
             }
             redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, message.getId());
             return true;
