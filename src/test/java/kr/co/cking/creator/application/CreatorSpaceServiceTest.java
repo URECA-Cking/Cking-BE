@@ -49,6 +49,7 @@ class CreatorSpaceServiceTest {
         assertThat(space.getCreatorId()).isEqualTo(42L);
         assertThat(space.getSlug()).isEqualTo("creator-42");
         assertThat(space.getIntroText()).isEqualTo("소개");
+        verify(contentOutbox).enqueue(space);
     }
 
     /** 템플릿 URL을 Space로 복사하기 전에 같은 트랜잭션에서 템플릿 이미지를 고정해 정리 작업의 삭제 확정과 겹치지 않게 한다(이슈 #598). */
@@ -99,7 +100,7 @@ class CreatorSpaceServiceTest {
 
         assertThat(service.createFromActiveTemplateIfAbsent(42L)).isSameAs(existing);
 
-        verifyNoInteractions(imagePinner);
+        verifyNoInteractions(imagePinner, contentOutbox);
     }
 
     /** 다른 Creator가 커스텀 slug로 자동 slug를 먼저 가져갔으면 번호를 붙인 대체 slug를 써서 승인을 이어간다. */
@@ -266,11 +267,12 @@ class CreatorSpaceServiceTest {
 
     private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
     private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
+    private final CreatorContentOutbox contentOutbox = mock(CreatorContentOutbox.class);
 
     private CreatorSpaceService newService(CreatorSpaceRepository spaceRepository, CreatorSpaceTemplateService templateService) {
         return new CreatorSpaceService(
                 spaceRepository, templateService,
                 new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), imagePinner);
+                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), imagePinner, contentOutbox);
     }
 }

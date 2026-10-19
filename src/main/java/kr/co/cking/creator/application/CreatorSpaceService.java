@@ -29,6 +29,7 @@ public class CreatorSpaceService {
     private final CreatorSpaceSlugRegistry slugRegistry;
     private final Clock clock;
     private final CreatorSpaceTemplateImagePinner imagePinner;
+    private final CreatorContentOutbox contentOutbox;
 
     /** 이미 Space가 있으면 그대로 반환한다. */
     public CreatorSpace createFromActiveTemplateIfAbsent(Long creatorId) {
@@ -45,7 +46,9 @@ public class CreatorSpaceService {
         LocalDateTime now = LocalDateTime.now(clock);
         String slug = availableSlug(buildSlug(template.getSlugRule(), creatorId), creatorId, now);
         slugRegistry.clearReservation(slug);
-        return spaceRepository.save(CreatorSpace.fromTemplate(creatorId, template, slug));
+        CreatorSpace space = spaceRepository.save(CreatorSpace.fromTemplate(creatorId, template, slug));
+        contentOutbox.enqueue(space);
+        return space;
     }
 
     /**

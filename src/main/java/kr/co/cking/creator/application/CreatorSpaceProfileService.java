@@ -43,6 +43,7 @@ public class CreatorSpaceProfileService {
     private final CreatorFollowQueryService followQueryService;
     private final EventQueryService eventQueryService;
     private final CreatorSpaceTemplateImagePinner imagePinner;
+    private final CreatorContentOutbox contentOutbox;
 
     /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
@@ -118,12 +119,17 @@ public class CreatorSpaceProfileService {
         imagePinner.pin(
                 changedUrl(space.getProfileImageKey(), space.getProfileImageUrl(), fields.profileImageUrl()),
                 changedUrl(space.getBannerImageKey(), space.getBannerImageUrl(), fields.bannerImageUrl()));
+        long previousRevision = space.getContentRevision();
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
         // profileImageKey가 명시되면(특히 null로 기본 이미지 복귀를 요청하면) 일반 URL 수정 뒤에
         // 연결 상태를 적용해야 삭제 대상인 기존 CDN URL이 다시 저장되지 않는다.
         profileImageManager.apply(creator, space, fields.profileImageKey(), fields.profileImageKeyProvided());
         // 배너도 같다. bannerImageKey가 명시되면 일반 URL 수정 뒤에 연결 상태를 적용한다(이슈 #590).
         profileImageManager.applyBanner(creator, space, fields.bannerImageKey(), fields.bannerImageKeyProvided());
+        if (space.getContentRevision() != previousRevision) {
+            spaceRepository.flush();
+            contentOutbox.enqueue(space);
+        }
         return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 

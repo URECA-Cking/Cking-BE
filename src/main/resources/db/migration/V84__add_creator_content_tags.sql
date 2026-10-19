@@ -60,20 +60,3 @@ CREATE TABLE creator_content_job (
 ) ENGINE=InnoDB;
 INSERT INTO creator_content_job(creator_id,generation,committed_at,next_retry_at)
     SELECT creator_id,content_revision,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6) FROM creator_space;
-DELIMITER $$
-CREATE TRIGGER creator_content_insert AFTER INSERT ON creator_space FOR EACH ROW
-BEGIN
-    INSERT INTO creator_content_job(creator_id,generation,committed_at,next_retry_at)
-        VALUES(NEW.creator_id,NEW.content_revision,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
-END$$
-CREATE TRIGGER creator_content_update AFTER UPDATE ON creator_space FOR EACH ROW
-BEGIN
-    IF NEW.content_revision <> OLD.content_revision THEN
-        INSERT INTO creator_content_job(creator_id,generation,status,committed_at,next_retry_at)
-            VALUES(NEW.creator_id,NEW.content_revision,'PENDING',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))
-        ON DUPLICATE KEY UPDATE generation=NEW.content_revision,status='PENDING',lease_token=NULL,
-            lease_until=NULL,attempt_count=0,committed_at=UTC_TIMESTAMP(6),claimed_at=NULL,
-            completed_at=NULL,next_retry_at=UTC_TIMESTAMP(6),last_summary=NULL;
-    END IF;
-END$$
-DELIMITER ;
