@@ -35,6 +35,7 @@ Space 행 잠금 안에서 현재 revision/hash 및 활성 설정을 검증하�
 | --- | --- | --- |
 | GET `/api/internal/content-tags/inputs` | 전용 opaque Bearer | 전체 일관 snapshot, 최초/변경 포함 |
 | PUT `/api/internal/content-tags/creators/{id}/automatic` | 전용 Bearer | 자동 분류 멱등 적재 |
+| PUT `/api/internal/content-tags/jobs/reconcile` | 전용 Bearer | 전체 성공 후 현재 PENDING/FAILED 세대 완료 |
 | PUT `/api/internal/content-tags/jobs/claim` | 전용 Bearer | lease 작업 하나 또는 빈 객체 |
 | PUT `/api/internal/content-tags/jobs/{id}/ack` | 전용 Bearer | 세대·토큰·만료 검증 후 완료/재시도 |
 | PUT `/api/internal/content-tags/jobs/{id}/renew` | 전용 Bearer | 동일 세대 lease 900초 연장 |
@@ -108,3 +109,11 @@ E2E 명령: LLM 저장소에서 `python -m src.recommendation.e2e.runner --suite
 전용 MySQL 8.4·Redis 7.2, 임시 자격 증명, loopback HTTP, 합성 provider와 격리 테스트 taxonomy만 사용한다.
 결과는 LLM results/recommendation/e2e/<run>/report.json에 저장한다.
 이 검증은 실제 모델 의미 품질·사람 정답·독립 holdout·운영 taxonomy 승인·운영 systemd 배포 검증이 아니다.
+
+## 실제 검증 결과 (2026-10-19)
+
+BE 코드 `e39f86e`, LLM 코드 `ebb338d`로 실제 HTTP/MySQL E2E **15/15** 통과 및 컨테이너 정리를 확인했다.
+[LLM 공개 검증 집계](https://github.com/URECA-Cking/Cking-LLM-Benchmark/blob/f2b4622/data/summaries/content-tags-http-e2e.json)에 실행 ID, 코드 SHA, 시나리오별 결과를 보존한다.
+BE 관련 회귀 77개와 bootJar, Python 회귀 518개가 통과했다. 외부 모델 호출은 0이다.
+기존 프로필 API의 공백 불가 계약을 유지하며 빈 소개 분류는 레거시 DB fixture로 검증했다.
+전체 BE suite·운영 systemd 배포·실제 모델 의미 품질·사람 검수·독립 holdout은 수행하지 않았다.
