@@ -170,3 +170,10 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 ### GET /api/creators/{creatorId}
 
 별도 상세 API는 제공하지 않는다. Creator 이름·소개·이미지·slug는 `GET /api/creators/{creatorId}/space`로 조회한다. 계약은 [Creator Space API](../domains/creator/space-api.md#get-apicreatorscreatoridspace)를 따른다.
+
+## 콘텐츠 배치 인증 예외
+
+`/api/internal/content-tags/**`는 별도 opaque Bearer 토큰의 SHA-256 설정
+`cking.content-tags.token-hash`로만 인증한다. ADMIN JWT·추천 적재 키의 권한을 확대하지 않는다.
+일반 회원 JWT는 `/api/creator/content-tags`와 `/confirmation`에서 본인 식별에 사용한다.
+[콘텐츠 태그 계약](../domains/creator/content-tags.md)에 상세 경로·오류·출처 공개 범위를 정의한다.
