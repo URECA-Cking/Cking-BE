@@ -18,14 +18,14 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-/** 떠난 소비자만 지우고, 대기 메시지가 있거나 최근에 읽은 소비자와 이 서버의 소비자는 남기는지 검증한다. */
+/** 떠난 소비자만 지우고, 대기 메시지가 있거나 읽기를 시도 중인 소비자, 이 서버와 재처리 소비자는 남기는지 검증한다. */
 class StreamConsumerCleanupSchedulerIntegrationTest {
 
     private static final String SPEND_STREAM = "stream:consumer-cleanup-test:spend";
     private static final String EARN_STREAM = "stream:consumer-cleanup-test:earn";
     private static final String COMMON_EARN_STREAM = "stream:consumer-cleanup-test:common-earn";
     private static final String GROUP = "cg:consumer-cleanup-test";
-    private static final Duration IDLE = Duration.ofMillis(300);
+    private static final Duration IDLE = Duration.ofSeconds(1);
 
     private LettuceConnectionFactory connectionFactory;
     private StringRedisTemplate redisTemplate;
@@ -54,13 +54,17 @@ class StreamConsumerCleanupSchedulerIntegrationTest {
         readAndAck("spend-departed-empty");
         read("spend-departed-pending");
         readAndAck("spend-self");
-        Thread.sleep(IDLE.toMillis() + 200);
-        readAndAck("spend-recent");
+        readAndAck(SpendStreamPelRecoveryScheduler.RECOVERY_CONSUMER);
+        // 운영 Listener처럼 메시지 없이 기다리는 읽기만 반복한다. 기준 시간의 두 배 동안 이어 간다.
+        long until = System.currentTimeMillis() + IDLE.toMillis() * 2;
+        while (System.currentTimeMillis() < until) {
+            waitForMessage("spend-listening");
+        }
 
         scheduler.cleanUp();
 
-        assertThat(consumerNames(SPEND_STREAM))
-                .containsExactlyInAnyOrder("spend-departed-pending", "spend-self", "spend-recent");
+        assertThat(consumerNames(SPEND_STREAM)).containsExactlyInAnyOrder("spend-departed-pending", "spend-self",
+                SpendStreamPelRecoveryScheduler.RECOVERY_CONSUMER, "spend-listening");
     }
 
     @Test
@@ -77,6 +81,12 @@ class StreamConsumerCleanupSchedulerIntegrationTest {
     private List<org.springframework.data.redis.connection.stream.MapRecord<String, Object, Object>> read(String consumer) {
         redisTemplate.opsForStream().add(SPEND_STREAM, Map.of("type", "test"));
         return redisTemplate.opsForStream().read(Consumer.from(GROUP, consumer), StreamReadOptions.empty().count(1),
+                StreamOffset.create(SPEND_STREAM, ReadOffset.lastConsumed()));
+    }
+
+    private void waitForMessage(String consumer) {
+        redisTemplate.opsForStream().read(Consumer.from(GROUP, consumer),
+                StreamReadOptions.empty().count(1).block(Duration.ofMillis(100)),
                 StreamOffset.create(SPEND_STREAM, ReadOffset.lastConsumed()));
     }
 

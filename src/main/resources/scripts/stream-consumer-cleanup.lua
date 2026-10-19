@@ -5,7 +5,7 @@
 -- KEYS[1] = Stream 키
 -- ARGV[1] = Consumer Group
 -- ARGV[2] = 지울 최소 쉰 시간(ms). XINFO CONSUMERS의 idle(마지막 읽기 시도 뒤 지난 시간) 기준
--- ARGV[3] = 지우지 않을 이름(이 서버의 소비자)
+-- ARGV[3..] = 지우지 않을 이름(이 서버의 소비자, 서버들이 함께 쓰는 재처리 소비자)
 --
 -- 반환: 지운 소비자 이름 목록. Stream이나 그룹이 없으면 빈 목록
 
@@ -15,13 +15,17 @@ if type(consumers) == 'table' and consumers.err then
 end
 
 local minIdle = tonumber(ARGV[2])
+local keep = {}
+for i = 3, #ARGV do
+    keep[ARGV[i]] = true
+end
 local removed = {}
 for _, consumer in ipairs(consumers) do
     local fields = {}
     for i = 1, #consumer, 2 do
         fields[consumer[i]] = consumer[i + 1]
     end
-    if fields['name'] ~= ARGV[3]
+    if not keep[fields['name']]
             and tonumber(fields['pending']) == 0
             and tonumber(fields['idle']) >= minIdle then
         redis.call('XGROUP', 'DELCONSUMER', KEYS[1], ARGV[1], fields['name'])

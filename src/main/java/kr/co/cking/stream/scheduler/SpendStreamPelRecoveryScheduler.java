@@ -41,7 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class SpendStreamPelRecoveryScheduler {
 
-    private static final String RECOVERY_CONSUMER = "spend-pel-recovery";
+    static final String RECOVERY_CONSUMER = "spend-pel-recovery";
     private static final int SCAN_COUNT = 100;
 
     private final StringRedisTemplate redisTemplate;

@@ -37,9 +37,9 @@ export IMAGE_TAG="$TAG"
 
 # Stream 소비자 이름을 서버마다 다르게 한다. 인스턴스 ID는 서버를 새로 만들 때만 바뀐다.
 # 메타데이터를 못 읽으면 앱이 컨테이너 호스트 이름을 쓴다(배포마다 바뀌므로 경고만 남긴다).
-imds_token=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token \
+imds_token=$(curl -fsS --connect-timeout 2 --max-time 5 -X PUT http://169.254.169.254/latest/api/token \
   -H "X-aws-ec2-metadata-token-ttl-seconds: 60") || imds_token=""
-CKING_CONSUMER_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $imds_token" \
+CKING_CONSUMER_ID=$(curl -fsS --connect-timeout 2 --max-time 5 -H "X-aws-ec2-metadata-token: $imds_token" \
   http://169.254.169.254/latest/meta-data/instance-id) || CKING_CONSUMER_ID=""
 [ -n "$CKING_CONSUMER_ID" ] || echo "경고: 인스턴스 ID를 읽지 못해 Stream 소비자 이름에 호스트 이름을 쓴다"
 export CKING_CONSUMER_ID
