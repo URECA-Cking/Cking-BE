@@ -2,11 +2,13 @@ package kr.co.cking.stream.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -182,8 +184,10 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
 
         ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
 
+        SimpleMeterRegistry redeliveryMetrics = new SimpleMeterRegistry();
         SpendStreamListener redeliveryListener = new SpendStreamListener(
-                ticketSpendLedgerService, redisTemplate, REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
+                ticketSpendLedgerService, redisTemplate, redeliveryMetrics, Clock.systemUTC(),
+                REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
         SpendStreamPelRecoveryScheduler redeliveryScheduler = new SpendStreamPelRecoveryScheduler(
                 redisTemplate, redeliveryListener, deadStreamMessageRepository, objectMapper,
                 REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP, 100L, 5L);
@@ -204,6 +208,7 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
         assertThat(ledgerCount).isEqualTo(1);
         assertThat(balance).isEqualTo(95L);
         assertThat(pending.isEmpty()).isTrue();
+        assertThat(redeliveryMetrics.get("cking.stream.apply.delay").timer().count()).isZero();
     }
 
     @Test

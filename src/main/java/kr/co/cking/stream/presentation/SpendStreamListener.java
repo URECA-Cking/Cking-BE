@@ -1,11 +1,15 @@
 package kr.co.cking.stream.presentation;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.stream.StreamListener;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.util.Map;
 
 import kr.co.cking.ticket.application.TicketSpendLedgerService;
@@ -27,17 +31,26 @@ public class SpendStreamListener implements StreamListener<String, MapRecord<Str
 
     private final TicketSpendLedgerService ticketSpendLedgerService;
     private final StringRedisTemplate redisTemplate;
+    private final Clock clock;
+    private final Timer applyDelay;
     private final String streamKey;
     private final String consumerGroup;
 
     public SpendStreamListener(
             TicketSpendLedgerService ticketSpendLedgerService,
             StringRedisTemplate redisTemplate,
+            MeterRegistry meterRegistry,
+            Clock clock,
             @Value("${cking.entry.stream-key:stream:ticket-deducted}") String streamKey,
             @Value("${cking.entry.history-consumer-group:cg:ticket-history}") String consumerGroup
     ) {
         this.ticketSpendLedgerService = ticketSpendLedgerService;
         this.redisTemplate = redisTemplate;
+        this.clock = clock;
+        // 응모 승인(Stream ID 시각)부터 DB 반영 커밋까지. 이벤트 ID 같은 고유 값은 이름표로 쓰지 않는다.
+        this.applyDelay = Timer.builder("cking.stream.apply.delay")
+                .tag("stream", "spend")
+                .register(meterRegistry);
         this.streamKey = streamKey;
         this.consumerGroup = consumerGroup;
     }
@@ -58,7 +71,10 @@ public class SpendStreamListener implements StreamListener<String, MapRecord<Str
         try {
             if (!BARRIER_TYPE_VALUE.equals(fields.get(BARRIER_TYPE_FIELD))) {
                 SpendCommand command = SpendCommand.fromStreamFields(fields);
-                ticketSpendLedgerService.apply(command);
+                // 이미 반영된 메시지의 재전달은 PEL 회수 대기 시간까지 더해지므로 기록하지 않는다.
+                if (ticketSpendLedgerService.apply(command)) {
+                    recordApplyDelay(message.getId().getTimestamp());
+                }
             }
             redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, message.getId());
             return true;
@@ -67,5 +83,13 @@ public class SpendStreamListener implements StreamListener<String, MapRecord<Str
             log.error("SPEND Stream 메시지 처리에 실패했습니다. id={}, fields={}", message.getId(), fields, e);
             return false;
         }
+    }
+
+    private void recordApplyDelay(Long acceptedAtMillis) {
+        // 읽은 메시지는 실제 ID라 시각이 있다. 자동 생성 표시("*")는 null이나 음수다.
+        if (acceptedAtMillis == null || acceptedAtMillis < 0) {
+            return;
+        }
+        applyDelay.record(Duration.ofMillis(Math.max(0, clock.millis() - acceptedAtMillis)));
     }
 }

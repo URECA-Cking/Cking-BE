@@ -211,8 +211,8 @@ class TicketSpendLedgerServiceIntegrationTest {
         String requestId = UUID.randomUUID().toString();
         SpendCommand command = command(requestId, 4L);
 
-        ticketSpendLedgerService.apply(command);
-        ticketSpendLedgerService.apply(command); // at-least-once 재전달 시뮬레이션
+        assertThat(ticketSpendLedgerService.apply(command)).isTrue();
+        assertThat(ticketSpendLedgerService.apply(command)).isFalse(); // at-least-once 재전달 시뮬레이션
 
         Integer entryCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM event_entry WHERE member_id = ?", Integer.class, MEMBER_ID);
