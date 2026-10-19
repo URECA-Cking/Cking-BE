@@ -9,7 +9,8 @@ const EVENT_ID = positiveInt('CLOSING_EVENT_ID');
 const adminToken = tokenFactory(__ENV.JWT_SECRET || '', 600)(positiveInt('ADMIN_MEMBER_ID'), 'ADMIN');
 const headers = { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' };
 
-export const options = { vus: 1, iterations: 1 };
+// fail()은 반복만 멈추고 종료 코드는 0이다. check가 하나라도 실패하면 실행을 실패로 끝낸다.
+export const options = { vus: 1, iterations: 1, thresholds: { checks: ['rate==1'] } };
 
 export default function () {
   const drawing = http.post(`${BASE_URL}/api/admin/events/${EVENT_ID}/drawings`, null,
@@ -21,14 +22,21 @@ export default function () {
 
   const verify = http.post(`${BASE_URL}/api/admin/drawings/${drawingId}/verify`, null,
     { headers, tags: { name: 'draw_verify' } });
-  check(verify, {
+  const verified = check(verify, {
     '재현 검증 200': (r) => r.status === 200,
     '재현 검증 VERIFIED': (r) => r.status === 200 && r.json('data.status') === 'VERIFIED',
   });
 
   console.log(JSON.stringify({ kind: 'draw', eventId: EVENT_ID, drawingId,
     drawMs: drawing.timings.duration, verifyMs: verify.timings.duration,
-    drawing: drawing.json('data'), verification: verify.json('data') }));
+    drawing: drawing.json('data'), verification: safeData(verify) }));
+  if (!verified) {
+    fail(`재현 검증 실패: HTTP ${verify.status} ${safeCode(verify)}`);
+  }
+}
+
+function safeData(response) {
+  try { return response.json('data'); } catch (_) { return null; }
 }
 
 function safeCode(response) {

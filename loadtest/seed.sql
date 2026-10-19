@@ -8,14 +8,15 @@
 SET SESSION cte_max_recursion_depth = 10000000;
 SET @total_members = @creators + @members;
 
-INSERT INTO member (member_id, name, role, onboarding_completed)
+-- 응모 전에 닉네임 설정 여부를 본다(MemberProfileGuard). 닉네임 규칙을 지키고 ID로 고유하게 만든다.
+INSERT INTO member (member_id, name, nickname, nickname_normalized, role, onboarding_completed)
 WITH RECURSIVE seq (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < @total_members)
-SELECT n, CONCAT('lt-member-', n), 'USER', 1 FROM seq;
+SELECT n, CONCAT('lt-member-', n), CONCAT('lt-', n), CONCAT('lt-', n), 'USER', 1 FROM seq;
 
 -- 추첨·검증 API를 부를 관리자. 관리자 API는 회원 역할이 ADMIN인지만 본다(MemberQueryService.validateAdmin).
 SET @admin_member_id = @total_members + 1;
-INSERT INTO member (member_id, name, role, onboarding_completed)
-VALUES (@admin_member_id, 'lt-admin', 'ADMIN', 1);
+INSERT INTO member (member_id, name, nickname, nickname_normalized, role, onboarding_completed)
+VALUES (@admin_member_id, 'lt-admin', CONCAT('lt-', @admin_member_id), CONCAT('lt-', @admin_member_id), 'ADMIN', 1);
 
 INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured)
 WITH RECURSIVE seq (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < @creators)
@@ -31,9 +32,10 @@ FROM creator;
 
 -- 동시 요청 측정(race.js)용 회원. 관리자 다음 ID부터 이어지고 크리에이터 1의 잔액만 가진다.
 SET @race_first_member_id = @admin_member_id + 1;
-INSERT INTO member (member_id, name, role, onboarding_completed)
+INSERT INTO member (member_id, name, nickname, nickname_normalized, role, onboarding_completed)
 WITH RECURSIVE seq (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < @race_members)
-SELECT @admin_member_id + n, CONCAT('lt-race-', n), 'USER', 1 FROM seq;
+SELECT @admin_member_id + n, CONCAT('lt-race-', n), CONCAT('lt-', @admin_member_id + n),
+       CONCAT('lt-', @admin_member_id + n), 'USER', 1 FROM seq;
 
 INSERT INTO user_ticket_balance (member_id, creator_id, balance)
 SELECT member_id, 1, @race_balance FROM member WHERE name LIKE 'lt-race-%';
