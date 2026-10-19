@@ -13,6 +13,11 @@ import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
@@ -27,6 +32,7 @@ public class ContentTagService {
     private final ContentTagRepository repo;
     private final CreatorSpaceRepository spaces;
     private final CreatorRepository creators;
+    private final PlatformTransactionManager transactionManager;
     private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     public static String encode(Object value) {
@@ -37,7 +43,10 @@ public class ContentTagService {
         try { return value instanceof String s ? JSON.readTree(s) : JSON.valueToTree(value); }
         catch (Exception e) { throw new BusinessException(INVALID_CONTENT_TAG); }
     }
-    public static String digest(Object value) { return ContentIntro.sha256(encode(value)); }
+    public static String digest(Object value) {
+        try { return ContentIntro.sha256(encode(value)); }
+        catch (IllegalArgumentException e) { throw new BusinessException(INVALID_CONTENT_TAG); }
+    }
     private static void require(boolean condition) { if (!condition) throw new BusinessException(INVALID_CONTENT_TAG); }
     private static String text(JsonNode n, String key) {
         JsonNode v = n.path(key); require(v.isTextual() && !v.asText().isBlank()); return v.asText();
@@ -48,11 +57,12 @@ public class ContentTagService {
     private CreatorSpace lock(long creatorId) {
         return spaces.findByCreatorIdForUpdate(creatorId).orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
-    private Map<String,Object> taxonomy() {
-        var rows = repo.rows("SELECT * FROM creator_content_taxonomy WHERE active=TRUE AND approved=TRUE FOR SHARE");
+    private ContentTagRepository.Taxonomy taxonomy() { return taxonomy(true); }
+    private ContentTagRepository.Taxonomy taxonomy(boolean locking) {
+        var rows = repo.taxonomies(locking);
         if (rows.size() != 1) throw new BusinessException(CONTENT_TAXONOMY_UNAVAILABLE);
         var tax=rows.getFirst();
-        JsonNode snapshot=node(field(tax,"taxonomy_snapshot"));
+        JsonNode snapshot=node(tax.snapshot());
         var snapshotMap=JSON.convertValue(snapshot,Map.class);
         var hashRows=new ArrayList<kr.co.cking.interest.domain.InterestSubtopicHash.Row>();
         Map<String,String> links=new LinkedHashMap<>();
@@ -61,53 +71,63 @@ public class ContentTagService {
             if (links.put(row.path("code").asText(),row.path("parent").asText())!=null)
                 throw new BusinessException(CONTENT_TAXONOMY_UNAVAILABLE);
         }
-        Set<String> activeParents=new HashSet<>();
-        for (var row:repo.rows("SELECT c.interest_code FROM interest_category c JOIN interest_taxonomy t ON t.taxonomy_version=c.taxonomy_version WHERE c.active=TRUE AND t.active=TRUE"))
-            activeParents.add(field(row,"interest_code"));
         Set<String> snapshotParents=new HashSet<>();
         for (var parent:snapshot.path("parents")) if (!parent.isTextual() || !snapshotParents.add(parent.asText()))
             throw new BusinessException(CONTENT_TAXONOMY_UNAVAILABLE);
         boolean validLinks=links.entrySet().stream().allMatch(e -> e.getKey().matches("[A-Z][A-Z0-9_]+")
                 && snapshotParents.contains(e.getValue()) && e.getKey().startsWith(e.getValue()+"_"));
-        if (!validLinks || !activeParents.equals(snapshotParents) || hashRows.isEmpty() || !digest(snapshotMap).equals(tax.get("criteria_hash"))
-                || !kr.co.cking.interest.domain.InterestSubtopicHash.compute(hashRows).equals(tax.get("taxonomy_hash"))
-                || !snapshot.path("version").asText().equals(tax.get("taxonomy_version"))
-                || !snapshot.path("parents").equals(node(field(tax,"parent_codes")))
-                || !node(links).equals(node(field(tax,"topic_parents"))))
+        if (!validLinks || snapshotParents.isEmpty() || snapshotParents.stream().anyMatch(code -> !code.matches("[A-Z][A-Z0-9_]+")) || hashRows.isEmpty() || !digest(snapshotMap).equals(tax.criteriaHash())
+                || !kr.co.cking.interest.domain.InterestSubtopicHash.compute(hashRows).equals(tax.taxonomyHash())
+                || !snapshot.path("version").asText().equals(tax.version())
+                || !snapshot.path("parents").equals(node(tax.parents()))
+                || !node(links).equals(node(tax.topics())))
             throw new BusinessException(CONTENT_TAXONOMY_UNAVAILABLE);
         return tax;
     }
-    private static String field(Map<String,Object> row, String key) { return row.get(key).toString(); }
 
     /** One repeatable-read response avoids mixed-page introduction snapshots. */
+    @Transactional(readOnly=true, isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> inputs() {
-        var tax = taxonomy();
-        var rows = repo.rows("SELECT creator_id,intro_text,content_revision FROM creator_space ORDER BY creator_id");
-        var items = rows.stream().map(r -> Map.of("creatorId",r.get("creator_id"),
-                "introduction", ContentIntro.normalize(field(r,"intro_text")), "inputRevision",r.get("content_revision"),
-                "inputHash", ContentIntro.hash(field(r,"intro_text")))).toList();
+        var tax = taxonomy(false);
+        var items = repo.inputs().stream().map(r -> {
+            String normalized = ContentIntro.normalize(r.introduction());
+            return Map.of("creatorId",r.creatorId(),"introduction",normalized,
+                    "inputRevision",r.revision(),"inputHash",ContentIntro.sha256(normalized));
+        }).toList();
         var result = new LinkedHashMap<String,Object>();
         result.put("contractVersion","content-tags-v1"); result.put("taxonomyApproved",true);
-        result.put("taxonomyHash",tax.get("taxonomy_hash")); result.put("generationConfigHash",tax.get("config_hash")); result.put("items",items); result.put("nextCursor",null);
+        result.put("taxonomyHash",tax.taxonomyHash()); result.put("generationConfigHash",tax.configHash()); result.put("items",items); result.put("nextCursor",null);
         return result;
     }
 
     public Map<String,Object> apply(long creatorId, Map<String,Object> body) {
-        CreatorSpace space = lock(creatorId);
-        var tax = taxonomy();
         JsonNode p = node(body), provenance = p.path("provenance"), record = p.path("record");
         require(positive(p,"creatorId") == creatorId);
         long revision = positive(p,"inputRevision");
         String hash = text(p,"inputHash"), automatic = text(p,"automaticRevision");
         require(automatic.matches("[0-9a-f]{64}") && automatic.equals(text(p,"idempotencyKey")));
         require("automatic".equals(text(p,"origin")) && p.path("creatorConfirmed").isBoolean() && !p.path("creatorConfirmed").asBoolean());
+        String payloadHash = digest(body);
+        var existing = repo.automatic(automatic);
+        if (!existing.isEmpty()) {
+            if (existing.getFirst().creatorId()!=creatorId || !payloadHash.equals(existing.getFirst().payloadHash())) throw new BusinessException(CONTENT_PAYLOAD_CONFLICT);
+            return Map.of("status","idempotent","automaticRevision",automatic);
+        }
+        CreatorSpace space = lock(creatorId);
+        // Recheck with a current read after the Space lock: another delivery may have committed.
+        existing = repo.automatic(automatic,true);
+        if (!existing.isEmpty()) {
+            if (existing.getFirst().creatorId()!=creatorId || !payloadHash.equals(existing.getFirst().payloadHash())) throw new BusinessException(CONTENT_PAYLOAD_CONFLICT);
+            return Map.of("status","idempotent","automaticRevision",automatic);
+        }
+        var tax = taxonomy();
         if (space.getContentRevision() != revision || !ContentIntro.hash(space.getIntroText()).equals(hash))
             throw new BusinessException(CONTENT_INPUT_CONFLICT);
         Map<String,Object> provMap = JSON.convertValue(provenance, Map.class);
         String config = digest(provMap);
-        if (!config.equals(tax.get("config_hash")) || !field(tax,"taxonomy_hash").equals(text(provenance,"taxonomyHash"))
-                || !field(tax,"taxonomy_version").equals(text(provenance,"taxonomyVersion"))
-                || !field(tax,"criteria_hash").equals(text(provenance,"criteriaHash")))
+        if (!config.equals(tax.configHash()) || !tax.taxonomyHash().equals(text(provenance,"taxonomyHash"))
+                || !tax.version().equals(text(provenance,"taxonomyVersion"))
+                || !tax.criteriaHash().equals(text(provenance,"criteriaHash")))
             throw new BusinessException(CONTENT_INPUT_CONFLICT);
         require("content-tags-v1".equals(text(provenance,"contractVersion")));
         require("grounded-detail-candidates-v2".equals(text(provenance,"promptVersion")));
@@ -123,27 +143,20 @@ public class ContentTagService {
                 "output_schema_hash","schemaHash","policy_version","policyVersion","be_hash","taxonomyHash",
                 "taxonomy_version","taxonomyVersion","criteria_hash","criteriaHash").entrySet())
             require(text(record,pair.getKey()).equals(text(provenance,pair.getValue())));
-        require(digest(JSON.convertValue(record.path("taxonomy_snapshot"),Map.class)).equals(tax.get("criteria_hash")));
+        require(digest(JSON.convertValue(record.path("taxonomy_snapshot"),Map.class)).equals(tax.criteriaHash()));
         validateTags(record.path("result"),tax,ContentIntro.normalize(space.getIntroText()),true);
-        String payloadHash = digest(body);
-        var existing = repo.rows("SELECT * FROM creator_content_automatic WHERE automatic_revision=?",automatic);
-        if (!existing.isEmpty()) {
-            if (!payloadHash.equals(existing.getFirst().get("payload_hash"))) throw new BusinessException(CONTENT_PAYLOAD_CONFLICT);
-            return Map.of("status","idempotent","automaticRevision",automatic);
-        }
-        if (!repo.rows("SELECT automatic_revision FROM creator_content_automatic WHERE creator_id=? AND input_revision=? AND config_hash=?",
-                creatorId,revision,config).isEmpty()) throw new BusinessException(CONTENT_PAYLOAD_CONFLICT);
+        if (repo.hasAutomatic(creatorId,revision,config)) throw new BusinessException(CONTENT_PAYLOAD_CONFLICT);
         repo.update("INSERT INTO creator_content_automatic(automatic_revision,creator_id,input_revision,input_hash,config_hash,payload_hash,payload,created_at) VALUES(?,?,?,?,?,?,?,UTC_TIMESTAMP(6))",
                 automatic,creatorId,revision,hash,config,payloadHash,encode(body));
         repo.update("INSERT INTO creator_content_state(creator_id,automatic_revision) VALUES(?,?) ON DUPLICATE KEY UPDATE automatic_revision=?",creatorId,automatic,automatic);
         return Map.of("status","applied","automaticRevision",automatic);
     }
 
-    private void validateTags(JsonNode result, Map<String,Object> tax, String intro, boolean evidence) {
+    private void validateTags(JsonNode result, ContentTagRepository.Taxonomy tax, String intro, boolean evidence) {
         JsonNode parents = result.path("parents"), topics = result.path("topics");
         require(parents.isArray() && topics.isArray() && parents.size() <= 3 && topics.size() <= 9);
-        Set<String> allowedParents = new HashSet<>(); node(field(tax,"parent_codes")).forEach(n -> allowedParents.add(n.asText()));
-        JsonNode allowedTopics = node(field(tax,"topic_parents"));
+        Set<String> allowedParents = new HashSet<>(); node(tax.parents()).forEach(n -> allowedParents.add(n.asText()));
+        JsonNode allowedTopics = node(tax.topics());
         Set<String> selected = new HashSet<>(), selectedTopics = new HashSet<>();
         Map<String,Integer> counts = new HashMap<>();
         for (JsonNode parent : parents) {
@@ -174,66 +187,67 @@ public class ContentTagService {
     public Map<String,Object> mine(long memberId) {
         long creatorId=owner(memberId);
         Map<String,Object> result=new LinkedHashMap<>(view(creatorId,false));
-        var jobs=repo.rows("SELECT status,attempt_count,committed_at,claimed_at,completed_at,next_retry_at FROM creator_content_job WHERE creator_id=?",creatorId);
+        var jobs=repo.processing(creatorId);
         if (!jobs.isEmpty()) result.put("processing",jobs.getFirst());
         return result;
     }
+    @Transactional(readOnly=true, isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> publicView(long creatorId) { return view(creatorId,true); }
     private Map<String,Object> view(long creatorId, boolean publicOnly) {
-        CreatorSpace space = lock(creatorId);
-        Map<String,Object> tax;
-        try { tax = taxonomy(); } catch (BusinessException e) {
+        CreatorSpace space = publicOnly ? spaces.findByCreatorId(creatorId).orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND)) : lock(creatorId);
+        ContentTagRepository.Taxonomy tax;
+        try { tax = taxonomy(!publicOnly); } catch (BusinessException e) {
             return Map.of("status","disabled","parents",List.of(),"topics",List.of());
         }
-        var state = repo.rows("SELECT * FROM creator_content_state WHERE creator_id=?",creatorId);
-        if (state.isEmpty() || state.getFirst().get("automatic_revision") == null)
+        var state = repo.state(creatorId);
+        if (state.isEmpty() || state.getFirst().automaticRevision() == null)
             return Map.of("status","processing","parents",List.of(),"topics",List.of());
-        String automatic = field(state.getFirst(),"automatic_revision");
-        var row = repo.rows("SELECT * FROM creator_content_automatic WHERE automatic_revision=?",automatic).getFirst();
-        boolean current = ((Number)row.get("input_revision")).longValue() == space.getContentRevision()
-                && ContentIntro.hash(space.getIntroText()).equals(row.get("input_hash")) && tax.get("config_hash").equals(row.get("config_hash"));
+        String automatic = state.getFirst().automaticRevision();
+        var row = repo.automatic(automatic).getFirst();
+        boolean current = row.revision() == space.getContentRevision()
+                && ContentIntro.hash(space.getIntroText()).equals(row.inputHash()) && tax.configHash().equals(row.configHash());
         if (!current) return Map.of("status","reanalysis_required","parents",List.of(),"topics",List.of());
-        Object confirmationId = state.getFirst().get("confirmation_id");
+        Long confirmationId = state.getFirst().confirmationId();
         if (confirmationId != null) {
-            var confirmations = repo.rows("SELECT * FROM creator_content_confirmation WHERE confirmation_id=?",confirmationId);
+            var confirmations = repo.confirmation(confirmationId);
             if (!confirmations.isEmpty()) {
                 var c = confirmations.getFirst();
-                if (((Number)c.get("input_revision")).longValue() == space.getContentRevision()
-                        && row.get("input_hash").equals(c.get("input_hash")) && tax.get("taxonomy_hash").equals(c.get("taxonomy_hash"))) {
-                    JsonNode tags = node(field(c,"tags"));
+                if (c.revision() == space.getContentRevision()
+                        && row.inputHash().equals(c.inputHash()) && tax.taxonomyHash().equals(c.taxonomyHash())) {
+                    JsonNode tags = node(c.tags());
                     Map<String,Object> result = new LinkedHashMap<>();
                     result.put("status","creator_confirmed");
                     result.put("parents",JSON.convertValue(tags.path("parents"),List.class));
                     result.put("topics",JSON.convertValue(tags.path("topics"),List.class));
                     if (!publicOnly) {
-                        result.put("automaticRevision",automatic); result.put("inputHash",row.get("input_hash"));
-                        result.put("inputRevision",row.get("input_revision"));
-                        result.put("automaticResult",JSON.convertValue(node(field(row,"payload")).path("record").path("result"),Map.class));
+                        result.put("automaticRevision",automatic); result.put("inputHash",row.inputHash());
+                        result.put("inputRevision",row.revision());
+                        result.put("automaticResult",JSON.convertValue(node(row.payload()).path("record").path("result"),Map.class));
                     }
                     return result;
                 }
             }
         }
         if (publicOnly) return Map.of("status","unconfirmed","parents",List.of(),"topics",List.of());
-        JsonNode payload = node(field(row,"payload"));
+        JsonNode payload = node(row.payload());
         return Map.of("status", payload.path("record").path("result").path("unclassified").asBoolean() ? "unclassified" : "unconfirmed",
-                "automaticRevision",automatic,"inputHash",row.get("input_hash"),"inputRevision",row.get("input_revision"),
+                "automaticRevision",automatic,"inputHash",row.inputHash(),"inputRevision",row.revision(),
                 "automaticResult",JSON.convertValue(payload.path("record").path("result"),Map.class));
     }
     public Map<String,Object> confirm(long memberId, Map<String,Object> body) {
         long creatorId = owner(memberId); CreatorSpace space = lock(creatorId); var tax = taxonomy(); JsonNode p = node(body);
-        var states = repo.rows("SELECT * FROM creator_content_state WHERE creator_id=?",creatorId);
+        var states = repo.state(creatorId);
         String automatic = text(p,"automaticRevision"), hash = text(p,"inputHash");
-        if (states.isEmpty() || !automatic.equals(states.getFirst().get("automatic_revision")) || !hash.equals(ContentIntro.hash(space.getIntroText())))
+        if (states.isEmpty() || !automatic.equals(states.getFirst().automaticRevision()) || !hash.equals(ContentIntro.hash(space.getIntroText())))
             throw new BusinessException(CONTENT_INPUT_CONFLICT);
-        var row = repo.rows("SELECT * FROM creator_content_automatic WHERE automatic_revision=?",automatic).getFirst();
-        if (((Number)row.get("input_revision")).longValue() != space.getContentRevision() || !hash.equals(row.get("input_hash"))
-                || !tax.get("config_hash").equals(row.get("config_hash"))) throw new BusinessException(CONTENT_INPUT_CONFLICT);
+        var row = repo.automatic(automatic).getFirst();
+        if (row.revision() != space.getContentRevision() || !hash.equals(row.inputHash())
+                || !tax.configHash().equals(row.configHash())) throw new BusinessException(CONTENT_INPUT_CONFLICT);
         validateTags(p,tax,"",false);
         String tags = encode(Map.of("parents",body.get("parents"),"topics",body.get("topics")));
         repo.update("INSERT INTO creator_content_confirmation(creator_id,automatic_revision,input_revision,input_hash,taxonomy_hash,tags,confirmed_at) VALUES(?,?,?,?,?,?,UTC_TIMESTAMP(6))",
-                creatorId,automatic,space.getContentRevision(),hash,tax.get("taxonomy_hash"),tags);
-        Long id = ((Number)repo.rows("SELECT LAST_INSERT_ID() id").getFirst().get("id")).longValue();
+                creatorId,automatic,space.getContentRevision(),hash,tax.taxonomyHash(),tags);
+        long id = repo.lastInsertId();
         repo.update("UPDATE creator_content_state SET confirmation_id=? WHERE creator_id=?",id,creatorId);
         return view(creatorId,false);
     }
@@ -241,48 +255,58 @@ public class ContentTagService {
     public Map<String,Object> claim(Map<String,Object> body) {
         long seconds = positive(node(body),"leaseSeconds"); require(seconds <= 900);
         // SKIP LOCKED allows independent claims; no write to Space while claiming.
-        var jobs = repo.rows("SELECT * FROM creator_content_job WHERE (status='PENDING' OR (status='RUNNING' AND lease_until<UTC_TIMESTAMP(6))) AND next_retry_at<=UTC_TIMESTAMP(6) ORDER BY committed_at,creator_id LIMIT 1 FOR UPDATE SKIP LOCKED");
-        if (jobs.isEmpty()) return Map.of();
-        var job = jobs.getFirst(); long creatorId = ((Number)job.get("creator_id")).longValue();
-        if (((Number)job.get("attempt_count")).intValue() >= 5) {
-            repo.update("UPDATE creator_content_job SET status='FAILED' WHERE creator_id=?",creatorId);
-            LoggerFactory.getLogger(getClass()).error("Content job exhausted retries creatorId={}",creatorId);
-            return Map.of();
+        while (true) {
+            var jobs = repo.claimable();
+            if (jobs.isEmpty()) return Map.of();
+            var job = jobs.getFirst(); long creatorId = job.creatorId();
+            if (job.attempts() >= 5) {
+                repo.update("UPDATE creator_content_job SET status='FAILED' WHERE creator_id=?",creatorId);
+                LoggerFactory.getLogger(getClass()).error("Content job exhausted retries creatorId={}",creatorId);
+                continue;
+            }
+            String token = UUID.randomUUID().toString();
+            repo.update("UPDATE creator_content_job SET status='RUNNING',lease_token=?,lease_until=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6)),claimed_at=UTC_TIMESTAMP(6),attempt_count=attempt_count+1 WHERE creator_id=?",token,seconds,creatorId);
+            return Map.of("jobId",Long.toString(creatorId),"leaseToken",token,"generation",job.generation());
         }
-        String token = UUID.randomUUID().toString();
-        repo.update("UPDATE creator_content_job SET status='RUNNING',lease_token=?,lease_until=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6)),claimed_at=UTC_TIMESTAMP(6),attempt_count=attempt_count+1 WHERE creator_id=?",token,seconds,creatorId);
-        return Map.of("jobId",Long.toString(creatorId),"leaseToken",token,"generation",job.get("generation"));
     }
     public Map<String,Object> ack(long creatorId, Map<String,Object> body) {
         JsonNode p = node(body); String status = text(p,"status"); require(Set.of("completed","retry").contains(status));
         long generation = positive(p,"generation"); String token = text(p,"leaseToken");
-        var jobs = repo.rows("SELECT * FROM creator_content_job WHERE creator_id=? FOR UPDATE",creatorId);
+        var jobs = repo.job(creatorId);
         if (jobs.isEmpty()) throw new BusinessException(CONTENT_LEASE_CONFLICT);
         var job = jobs.getFirst();
-        if (!"RUNNING".equals(job.get("status")) || !token.equals(job.get("lease_token")) || generation != ((Number)job.get("generation")).longValue())
+        if (!"RUNNING".equals(job.status()) || !token.equals(job.leaseToken()) || generation != job.generation())
             throw new BusinessException(CONTENT_LEASE_CONFLICT);
-        int attempts = ((Number)job.get("attempt_count")).intValue();
+        int attempts = job.attempts();
         String next = status.equals("completed") ? "COMPLETED" : attempts >= 5 ? "FAILED" : "PENDING";
         // Summary is allowlisted rather than trusting arbitrary worker text or profile fields.
         JsonNode summary = p.path("summary");
         String safe = encode(Map.of("failureCount",summary.path("failureCount").asInt(),"startedAt",summary.path("startedAt").asDouble(),"completedAt",summary.path("completedAt").asDouble()));
-        int updated = repo.update("UPDATE creator_content_job SET status=?,lease_token=NULL,lease_until=NULL,completed_at=UTC_TIMESTAMP(6),next_retry_at=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6)),last_summary=? WHERE creator_id=? AND lease_until>=UTC_TIMESTAMP(6)",next,Math.min(3600,30*(1<<attempts)),safe,creatorId);
+        int updated = repo.update("UPDATE creator_content_job SET status=?,lease_token=NULL,lease_until=NULL,completed_at=IF(?='COMPLETED',UTC_TIMESTAMP(6),NULL),next_retry_at=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6)),last_summary=? WHERE creator_id=? AND lease_until>=UTC_TIMESTAMP(6)",next,next,Math.min(3600,30*(1<<attempts)),safe,creatorId);
         if (updated != 1) throw new BusinessException(CONTENT_LEASE_CONFLICT);
         if (next.equals("FAILED")) LoggerFactory.getLogger(getClass()).error("Content job failed creatorId={}",creatorId);
         return Map.of("status",next);
     }
+    @Transactional(propagation=Propagation.NOT_SUPPORTED)
     public Map<String,Object> reconcile(Map<String,Object> body) {
         JsonNode p=node(body); require(p.path("inputs").isArray());
-        var tax=taxonomy(); int completed=0; long previous=0;
+        var inputs=new ArrayList<ReconcileInput>(); long previous=0;
         for (JsonNode input:p.path("inputs")) {
-            long creatorId=positive(input,"creatorId"); require(creatorId>previous); previous=creatorId;
-            CreatorSpace space=lock(creatorId);
-            long revision=positive(input,"inputRevision"); String hash=text(input,"inputHash");
-            if (revision!=space.getContentRevision() || !ContentIntro.hash(space.getIntroText()).equals(hash)) continue;
-            var applied=repo.rows("SELECT a.automatic_revision FROM creator_content_state s JOIN creator_content_automatic a ON a.automatic_revision=s.automatic_revision WHERE s.creator_id=? AND a.input_revision=? AND a.input_hash=? AND a.config_hash=?",creatorId,revision,hash,tax.get("config_hash"));
-            if (!applied.isEmpty()) completed+=repo.update("UPDATE creator_content_job SET status='COMPLETED',completed_at=UTC_TIMESTAMP(6) WHERE creator_id=? AND generation=? AND status IN ('PENDING','FAILED')",creatorId,revision);
+            long id=positive(input,"creatorId"); require(id>previous); previous=id;
+            inputs.add(new ReconcileInput(id,positive(input,"inputRevision"),text(input,"inputHash")));
         }
+        var transaction=new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        int completed=0;
+        for (var input:inputs) completed+=Objects.requireNonNull(transaction.execute(status -> reconcileOne(input)));
         return Map.of("completedCount",completed);
+    }
+    private record ReconcileInput(long creatorId,long revision,String hash) {}
+    private int reconcileOne(ReconcileInput input) {
+        CreatorSpace space=lock(input.creatorId()); var tax=taxonomy();
+        if (input.revision()!=space.getContentRevision() || !ContentIntro.hash(space.getIntroText()).equals(input.hash())) return 0;
+        boolean applied=repo.hasCurrentAutomatic(input.creatorId(),input.revision(),input.hash(),tax.configHash());
+        return !applied ? 0 : repo.update("UPDATE creator_content_job SET status='COMPLETED',completed_at=UTC_TIMESTAMP(6) WHERE creator_id=? AND generation=? AND status IN ('PENDING','FAILED')",input.creatorId(),input.revision());
     }
     public Map<String,Object> renew(long creatorId, Map<String,Object> body) {
         JsonNode p=node(body);
