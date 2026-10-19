@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
@@ -33,7 +35,7 @@ public class ContentTagService {
     private final CreatorSpaceRepository spaces;
     private final CreatorRepository creators;
     private final PlatformTransactionManager transactionManager;
-    private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+    private static final ObjectMapper JSON = new ObjectMapper(JsonFactory.builder().disable(JsonWriteFeature.WRITE_HEX_UPPER_CASE).build()).enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     public static String encode(Object value) {
         try { return JSON.writeValueAsString(value); }

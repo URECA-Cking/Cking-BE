@@ -13,6 +13,12 @@ public final class ContentIntro {
     }
     public static String hash(String text) { return sha256(normalize(text)); }
     public static String sha256(String text) {
+        for (int i=0;i<text.length();i++) {
+            char c=text.charAt(i);
+            if (Character.isHighSurrogate(c)) {
+                if (++i>=text.length() || !Character.isLowSurrogate(text.charAt(i))) throw new IllegalArgumentException("Unpaired Unicode surrogate");
+            } else if (Character.isLowSurrogate(c)) throw new IllegalArgumentException("Unpaired Unicode surrogate");
+        }
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
