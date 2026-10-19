@@ -46,4 +46,16 @@ class ContentTagServiceTest {
         verifyNoInteractions(spaces);
         verify(repo,never()).taxonomies(anyBoolean());
     }
+    @Test void claimSkipsExhaustedJobsWithoutAnotherPoll() {
+        var exhausted=new ContentTagRepository.Job(1,1,"PENDING",null,5);
+        var pending=new ContentTagRepository.Job(2,1,"PENDING",null,0);
+        when(repo.claimable()).thenReturn(List.of(exhausted),List.of(pending));
+        assertThat(service.claim(Map.of("leaseSeconds",900))).containsEntry("jobId","2").containsEntry("generation",1L);
+        var order=inOrder(repo);
+        order.verify(repo).claimable();
+        order.verify(repo).update("UPDATE creator_content_job SET status='FAILED' WHERE creator_id=?",1L);
+        order.verify(repo).claimable();
+        order.verify(repo).update(contains("SET status='RUNNING'"),anyString(),eq(900L),eq(2L));
+        verifyNoInteractions(spaces);
+    }
 }

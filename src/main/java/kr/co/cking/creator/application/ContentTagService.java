@@ -319,7 +319,7 @@ public class ContentTagService {
     }
     public Map<String,Object> retry(long creatorId) {
         lock(creatorId);
-        int count = repo.update("UPDATE creator_content_job SET status='PENDING',attempt_count=0,lease_token=NULL,lease_until=NULL,next_retry_at=UTC_TIMESTAMP(6) WHERE creator_id=? AND status<>'RUNNING'",creatorId);
+        int count = repo.update("UPDATE creator_content_job SET status='PENDING',attempt_count=0,lease_token=NULL,lease_until=NULL,completed_at=NULL,next_retry_at=UTC_TIMESTAMP(6) WHERE creator_id=? AND status<>'RUNNING'",creatorId);
         if (count != 1) throw new BusinessException(CONTENT_LEASE_CONFLICT);
         return Map.of("status","PENDING");
     }

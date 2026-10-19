@@ -31,6 +31,8 @@ class ContentTagReviewIntegrationTest {
     final List<Long> memberIds=new ArrayList<>(), creatorIds=new ArrayList<>();
     Map<String,Object> snapshot,provenance;
     String version;
+    long backgroundCreator;
+    Map<String,Object> backgroundJob;
     TransactionTemplate tx;
 
     @BeforeEach void setup() {
@@ -45,11 +47,19 @@ class ContentTagReviewIntegrationTest {
             "promptHash","1".repeat(64),"schemaHash","2".repeat(64),"policyHash","3".repeat(64)));
         jdbc.update("INSERT INTO creator_content_taxonomy(taxonomy_version,taxonomy_hash,criteria_hash,config_hash,parent_codes,topic_parents,taxonomy_snapshot,approved,active) VALUES(?,?,?,?,?,?,?,TRUE,TRUE)",
             version,taxonomyHash,digest(snapshot),digest(provenance),encode(List.of("CONTENT")),encode(Map.of("CONTENT_SING","CONTENT")),encode(snapshot));
+        // Leave older unrelated work in the queue throughout each test. Tests must
+        // neither consume it nor depend on the database starting with an empty queue.
+        backgroundCreator=fixture();
+        backgroundJob=jdbc.queryForMap("SELECT * FROM creator_content_job WHERE creator_id=?",backgroundCreator);
     }
     @AfterEach void cleanup() {
-        for(long id:creatorIds) { spaces.findByCreatorId(id).ifPresent(spaces::delete); creators.deleteById(id); }
-        for(long id:memberIds) members.deleteById(id);
-        jdbc.update("DELETE FROM creator_content_taxonomy WHERE taxonomy_version=?",version);
+        try {
+            if (backgroundJob!=null) assertThat(jdbc.queryForMap("SELECT * FROM creator_content_job WHERE creator_id=?",backgroundCreator)).isEqualTo(backgroundJob);
+        } finally {
+            for(long id:creatorIds) { spaces.findByCreatorId(id).ifPresent(spaces::delete); creators.deleteById(id); }
+            for(long id:memberIds) members.deleteById(id);
+            jdbc.update("DELETE FROM creator_content_taxonomy WHERE taxonomy_version=?",version);
+        }
     }
     private long fixture() {
         return Objects.requireNonNull(tx.execute(status -> {
@@ -116,13 +126,13 @@ class ContentTagReviewIntegrationTest {
     @Test void confirmationIsPrivateUntilValidAndBecomesStaleOnEdit() {
         long id=fixture();var p=payload(id);service.apply(id,p);
         assertThat(service.publicView(id)).containsEntry("status","unconfirmed").doesNotContainKey("automaticResult");
-        assertThat(service.confirm(memberIds.getFirst(),confirmation(p))).containsEntry("status","creator_confirmed");
+        assertThat(service.confirm(creators.findById(id).orElseThrow().getMemberId(),confirmation(p))).containsEntry("status","creator_confirmed");
         assertThat(service.publicView(id)).containsOnlyKeys("status","parents","topics");
-        edit(id);error(()->service.confirm(memberIds.getFirst(),confirmation(p)),CONTENT_INPUT_CONFLICT);
+        edit(id);error(()->service.confirm(creators.findById(id).orElseThrow().getMemberId(),confirmation(p)),CONTENT_INPUT_CONFLICT);
         assertThat(service.publicView(id)).containsEntry("status","reanalysis_required");
     }
     @Test void publicReadDoesNotWaitForSpaceOrTaxonomyWriteLocks() throws Exception {
-        long id=fixture();var p=payload(id);service.apply(id,p);service.confirm(memberIds.getFirst(),confirmation(p));
+        long id=fixture();var p=payload(id);service.apply(id,p);service.confirm(creators.findById(id).orElseThrow().getMemberId(),confirmation(p));
         var executor=Executors.newSingleThreadExecutor();
         try {
             tx.executeWithoutResult(status->{
@@ -132,12 +142,6 @@ class ContentTagReviewIntegrationTest {
                 catch(Exception e){throw new AssertionError(e);}
             });
         } finally {executor.shutdownNow();}
-    }
-    @Test void claimSkipsExhaustedJobsWithoutAnotherPoll() {
-        long first=fixture(),second=fixture();
-        jdbc.update("UPDATE creator_content_job SET attempt_count=5 WHERE creator_id=?",first);
-        assertThat(service.claim(Map.of("leaseSeconds",900))).containsEntry("jobId",Long.toString(second));
-        assertThat(jdbc.queryForObject("SELECT status FROM creator_content_job WHERE creator_id=?",String.class,first)).isEqualTo("FAILED");
     }
     @Test void ackRecordsCompletionOnlyForSuccessfulCompletion() {
         long id=fixture();
@@ -149,9 +153,10 @@ class ContentTagReviewIntegrationTest {
         }
     }
     @Test void expiredLeaseCannotAckOrRenew() {
-        long id=fixture();var claimed=service.claim(Map.of("leaseSeconds",900));
-        jdbc.update("UPDATE creator_content_job SET lease_until=TIMESTAMPADD(SECOND,-1,UTC_TIMESTAMP(6)) WHERE creator_id=?",id);
-        var lease=Map.<String,Object>of("generation",1,"leaseToken",claimed.get("leaseToken"));
+        long id=fixture();
+        // Seed only this test's lease; global claim may correctly pick unrelated pending work.
+        jdbc.update("UPDATE creator_content_job SET status='RUNNING',lease_token='expired-test',lease_until=TIMESTAMPADD(SECOND,-1,UTC_TIMESTAMP(6)) WHERE creator_id=?",id);
+        var lease=Map.<String,Object>of("generation",1,"leaseToken","expired-test");
         error(()->service.renew(id,lease),CONTENT_LEASE_CONFLICT);
         var ack=new LinkedHashMap<>(lease);ack.put("status","completed");ack.put("summary",Map.of());
         error(()->service.ack(id,ack),CONTENT_LEASE_CONFLICT);
@@ -178,5 +183,21 @@ class ContentTagReviewIntegrationTest {
             release.countDown();holder.get(5,TimeUnit.SECONDS);
             assertThat(reconcile.get(5,TimeUnit.SECONDS)).containsEntry("completedCount",2);
         } finally {release.countDown();executor.shutdownNow();}
+    }
+    @Test void manualRetryClearsCompletionAndPreservesUnrelatedPendingJob() {
+        long unrelated=fixture(),id=fixture();
+        var before=jdbc.queryForMap("SELECT * FROM creator_content_job WHERE creator_id=?",unrelated);
+        jdbc.update("UPDATE creator_content_job SET status='COMPLETED',completed_at=UTC_TIMESTAMP(6),attempt_count=3 WHERE creator_id=?",id);
+        assertThat(service.retry(id)).containsEntry("status","PENDING");
+        var job=jdbc.queryForMap("SELECT status,completed_at,attempt_count,lease_token,lease_until FROM creator_content_job WHERE creator_id=?",id);
+        assertThat(job).containsEntry("status","PENDING").containsEntry("completed_at",null).containsEntry("attempt_count",0)
+            .containsEntry("lease_token",null).containsEntry("lease_until",null);
+        assertThat(jdbc.queryForMap("SELECT * FROM creator_content_job WHERE creator_id=?",unrelated)).isEqualTo(before);
+    }
+    @Test void manualRetryCannotResetARunningJob() {
+        long id=fixture();
+        jdbc.update("UPDATE creator_content_job SET status='RUNNING',lease_token='active-test',lease_until=TIMESTAMPADD(SECOND,900,UTC_TIMESTAMP(6)) WHERE creator_id=?",id);
+        error(()->service.retry(id),CONTENT_LEASE_CONFLICT);
+        assertThat(jdbc.queryForObject("SELECT lease_token FROM creator_content_job WHERE creator_id=?",String.class,id)).isEqualTo("active-test");
     }
 }
