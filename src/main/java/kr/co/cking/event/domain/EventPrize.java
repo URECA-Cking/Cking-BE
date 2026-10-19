@@ -62,4 +62,15 @@ public class EventPrize {
     public PrizeConfig toConfig() {
         return new PrizeConfig(prizeKey, displayName, priority, weight, quantity);
     }
+
+    void update(PrizeConfig config) {
+        if (config == null || !prizeKey.equalsIgnoreCase(config.prizeKey())) {
+            throw new IllegalArgumentException("기존 상품의 식별자는 변경할 수 없습니다.");
+        }
+        this.prizeKey = config.prizeKey();
+        this.displayName = config.displayName().trim();
+        this.priority = config.priority();
+        this.weight = config.weight();
+        this.quantity = config.quantity();
+    }
 }
