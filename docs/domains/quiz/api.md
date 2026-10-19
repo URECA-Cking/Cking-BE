@@ -18,12 +18,13 @@ Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가
 
 | 필드 | 설명 |
 | --- | --- |
-| `publicationStatus` | `NOT_PUBLISHED`, `PUBLISHED`, `UNPUBLISHED` |
+| `publicationStatus` | `NOT_PUBLISHED`, `PUBLISHED`, `UNPUBLISHED`, `CLOSED` |
 | `reviewStatus` | revision 검토 상태. `PENDING_REVIEW`, `APPROVED`, `REJECTED` |
 | `questionNo`, `optionNo` | 0부터 시작하는 표시 순서 |
 | `correctOptionIndex` | 0-based. 정답 보기의 `optionNo`와 같다(Creator 검토 및 본인 응시 결과에만 있다) |
 | `publishedAt` | 현재(또는 마지막) 게시가 시작된 시각. 재게시·게시 revision 변경 때 갱신된다. 게시한 적 없으면 null |
 | `unpublishedAt` | 그 게시가 취소된 시각. `PUBLISHED`이면 항상 null이고, 재게시하면 지워진다 |
+| `closedAt` | 수동 마감 시각. `CLOSED`일 때만 값이 있으며 반복 마감으로 갱신되지 않음 |
 | 시각 | UTC Instant |
 
 ## GET /api/creator/quizzes
@@ -52,7 +53,7 @@ Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가
 
 ## GET /api/creator/quizzes/{quizId}
 
-내 Quiz 상세. `revisions`는 revision 번호 오름차순이다.
+내 Quiz 상세. `revisions`는 revision 번호 오름차순이다. 목록·상세·게시 상태 응답은 `closedAt`을 포함한다. 마감 후에도 소유 Creator는 목록·상세·revision을 조회할 수 있다. `CLOSED`의 `publishedRevisionId`는 게시 중 마감했다면 마지막 게시 revision, 게시 중지 후 마감했다면 null이며 공개 중이라는 뜻이 아니다.
 
 ```json
 {
@@ -120,6 +121,8 @@ Creator가 [Judge 평가 요청·조회 API](judge-api.md)로 revision을 평가
 
 오류는 Quiz 상세와 같고, Quiz에 속하지 않은 revision은 `QUIZ_REVISION_NOT_FOUND`(404)다.
 
+마감된 Quiz의 승인·거절·게시 요청은 `QUIZ_CLOSED`(409)로 거절한다. 아래의 기존 결정/상태 반환 정책은 마감되지 않은 Quiz에 적용한다.
+
 ## POST /api/creator/quizzes/{quizId}/revisions/{revisionId}/approve
 
 revision을 승인한다. 본문은 없다. 저장 내용을 revision 해시로 검증한 뒤 Judge 평가 근거를 확인해 기록한다. 이미 승인한 revision은 기존 결정을 반환한다.
@@ -176,7 +179,22 @@ revision을 거절한다. Judge 평가가 없어도 된다. 본문은 생략할 
 
 ## POST /api/creator/quizzes/{quizId}/unpublish
 
-게시를 취소한다. 본문은 없다. Judge 상태와 무관하며 revision·결정 기록은 그대로 남는다. 게시 중이 아니면 현재 상태를 반환한다. 응답은 게시와 같은 형식이다. 오류는 Quiz 상세와 같다.
+게시를 취소한다. 본문은 없다. Judge 상태와 무관하며 revision·결정 기록은 그대로 남는다. `NOT_PUBLISHED`·`UNPUBLISHED`이면 현재 상태를 반환한다. `CLOSED`에서는 `QUIZ_CLOSED`(409)이며 상태를 변경하지 않는다. 응답은 게시와 같은 형식이다. 나머지 오류는 Quiz 상세와 같다.
+
+## POST /api/creator/quizzes/{quizId}/close
+
+소유 Creator가 게시 중 또는 게시 중지 Quiz를 영구 마감한다. 본문은 없다. HTTP 200과 게시 상태 응답을 반환하며, 반복 요청은 최초 `closedAt`을 유지한다. 마감 후 publish/unpublish·승인·거절·신규 문항 구성은 `QUIZ_CLOSED`(409)다. 신규 Judge 평가도 접수하지 않으며 기능 활성화·Provider 설정 오류가 먼저 반환될 수 있다. 기존 구성/Judge 요청의 UUID replay와 조회는 유지한다.
+
+```json
+{ "quizId": 1, "publicationStatus": "CLOSED", "publishedRevisionId": 100,
+  "publishedAt": "2026-10-12T01:00:00Z", "unpublishedAt": null,
+  "closedAt": "2026-10-19T01:00:00Z" }
+```
+
+- `NOT_PUBLISHED`는 `QUIZ_CLOSE_NOT_ALLOWED`(409)다. 소유권·Quiz 없음 오류는 상세 조회와 같다.
+- 최초 게시 고정 revision/hash, contentLocked, 승인·revision·응시·보상 기록을 보존한다. 게시 중지 후 마감하면 `publishedRevisionId`는 null을 유지한다.
+- 공개 목록·상세는 마감 Quiz를 노출하지 않는다. 신규 제출은 `QUIZ_CLOSED`(409)이며, 기존 UUID replay와 my-attempt는 저장된 결과를 반환한다.
+- 마감과 제출은 같은 Quiz 행 잠금으로 직렬화한다. 먼저 확정한 제출은 보존하고, 마감이 먼저 확정되면 조회해 둔 문항도 신규 제출할 수 없다. PENDING 보상 재처리는 마감과 무관하다.
 
 ## POST /api/creator/quizzes/generations
 

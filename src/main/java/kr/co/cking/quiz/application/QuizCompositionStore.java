@@ -33,6 +33,7 @@ public class QuizCompositionStore {
         var quiz = owned(memberId, quizId, true);
         var existing = replay(quiz, command);
         if (existing.isPresent()) return existing.get();
+        quiz.requireNotClosed();
         if (quiz.isContentLocked()) throw error(QuizErrorCode.QUIZ_CONTENT_LOCKED);
         var parent = revisions.findById(command.baseRevisionId()).filter(r -> r.getQuizId().equals(quizId))
                 .orElseThrow(() -> error(QuizErrorCode.QUIZ_REVISION_NOT_FOUND));

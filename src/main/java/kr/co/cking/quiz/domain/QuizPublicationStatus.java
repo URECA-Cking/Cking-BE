@@ -4,5 +4,6 @@ package kr.co.cking.quiz.domain;
 public enum QuizPublicationStatus {
     NOT_PUBLISHED,
     PUBLISHED,
-    UNPUBLISHED
+    UNPUBLISHED,
+    CLOSED
 }
