@@ -175,5 +175,7 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 
 `/api/internal/content-tags/**`는 별도 opaque Bearer 토큰의 SHA-256 설정
 `cking.content-tags.token-hash`로만 인증한다. ADMIN JWT·추천 적재 키의 권한을 확대하지 않는다.
+내부 체인은 명시적 `Authorization: Bearer` 요청에만 CSRF 예외를 적용한다. Cookie만 있거나
+인증이 없는 쓰기는 자격 증명 필터가 먼저 거부하며, 콘텐츠 토큰은 Cookie에서 읽지 않는다.
 일반 회원 JWT는 `/api/creator/content-tags`와 `/confirmation`에서 본인 식별에 사용한다.
 [콘텐츠 태그 계약](../domains/creator/content-tags.md)에 상세 경로·오류·출처 공개 범위를 정의한다.

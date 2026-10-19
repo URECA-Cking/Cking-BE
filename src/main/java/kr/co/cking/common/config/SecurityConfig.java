@@ -93,11 +93,16 @@ public class SecurityConfig {
     public SecurityFilterChain contentTagSecurityFilterChain(HttpSecurity http,
             @Value("${cking.content-tags.token-hash:}") String tokenHash) throws Exception {
         return http.securityMatcher("/api/internal/content-tags/**")
-                .csrf(csrf -> csrf.disable())
+                // An opaque Bearer token is explicit, never an automatically attached cookie.
+                // Other requests retain CSRF protection; the early credential filter rejects them.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(request -> {
+                    String header = request.getHeader("Authorization");
+                    return header != null && header.startsWith("Bearer ");
+                }))
                 .sessionManagement(session -> session.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.anyRequest().hasAuthority("CONTENT_TAG_BATCH"))
                 .addFilterBefore(new kr.co.cking.common.security.ContentTagAuthenticationFilter(tokenHash, authenticationEntryPoint),
-                        org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+                        org.springframework.security.web.csrf.CsrfFilter.class)
                 .exceptionHandling(e -> e.authenticationEntryPoint(authenticationEntryPoint).accessDeniedHandler(accessDeniedHandler))
                 .build();
     }
