@@ -22,15 +22,15 @@ USER와 ADMIN 모두 Creator 본인 Quiz에는 신규 응시할 수 없다. 공�
 - 답안을 questionNo 기준으로 정규화하므로 배열 순서만 바뀐 재전송은 같은 요청이다.
 - requestId는 Member별 UUID이며 다른 Creator/Quiz/revision/답안에 재사용하면 409다.
 - Member별 Quiz 응시는 revision에 관계없이 평생 한 번이다. 다른 UUID로 재응시하면 409다.
-- 신규 제출만 현재 게시 상태와 요청 revision 일치를 검사한다. 미게시·게시 취소는 404, 게시 revision 불일치는 409다.
-- 게시 취소·revision 교체 후에도 동일 요청은 저장된 결과를 반환한다.
+- 신규 제출만 현재 게시 상태와 요청 revision 일치를 검사한다. 미게시·게시 취소는 404, 마감은 `QUIZ_CLOSED`(409), 게시 revision 불일치는 409다.
+- 게시 취소·마감·revision 교체 후에도 동일 요청은 저장된 결과를 반환한다.
 - 서버가 Quiz 행을 잠그고 `QuizRevisionReader.readVerified()`로 원본·revision 무결성을 확인한 후 채점한다.
 - 헤더와 문항별 결과 저장은 하나의 짧은 DB 트랜잭션이다. UNIQUE 경쟁 실패는 롤백 후 새 트랜잭션에서 재조회한다.
 
 ## GET /api/creators/{creatorId}/quizzes/{quizId}/my-attempt
 
 HTTP 200으로 JWT 호출자 본인의 기존 결과만 반환한다. 별도의 memberId 파라미터는 없다.
-게시 취소·revision 교체 후에도 응시 시점 스냅샷을 반환하며 현재 revision을 읽거나 다시 채점하지 않는다.
+게시 취소·마감·revision 교체 후에도 응시 시점 스냅샷을 반환하며 현재 revision을 읽거나 다시 채점하지 않는다.
 본인 기록이 없거나 creatorId 경로가 기록과 다르면 404다.
 
 ## 결과
@@ -143,3 +143,5 @@ UUID는 내용 hash에서 제외하고 Member/requestId UNIQUE로 별도 식별�
 - PR 병합 전 최신 develop과 열린 PR에서 V66 및 API 인덱스 번호 충돌을 재확인한다.
 - focused 단위·WebMvc 보안 및 공개 조회 회귀는 로컬 실행 대상이다.
 - MySQL UNIQUE 경쟁·rollback·게시 잠금 경쟁·FK·변조 검증은 CI 전용이며 로컬에서는 컴파일까지만 한다.
+
+마감과 제출은 동일 Quiz 행 잠금으로 직렬화한다. 먼저 확정된 제출은 정상 응시이며 이후 마감으로 삭제하지 않는다. 마감이 먼저 확정되면 기존 문항을 조회했어도 신규 제출은 거절한다. 저장된 응시의 PENDING 보상 재전달은 계속된다.

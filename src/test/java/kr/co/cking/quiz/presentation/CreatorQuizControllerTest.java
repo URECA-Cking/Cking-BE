@@ -40,6 +40,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(CreatorQuizController.class)
 class CreatorQuizControllerTest {
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 수동_마감은_상태와_시각과_마지막_게시_포인터를_반환한다() throws Exception {
+        given(commandService.close(7L, 1L)).willReturn(new QuizPublicationView(
+                1L, QuizPublicationStatus.CLOSED, 100L, QuizFixtures.NOW, null, QuizFixtures.NOW));
+        mockMvc.perform(post("/api/creator/quizzes/1/close"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.publicationStatus").value("CLOSED"))
+                .andExpect(jsonPath("$.data.publishedRevisionId").value(100))
+                .andExpect(jsonPath("$.data.closedAt").exists());
+    }
+
+    @Test
+    void 수동_마감은_JWT가_필요하다() throws Exception {
+        mockMvc.perform(post("/api/creator/quizzes/1/close")).andExpect(status().isUnauthorized());
+    }
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private kr.co.cking.quiz.application.QuizCompositionMetadataReader metadataReader;
 
@@ -70,7 +87,7 @@ class CreatorQuizControllerTest {
         PageRequest pageable = PageRequest.of(0, 20);
         given(queryService.findMine(7L, pageable)).willReturn(new PageImpl<>(List.of(new CreatorQuizViews.Summary(
                 1L, QuizFixtures.TITLE, QuizPublicationStatus.NOT_PUBLISHED, null, 100L, 1,
-                QuizReviewStatus.PENDING_REVIEW, null, QuizFixtures.NOW, QuizFixtures.NOW)), pageable, 1));
+                QuizReviewStatus.PENDING_REVIEW, null, QuizFixtures.NOW, QuizFixtures.NOW, null)), pageable, 1));
 
         mockMvc.perform(get("/api/creator/quizzes"))
                 .andExpect(status().isOk())
@@ -191,7 +208,7 @@ class CreatorQuizControllerTest {
     @WithMockJwt(memberId = "7")
     void 게시_취소는_공개_상태를_반환한다() throws Exception {
         given(commandService.unpublish(7L, 1L)).willReturn(new QuizPublicationView(
-                1L, QuizPublicationStatus.UNPUBLISHED, null, QuizFixtures.NOW, QuizFixtures.NOW));
+                1L, QuizPublicationStatus.UNPUBLISHED, null, QuizFixtures.NOW, QuizFixtures.NOW, null));
 
         mockMvc.perform(post("/api/creator/quizzes/1/unpublish"))
                 .andExpect(status().isOk())

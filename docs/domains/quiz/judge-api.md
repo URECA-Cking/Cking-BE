@@ -82,3 +82,7 @@ GET은 Provider 실패를 HTTP 오류로 바꾸지 않고 **200 + Job 상태/fai
 | QUIZ_REVISION_INTEGRITY_FAILED / QUIZ_JUDGE_EVALUATION_INTEGRITY_FAILED | 500 | 저장 내용·평가 무결성 검증 실패 |
 
 실행 설정·stale·비용·한계는 [Quiz README](README.md#judge-평가와-승인-이슈-529)를 따른다. Judge 통과는 자동 승인·게시가 아니다.
+
+## 마감된 Quiz
+
+마감된 Quiz에는 신규 평가를 접수하지 않는다. 기능 활성화·Provider 설정 검사를 통과한 요청은 접수 잠금 안에서 `QUIZ_CLOSED`(409)로 거절한다. 같은 requestId의 기존 작업 replay와 결과 조회는 유지한다. 진행 중이던 평가 기록은 삭제하지 않는다.

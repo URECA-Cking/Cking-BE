@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @Validated
-@Tag(name = "Creator AI Quiz", description = "인증된 Creator 본인의 AI Quiz 조회, revision 승인·거절, 게시·게시 취소 API를 제공합니다.")
+@Tag(name = "Creator AI Quiz", description = "인증된 Creator 본인의 AI Quiz 조회, revision 승인·거절, 게시·게시 취소·마감 API를 제공합니다.")
 public class CreatorQuizController {
 
     private final CreatorQuizQueryService queryService;
@@ -113,9 +113,16 @@ public class CreatorQuizController {
                 commandService.publish(memberId, quizId, request.revisionId())));
     }
 
+    @Operation(summary = "Quiz 수동 마감", description = "게시 중 또는 게시 중지 Quiz를 마감합니다. 재개할 수 없으며 반복 마감은 최초 결과를 반환합니다.")
+    @PostMapping("/api/creator/quizzes/{quizId}/close")
+    public ApiResponse<CreatorQuizResponse.Publication> close(
+            @CurrentMemberId Long memberId, @PathVariable @Positive Long quizId) {
+        return ApiResponse.success(CreatorQuizResponse.Publication.from(commandService.close(memberId, quizId)));
+    }
+
     @Operation(
             summary = "Quiz 게시 취소",
-            description = "Judge 상태와 무관하게 게시를 취소합니다. revision과 결정 기록은 유지되며, 게시 중이 아니면 현재 상태를 반환합니다."
+            description = "Judge 상태와 무관하게 게시를 취소합니다. revision과 결정 기록은 유지되며, 미게시·게시 중지이면 현재 상태를 반환합니다. 마감된 Quiz는 409로 거절합니다."
     )
     @PostMapping("/api/creator/quizzes/{quizId}/unpublish")
     public ApiResponse<CreatorQuizResponse.Publication> unpublish(

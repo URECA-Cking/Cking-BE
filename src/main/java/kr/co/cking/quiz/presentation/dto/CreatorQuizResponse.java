@@ -31,13 +31,14 @@ public final class CreatorQuizResponse {
             QuizReviewStatus latestReviewStatus,
             Instant publishedAt,
             Instant createdAt,
-            Instant updatedAt
+            Instant updatedAt,
+            Instant closedAt
     ) {
 
         public static Summary from(CreatorQuizViews.Summary view) {
             return new Summary(view.quizId(), view.title(), view.publicationStatus(), view.publishedRevisionId(),
                     view.latestRevisionId(), view.latestRevisionNo(), view.latestReviewStatus(), view.publishedAt(),
-                    view.createdAt(), view.updatedAt());
+                    view.createdAt(), view.updatedAt(), view.closedAt());
         }
     }
 
@@ -53,7 +54,7 @@ public final class CreatorQuizResponse {
             Instant updatedAt,
             List<RevisionSummary> revisions,
             QuizRevisionOrigin origin, Long parentRevisionId, String hashVersion,
-            QuizApprovalPolicyType approvalPolicyVersion, boolean contentLocked, boolean canEdit
+            QuizApprovalPolicyType approvalPolicyVersion, boolean contentLocked, boolean canEdit, Instant closedAt
     ) {
 
         public static Detail from(CreatorQuizViews.Detail view) { return from(view, null); }
@@ -63,7 +64,7 @@ public final class CreatorQuizResponse {
                     view.updatedAt(), view.revisions().stream().map(RevisionSummary::from).toList(),
                     m == null ? null : m.origin(), m == null ? null : m.parentRevisionId(),
                     m == null ? null : m.hashVersion(), m == null ? null : m.approvalPolicyVersion(),
-                    m != null && m.contentLocked(), m != null && m.canEdit());
+                    m != null && m.contentLocked(), m != null && m.canEdit(), view.closedAt());
         }
     }
 
@@ -160,12 +161,13 @@ public final class CreatorQuizResponse {
             QuizPublicationStatus publicationStatus,
             Long publishedRevisionId,
             Instant publishedAt,
-            Instant unpublishedAt
+            Instant unpublishedAt,
+            Instant closedAt
     ) {
 
         public static Publication from(QuizPublicationView view) {
             return new Publication(view.quizId(), view.publicationStatus(), view.publishedRevisionId(),
-                    view.publishedAt(), view.unpublishedAt());
+                    view.publishedAt(), view.unpublishedAt(), view.closedAt());
         }
     }
 }

@@ -49,6 +49,7 @@ public class CreatorQuizCommandService {
 
     public QuizDecisionView approve(Long memberId, Long quizId, Long revisionId) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        quiz.requireNotClosed();
         QuizRevision revision = requireRevision(quiz, revisionId);
         if (revision.isCreatorComposed()) {
             throw new BusinessException(QuizErrorCode.QUIZ_REVISION_CONFLICT);
@@ -68,6 +69,7 @@ public class CreatorQuizCommandService {
     /** @param reason 선택 사유. 비어 있으면 저장하지 않는다 */
     public QuizDecisionView reject(Long memberId, Long quizId, Long revisionId, String reason) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        quiz.requireNotClosed();
         requireRevision(quiz, revisionId);
         Optional<QuizRevisionDecision> existing = decisionRepository.findByRevisionId(revisionId);
         if (existing.isPresent()) {
@@ -88,6 +90,7 @@ public class CreatorQuizCommandService {
      */
     public QuizPublicationView publish(Long memberId, Long quizId, Long revisionId) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        quiz.requireNotClosed();
         QuizRevision revision = requireRevision(quiz, revisionId);
         if (quiz.isPublishing(revisionId)) {
             return QuizPublicationView.of(quiz);
@@ -123,6 +126,7 @@ public class CreatorQuizCommandService {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        quiz.requireNotClosed();
         QuizRevision revision = requireRevision(quiz, revisionId);
         if (!revision.isCreatorComposed() || !revision.getRevisionSha256().equals(hash)) {
             throw new BusinessException(QuizErrorCode.QUIZ_REVISION_CONFLICT);
@@ -148,9 +152,16 @@ public class CreatorQuizCommandService {
     /** Judge 상태와 무관하게 게시를 취소한다. revision과 결정 기록은 그대로 둔다. */
     public QuizPublicationView unpublish(Long memberId, Long quizId) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        quiz.requireNotClosed();
         if (quiz.isPublished()) {
             quiz.unpublish(clock.instant());
         }
+        return QuizPublicationView.of(quiz);
+    }
+
+    public QuizPublicationView close(Long memberId, Long quizId) {
+        Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        quiz.close(clock.instant());
         return QuizPublicationView.of(quiz);
     }
 

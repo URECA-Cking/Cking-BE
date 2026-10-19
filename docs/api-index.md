@@ -195,4 +195,6 @@
 | 191 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/archive` | PUBLISHED Event 전역 보관(사용자 조회·응모·당첨·알림 제외) | 상태 기반 |
 | 192 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/unarchive` | 보관 PUBLISHED Event 복원 | 상태 기반 |
 | 193 | 외부 | Event | PUBLIC | GET | `/api/events/counts` | [Event 표시 상태별 개수 조회](domains/event/api.md#get-apieventscounts) | - |
+| 194 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/close` | [Quiz 수동 마감](domains/quiz/api.md#post-apicreatorquizzesquizidclose), 재게시 불가·기존 응시/보상 보존 | 상태 기반 |
+
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.

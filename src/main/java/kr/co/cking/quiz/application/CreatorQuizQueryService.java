@@ -65,7 +65,7 @@ public class CreatorQuizQueryService {
                     QuizReviewStatus.of(decisions.get(latest.getRevisionId())),
                     quiz.getPublishedAt(),
                     quiz.getCreatedAt(),
-                    quiz.getUpdatedAt());
+                    quiz.getUpdatedAt(), quiz.getClosedAt());
         });
     }
 
@@ -95,7 +95,7 @@ public class CreatorQuizQueryService {
                                     decision == null ? null : decision.getDecidedAt(),
                                     revision.getCreatedAt());
                         })
-                        .toList());
+                        .toList(), quiz.getClosedAt());
     }
 
     public CreatorQuizViews.Revision findRevision(Long memberId, Long quizId, Long revisionId) {

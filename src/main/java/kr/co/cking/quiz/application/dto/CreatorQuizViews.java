@@ -23,7 +23,8 @@ public final class CreatorQuizViews {
             QuizReviewStatus latestReviewStatus,
             Instant publishedAt,
             Instant createdAt,
-            Instant updatedAt
+            Instant updatedAt,
+            Instant closedAt
     ) {
     }
 
@@ -37,7 +38,8 @@ public final class CreatorQuizViews {
             Instant unpublishedAt,
             Instant createdAt,
             Instant updatedAt,
-            List<RevisionSummary> revisions
+            List<RevisionSummary> revisions,
+            Instant closedAt
     ) {
     }
 

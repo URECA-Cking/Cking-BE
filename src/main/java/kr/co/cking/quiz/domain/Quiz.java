@@ -8,17 +8,19 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import kr.co.cking.common.exception.BusinessException;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
 /**
  * Creator가 소유한 AI Quiz. 원본 videoId·contentText는 바꾸지 않고, 문항은 {@link QuizRevision}에 둔다.
  *
- * <p>공개 상태와 게시 revision 포인터는 함께 바뀐다. {@code PUBLISHED}일 때만 {@code publishedRevisionId}가 있다.
+ * <p>공개 상태와 게시 revision 포인터는 함께 바뀐다. 게시 중에는 게시 revision이 필수이며, 마감 시 마지막 게시 포인터를 보존한다.
  *
  * <p>첫 게시 때 내용을 잠그고(content_locked) 게시한 revision ID·해시를 고정한다. 게시 취소해도 지우지 않으며, 이후에는
  * 고정한 revision만 다시 게시할 수 있다. 과거 게시 revision을 확인할 수 없는 기존 Quiz는 잠금만 있고 고정 revision이 없어
@@ -60,6 +62,9 @@ public class Quiz {
     @Column(name = "unpublished_at")
     private Instant unpublishedAt;
 
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
     @Column(name = "content_locked", nullable = false)
     private boolean contentLocked;
 
@@ -93,6 +98,30 @@ public class Quiz {
         return publicationStatus == QuizPublicationStatus.PUBLISHED;
     }
 
+    public boolean isClosed() {
+        return publicationStatus == QuizPublicationStatus.CLOSED;
+    }
+
+    public void requireNotClosed() {
+        if (isClosed()) {
+            throw new BusinessException(QuizErrorCode.QUIZ_CLOSED);
+        }
+    }
+
+    /** 게시 이력과 최초 게시 고정을 보존한 채 운영을 종료한다. */
+    public void close(Instant now) {
+        if (isClosed()) {
+            return;
+        }
+        if (publicationStatus == QuizPublicationStatus.NOT_PUBLISHED) {
+            throw new BusinessException(QuizErrorCode.QUIZ_CLOSE_NOT_ALLOWED);
+        }
+        Instant closingTime = Objects.requireNonNull(now, "now").truncatedTo(ChronoUnit.MICROS);
+        publicationStatus = QuizPublicationStatus.CLOSED;
+        closedAt = closingTime;
+        updatedAt = closedAt;
+    }
+
     public boolean isPublishing(Long revisionId) {
         return isPublished() && publishedRevisionId.equals(revisionId);
     }
@@ -104,8 +133,8 @@ public class Quiz {
 
     /** 잠기지 않았거나 이 revision·해시로 고정돼 있어 게시할 수 있는지. */
     public boolean canPublish(Long revisionId, String revisionSha256) {
-        return !contentLocked || (lockedRevisionId != null && lockedRevisionId.equals(revisionId)
-                && lockedRevisionSha256.equals(revisionSha256));
+        return !isClosed() && (!contentLocked || (lockedRevisionId != null && lockedRevisionId.equals(revisionId)
+                && lockedRevisionSha256.equals(revisionSha256)));
     }
 
     /**
@@ -116,6 +145,7 @@ public class Quiz {
      * 게시하면 이전 게시 취소 시각을 지운다.
      */
     public void publish(Long revisionId, String revisionSha256, Instant now) {
+        requireNotClosed();
         Objects.requireNonNull(revisionSha256, "revisionSha256");
         if (!canPublish(revisionId, revisionSha256)) {
             throw new IllegalStateException("고정한 revision만 게시할 수 있습니다.");
@@ -133,6 +163,7 @@ public class Quiz {
     }
 
     public void unpublish(Instant now) {
+        requireNotClosed();
         if (!isPublished()) {
             throw new IllegalStateException("게시 중인 Quiz만 게시 취소할 수 있습니다.");
         }
