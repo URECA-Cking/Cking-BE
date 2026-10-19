@@ -7,10 +7,12 @@ import java.util.Map;
 
 /** JsonNode numbers retain their wire type; service rejects fractional/coerced IDs. */
 public final class ContentTagRequests {
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final TypeReference<Map<String,Object>> FIELDS = new TypeReference<>() {};
     private ContentTagRequests() {}
     public interface Request {
         default Map<String,Object> fields() {
-            return JsonMapper.builder().build().convertValue(this,new TypeReference<Map<String,Object>>() {});
+            return JSON.convertValue(this,FIELDS);
         }
     }
     public record Automatic(JsonNode creatorId,JsonNode inputRevision,JsonNode inputHash,
