@@ -86,13 +86,18 @@ public class EventCommandService {
         });
     }
 
-    /** 예약된 Event를 응모 가능한 공개 상태로 전이한다. */
+    /** 예약된 Event를 응모 가능한 공개 상태로 전이한다. 이미 OPEN이면 다른 서버가 먼저 연 것으로 보고 그대로 반환한다. */
     public void open(Long eventId) {
-        execute(eventId, event -> {
+        boolean opened = execute(eventId, event -> {
+            if (event.getStatus() == EventStatus.OPEN) {
+                return false;
+            }
             event.open();
-            return null;
+            return true;
         });
-        eventPublisher.publishEvent(new EventOpenedEvent(eventId));
+        if (opened) {
+            eventPublisher.publishEvent(new EventOpenedEvent(eventId));
+        }
     }
 
     /**

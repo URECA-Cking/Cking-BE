@@ -183,12 +183,9 @@ class EventLifecycleTest {
         EventCommandService eventCommandService = newEventCommandService(eventRepository, eventPublisher);
 
         eventCommandService.open(1L);
+        eventCommandService.open(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
-        assertThatThrownBy(() -> eventCommandService.open(1L))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(EventErrorCode.INVALID_STATE);
         verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
     }
 

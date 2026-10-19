@@ -45,6 +45,39 @@ class EventCommandServiceTest {
     }
 
     @Test
+    void open은_SCHEDULED_이벤트를_OPEN으로_전이하고_커밋후_캐시무효화_이벤트를_발행한다() {
+        Event event = eventOf(EventStatus.SCHEDULED);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        eventCommandService.open(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
+        verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
+    }
+
+    @Test
+    void open은_이미_OPEN이면_예외_없이_아무것도_하지_않는다() {
+        Event event = eventOf(EventStatus.OPEN);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        eventCommandService.open(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any(Object.class));
+    }
+
+    @Test
+    void open은_SCHEDULED나_OPEN이_아니면_INVALID_STATE를_던진다() {
+        Event event = eventOf(EventStatus.DRAFT);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.open(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any(Object.class));
+    }
+
+    @Test
     void startClosing은_OPEN_이벤트를_CLOSING으로_전이하고_커밋후_캐시무효화_이벤트를_발행한다() {
         Event event = eventOf(EventStatus.OPEN);
         when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
