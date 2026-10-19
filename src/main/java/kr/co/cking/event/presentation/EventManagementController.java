@@ -132,7 +132,7 @@ public class EventManagementController {
 
     /** Creator Event의 새 승인 요청을 생성한다. */
     @PostMapping("/api/creator/events/{eventId}/approval-request")
-    @Operation(summary = "Event 승인 요청", description = "인증된 Creator가 DRAFT Event의 승인 요청을 생성합니다.")
+    @Operation(summary = "Event 승인 요청", description = "인증된 Creator가 시작 시각 최소 48시간 전의 DRAFT Event에 승인 요청을 생성합니다.")
     public ApiResponse<EventManagementResponse.Result> requestApproval(
             @CurrentMemberId Long memberId, @PathVariable Long eventId) {
         creatorEventService.requestApproval(memberId, eventId);

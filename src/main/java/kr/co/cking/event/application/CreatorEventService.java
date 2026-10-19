@@ -82,13 +82,15 @@ public class CreatorEventService {
     /** Creator 소유 Event의 새 승인 요청 차수를 만들고 승인 대기 상태로 전이한다. */
     public EventApprovalRequest requestApproval(Long userId, Long eventId) {
         Creator creator = requireConfiguredCreator(userId);
-        return eventCommandService.requestApproval(eventId, event -> {
-            requireOwnership(creator, event);
-            int nextRound = approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(eventId)
-                    .map(request -> request.getApprovalRound() + 1)
-                    .orElse(1);
-            return approvalRequestRepository.save(new EventApprovalRequest(event.getEventId(), nextRound, userId));
-        });
+        return eventCommandService.requestApproval(
+                eventId,
+                event -> requireOwnership(creator, event),
+                event -> {
+                    int nextRound = approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(eventId)
+                            .map(request -> request.getApprovalRound() + 1)
+                            .orElse(1);
+                    return approvalRequestRepository.save(new EventApprovalRequest(event.getEventId(), nextRound, userId));
+                });
     }
 
     /** Creator 소유의 초안 Event를 논리 삭제한다. */

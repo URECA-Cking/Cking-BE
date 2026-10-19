@@ -41,7 +41,15 @@ public class EventCommandService {
 
     /** 잠금 상태의 DRAFT Event에 승인 요청 이력을 기록한 뒤 승인 대기로 전이한다. */
     public <T> T requestApproval(Long eventId, Function<Event, T> beforeTransition) {
+        return requestApproval(eventId, event -> { }, beforeTransition);
+    }
+
+    /** 잠금 상태에서 권한을 확인한 뒤 승인 가능 시각을 검증하고 승인 요청 이력을 기록한다. */
+    public <T> T requestApproval(
+            Long eventId, Consumer<Event> beforeLeadTimeValidation, Function<Event, T> beforeTransition) {
         return execute(eventId, event -> {
+            beforeLeadTimeValidation.accept(event);
+            event.validateApprovalRequestLeadTime(clock.instant());
             T result = beforeTransition.apply(event);
             event.requestApproval();
             return result;

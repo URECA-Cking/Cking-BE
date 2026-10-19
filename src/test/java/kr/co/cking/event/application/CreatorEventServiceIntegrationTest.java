@@ -139,7 +139,7 @@ class CreatorEventServiceIntegrationTest {
         saveCreator(new Creator(member.getMemberId(), member.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440001", "팬미팅", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
 
         EventApprovalRequest approvalRequest = creatorEventService.requestApproval(member.getMemberId(), event.getEventId());
@@ -147,6 +147,24 @@ class CreatorEventServiceIntegrationTest {
         assertThat(approvalRequest.getApprovalRound()).isEqualTo(1);
         assertThat(approvalRequest.getStatus()).isEqualTo(EventApprovalRequestStatus.PENDING);
         assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus()).isEqualTo(EventStatus.PENDING_APPROVAL);
+    }
+
+    @Test
+    void approvalRequestRejectsEventStartingInLessThan48HoursWithoutPersistingHistory() {
+        Member member = saveMember(new Member("크리에이터", null, null, MemberRole.USER));
+        saveCreator(new Creator(member.getMemberId(), member.getName()));
+        Event event = creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440096", "임박한 팬미팅", null,
+                Instant.now().plus(java.time.Duration.ofHours(24)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                1, DrawMethod.WEIGHTED));
+
+        assertThatThrownBy(() -> creatorEventService.requestApproval(member.getMemberId(), event.getEventId()))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(exception -> ((kr.co.cking.common.exception.BusinessException) exception).getErrorCode())
+                .isEqualTo(kr.co.cking.event.domain.EventErrorCode.APPROVAL_REQUEST_TOO_LATE);
+
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus()).isEqualTo(EventStatus.DRAFT);
+        assertThat(approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(event.getEventId())).isEmpty();
     }
 
     /** 관리자 거절이 승인 요청 이력의 거절 사유와 Event 상태를 함께 변경하는지 검증한다. */
@@ -157,7 +175,7 @@ class CreatorEventServiceIntegrationTest {
         Member admin = saveMember(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(
                 creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440002", "팬미팅", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
         EventApprovalRequest request = creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
 
@@ -180,7 +198,7 @@ class CreatorEventServiceIntegrationTest {
         Member admin = saveMember(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(
                 creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440003", "팬미팅", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
         eventReviewService.reject(admin.getMemberId(), event.getEventId(), "1차 사유");
@@ -226,7 +244,7 @@ class CreatorEventServiceIntegrationTest {
         Member admin = saveMember(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(
                 creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440014", "팬미팅", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
         eventReviewService.reject(admin.getMemberId(), event.getEventId(), "수정 필요");
@@ -244,7 +262,7 @@ class CreatorEventServiceIntegrationTest {
         Member admin = saveMember(new Member("관리자", null, null, MemberRole.ADMIN));
         Event event = creatorEventService.create(new CreateEventCommand(
                 creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440004", "기존", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
         eventReviewService.reject(admin.getMemberId(), event.getEventId(), "수정 필요");
@@ -269,12 +287,34 @@ class CreatorEventServiceIntegrationTest {
                 "550e8400-e29b-41d4-a716-446655440005", "종료 이벤트", null,
                 Instant.now().minus(java.time.Duration.ofDays(2)), Instant.now().minus(java.time.Duration.ofDays(1)),
                 1, DrawMethod.WEIGHTED));
-        creatorEventService.requestApproval(creatorMember.getMemberId(), event.getEventId());
+        event.requestApproval();
+        eventRepository.saveAndFlush(event);
+        approvalRequestRepository.saveAndFlush(new EventApprovalRequest(
+                event.getEventId(), 1, creatorMember.getMemberId()));
 
         assertThatThrownBy(() -> eventReviewService.approve(admin.getMemberId(), event.getEventId()))
                 .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
                 .extracting(e -> ((kr.co.cking.common.exception.BusinessException) e).getErrorCode())
                 .isEqualTo(kr.co.cking.event.domain.EventErrorCode.INVALID_STATE);
+    }
+
+    @Test
+    void adminApprovalDoesNotRecheckCreatorApprovalRequestLeadTime() {
+        Member creatorMember = saveMember(new Member("크리에이터", null, null, MemberRole.USER));
+        saveCreator(new Creator(creatorMember.getMemberId(), creatorMember.getName()));
+        Member admin = saveMember(new Member("관리자", null, null, MemberRole.ADMIN));
+        Event event = creatorEventService.create(new CreateEventCommand(
+                creatorMember.getMemberId(), "550e8400-e29b-41d4-a716-446655440095", "심사 대기 이벤트", null,
+                Instant.now().plus(java.time.Duration.ofHours(24)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                1, DrawMethod.WEIGHTED));
+        event.requestApproval();
+        eventRepository.saveAndFlush(event);
+        approvalRequestRepository.saveAndFlush(new EventApprovalRequest(
+                event.getEventId(), 1, creatorMember.getMemberId()));
+
+        eventReviewService.approve(admin.getMemberId(), event.getEventId());
+
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus()).isEqualTo(EventStatus.SCHEDULED);
     }
 
     /** Creator 목록이 논리 삭제된 Event를 제외하는지 검증한다. */
@@ -416,7 +456,7 @@ class CreatorEventServiceIntegrationTest {
         saveCreator(new Creator(member.getMemberId(), member.getName()));
         Event event = creatorEventService.create(new CreateEventCommand(
                 member.getMemberId(), "550e8400-e29b-41d4-a716-446655440013", "원본", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
         creatorEventService.requestApproval(member.getMemberId(), event.getEventId());
 
