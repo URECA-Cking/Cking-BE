@@ -5,6 +5,13 @@
 -- 회원 ID: 1..@creators는 크리에이터 본인, 그 뒤 @members명이 응모하는 회원이다.
 -- 적립 경로는 측정 대상이 아니라서 응모권은 시작 잔액으로만 준다.
 
+-- 앱은 dev 프로필로 기동할 때 관리자 초기 계정을 회원으로 만든다(AdminAccountSeedConfiguration).
+-- 회원 ID를 1부터 넣으므로 그 계정을 먼저 지운다. 부하 테스트는 관리자 토큰을 직접 서명해 이 계정을 쓰지 않는다.
+CREATE TEMPORARY TABLE seeded_admin AS SELECT member_id FROM admin_account;
+DELETE FROM admin_account;
+DELETE FROM member WHERE member_id IN (SELECT member_id FROM seeded_admin);
+DROP TEMPORARY TABLE seeded_admin;
+
 SET SESSION cte_max_recursion_depth = 10000000;
 SET @total_members = @creators + @members;
 

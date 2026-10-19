@@ -57,7 +57,7 @@ cd Cking-BE-<커밋>/loadtest
 
 ### 2. 시딩 (테스트 앱 서버)
 
-앱이 기동해 Flyway 마이그레이션을 마친 뒤 실행한다. 비밀번호는 환경변수로만 넘긴다.
+앱이 기동해 Flyway 마이그레이션을 마친 뒤 실행한다. 앱이 dev 프로필로 기동하며 만든 관리자 초기 계정은 회원 ID가 겹치므로 `seed.sql`이 먼저 지운다. 비밀번호는 환경변수로만 넘긴다.
 
 ```bash
 P=/cking/loadtest; R=ap-northeast-2
