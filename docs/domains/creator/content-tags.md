@@ -117,7 +117,7 @@ claimed_at, completed_at, attempt_count, next_retry_at, status로 지연/재시�
 ## 검증
 
 서비스/MVC/공용 hash fixture 테스트와 LLM 소유 실제 HTTP/MySQL E2E를 실행한다.
-BE 기본 test source set의 `ContentTagReviewIntegrationTest`는 apply/코드·근거 검증/confirm/claim/ack/
+BE 기본 test source set의 `ContentTagReviewIntegrationTest`는 apply/코드·근거 검증/confirm/ack/
 reconcile 및 실제 동시 트랜잭션의 조회·보정 잠금 범위를 검사하므로 BE CI에서도 실행된다.
 전역 claim 반복은 Repository 후보를 제어하는 단위 테스트로 검증한다. DB lease/retry 회귀는
 자기 fixture만 대상으로 하며 기존 PENDING 작업을 선점하거나 큐를 일괄 삭제하지 않는다.
