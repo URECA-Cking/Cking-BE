@@ -5,6 +5,26 @@
 -- 회원 ID: 1..@creators는 크리에이터 본인, 그 뒤 @members명이 응모하는 회원이다.
 -- 적립 경로는 측정 대상이 아니라서 응모권은 시작 잔액으로만 준다.
 
+-- 막 만든 부하 테스트 DB인지 확인한다. 회원은 앱이 기동하며 만든 관리자 초기 계정 하나뿐이고 다른 데이터가 없어야 한다.
+-- 조건이 틀리면 CHECK 위반으로 아무것도 지우지 않고 멈춘다.
+CREATE TEMPORARY TABLE seed_guard (ok TINYINT NOT NULL, CONSTRAINT seed_target_is_fresh_loadtest_db CHECK (ok = 1));
+INSERT INTO seed_guard
+SELECT (SELECT COUNT(*) FROM admin_account) <= 1
+   AND (SELECT COUNT(*) FROM member) = (SELECT COUNT(*) FROM admin_account)
+   AND NOT EXISTS (SELECT 1 FROM creator)
+   AND NOT EXISTS (SELECT 1 FROM event)
+   AND NOT EXISTS (SELECT 1 FROM user_ticket_balance)
+   AND NOT EXISTS (SELECT 1 FROM ticket_ledger);
+DROP TEMPORARY TABLE seed_guard;
+
+-- 관리자 초기 계정은 회원 ID가 겹치므로 지운다(AdminAccountSeedConfiguration, dev 프로필). 부하 테스트는 관리자 토큰을 직접 서명한다.
+-- 한 트랜잭션이라 회원 삭제가 실패하면 커밋 전에 멈춰 관리자 계정 삭제도 되돌려진다.
+START TRANSACTION;
+SET @seeded_admin = (SELECT member_id FROM admin_account);
+DELETE FROM admin_account WHERE member_id = @seeded_admin;
+DELETE FROM member WHERE member_id = @seeded_admin;
+COMMIT;
+
 SET SESSION cte_max_recursion_depth = 10000000;
 SET @total_members = @creators + @members;
 
