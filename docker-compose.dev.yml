@@ -30,6 +30,8 @@ services:
     image: ghcr.io/ureca-cking/cking-be:${IMAGE_TAG:?배포 태그가 지정되지 않았습니다}
     container_name: cking-app
     restart: unless-stopped
+    # 종료 신호 뒤 앱이 웹 요청(최대 30초)과 작업 큐(최대 30초)를 차례로 마무리할 시간. 기본 10초면 중간에 끊긴다.
+    stop_grace_period: 90s
     depends_on:
       - redis
     ports:
