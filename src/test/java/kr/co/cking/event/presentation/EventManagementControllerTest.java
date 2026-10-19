@@ -7,6 +7,8 @@ import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
+import kr.co.cking.event.domain.EventErrorCode;
+import kr.co.cking.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -240,6 +243,17 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.eventId").value(7))
                 .andExpect(jsonPath("$.data.status").value("PENDING_APPROVAL"));
         then(creatorEventService).should().requestApproval(1L, 7L);
+    }
+
+    @Test
+    void approvalRequestTooLateReturnsBusinessErrorEnvelope() throws Exception {
+        willThrow(new BusinessException(EventErrorCode.APPROVAL_REQUEST_TOO_LATE))
+                .given(creatorEventService).requestApproval(1L, 7L);
+
+        mockMvc.perform(post("/api/creator/events/{eventId}/approval-request", 7L))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("APPROVAL_REQUEST_TOO_LATE"))
+                .andExpect(jsonPath("$.message").value("이벤트 시작 최소 48시간 전까지 개설 승인을 요청해야 합니다."));
     }
 
     @Test

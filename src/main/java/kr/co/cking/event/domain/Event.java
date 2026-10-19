@@ -20,6 +20,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,6 +33,8 @@ import java.util.Set;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Event {
+
+    private static final Duration MINIMUM_APPROVAL_REQUEST_LEAD_TIME = Duration.ofHours(48);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -162,6 +165,14 @@ public class Event {
     public void requestApproval() {
         requireStatus(EventStatus.DRAFT);
         status = EventStatus.PENDING_APPROVAL;
+    }
+
+    /** 승인 요청은 Event 시작 시각의 최소 48시간 전에만 허용한다. */
+    public void validateApprovalRequestLeadTime(Instant now) {
+        requireStatus(EventStatus.DRAFT);
+        if (startAt.isBefore(now.plus(MINIMUM_APPROVAL_REQUEST_LEAD_TIME))) {
+            throw new BusinessException(EventErrorCode.APPROVAL_REQUEST_TOO_LATE);
+        }
     }
 
     public void approve() {

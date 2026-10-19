@@ -157,7 +157,10 @@ DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedA
 ## POST /api/creator/events/{eventId}/approval-request
 
 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body는 없다.
-EventApprovalRequest를 새 차수로 생성한 뒤 `EventCommandService.requestApproval(eventId)`로 DRAFT에서 PENDING_APPROVAL로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "PENDING_APPROVAL" }`다.
+
+서버 `Clock` 기준으로 `startAt >= now + 48시간`인 DRAFT Event만 요청할 수 있다. 정확히 48시간 전은 허용하며, 48시간 미만이면 `APPROVAL_REQUEST_TOO_LATE`(409, `이벤트 시작 최소 48시간 전까지 개설 승인을 요청해야 합니다.`)를 반환한다. 이 경우 Event는 DRAFT로 유지되고 승인 요청 이력도 생성하지 않는다. 생성·일정 수정에는 이 제한을 적용하지 않으며, 이미 접수된 요청을 관리자가 승인할 때도 다시 검사하지 않는다.
+
+조건을 충족하면 EventApprovalRequest를 새 차수로 생성한 뒤 `EventCommandService.requestApproval(eventId)`로 DRAFT에서 PENDING_APPROVAL로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "PENDING_APPROVAL" }`다.
 
 ## GET /api/admin/events/pending
 

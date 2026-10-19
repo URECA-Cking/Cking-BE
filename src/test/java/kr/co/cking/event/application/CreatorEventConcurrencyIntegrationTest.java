@@ -93,7 +93,7 @@ class CreatorEventConcurrencyIntegrationTest {
         Member admin = saveMember("동시 심사 관리자", MemberRole.ADMIN);
         Event event = service.create(new CreateEventCommand(creator.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440014", "심사 경합", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
         service.requestApproval(creator.getMemberId(), event.getEventId());
         ExecutorService executor = Executors.newFixedThreadPool(2);

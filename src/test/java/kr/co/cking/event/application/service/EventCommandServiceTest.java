@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -189,11 +190,89 @@ class EventCommandServiceTest {
                 .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
     }
 
+    @Test
+    void 승인요청은_시작_49시간_전에_허용한다() {
+        Event event = draftEventAt(FIXED_NOW.plus(java.time.Duration.ofHours(49)));
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        eventCommandService.requestApproval(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PENDING_APPROVAL);
+    }
+
+    @Test
+    void 승인요청은_시작_정확히_48시간_전에_허용한다() {
+        Event event = draftEventAt(FIXED_NOW.plus(java.time.Duration.ofHours(48)));
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        eventCommandService.requestApproval(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PENDING_APPROVAL);
+    }
+
+    @Test
+    void 승인요청은_시작_47시간_59분_전이면_이력_저장_전_거부한다() {
+        Event event = draftEventAt(FIXED_NOW.plus(java.time.Duration.ofHours(47).plusMinutes(59)));
+        AtomicBoolean historyCreated = new AtomicBoolean();
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.requestApproval(1L, lockedEvent -> {
+            historyCreated.set(true);
+            return null;
+        }))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.APPROVAL_REQUEST_TOO_LATE);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+        assertThat(historyCreated.get()).isFalse();
+    }
+
+    @Test
+    void 승인요청은_시작_24시간_전이면_거부한다() {
+        Event event = draftEventAt(FIXED_NOW.plus(java.time.Duration.ofHours(24)));
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.requestApproval(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.APPROVAL_REQUEST_TOO_LATE);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    @Test
+    void 승인요청은_이미_시작된_이벤트를_거부한다() {
+        Event event = draftEventAt(FIXED_NOW.minus(java.time.Duration.ofMinutes(1)));
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.requestApproval(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.APPROVAL_REQUEST_TOO_LATE);
+        assertThat(event.getStatus()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    @Test
+    void 승인요청은_DRAFT가_아니면_시간보다_기존_상태_검증을_우선한다() {
+        Event event = draftEventAt(FIXED_NOW.plus(java.time.Duration.ofHours(24)));
+        event.requestApproval();
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        assertThatThrownBy(() -> eventCommandService.requestApproval(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+    }
+
     private static Event eventOf(EventStatus status) {
         return Event.builder()
                 .status(status)
-                .startAt(Instant.parse("2026-09-10T00:00:00Z"))
-                .endAt(Instant.parse("2026-09-20T00:00:00Z"))
+                .startAt(FIXED_NOW.plus(java.time.Duration.ofDays(3)))
+                .endAt(FIXED_NOW.plus(java.time.Duration.ofDays(4)))
+                .build();
+    }
+
+    private static Event draftEventAt(Instant startAt) {
+        return Event.builder()
+                .status(EventStatus.DRAFT)
+                .startAt(startAt)
+                .endAt(startAt.plus(java.time.Duration.ofDays(1)))
                 .build();
     }
 }
