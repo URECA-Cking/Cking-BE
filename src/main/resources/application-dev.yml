@@ -17,12 +17,12 @@ server:
   # 8080은 ALB 보안 그룹에서만 열려 있어 헤더를 위조해 보낼 수 없다.
   forward-headers-strategy: framework
 
-# 기능 스위치는 개발 서버 값을 여기에 두고, 환경변수로 덮어쓸 수 있게 ${이름:값} 형식으로 쓴다.
+# 개발 서버 전용 기능값은 이 파일을 수정해 재배포한다.
 cking:
   event:
     approval-request:
-      # 개발 서버에서 퀴즈·시연 Event를 즉시 승인·개설할 수 있게 한다. 환경변수로 PT48H를 주면 운영 정책을 재현한다.
-      minimum-lead-time: ${EVENT_APPROVAL_REQUEST_MINIMUM_LEAD_TIME:PT0S}
+      # 퀴즈·시연 Event를 즉시 승인·개설할 수 있게 한다. 운영 정책 검증이 필요하면 PT48H로 바꿔 재배포한다.
+      minimum-lead-time: PT0S
     archive:
       # 개발 시연·테스트 데이터는 수령 대기 당첨이 있어도 보관할 수 있다.
       allow-pending-winners: ${EVENT_ARCHIVE_ALLOW_PENDING_WINNERS:true}
