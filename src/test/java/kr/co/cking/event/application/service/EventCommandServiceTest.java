@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -39,7 +40,8 @@ class EventCommandServiceTest {
 
     @BeforeEach
     void setUp() {
-        eventCommandService = new EventCommandService(eventRepository, eventPublisher, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
+        eventCommandService = new EventCommandService(
+                eventRepository, eventPublisher, Clock.fixed(FIXED_NOW, ZoneOffset.UTC), Duration.ofHours(48));
     }
 
     @Test
@@ -258,6 +260,26 @@ class EventCommandServiceTest {
         assertThatThrownBy(() -> eventCommandService.requestApproval(1L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+    }
+
+    @Test
+    void 개발_환경처럼_최소_사전_시간이_0이면_즉시_시작하는_이벤트도_승인_요청할_수_있다() {
+        Event event = draftEventAt(FIXED_NOW);
+        EventCommandService developmentCommandService = new EventCommandService(
+                eventRepository, eventPublisher, Clock.fixed(FIXED_NOW, ZoneOffset.UTC), Duration.ZERO);
+        when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
+
+        developmentCommandService.requestApproval(1L);
+
+        assertThat(event.getStatus()).isEqualTo(EventStatus.PENDING_APPROVAL);
+    }
+
+    @Test
+    void 승인요청_최소_사전_시간이_음수면_서비스_생성을_거부한다() {
+        assertThatThrownBy(() -> new EventCommandService(
+                eventRepository, eventPublisher, Clock.fixed(FIXED_NOW, ZoneOffset.UTC), Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("승인 요청 최소 사전 시간은 음수일 수 없습니다.");
     }
 
     private static Event eventOf(EventStatus status) {

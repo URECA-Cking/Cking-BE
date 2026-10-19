@@ -37,8 +37,6 @@ import java.util.Set;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Event {
 
-    private static final Duration MINIMUM_APPROVAL_REQUEST_LEAD_TIME = Duration.ofHours(48);
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long eventId;
@@ -170,10 +168,13 @@ public class Event {
         status = EventStatus.PENDING_APPROVAL;
     }
 
-    /** 승인 요청은 Event 시작 시각의 최소 48시간 전에만 허용한다. */
-    public void validateApprovalRequestLeadTime(Instant now) {
+    /** 승인 요청은 서버 정책으로 정한 Event 시작 최소 사전 시간 전에만 허용한다. */
+    public void validateApprovalRequestLeadTime(Instant now, Duration minimumLeadTime) {
         requireStatus(EventStatus.DRAFT);
-        if (startAt.isBefore(now.plus(MINIMUM_APPROVAL_REQUEST_LEAD_TIME))) {
+        if (minimumLeadTime.isNegative()) {
+            throw new IllegalArgumentException("승인 요청 최소 사전 시간은 음수일 수 없습니다.");
+        }
+        if (startAt.isBefore(now.plus(minimumLeadTime))) {
             throw new BusinessException(EventErrorCode.APPROVAL_REQUEST_TOO_LATE);
         }
     }

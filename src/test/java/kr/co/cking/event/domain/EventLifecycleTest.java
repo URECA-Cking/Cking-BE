@@ -307,7 +307,8 @@ class EventLifecycleTest {
         return new EventCommandService(
                 eventRepository,
                 eventPublisher,
-                java.time.Clock.systemUTC()
+                java.time.Clock.systemUTC(),
+                java.time.Duration.ofHours(48)
         );
     }
 

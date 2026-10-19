@@ -62,6 +62,9 @@ management:
 
 cking:
   event:
+    approval-request:
+      # 운영 정책. 개발 환경은 application-dev.yml에서만 명시적으로 완화한다.
+      minimum-lead-time: PT48H
     archive:
       # 운영에서는 수령 대기 당첨이 남은 Event를 보관하지 않는다.
       allow-pending-winners: ${EVENT_ARCHIVE_ALLOW_PENDING_WINNERS:false}
