@@ -6,7 +6,8 @@
 ## 상태와 저장
 
 V84는 자동 결과, 본인 확인 이력, 현재 포인터, 승인 taxonomy/config 및 내구성 작업을 별도로 만든다.
-기존 V68 회원 선택 taxonomy를 재사용하거나 초안 85개를 운영 시드로 승격하지 않는다.
+기존 V68 회원 선택 taxonomy를 조회하거나 상위 코드 집합과 비교하지 않는다. 콘텐츠 snapshot 자체의
+코드·부모 관계·버전·해시만 검증하며 초안 85개를 운영 시드로 승격하지 않는다.
 초기 `creator_content_taxonomy`는 **비어 있다**. 운영 승인·등록 없이는 입력/적재/확인은 409,
 공개는 `disabled`와 빈 배열이다. 테스트의 합성 taxonomy 승인과 운영 승인은 별개다.
 
@@ -16,9 +17,13 @@ Space의 `content_revision`은 정규화한 소개가 달라질 때만 증가한
 롤백하면 소개와 작업이 함께 롤백되고, 모델 호출은 저장 요청에 포함되지 않는다.
 
 자동 결과는 `(creatorId,inputRevision,configHash)`당 하나다. 멱등 키/자동 revision은 64자리 hex다.
-동일 키·동일 payload만 멱등이며, 다른 payload 또는 같은 입력·설정의 다른 키는 409다.
+동일 Creator·키·payload는 소개/설정이 바뀐 뒤에도 `idempotent`다. 이 응답은 현재 포인터나 본인 확인을
+변경하지 않는다. 동일 키의 다른 payload 또는 같은 입력·설정의 다른 키는 409다.
 Space 행 잠금 안에서 현재 revision/hash 및 활성 설정을 검증하고 이력과 현재 포인터를 기록한다.
-본인 확인도 같은 잠금으로 검사한다. 소개 수정에 뒤처진 적재/확인은 409다.
+본인 확인도 같은 잠금으로 검사한다. 소개 수정에 뒤처진 **새 적재**/확인은 409다.
+공개 GET은 Space/taxonomy 잠금 없이 읽기 전용 REPEATABLE READ snapshot으로 조회한다.
+전체 보정은 입력 형식·정렬을 먼저 검사하고 Creator마다 별도 트랜잭션으로 잠금을 해제한다.
+중간 실패 전에 완료된 Creator는 유지되며 전체 요청 재시도로 나머지를 보정할 수 있다.
 
 - 최초: `processing`. 자동 성공/빈 결과: `unconfirmed`/`unclassified`.
 - 본인 확인: `creator_confirmed`. 근거와 내부 출처를 제외한 코드만 공개한다.
@@ -54,10 +59,13 @@ Space 행 잠금 안에서 현재 revision/hash 및 활성 설정을 검증하�
 CRLF/CR→LF, Unicode NFC, trim 없이 UTF-8 바이트 SHA-256을 사용한다. null은 빈 문자열이다.
 공용 fixture `src/test/resources/fixtures/content-tags-v1.json`은 LLM `fixtures/content-tags-v1.json`과 같다.
 로컬 분류 record.input_hash는 JSON 문자열의 digest이며 wire inputHash와 구별한다.
+JSON 제어문자 escape의 hex는 소문자를 사용한다. 유효한 surrogate pair/이모지는 UTF-8로 보존하고
+짝 없는 surrogate는 해시 생성 시 거부한다. 공용 fixture는 제어문자·이모지·NFC·비정상 surrogate를 포함한다.
 
 입력 응답: `contractVersion`, `taxonomyApproved`, `taxonomyHash`, `generationConfigHash`, `items`, `nextCursor:null`.
 LLM은 generationConfigHash가 자기 fingerprint와 같은지 확인한 뒤에만 공급자를 호출한다.
-각 입력: `creatorId`, `introduction`, `inputRevision`, `inputHash`. 초기 구현은 snapshot 하나를 반환한다.
+각 입력: `creatorId`, `introduction`, `inputRevision`, `inputHash`. 각 행을 한 번 정규화한 결과로 본문과 해시를 만든다.
+현재는 전체 일관 snapshot 하나를 반환한다. 페이지별 시점이 섞이는 단순 cursor paging은 도입하지 않는다.
 규모 확대 시 별도 snapshot 식별자를 가진 페이지 계약이 필요하다.
 
 적재 요청: `creatorId`, `inputRevision`, `inputHash`, `automaticRevision`, `idempotencyKey`,
@@ -96,7 +104,9 @@ BE DB를 복원하면 LLM ledger와 결과 포인터를 대조하고 새로운 �
 작업 claim은 `FOR UPDATE SKIP LOCKED`로 하나를 선점한다. lease 900초, LLM은 60초마다 연장한다.
 수정 커밋은 generation을 증가시키고 최신 작업을 PENDING으로 남긴다. 이전 토큰/세대의 ack/renew는
 이를 소비하지 못한다. 프로세스 재시작/중복 전달은 lease 만료 후 재전달한다. 최대 5회 시도 후
-FAILED 및 오류 로그로 알리고 `/retry`로 수동 재등록한다. backoff는 60초부터 최대 1시간이다.
+FAILED 및 오류 로그로 알리고 `/retry`로 수동 재등록한다. claim은 소진 작업을 FAILED로 전환한 뒤
+같은 요청에서 다음 후보를 계속 선점한다. backoff는 60초부터 최대 1시간이다.
+`completed_at`은 성공 완료 때만 기록하고 retry/FAILED ack에서는 NULL로 유지한다.
 
 LLM의 정기/수동/이벤트 실행은 같은 파일 잠금·캐시·체크포인트를 쓴다. 잠금 충돌 전에 작업을 claim하지 않는다.
 일일 전체 스캔은 유실 보정이며 추천/태그가 모두 성공해야 이벤트를 완료한다.
@@ -107,6 +117,8 @@ claimed_at, completed_at, attempt_count, next_retry_at, status로 지연/재시�
 ## 검증
 
 서비스/MVC/공용 hash fixture 테스트와 LLM 소유 실제 HTTP/MySQL E2E를 실행한다.
+BE 기본 test source set의 `ContentTagReviewIntegrationTest`는 apply/코드·근거 검증/confirm/claim/ack/
+reconcile 및 실제 동시 트랜잭션의 조회·보정 잠금 범위를 검사하므로 BE CI에서도 실행된다.
 E2E 명령: LLM 저장소에서 `python -m src.recommendation.e2e.runner --suite content --be-dir ../Cking-BE`.
 전용 MySQL 8.4·Redis 7.2, 임시 자격 증명, loopback HTTP, 합성 provider와 격리 테스트 taxonomy만 사용한다.
 결과는 LLM results/recommendation/e2e/<run>/report.json에 저장한다.
