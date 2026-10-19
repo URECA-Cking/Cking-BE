@@ -11,7 +11,8 @@ V84는 자동 결과, 본인 확인 이력, 현재 포인터, 승인 taxonomy/co
 공개는 `disabled`와 빈 배열이다. 테스트의 합성 taxonomy 승인과 운영 승인은 별개다.
 
 Space의 `content_revision`은 정규화한 소개가 달라질 때만 증가한다. 프로필 이미지나 canonical 동등 문자열만
-바뀌면 증가하지 않는다. Space INSERT/수정의 DB trigger가 같은 트랜잭션에서 변경 작업을 기록한다.
+바뀌면 증가하지 않는다. Space 생성/프로필 수정 Service가 `CreatorContentOutbox`로 같은 DB 트랜잭션에 작업을 기록한다.
+`Propagation.MANDATORY`로 트랜잭션 외 발행을 차단하며 DB trigger/SUPER 권한은 필요하지 않다.
 롤백하면 소개와 작업이 함께 롤백되고, 모델 호출은 저장 요청에 포함되지 않는다.
 
 자동 결과는 `(creatorId,inputRevision,configHash)`당 하나다. 멱등 키/자동 revision은 64자리 hex다.
@@ -54,7 +55,8 @@ CRLF/CR→LF, Unicode NFC, trim 없이 UTF-8 바이트 SHA-256을 사용한다. 
 공용 fixture `src/test/resources/fixtures/content-tags-v1.json`은 LLM `fixtures/content-tags-v1.json`과 같다.
 로컬 분류 record.input_hash는 JSON 문자열의 digest이며 wire inputHash와 구별한다.
 
-입력 응답: `contractVersion`, `taxonomyApproved`, `taxonomyHash`, `items`, `nextCursor:null`.
+입력 응답: `contractVersion`, `taxonomyApproved`, `taxonomyHash`, `generationConfigHash`, `items`, `nextCursor:null`.
+LLM은 generationConfigHash가 자기 fingerprint와 같은지 확인한 뒤에만 공급자를 호출한다.
 각 입력: `creatorId`, `introduction`, `inputRevision`, `inputHash`. 초기 구현은 snapshot 하나를 반환한다.
 규모 확대 시 별도 snapshot 식별자를 가진 페이지 계약이 필요하다.
 

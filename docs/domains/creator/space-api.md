@@ -222,5 +222,5 @@ Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 
 ## AI 콘텐츠 태그와 소개 수정
 
 [콘텐츠 태그 계약](content-tags.md)의 content_revision은 정규화한 introText 변경 시에만 증가한다.
-같은 저장 트랜잭션에서 DB outbox trigger가 작업을 남기고, 저장 요청은 모델 처리를 기다리지 않는다.
+같은 저장 트랜잭션에서 Application outbox가 작업을 남기고, 저장 요청은 모델 처리를 기다리지 않는다.
 변경된 소개의 과거 본인 확인 태그는 이력으로 보존하며 공개 조회에서 제외한다.
