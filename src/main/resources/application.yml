@@ -61,6 +61,8 @@ management:
         "[cking.stream.apply.delay]": 100ms,250ms,500ms,1s,2500ms,5s,10s,30s,60s
 
 cking:
+  content-tags:
+    token-hash: ${CKING_CONTENT_TAG_TOKEN_HASH:}
   event:
     archive:
       # 운영에서는 수령 대기 당첨이 남은 Event를 보관하지 않는다.
