@@ -1,11 +1,13 @@
 package kr.co.cking.event.application.service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,7 +17,6 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
-import lombok.RequiredArgsConstructor;
 
 /**
  * Event 상태 전이 전담 서비스. 승인·거절 등은 파트4(Creator·Event 운영, 이슈 #31) 담당,
@@ -26,13 +27,28 @@ import lombok.RequiredArgsConstructor;
  * Drain 대기(awaitDrain)를 짧은 DB 트랜잭션 안에 묶으면 안 되기 때문이다(취합v1.5.4 §6.2).
  */
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class EventCommandService {
 
     private final EventRepository eventRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
+    private final Duration approvalRequestMinimumLeadTime;
+
+    public EventCommandService(
+            EventRepository eventRepository,
+            ApplicationEventPublisher eventPublisher,
+            Clock clock,
+            @Value("${cking.event.approval-request.minimum-lead-time:PT48H}") Duration approvalRequestMinimumLeadTime
+    ) {
+        this.eventRepository = eventRepository;
+        this.eventPublisher = eventPublisher;
+        this.clock = clock;
+        if (approvalRequestMinimumLeadTime.isNegative()) {
+            throw new IllegalArgumentException("승인 요청 최소 사전 시간은 음수일 수 없습니다.");
+        }
+        this.approvalRequestMinimumLeadTime = approvalRequestMinimumLeadTime;
+    }
 
     /** DRAFT Event를 승인 대기 상태로 전이한다. */
     public void requestApproval(Long eventId) {
@@ -49,7 +65,7 @@ public class EventCommandService {
             Long eventId, Consumer<Event> beforeLeadTimeValidation, Function<Event, T> beforeTransition) {
         return execute(eventId, event -> {
             beforeLeadTimeValidation.accept(event);
-            event.validateApprovalRequestLeadTime(clock.instant());
+            event.validateApprovalRequestLeadTime(clock.instant(), approvalRequestMinimumLeadTime);
             T result = beforeTransition.apply(event);
             event.requestApproval();
             return result;
