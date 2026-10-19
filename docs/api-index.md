@@ -198,3 +198,7 @@
 | 194 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/close` | [Quiz 수동 마감](domains/quiz/api.md#post-apicreatorquizzesquizidclose), 재게시 불가·기존 응시/보상 보존 | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+
+## Creator AI 콘텐츠 태그
+
+자동 적재·내구성 변경 작업, 본인 조회·확인, 공개 조회의 경로/인증은 [콘텐츠 태그 API](domains/creator/content-tags.md)를 따른다.

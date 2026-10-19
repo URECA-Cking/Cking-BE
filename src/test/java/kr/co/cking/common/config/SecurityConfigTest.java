@@ -79,6 +79,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "cking.cors.allowed-origins=https://dev.cking.co.kr,https://dev-admin.cking.co.kr",
         "cking.cors.allow-credentials=true",
+        "cking.content-tags.token-hash=4f79d77eabb6c8857c88a30461d78d7a149fe073fdb7d366c6b1e4ec250833ce",
         "cking.auth.refresh.user-allowed-origins=https://dev.cking.co.kr",
         "cking.auth.refresh.admin-allowed-origins=https://dev-admin.cking.co.kr",
         "cking.auth.jwt.secret=2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA="
@@ -512,6 +513,30 @@ class SecurityConfigTest {
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }
 
+    @Test
+    void contentBearerCanWriteWithoutCookieCsrfToken() throws Exception {
+        mockMvc.perform(put("/api/internal/content-tags/jobs/claim")
+                .header(AUTHORIZATION,"Bearer content-batch-test-key"))
+            .andExpect(status().isOk()).andExpect(content().string("content-api"));
+    }
+
+    @Test
+    void contentWritesRejectCookieOnlyAndMissingCredentials() throws Exception {
+        mockMvc.perform(put("/api/internal/content-tags/jobs/claim"))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/internal/content-tags/jobs/claim")
+                .cookie(new jakarta.servlet.http.Cookie("content_token","content-batch-test-key")))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void contentCredentialAndJwtCannotCrossAuthenticationChains() throws Exception {
+        mockMvc.perform(put("/api/internal/content-tags/jobs/claim").header(AUTHORIZATION,"Bearer "+validAccessToken("ADMIN")))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/events").header(AUTHORIZATION,"Bearer content-batch-test-key"))
+            .andExpect(status().isUnauthorized());
+    }
+
     /** 지정 역할로 보호된 경로의 인가를 확인할 유효 Access JWT를 만든다. */
     private String validAccessToken(String role) {
         Instant now = Instant.now();
@@ -529,6 +554,9 @@ class SecurityConfigTest {
     /** ADMIN 역할 JWT가 통과한 뒤 테스트에서 사용할 최소 관리자 API 응답을 제공한다. */
     @RestController
     static class AdminSecurityTestController {
+        @PutMapping("/api/internal/content-tags/jobs/claim")
+        String contentWrite() { return "content-api"; }
+
         @org.springframework.web.bind.annotation.PostMapping("/api/creators/{creatorId}/quizzes/{quizId}/attempts")
         String attempt() { return "ok"; }
         @GetMapping("/api/creators/{creatorId}/quizzes/{quizId}/my-attempt")

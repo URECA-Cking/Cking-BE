@@ -55,9 +55,10 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final CreatorSpaceProfileImageManager profileImageManager = mock(CreatorSpaceProfileImageManager.class);
     private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
+    private final CreatorContentOutbox contentOutbox = mock(CreatorContentOutbox.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
             creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner);
+            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox);
 
     private Creator creator;
     private CreatorSpace space;
@@ -69,6 +70,24 @@ class CreatorSpaceProfileServiceTest {
         space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
                 1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         ), "creator-42");
+    }
+
+    @Test
+    void introductionChangeQueuesTheSamePersistedRevision() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        service.updateMine(7L,NEW_PROFILE);
+        then(spaceRepository).should().flush();
+        then(contentOutbox).should().enqueue(space);
+        assertThat(space.getContentRevision()).isEqualTo(2);
+    }
+
+    @Test
+    void imageOnlyChangeDoesNotRequeueContent() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        service.updateMine(7L,new CreatorSpaceProfileFields("소개","https://img/p2.png","https://img/b2.png"));
+        then(contentOutbox).shouldHaveNoInteractions();
     }
 
     @Test
@@ -278,7 +297,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox);
 
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
                 "새 소개", "https://cdn/current.jpg", "https://img/b2.png", null, true));
@@ -314,7 +333,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox);
 
         // 클라이언트가 현재 배너 URL(업로드 이미지)을 그대로 보내도 기본 배너로 저장되지 않아야 한다.
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(

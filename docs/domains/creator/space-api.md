@@ -218,3 +218,9 @@ Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 
   변경 간격 안이면 `ACTIVITY_NAME_CHANGE_TOO_SOON`(409)이다.
 - 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 이관 Creator도 게시글·Event를 생성할 수 있다. 작성 전 설정 강제는
   FE 연동 완료 후 별도 릴리스에서 활성화한다.
+
+## AI 콘텐츠 태그와 소개 수정
+
+[콘텐츠 태그 계약](content-tags.md)의 content_revision은 정규화한 introText 변경 시에만 증가한다.
+같은 저장 트랜잭션에서 Application outbox가 작업을 남기고, 저장 요청은 모델 처리를 기다리지 않는다.
+변경된 소개의 과거 본인 확인 태그는 이력으로 보존하며 공개 조회에서 제외한다.

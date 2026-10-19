@@ -38,6 +38,9 @@ public class CreatorSpace {
     @Column(name = "intro_text", nullable = false, length = 500)
     private String introText;
 
+    @Column(name = "content_revision", nullable = false)
+    private long contentRevision = 1;
+
     @Column(name = "profile_image_url", nullable = false, length = 500)
     private String profileImageUrl;
 
@@ -88,6 +91,7 @@ public class CreatorSpace {
      * URL 입력은 무시하고 현재 연결을 유지한다(교체·복귀는 {@link #updateProfileImage}·{@link #updateBannerImage} 등으로 한다).
      */
     public void updateProfile(String introText, String profileImageUrl, String bannerImageUrl) {
+        if (!ContentIntro.hash(this.introText).equals(ContentIntro.hash(introText))) contentRevision++;
         this.introText = introText;
         if (profileImageKey == null) {
             this.profileImageUrl = profileImageUrl;

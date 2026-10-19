@@ -61,6 +61,8 @@ management:
         "[cking.stream.apply.delay]": 100ms,250ms,500ms,1s,2500ms,5s,10s,30s,60s
 
 cking:
+  content-tags:
+    token-hash: ${CKING_CONTENT_TAG_TOKEN_HASH:}
   event:
     approval-request:
       # 운영 정책. 개발 환경은 application-dev.yml에서만 명시적으로 완화한다.
