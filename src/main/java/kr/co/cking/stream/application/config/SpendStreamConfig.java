@@ -24,8 +24,6 @@ import kr.co.cking.stream.presentation.SpendStreamListener;
 @Configuration
 public class SpendStreamConfig {
 
-    private static final String CONSUMER_NAME = "spend-consumer-1";
-
     @Value("${cking.entry.stream-key:stream:ticket-deducted}")
     private String streamKey;
 
@@ -36,7 +34,8 @@ public class SpendStreamConfig {
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> spendStreamListenerContainer(
             RedisConnectionFactory connectionFactory,
             StringRedisTemplate redisTemplate,
-            SpendStreamListener spendStreamListener
+            SpendStreamListener spendStreamListener,
+            StreamConsumerNames consumerNames
     ) {
         ensureConsumerGroup(redisTemplate);
 
@@ -51,7 +50,7 @@ public class SpendStreamConfig {
         // PEL 재수신(XCLAIM)·Dead Stream 승격은 SpendStreamPelRecoveryScheduler가
         // 별도로 주기 실행한다(EARN 쪽 EarnStreamPelRecoveryScheduler·이슈 #43과 동일 패턴).
         container.register(
-                StreamReadRequests.keepAlive(container, streamKey, consumerGroup, CONSUMER_NAME,
+                StreamReadRequests.keepAlive(container, streamKey, consumerGroup, consumerNames.of("spend"),
                         () -> ensureConsumerGroup(redisTemplate)),
                 spendStreamListener
         );

@@ -11,13 +11,15 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
 
 | Stream | Consumer Group | Consumer | DB 반영 | 특수 처리 |
 | --- | --- | --- | --- | --- |
-| `stream:ticket-earned` | `cg:ticket-earn` | `earn-consumer-1` | EARN Ledger, Mission Completion, DB Balance | 없음 |
-| `stream:ticket-deducted` | `cg:ticket-history` | `spend-consumer-1` | EventEntry, SPEND Ledger, DB Balance | `EVENT_ENTRY_CLOSED` barrier는 DB 반영 없이 ACK |
-| `stream:common-ticket-earned` | `cg:common-ticket-earn` | `common-earn-consumer-1` | 공용 EARN Ledger, Common Mission Completion 또는 1회 지급 원인, 공용 Balance | 없음(크리에이터 축이 없어 barrier 대상 아님) |
+| `stream:ticket-earned` | `cg:ticket-earn` | `earn-<서버 ID>` | EARN Ledger, Mission Completion, DB Balance | 없음 |
+| `stream:ticket-deducted` | `cg:ticket-history` | `spend-<서버 ID>` | EventEntry, SPEND Ledger, DB Balance | `EVENT_ENTRY_CLOSED` barrier는 DB 반영 없이 ACK |
+| `stream:common-ticket-earned` | `cg:common-ticket-earn` | `common-earn-<서버 ID>` | 공용 EARN Ledger, Common Mission Completion 또는 1회 지급 원인, 공용 Balance | 없음(크리에이터 축이 없어 barrier 대상 아님) |
 
 공용 EARN 메시지에 `sourceType=ONCE`가 있으면 `CommonEarnEventDispatcher`가 영속 1회 지급 원인과 내용을 대조해 원장·잔액을 반영한다. 기존 출석 메시지는 `sourceType`이 없어 `CommonMissionEarnLedgerService`로 간다. 두 경로 모두 반영 성공 후에만 XACK하며 PEL 회수와 Dead Stream replay에서 같은 분기를 사용한다.
 
-- 세 그룹 모두 concurrency 1로 고정한다(MVP). 병렬 처리가 필요하면 이벤트별 Stream 분리를 먼저 재검토한다.
+- 서버 한 대 안에서는 그룹마다 Listener 하나가 읽는다. 서버가 여러 대면 같은 그룹을 서버 수만큼 나눠 읽는다. 반영은 `request_id` 멱등과 Balance 행 잠금으로 순서와 무관하게 같은 결과가 되고, Drain은 그룹 단위 `lastDeliveredId`와 PEL로 판정해 소비자 수와 무관하다.
+- Consumer 이름은 서버마다 다르다(`StreamConsumerNames`). `<서버 ID>`는 `cking.stream.consumer-id`(배포 스크립트가 EC2 인스턴스 ID를 `CKING_CONSUMER_ID`로 넘김)이고, 없으면 호스트 이름이다. 같은 이름을 여러 서버가 쓰면 PEL을 서버별로 구분할 수 없고, 소비자 하나를 지우면 모든 서버의 PEL 기록이 함께 지워진다.
+- 서버가 교체되면 옛 이름이 그룹에 남는다. `StreamConsumerCleanupScheduler`가 10분마다 대기 메시지가 0개이고 1시간(`cking.stream.consumer-cleanup.idle`) 이상 읽기 시도가 없는 소비자를 지운다. `XGROUP DELCONSUMER`는 그 소비자의 PEL 기록도 지우므로 확인과 삭제를 Lua 한 번(`stream-consumer-cleanup.lua`)으로 묶는다. 살아 있는 Listener는 2초마다 읽기를 시도해 idle이 짧다.
 - 그룹은 기동 시 `XGROUP CREATE ... MKSTREAM`(시작 오프셋 0)으로 만들고, 이미 있으면(`BUSYGROUP`) 무시한다. Listener는 `lastConsumed`(신규 메시지)만 읽는다.
 - Listener의 `process()`가 "DB 반영 → XACK"의 유일한 경로이며 회수 스케줄러도 이 메서드를 재사용한다.
 - 키·그룹명·재시도 값은 `cking.ticket.*`(EARN·공용 EARN), `cking.entry.*`(SPEND) 프로퍼티로 바꿀 수 있다.

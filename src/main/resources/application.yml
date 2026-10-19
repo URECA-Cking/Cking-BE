@@ -238,6 +238,13 @@ cking:
       max-attempts: ${COMMENT_FILTER_RETRY_MAX_ATTEMPTS:5}
       backoff-base: ${COMMENT_FILTER_RETRY_BACKOFF_BASE:PT1M}
       backoff-max: ${COMMENT_FILTER_RETRY_BACKOFF_MAX:PT1H}
+  stream:
+    # 서버별 Stream 소비자 이름. 배포 스크립트가 EC2 인스턴스 ID를 넘기고, 없으면 호스트 이름을 쓴다.
+    consumer-id: ${CKING_CONSUMER_ID:}
+    consumer-cleanup:
+      # 대기 메시지가 없고 이 시간 이상 읽기 시도가 없는 소비자를 지운다. 살아 있는 소비자는 2초마다 읽는다.
+      idle: PT1H
+      interval-ms: 600000
   snapshot:
     recovery:
       interval-ms: 60000

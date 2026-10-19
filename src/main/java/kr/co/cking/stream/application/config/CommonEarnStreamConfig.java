@@ -24,8 +24,6 @@ import kr.co.cking.stream.presentation.CommonEarnStreamListener;
 @Configuration
 public class CommonEarnStreamConfig {
 
-    private static final String CONSUMER_NAME = "common-earn-consumer-1";
-
     @Value("${cking.ticket.common-earn-stream-key:stream:common-ticket-earned}")
     private String streamKey;
 
@@ -36,7 +34,8 @@ public class CommonEarnStreamConfig {
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> commonEarnStreamListenerContainer(
             RedisConnectionFactory connectionFactory,
             StringRedisTemplate redisTemplate,
-            CommonEarnStreamListener commonEarnStreamListener
+            CommonEarnStreamListener commonEarnStreamListener,
+            StreamConsumerNames consumerNames
     ) {
         ensureConsumerGroup(redisTemplate);
 
@@ -49,7 +48,7 @@ public class CommonEarnStreamConfig {
                 StreamMessageListenerContainer.create(connectionFactory, options);
 
         container.register(
-                StreamReadRequests.keepAlive(container, streamKey, consumerGroup, CONSUMER_NAME,
+                StreamReadRequests.keepAlive(container, streamKey, consumerGroup, consumerNames.of("common-earn"),
                         () -> ensureConsumerGroup(redisTemplate)),
                 commonEarnStreamListener
         );
