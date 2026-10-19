@@ -88,7 +88,7 @@ public class ContentTagService {
                 "inputHash", ContentIntro.hash(field(r,"intro_text")))).toList();
         var result = new LinkedHashMap<String,Object>();
         result.put("contractVersion","content-tags-v1"); result.put("taxonomyApproved",true);
-        result.put("taxonomyHash",tax.get("taxonomy_hash")); result.put("items",items); result.put("nextCursor",null);
+        result.put("taxonomyHash",tax.get("taxonomy_hash")); result.put("generationConfigHash",tax.get("config_hash")); result.put("items",items); result.put("nextCursor",null);
         return result;
     }
 
