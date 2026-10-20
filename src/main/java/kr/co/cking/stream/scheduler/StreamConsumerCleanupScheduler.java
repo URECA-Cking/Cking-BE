@@ -1,6 +1,7 @@
 package kr.co.cking.stream.scheduler;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 import kr.co.cking.stream.application.config.StreamConsumerNames;
@@ -33,6 +34,7 @@ public class StreamConsumerCleanupScheduler {
             StreamConsumerNames consumerNames,
             @Value("${cking.entry.stream-key:stream:ticket-deducted}") String spendStreamKey,
             @Value("${cking.entry.history-consumer-group:cg:ticket-history}") String spendGroup,
+            @Value("${cking.stream.spend.consumer-count:4}") int spendConsumerCount,
             @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String earnStreamKey,
             @Value("${cking.ticket.earn-consumer-group:cg:ticket-earn}") String earnGroup,
             @Value("${cking.ticket.common-earn-stream-key:stream:common-ticket-earned}") String commonEarnStreamKey,
@@ -43,13 +45,14 @@ public class StreamConsumerCleanupScheduler {
         this.cleanupScript = new DefaultRedisScript<>();
         this.cleanupScript.setLocation(new ClassPathResource("scripts/stream-consumer-cleanup.lua"));
         this.cleanupScript.setResultType(List.class);
+        List<String> spendKeep = new ArrayList<>(consumerNames.of("spend", spendConsumerCount));
+        spendKeep.add(SpendStreamPelRecoveryScheduler.RECOVERY_CONSUMER);
         this.targets = List.of(
-                new Target(spendStreamKey, spendGroup, consumerNames.of("spend"),
-                        SpendStreamPelRecoveryScheduler.RECOVERY_CONSUMER),
-                new Target(earnStreamKey, earnGroup, consumerNames.of("earn"),
-                        EarnStreamPelRecoveryScheduler.RECOVERY_CONSUMER),
-                new Target(commonEarnStreamKey, commonEarnGroup, consumerNames.of("common-earn"),
-                        CommonEarnStreamPelRecoveryScheduler.RECOVERY_CONSUMER));
+                new Target(spendStreamKey, spendGroup, spendKeep),
+                new Target(earnStreamKey, earnGroup,
+                        List.of(consumerNames.of("earn"), EarnStreamPelRecoveryScheduler.RECOVERY_CONSUMER)),
+                new Target(commonEarnStreamKey, commonEarnGroup,
+                        List.of(consumerNames.of("common-earn"), CommonEarnStreamPelRecoveryScheduler.RECOVERY_CONSUMER)));
         this.idle = idle;
     }
 
@@ -59,9 +62,9 @@ public class StreamConsumerCleanupScheduler {
     public void cleanUp() {
         for (Target target : targets) {
             try {
-                List<?> removed = redisTemplate.execute(cleanupScript, List.of(target.streamKey()),
-                        target.group(), String.valueOf(idle.toMillis()), target.ownConsumer(),
-                        target.recoveryConsumer());
+                List<String> args = new ArrayList<>(List.of(target.group(), String.valueOf(idle.toMillis())));
+                args.addAll(target.keep());
+                List<?> removed = redisTemplate.execute(cleanupScript, List.of(target.streamKey()), args.toArray());
                 if (removed != null && !removed.isEmpty()) {
                     log.info("떠난 Stream 소비자를 정리했습니다. stream={}, group={}, removed={}",
                             target.streamKey(), target.group(), removed);
@@ -73,6 +76,7 @@ public class StreamConsumerCleanupScheduler {
         }
     }
 
-    private record Target(String streamKey, String group, String ownConsumer, String recoveryConsumer) {
+    /** {@code keep}: 지우지 않을 이름(이 서버의 소비자, 서버들이 함께 쓰는 재처리 소비자). */
+    private record Target(String streamKey, String group, List<String> keep) {
     }
 }
