@@ -60,6 +60,11 @@ public class SpendRedeductionRefunder {
                     command.requestId(), messageId.getValue());
             return false;
         }
+        if ("ALREADY_ACKED".equals(result)) {
+            log.info("다른 소비자가 이미 처리한 메시지라 되돌리지 않습니다. requestId={}, streamId={}",
+                    command.requestId(), messageId.getValue());
+            return true;
+        }
         log.warn("다시 차감된 SPEND를 되돌렸습니다. result={}, requestId={}, userId={}, ticketCount={}, streamId={}",
                 result, command.requestId(), command.userId(), command.ticketCount(), messageId.getValue());
         return true;

@@ -69,6 +69,18 @@ class SpendRedeductionRefunderIntegrationTest {
         assertThat(pendingCount()).isZero();
     }
 
+    // 소비자가 오래 처리하는 사이 PEL 회수가 같은 메시지를 가져가면 두 쪽이 모두 되돌리려 한다.
+    @Test
+    void 같은_메시지를_두_번_되돌려도_한_번만_되돌린다() {
+        redisTemplate.opsForValue().set(CREATOR_BALANCE, "90");
+        RecordId messageId = deliver();
+
+        assertThat(refunder.refundAndAcknowledge(command(CouponType.CREATOR), messageId)).isTrue();
+        assertThat(refunder.refundAndAcknowledge(command(CouponType.CREATOR), messageId)).isTrue();
+
+        assertThat(redisTemplate.opsForValue().get(CREATOR_BALANCE)).isEqualTo("95");
+    }
+
     @Test
     void 공용_응모권이면_공용_잔액을_되돌린다() {
         redisTemplate.opsForValue().set(CREATOR_BALANCE, "90");
