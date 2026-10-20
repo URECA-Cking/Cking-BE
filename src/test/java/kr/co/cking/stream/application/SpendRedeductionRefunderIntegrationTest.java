@@ -1,6 +1,7 @@
 package kr.co.cking.stream.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,7 @@ import kr.co.cking.ticket.domain.CouponType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.connection.stream.Consumer;
@@ -116,8 +118,51 @@ class SpendRedeductionRefunderIntegrationTest {
         assertThat(pendingCount()).isZero();
     }
 
+    // Lua는 뒤 명령이 실패해도 앞의 쓰기를 되돌리지 않는다. 잔액이 깨져 있으면 ACK까지 남기지 않아야 회수가 다시 시도한다.
     @Test
-    void 실시간_집계가_이번_차감분보다_적으면_줄이지_않는다() {
+    void 잔액_값이_정수가_아니면_아무것도_바꾸지_않고_PEL에_남긴다() {
+        redisTemplate.opsForValue().set(CREATOR_BALANCE, "9.5");
+        redisTemplate.opsForValue().set(ENTRY_TOTAL, "10");
+        redisTemplate.opsForHash().put(ENTRANTS, String.valueOf(USER_ID), "10");
+        RecordId messageId = deliver();
+
+        assertThatThrownBy(() -> refunder.refundAndAcknowledge(command(CouponType.CREATOR), messageId))
+                .isInstanceOf(DataAccessException.class);
+
+        assertThat(redisTemplate.opsForValue().get(CREATOR_BALANCE)).isEqualTo("9.5");
+        assertThat(redisTemplate.opsForValue().get(ENTRY_TOTAL)).isEqualTo("10");
+        assertThat(pendingCount()).isEqualTo(1);
+    }
+
+    @Test
+    void 잔액_키_타입이_잘못되면_아무것도_바꾸지_않고_PEL에_남긴다() {
+        redisTemplate.opsForHash().put(CREATOR_BALANCE, "balance", "90");
+        RecordId messageId = deliver();
+
+        assertThatThrownBy(() -> refunder.refundAndAcknowledge(command(CouponType.CREATOR), messageId))
+                .isInstanceOf(DataAccessException.class);
+
+        assertThat(redisTemplate.opsForHash().get(CREATOR_BALANCE, "balance")).isEqualTo("90");
+        assertThat(pendingCount()).isEqualTo(1);
+    }
+
+    // 집계는 표시용이라 잔액 되돌리기를 막지 않는다. entry-total을 지우면 조회가 DB 집계로 넘어간다.
+    @Test
+    void 집계_키_타입이_잘못되면_잔액은_되돌리고_entry_total을_지운다() {
+        redisTemplate.opsForValue().set(CREATOR_BALANCE, "90");
+        redisTemplate.opsForValue().set(ENTRY_TOTAL, "10");
+        redisTemplate.opsForValue().set(ENTRANTS, "not-a-hash");
+        RecordId messageId = deliver();
+
+        assertThat(refunder.refundAndAcknowledge(command(CouponType.CREATOR), messageId)).isTrue();
+
+        assertThat(redisTemplate.opsForValue().get(CREATOR_BALANCE)).isEqualTo("95");
+        assertThat(redisTemplate.hasKey(ENTRY_TOTAL)).isFalse();
+        assertThat(pendingCount()).isZero();
+    }
+
+    @Test
+    void 실시간_집계가_이번_차감분보다_적으면_entry_total을_지운다() {
         redisTemplate.opsForValue().set(CREATOR_BALANCE, "90");
         redisTemplate.opsForValue().set(ENTRY_TOTAL, "3");
         redisTemplate.opsForHash().put(ENTRANTS, String.valueOf(USER_ID), "3");
@@ -125,7 +170,8 @@ class SpendRedeductionRefunderIntegrationTest {
 
         refunder.refundAndAcknowledge(command(CouponType.CREATOR), messageId);
 
-        assertThat(redisTemplate.opsForValue().get(ENTRY_TOTAL)).isEqualTo("3");
+        assertThat(redisTemplate.opsForValue().get(CREATOR_BALANCE)).isEqualTo("95");
+        assertThat(redisTemplate.hasKey(ENTRY_TOTAL)).isFalse();
         assertThat(redisTemplate.opsForHash().get(ENTRANTS, String.valueOf(USER_ID))).isEqualTo("3");
     }
 
