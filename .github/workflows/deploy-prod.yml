@@ -56,9 +56,14 @@ jobs:
           aws s3 cp deploy/deploy.sh        "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh"
           aws s3 cp k6/smoke.js             "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/smoke.js"
 
+      # 입력은 CI가 만든 태그 형식(배포 시각 14자리-커밋 7자리)만 받는다. 형식이 맞아도 운영에 올린 적 없는 태그면 멈춘다.
       - name: 되돌릴 태그의 배포 파일 확인
         if: github.event_name == 'workflow_dispatch'
         run: |
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9]{14}-[0-9a-f]{7}$ ]]; then
+            echo "이미지 태그 형식이 아니다: $IMAGE_TAG" >&2
+            exit 1
+          fi
           for f in docker-compose.yml deploy.sh smoke.js; do
             aws s3api head-object --bucket "$PROD_DEPLOY_BUCKET" --key "releases/$IMAGE_TAG/$f" > /dev/null \
               || { echo "운영에 배포한 적 없는 태그다: $IMAGE_TAG ($f 없음)" >&2; exit 1; }
@@ -86,19 +91,16 @@ jobs:
         id: refresh
         run: scripts/prod-refresh.sh "$PROD_ASG"
 
-      # 교체가 실패하면 옛 서버는 남아 있지만, 이후 새로 뜨는 서버가 실패한 태그로 뜨지 않게 태그를 되돌린다.
-      # 교체 단계가 실패했을 때만 되돌린다. 교체가 끝난 뒤의 실패(스모크 테스트)는 아래에서 다시 교체해 되돌린다.
-      - name: 실패 시 배포 태그 되돌리기
+      # 교체가 실패하면 교체를 취소하고 배포 태그를 되돌린다. 취소해도 이미 바뀐 서버는 되돌아가지 않으므로,
+      # 교체 시작 뒤에 뜬 서버가 남아 있으면 이전 태그로 다시 교체해 전체를 맞춘다(scripts/prod-recover.sh).
+      # 교체 단계가 실패했을 때만 한다. 교체가 끝난 뒤의 실패(스모크 테스트)는 아래에서 다시 교체해 되돌린다.
+      - name: 실패 시 이전 버전으로 복구
         if: failure() && steps.tag.outputs.previous != '' && steps.refresh.outcome == 'failure'
         env:
           PREVIOUS: ${{ steps.tag.outputs.previous }}
           REFRESH_ID: ${{ steps.refresh.outputs.id }}
-        run: |
-          if [ -n "$REFRESH_ID" ]; then
-            aws autoscaling cancel-instance-refresh --auto-scaling-group-name "$PROD_ASG" || true
-          fi
-          aws ssm put-parameter --name /cking/prod/RELEASE_TAG --type String --value "$PREVIOUS" --overwrite
-          echo "배포 태그를 $PREVIOUS로 되돌렸다"
+          STARTED: ${{ steps.refresh.outputs.started }}
+        run: scripts/prod-recover.sh "$PROD_ASG" "$REFRESH_ID" "$STARTED" "$PREVIOUS"
 
       - name: k6 설치
         env:

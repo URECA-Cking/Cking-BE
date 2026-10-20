@@ -7,12 +7,15 @@ set -euo pipefail
 
 ASG="${1:?사용법: prod-refresh.sh <오토스케일링 그룹 이름>}"
 
+# 교체 시작 시각 이후에 뜬 서버는 이번 배포 태그로 뜬 서버다. 실패했을 때 되돌릴 서버를 찾는 기준이다(prod-recover.sh).
+started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 refresh_id=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG" \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":200}' \
   --query InstanceRefreshId --output text)
-echo "교체 시작: $refresh_id"
+echo "교체 시작: $refresh_id ($started)"
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "id=$refresh_id" >> "$GITHUB_OUTPUT"
+  echo "started=$started" >> "$GITHUB_OUTPUT"
 fi
 
 # 한 번에 모두 교체된다. 시작 대기 상한 900초 + 투입 대기 300초 = 20분에 여유를 두어 30분까지 기다린다.

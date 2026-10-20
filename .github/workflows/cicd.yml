@@ -120,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 셸 스크립트 검사
-        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh scripts/prod-refresh.sh
+        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh scripts/prod-refresh.sh scripts/prod-recover.sh
       - name: 워크플로 검사
         run: >
           docker run --rm -v "$PWD:/repo:ro" -w /repo
