@@ -49,6 +49,21 @@ class DrawingWinnerRepositoryJpaTest {
     private EntityManager entityManager;
 
     @Test
+    void 후보가_많은_추첨_입력을_TEXT_한도보다_크게_저장한다() {
+        Fixture fixture = fixture();
+        Drawing drawing = drawingRepository.saveAndFlush(initialDrawing(fixture));
+        String payload = "candidates\n" + "10000,3\n".repeat(10_000);
+        drawing.start(payload, "a".repeat(64), Instant.now());
+        drawingRepository.saveAndFlush(drawing);
+        entityManager.clear();
+
+        Drawing found = drawingRepository.findById(drawing.getId()).orElseThrow();
+
+        assertThat(payload.length()).isGreaterThan(65_535);
+        assertThat(found.getInputPayload()).isEqualTo(payload);
+    }
+
+    @Test
     void INITIAL_Drawing_전체필드를_저장하고_Event와_drawNo로_조회한다() {
         Fixture fixture = fixture();
         Drawing saved = drawingRepository.saveAndFlush(initialDrawing(fixture));
