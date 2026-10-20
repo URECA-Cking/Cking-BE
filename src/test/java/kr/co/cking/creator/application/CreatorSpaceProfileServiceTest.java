@@ -40,6 +40,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 
 class CreatorSpaceProfileServiceTest {
 
@@ -68,6 +69,7 @@ class CreatorSpaceProfileServiceTest {
     void setUp() {
         creator = new Creator(7L, "크리에이터");
         ReflectionTestUtils.setField(creator, "creatorId", 42L);
+        given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
         space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
                 1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
         ), "creator-42");
@@ -224,24 +226,30 @@ class CreatorSpaceProfileServiceTest {
 
         service.updateMine(7L, NEW_PROFILE);
 
+        var lockOrder = inOrder(creatorRepository, spaceRepository, spaceService);
+        lockOrder.verify(creatorRepository).findByIdForUpdate(42L);
+        lockOrder.verify(spaceRepository).findByCreatorIdForUpdate(42L);
+        lockOrder.verify(spaceService).createFromActiveTemplateIfAbsent(42L);
         assertThat(space.getIntroText()).isEqualTo(NEW_PROFILE.introText());
         assertThat(space.getBannerImageUrl()).isEqualTo(NEW_PROFILE.bannerImageUrl());
     }
 
-    /** Creator 행을 잠근 사이 다른 요청이 Space를 만들었다면 새로 만들지 않고 그 Space를 쓴다. */
+    /** Creator 행을 잠그기 전에 다른 요청이 Space를 만든 경우, 잠금 이후 현재 Space를 재조회해 재사용한다. */
     @Test
-    void updateMineUsesTheSpaceCreatedByAConcurrentRequest() {
+    void updateMineUsesTheSpaceCommittedBeforeCreatorLock() {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
-        given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
-        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty(), Optional.of(space));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
 
         service.updateMine(7L, NEW_PROFILE);
 
+        var lockOrder = inOrder(creatorRepository, spaceRepository);
+        lockOrder.verify(creatorRepository).findByIdForUpdate(42L);
+        lockOrder.verify(spaceRepository).findByCreatorIdForUpdate(42L);
         then(spaceService).should(never()).createFromActiveTemplateIfAbsent(any());
         assertThat(space.getIntroText()).isEqualTo(NEW_PROFILE.introText());
     }
 
-    /** Space가 이미 있으면 Creator 행을 따로 잠그거나 새로 만들지 않는다. */
+    /** Space가 이미 있어도 락 순서를 유지하되, 새 Space를 만들지 않는다. */
     @Test
     void updateMineDoesNotCreateASpaceWhenOneExists() {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
@@ -250,7 +258,7 @@ class CreatorSpaceProfileServiceTest {
         service.updateMine(7L, NEW_PROFILE);
 
         then(spaceService).should(never()).createFromActiveTemplateIfAbsent(any());
-        then(creatorRepository).should(never()).findByIdForUpdate(any());
+        then(creatorRepository).should().findByIdForUpdate(42L);
     }
 
     @Test

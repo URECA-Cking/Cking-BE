@@ -13,6 +13,7 @@ import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorApplicationRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceTemplateRepository;
+import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -70,6 +71,9 @@ class CreatorSpaceProfileIntegrationTest {
     private MemberRepository memberRepository;
 
     @Autowired
+    private ProfileImageUrlResolver memberImageUrlResolver;
+
+    @Autowired
     private CreatorRepository creatorRepository;
 
     @Autowired
@@ -105,6 +109,65 @@ class CreatorSpaceProfileIntegrationTest {
         applicationIds.forEach(applicationId -> jdbcTemplate.update(
                 "DELETE FROM creator_application WHERE id = ?", applicationId));
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId));
+    }
+
+
+    @Test
+    void 승인할_때_회원_프로필_사진을_Space_기본_사진으로_이어받는다() {
+        Member admin = createMember("사진승인관리자", MemberRole.ADMIN);
+        Member owner = createMember("사진승계대상", MemberRole.USER);
+        String imageKey = "member-profile-images/" + owner.getMemberId() + "/existing-photo.jpg";
+        owner.updateProfileImageKey(imageKey);
+        memberRepository.saveAndFlush(owner);
+
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, owner);
+
+        Creator creator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
+        CreatorSpace space = profileService.findByCreatorId(creator.getCreatorId()).space();
+        String expectedUrl = memberImageUrlResolver.resolve(imageKey);
+        assertThat(space.getProfileImageUrl()).isEqualTo(expectedUrl);
+        assertThat(space.getDefaultProfileImageUrl()).isEqualTo(expectedUrl);
+        assertThat(space.getBannerImageUrl()).isEqualTo(TEMPLATE_FIELDS.bannerImageUrl());
+    }
+
+    @Test
+    void Space가_없는_Creator의_동시_첫_저장은_한_행만_생성한다() throws Exception {
+        Member admin = createMember("첫저장관리자", MemberRole.ADMIN);
+        Member owner = createMember("첫저장크리에이터", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        Creator creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "첫저장 크리에이터"));
+
+        CountDownLatch firstUpdated = new CountDownLatch(1);
+        CountDownLatch commitFirst = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                profileService.updateMine(owner.getMemberId(),
+                        new CreatorSpaceProfileFields("첫 번째 소개", "https://img/profile.png", "https://img/banner.png"));
+                firstUpdated.countDown();
+                await(commitFirst);
+            }));
+            assertThat(firstUpdated.await(10, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> second = executor.submit(() -> profileService.updateMine(owner.getMemberId(),
+                    new CreatorSpaceProfileFields("두 번째 소개", "https://img/profile.png", "https://img/banner.png")));
+            Thread.sleep(300);
+            commitFirst.countDown();
+
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM creator_space WHERE creator_id = ?", Long.class, creator.getCreatorId()))
+                    .isEqualTo(1L);
+            assertThat(profileService.findMine(owner.getMemberId()).space().getIntroText())
+                    .isEqualTo("두 번째 소개");
+        } finally {
+            commitFirst.countDown();
+            executor.shutdownNow();
+        }
     }
 
     @Test
