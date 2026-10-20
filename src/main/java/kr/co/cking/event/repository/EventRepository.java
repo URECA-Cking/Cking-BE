@@ -34,6 +34,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Event> findByEventId(Long eventId);
 
+    /** 관리자 운영 조회에서 논리 삭제되지 않은 Event 한 건을 읽는다. */
+    Optional<Event> findByEventIdAndDeletedAtIsNull(Long eventId);
+
     List<Event> findByEventIdIn(Collection<Long> eventIds);
 
     Page<Event> findByCreatorIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable);

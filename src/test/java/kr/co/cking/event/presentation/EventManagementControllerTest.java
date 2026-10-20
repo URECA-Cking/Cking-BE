@@ -2,6 +2,8 @@ package kr.co.cking.event.presentation;
 
 import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
+import kr.co.cking.event.application.AdminEventOperationQueryService;
+import kr.co.cking.event.application.AdminEventOperationResult;
 import kr.co.cking.common.config.WebMvcConfig;
 import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
 import kr.co.cking.event.domain.DrawMethod;
@@ -51,6 +53,7 @@ class EventManagementControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private CreatorEventService creatorEventService;
     @MockitoBean private EventReviewService eventReviewService;
+    @MockitoBean private AdminEventOperationQueryService adminEventOperationQueryService;
 
     @BeforeEach
     void authenticatedCreator() {
@@ -308,6 +311,41 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.items[0].winnerCount").value(1))
                 .andExpect(jsonPath("$.data.items[0].drawMethod").value("WEIGHTED"))
                 .andExpect(jsonPath("$.data.items[0].status").value("OPEN"));
+    }
+
+    /** 관리자 운영 상세 API가 Event 기본 정보와 선택적 운영 요약을 하나의 응답으로 반환한다. */
+    @Test
+    void operationReturnsEventAndOptionalOperationSummaries() throws Exception {
+        AdminEventOperationResult.EventSummary event = new AdminEventOperationResult.EventSummary(
+                7L, 3L, "크리에이터", "운영 팬미팅", "이벤트 설명",
+                Instant.parse("2026-10-20T01:00:00Z"), Instant.parse("2026-10-21T01:00:00Z"),
+                2, DrawMethod.WEIGHTED, "PRIZE_WEIGHTED_V1",
+                kr.co.cking.event.domain.EventStatus.CLOSED, Instant.parse("2026-10-21T01:00:00Z"), null,
+                null, null, Instant.parse("2026-10-10T01:00:00Z"), java.util.List.of());
+        AdminEventOperationResult.SnapshotSummary snapshot = new AdminEventOperationResult.SnapshotSummary(
+                31L, kr.co.cking.snapshot.domain.SnapshotVerificationStatus.VERIFIED, 10, 55L, 2,
+                Instant.parse("2026-10-21T01:01:00Z"));
+        given(adminEventOperationQueryService.getOperation(1L, 7L))
+                .willReturn(new AdminEventOperationResult(event, snapshot, null));
+
+        mockMvc.perform(get("/api/admin/events/{eventId}/operation", 7L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.event.eventId").value(7))
+                .andExpect(jsonPath("$.data.event.creatorName").value("크리에이터"))
+                .andExpect(jsonPath("$.data.event.description").value("이벤트 설명"))
+                .andExpect(jsonPath("$.data.snapshot.snapshotId").value(31))
+                .andExpect(jsonPath("$.data.initialDrawing").doesNotExist());
+    }
+
+    @Test
+    void operationReturnsNotFoundForDeletedEvent() throws Exception {
+        willThrow(new BusinessException(kr.co.cking.common.exception.CommonErrorCode.RESOURCE_NOT_FOUND))
+                .given(adminEventOperationQueryService).getOperation(1L, 7L);
+
+        mockMvc.perform(get("/api/admin/events/{eventId}/operation", 7L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }
 
     /** 관리자 보관·복원 API가 PUBLISHED 상태와 보관 메타데이터를 반환하는지 검증한다. */

@@ -223,6 +223,66 @@ Query는 선택 `status`, 선택 `archiveStatus`, 기본 `page=0`, `size=20`이�
 }
 ```
 
+## GET /api/admin/events/{eventId}/operation
+
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 관리자 업무 식별자로 전달한다.
+관리자 운영 상세 화면의 초기 렌더링에 필요한 Event 기본 정보와 현재 운영 단계를 한 번에 조회한다. 삭제된
+Event는 조회할 수 없으며 없는 Event와 동일하게 `RESOURCE_NOT_FOUND`를 반환한다. 보관 Event는 관리자 운영
+대상이므로 조회할 수 있다.
+
+`event`에는 Creator 공개 활동명, 제목·설명, 일정, 상품 설정, 추첨·상품 배정 알고리즘, Event 상태와
+마감·공개·보관 시각을 담는다. `snapshot`과 `initialDrawing`은 아직 생성되지 않았으면 `null`이다.
+Snapshot 후보 전체와 Drawing Winner 전체는 응답에 포함하지 않으며, 필요할 때 기존 Snapshot·Drawing
+상세 API를 호출한다.
+
+```json
+{
+  "event": {
+    "eventId": 1,
+    "creatorId": 5,
+    "creatorName": "IVE",
+    "title": "팬미팅 이벤트",
+    "description": "팬미팅 응모 이벤트입니다.",
+    "startAt": "2026-09-20T09:00:00Z",
+    "endAt": "2026-09-21T09:00:00Z",
+    "winnerCount": 3,
+    "drawMethod": "WEIGHTED",
+    "prizeAlgorithmVersion": "PRIZE_WEIGHTED_V1",
+    "status": "CLOSED",
+    "closedAt": "2026-09-21T09:00:00Z",
+    "publishedAt": null,
+    "archivedAt": null,
+    "archivedBy": null,
+    "createdAt": "2026-09-16T00:20:00Z",
+    "prizes": []
+  },
+  "snapshot": {
+    "snapshotId": 10,
+    "verificationStatus": "VERIFIED",
+    "candidateCount": 100,
+    "totalTicketCount": 340,
+    "winnerCount": 3,
+    "createdAt": "2026-09-21T09:01:00Z"
+  },
+  "initialDrawing": {
+    "drawingId": 20,
+    "drawNo": 0,
+    "drawType": "INITIAL",
+    "status": "COMPLETED",
+    "visibility": "PRIVATE",
+    "winnerCount": 3,
+    "storedWinnerCount": 3,
+    "createdAt": "2026-09-21T09:02:00Z",
+    "completedAt": "2026-09-21T09:02:03Z",
+    "publishedAt": null
+  }
+}
+```
+
+- `storedWinnerCount`는 현재 저장된 Winner 수다. `status`가 `READY`, `RUNNING`, `FAILED`이면 0일 수 있다.
+- Event 상태가 `CLOSING` 또는 `CLOSED`이면 `event.status`와 `closedAt`으로 마감 단계를 판별한다. Stream lag,
+  PEL, cutoff Stream ID 같은 내부 Stream 정보는 반환하지 않는다.
+
 ## PATCH /api/admin/events/{eventId}/archive
 
 Bearer Access JWT와 ADMIN 역할이 필수다. `PUBLISHED` Event만 보관할 수 있으며 성공 시 200으로
