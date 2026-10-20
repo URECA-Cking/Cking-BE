@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.follow.application.CreatorPostNewsService;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,6 +32,8 @@ class DummyDataSeederTest {
     private DummyDataSeeder seeder;
     @Autowired
     private MemberRepository memberRepository;
+    @Autowired
+    private CreatorPostNewsService newsService;
     @Autowired
     private JdbcTemplate jdbcTemplate;
     @Autowired
@@ -67,6 +70,10 @@ class DummyDataSeederTest {
         assertThat(balance).isEqualTo(5L);
         assertThat(redisTemplate.opsForValue().get(TicketRedisKeys.balance(firstCreator, firstUser))).isEqualTo("5");
         assertThat(redisTemplate.hasKey(DummyDataSeeder.SEED_LOCK_KEY)).isFalse();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM creator_follow WHERE member_id = ?",
+                Long.class, firstUser)).isEqualTo(2L);
+        assertThat(newsService.findMine(firstUser)).extracting(item -> item.hasUnreadPosts())
+                .containsExactly(true, false);
     }
 
     // member.email에 UNIQUE 제약이 없어 find-or-create가 원자적이지 않다 - 두 실행이
@@ -126,6 +133,7 @@ class DummyDataSeederTest {
         List<Long> userIdsBeforeGap = dummyMemberIds("dummy-user-%@cking.test");
         Long removedUserId = userIdsBeforeGap.get(0);
         jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ?", removedUserId);
+        jdbcTemplate.update("DELETE FROM creator_follow WHERE member_id = ?", removedUserId);
         jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", removedUserId);
 
         seeder.run();
@@ -204,6 +212,21 @@ class DummyDataSeederTest {
 
         jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id IN "
                 + "(SELECT member_id FROM member WHERE email LIKE 'dummy-user-%@cking.test')");
+        jdbcTemplate.update("DELETE FROM creator_follow WHERE member_id IN "
+                + "(SELECT member_id FROM member WHERE email LIKE 'dummy-user-%@cking.test')");
+        jdbcTemplate.update("DELETE FROM creator_follow WHERE creator_id IN "
+                + "(SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                + "WHERE m.email LIKE 'dummy-creator-%@cking.test')");
+        jdbcTemplate.update("DELETE FROM creator_post WHERE creator_id IN "
+                + "(SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                + "WHERE m.email LIKE 'dummy-creator-%@cking.test')");
+        // 기존 로컬 더미 Creator에 남은 Space·일정도 Creator FK보다 먼저 정리한다.
+        jdbcTemplate.update("DELETE FROM creator_space WHERE creator_id IN "
+                + "(SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                + "WHERE m.email LIKE 'dummy-creator-%@cking.test')");
+        jdbcTemplate.update("DELETE FROM creator_schedule WHERE creator_id IN "
+                + "(SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                + "WHERE m.email LIKE 'dummy-creator-%@cking.test')");
         jdbcTemplate.update("DELETE FROM creator WHERE member_id IN "
                 + "(SELECT member_id FROM member WHERE email LIKE 'dummy-creator-%@cking.test')");
         jdbcTemplate.update("DELETE FROM member WHERE email LIKE ?", DUMMY_EMAIL_LIKE);

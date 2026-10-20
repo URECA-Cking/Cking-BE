@@ -5,6 +5,7 @@
 `DummyDataSeeder`는 `local`과 `seed` 프로필이 동시에 활성화될 때만 실행된다. 다른 환경에서 `seed`만 켜는 실수를 막기 위한 조건이다.
 
 - 더미 USER 15명과 더미 Creator 3명을 find-or-create한다.
+- 첫 더미 USER가 Creator 1·2를 팔로우한다. Creator 1의 더미 글은 팔로우 이후 작성되어 NEW이고, Creator 2의 글은 팔로우 이전 작성되어 NEW가 아니다. 재실행해도 동일 글은 중복 생성하지 않는다.
 - 모든 USER·Creator 조합의 `UserTicketBalance`를 없을 때만 초기 5장으로 생성한다.
 - Redis 잔액은 새 초기값이 아니라 현재 DB Balance를 기준으로 다시 기록한다. 시딩 재실행이 실제 사용 후 DB 잔액과 Redis 잔액을 어긋나게 만들지 않기 위해서다.
 - DB 시딩은 하나의 Transaction이고, Redis의 토큰 기반 락(`seed:dummy-data:lock`, 60초)을 사용해 동시 실행으로 인한 중복 더미 Member 생성을 막는다. 락은 Transaction 완료 뒤 compare-and-delete로만 해제한다.

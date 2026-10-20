@@ -37,6 +37,18 @@ public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Lo
 
     boolean existsByMemberIdAndCreatorId(Long memberId, Long creatorId);
 
+    /** UPDATE 자체의 행 잠금으로 병렬 요청을 직렬화하고 저장 시각을 앞으로만 옮긴다. */
+    @Modifying
+    @Query(value = """
+            UPDATE creator_follow
+            SET last_read_at = GREATEST(COALESCE(last_read_at, created_at), UTC_TIMESTAMP(6))
+            WHERE member_id = :memberId AND creator_id = :creatorId
+            """, nativeQuery = true)
+    int markPostsRead(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
+
+    @Query("select f.lastReadAt from CreatorFollow f where f.memberId = :memberId and f.creatorId = :creatorId")
+    Instant findLastReadAt(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
+
     /** 크리에이터의 팔로워 수. idx_creator_follow_creator로 집계한다. */
     long countByCreatorId(Long creatorId);
 

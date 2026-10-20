@@ -197,6 +197,8 @@
 | 192 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/unarchive` | 보관 PUBLISHED Event 복원 | 상태 기반 |
 | 193 | 외부 | Event | PUBLIC | GET | `/api/events/counts` | [Event 표시 상태별 개수 조회](domains/event/api.md#get-apieventscounts) | - |
 | 194 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/close` | [Quiz 수동 마감](domains/quiz/api.md#post-apicreatorquizzesquizidclose), 재게시 불가·기존 응시/보상 보존 | 상태 기반 |
+| 195 | 외부 | Follow | USER | PUT | `/api/creators/{creatorId}/posts/read` | [팔로우한 Creator의 게시글 읽음 기록](domains/follow/api.md#put-apicreatorscreatoridpostsread) | 회원·Creator별 최대 시각 |
+| 196 | 외부 | Follow | USER | GET | `/api/me/follows/post-news` | [팔로우한 Creator의 읽지 않은 새 글 일괄 조회](domains/follow/api.md#get-apimefollowspost-news) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
 
