@@ -21,6 +21,12 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
 - 그룹 사이의 순서는 서버 수와 관계없이 보장되지 않는다. EARN이 DB에 반영되기 전에 SPEND가 오면 Balance 부족으로 실패해 ACK되지 않고, PEL 재처리에서 EARN 반영 뒤 성공한다(`TicketCrossStreamOrderIntegrationTest`).
 - Consumer 이름은 서버마다 다르다(`StreamConsumerNames`). `<서버 ID>`는 `cking.stream.consumer-id`(배포 스크립트가 EC2 인스턴스 ID를 `CKING_CONSUMER_ID`로 넘김)이고, 없으면 호스트 이름이다. 같은 이름을 여러 서버가 쓰면 PEL을 서버별로 구분할 수 없고, 소비자 하나를 지우면 모든 서버의 PEL 기록이 함께 지워진다.
 - 서버가 교체되면 옛 이름이 그룹에 남는다. `StreamConsumerCleanupScheduler`가 10분마다 대기 메시지가 0개이고 1시간(`cking.stream.consumer-cleanup.idle`) 이상 읽기 시도가 없는 소비자를 지운다. `XGROUP DELCONSUMER`는 그 소비자의 PEL 기록도 지우므로 확인과 삭제를 Lua 한 번(`stream-consumer-cleanup.lua`)으로 묶는다. 살아 있는 Listener는 메시지가 없어도 2초마다 읽기를 시도하고, idle은 읽기 시도부터 세므로 2초 안팎으로 유지된다(Redis 7.2.16 확인). 재처리 소비자(`*-pel-recovery`)는 서버들이 함께 쓰는 이름이라 정리 대상에서 뺀다.
+- XACK만으로는 메시지가 Stream에 남아 응모·적립이 쌓이는 만큼 Redis 메모리가 는다(#673). `StreamTrimScheduler`가 30초(`cking.stream.trim.interval-ms`)마다 세 Stream에서 모든 그룹이 처리를 끝낸 앞쪽 메시지를 지운다(`stream-trim.lua`).
+  - 기준: 그룹마다 PEL이 있으면 PEL의 가장 오래된 ID, 없으면 `last-delivered-id`. 가장 뒤처진 그룹의 기준보다 작은 ID만 `XTRIM MINID ~`로 지운다. 그룹이 없으면 지우지 않는다(그룹을 0부터 다시 만들면 처음부터 읽는다).
+  - PEL 메시지는 `EventDrainChecker`·`UnappliedBalanceMessageChecker`가 ID로 원본을 다시 읽으므로 남긴다. ACK된 메시지를 다시 읽는 코드는 없다. Dead Stream replay는 DB에 보존한 payload를 쓴다.
+  - 기준은 줄어들지 않는다(새 메시지는 더 큰 ID, PEL에서는 빠지기만 함). 여러 서버가 동시에 실행해도 결과가 같다.
+  - `last-delivered-id` 앞만 지우므로 그룹의 `lag`는 계속 계산된다(Redis 7.2.16 확인). `XLEN`은 누적 건수가 아니라 남은 건수가 된다.
+  - 주기 근거: `~`는 한 번에 최대 10,000건(기본 LIMIT)을 지워 초당 약 333건까지 따라간다. DB 반영 처리량(부하 테스트 1차 초당 100~110)보다 크다.
 - 그룹은 기동 시 `XGROUP CREATE ... MKSTREAM`(시작 오프셋 0)으로 만들고, 이미 있으면(`BUSYGROUP`) 무시한다. Listener는 `lastConsumed`(신규 메시지)만 읽는다.
 - Listener의 `process()`가 "DB 반영 → XACK"의 유일한 경로이며 회수 스케줄러도 이 메서드를 재사용한다.
 - 키·그룹명·재시도 값은 `cking.ticket.*`(EARN·공용 EARN), `cking.entry.*`(SPEND) 프로퍼티로 바꿀 수 있다.
