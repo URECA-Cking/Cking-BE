@@ -129,6 +129,7 @@ jobs:
       - name: compose 검사
         run: |
           docker compose -f docker-compose.dev.yml config --no-interpolate --quiet
+          docker compose -f docker-compose.prod.yml config --no-interpolate --quiet
           docker compose -f docker-compose.yml config --no-interpolate --quiet
 
   build-and-push:

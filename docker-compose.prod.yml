@@ -1,0 +1,53 @@
+# 운영 서버(EC2 오토스케일링)용. DB는 RDS, Redis는 ElastiCache를 쓰므로 앱만 둔다.
+# 환경변수는 deploy/deploy.sh가 Parameter Store(/cking/prod/)에서 읽어 넘긴다. 서버에 .env를 두지 않는다.
+
+services:
+  app:
+    # 태그는 배포 시점에 deploy.sh가 지정한다. latest는 동시 빌드 시 과거 이미지로 덮어써질 수 있다.
+    image: ghcr.io/ureca-cking/cking-be:${IMAGE_TAG:?배포 태그가 지정되지 않았습니다}
+    container_name: cking-app
+    restart: unless-stopped
+    # 종료 신호 뒤 앱이 웹 요청(최대 30초)과 작업 큐(최대 30초)를 차례로 마무리할 시간. 기본 10초면 중간에 끊긴다.
+    stop_grace_period: 90s
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod,oauth
+      DB_HOST: ${DB_HOST:?DB_HOST가 지정되지 않았습니다}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME이 지정되지 않았습니다}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD가 지정되지 않았습니다}
+      REDIS_HOST: ${REDIS_HOST:?REDIS_HOST가 지정되지 않았습니다}
+      REDIS_USERNAME: ${REDIS_USERNAME:?REDIS_USERNAME이 지정되지 않았습니다}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD가 지정되지 않았습니다}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET이 지정되지 않았습니다}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:?OAUTH_GOOGLE_CLIENT_ID가 지정되지 않았습니다}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:?OAUTH_GOOGLE_CLIENT_SECRET이 지정되지 않았습니다}
+      OAUTH_KAKAO_CLIENT_ID: ${OAUTH_KAKAO_CLIENT_ID:?OAUTH_KAKAO_CLIENT_ID가 지정되지 않았습니다}
+      OAUTH_KAKAO_CLIENT_SECRET: ${OAUTH_KAKAO_CLIENT_SECRET:?OAUTH_KAKAO_CLIENT_SECRET이 지정되지 않았습니다}
+      ADMIN_ACCOUNT_LOGIN_ID: ${ADMIN_ACCOUNT_LOGIN_ID:?ADMIN_ACCOUNT_LOGIN_ID가 지정되지 않았습니다}
+      ADMIN_ACCOUNT_PASSWORD: ${ADMIN_ACCOUNT_PASSWORD:?ADMIN_ACCOUNT_PASSWORD가 지정되지 않았습니다}
+      # 아래는 Parameter Store에 값이 있을 때만 deploy.sh가 넘긴다. 없으면 기능이 꺼진 기본값을 쓴다.
+      CKING_CONTENT_TAG_TOKEN_HASH: ${CKING_CONTENT_TAG_TOKEN_HASH:-}
+      CKING_RECOMMENDATION_API_KEY_HASHES: ${CKING_RECOMMENDATION_API_KEY_HASHES:-}
+      SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:-false}
+      SUBSCRIPTION_GEMINI_API_KEY: ${SUBSCRIPTION_GEMINI_API_KEY:-}
+      QUIZ_GENERATION_ENABLED: ${QUIZ_GENERATION_ENABLED:-false}
+      QUIZ_JUDGE_ENABLED: ${QUIZ_JUDGE_ENABLED:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      COMMENT_FILTER_ENABLED: ${COMMENT_FILTER_ENABLED:-false}
+      COMMENT_FILTER_BASE_URL: ${COMMENT_FILTER_BASE_URL:-http://localhost:8000}
+      IMAGE_TAG: ${IMAGE_TAG}
+      CKING_CONSUMER_ID: ${CKING_CONSUMER_ID:-}
+      # 개발과 같은 크기(t4g.small)에서 부하 테스트로 확인한 값이다. 힙 460MiB, 컨테이너 1000MiB.
+      JDK_JAVA_OPTIONS: "-Xmx460m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+    # memswap_limit을 mem_limit과 같게 두어 컨테이너가 swap을 쓰지 않게 한다.
+    mem_limit: 1000m
+    memswap_limit: 1000m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        # 수집기가 로그를 서비스별로 나누도록 서비스 이름을 로그 줄에 함께 기록한다.
+        labels: "com.docker.compose.service"
