@@ -24,7 +24,7 @@ import kr.co.cking.event.domain.EventErrorCode;
  * 실시간 응모 현황 조회(FR-P2-045~051). OPEN/CLOSING이고 집계 키가 있으면 Redis
  * (realtime=true), 그 외에는 DB {@code event_entry} 집계(realtime=false)로 응답한다.
  */
-@SpringBootTest
+@SpringBootTest(properties = "cking.scheduling.enabled=false")
 class EntryStatusQueryServiceIntegrationTest {
 
     private static final long OWNER_MEMBER_ID = 90301L;
@@ -43,6 +43,7 @@ class EntryStatusQueryServiceIntegrationTest {
 
     private long eventId;
 
+    // OPEN 이벤트의 집계 키 유무를 테스트가 직접 제어하도록 스케줄러를 끄고 Redis 초기 상태를 비운다.
     @BeforeEach
     void setUp() {
         cleanUp();
@@ -55,6 +56,7 @@ class EntryStatusQueryServiceIntegrationTest {
         jdbcTemplate.update("INSERT INTO creator (creator_id, member_id, name, activity_name, activity_name_normalized, activity_name_configured) VALUES (?, ?, ?, (@creator_fixture_activity_name := CONCAT('c', SUBSTRING(MD5(UUID()), 1, 19))), @creator_fixture_activity_name, true)",
                 CREATOR_ID, OWNER_MEMBER_ID, "현황조회 크리에이터");
         eventId = insertEvent("OPEN");
+        redisTemplate.delete(List.of(EntryRedisKeys.entryTotal(eventId), EntryRedisKeys.entrants(eventId)));
     }
 
     @AfterEach
@@ -139,6 +141,7 @@ class EntryStatusQueryServiceIntegrationTest {
         insertEntry(eventId, MEMBER_A_ID, 3L);
         insertEntry(eventId, MEMBER_B_ID, 4L);
 
+        assertThat(redisTemplate.hasKey(EntryRedisKeys.entryTotal(eventId))).isFalse();
         EntryStatusResponse response = entryStatusQueryService.getStatus(eventId, MEMBER_A_ID);
 
         assertThat(response.realtime()).isFalse();
@@ -172,9 +175,23 @@ class EntryStatusQueryServiceIntegrationTest {
 
     @Test
     void 응모가_없으면_0으로_응답한다() {
+        // 0건 응답은 CLOSED의 DB 집계로 검증하고, OPEN의 키 부재 폴백은 별도 테스트에서 검증한다.
+        jdbcTemplate.update("UPDATE event SET status = 'CLOSED' WHERE event_id = ?", eventId);
         EntryStatusResponse response = entryStatusQueryService.getStatus(eventId, MEMBER_A_ID);
 
         assertThat(response.realtime()).isFalse();
+        assertThat(response.totalTicketCount()).isZero();
+        assertThat(response.participantCount()).isZero();
+        assertThat(response.myTicketCount()).isZero();
+    }
+
+    @Test
+    void 응모가_없고_집계_키가_있으면_Redis에서_0으로_응답한다() {
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(eventId), "0");
+
+        EntryStatusResponse response = entryStatusQueryService.getStatus(eventId, MEMBER_A_ID);
+
+        assertThat(response.realtime()).isTrue();
         assertThat(response.totalTicketCount()).isZero();
         assertThat(response.participantCount()).isZero();
         assertThat(response.myTicketCount()).isZero();
