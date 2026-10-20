@@ -2,6 +2,7 @@ package kr.co.cking.stream.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.PendingMessages;
+import org.springframework.data.redis.connection.stream.StreamInfo.XInfoConsumer;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -22,6 +24,7 @@ import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
 import kr.co.cking.event.application.service.EntrySpendService;
 import kr.co.cking.event.domain.EventEntry;
 import kr.co.cking.event.repository.EventEntryRepository;
+import kr.co.cking.stream.application.config.StreamConsumerNames;
 import kr.co.cking.ticket.domain.CouponType;
 
 /**
@@ -52,6 +55,9 @@ class SpendStreamConsumerIntegrationTest {
 
     @Autowired
     private EntrySpendService entrySpendService;
+
+    @Autowired
+    private StreamConsumerNames consumerNames;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -176,6 +182,34 @@ class SpendStreamConsumerIntegrationTest {
 
     private EntrySpendResultCode spend(String requestId) {
         return entrySpendService.spend(eventId, MEMBER_ID, CREATOR_ID, requestId, 5, CouponType.CREATOR).code();
+    }
+
+    // #672: 서버당 소비자 수(cking.stream.spend.consumer-count, 기본 4)만큼 같은 그룹에서 읽는다.
+    @Test
+    void 서버당_소비자_여러_개가_같은_그룹에서_나눠_읽어도_모두_한_번씩_반영된다() {
+        List<String> expectedConsumers = consumerNames.of("spend", 4);
+        List<String> requestIds = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            String requestId = UUID.randomUUID().toString();
+            requestIds.add(requestId);
+            redisTemplate.opsForStream().add(STREAM_KEY, Map.of(
+                    "eventId", String.valueOf(eventId),
+                    "userId", String.valueOf(MEMBER_ID),
+                    "creatorId", String.valueOf(CREATOR_ID),
+                    "requestId", requestId,
+                    "ticketCount", "1"
+            ));
+        }
+
+        requestIds.forEach(this::awaitEntry);
+        awaitPelEmpty();
+
+        Long dbBalance = jdbcTemplate.queryForObject(
+                "SELECT balance FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?",
+                Long.class, MEMBER_ID, CREATOR_ID);
+        assertThat(dbBalance).isEqualTo(60L);
+        assertThat(redisTemplate.opsForStream().consumers(STREAM_KEY, CONSUMER_GROUP).stream()
+                .map(XInfoConsumer::consumerName).toList()).containsAll(expectedConsumers);
     }
 
     private void awaitValue(String key, String expected) {

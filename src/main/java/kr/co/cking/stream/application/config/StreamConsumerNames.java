@@ -2,6 +2,8 @@ package kr.co.cking.stream.application.config;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
+import java.util.stream.IntStream;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -24,6 +26,11 @@ public class StreamConsumerNames {
 
     public String of(String prefix) {
         return prefix + "-" + serverId;
+    }
+
+    /** 한 서버가 같은 그룹에 소비자를 여러 개 둘 때의 이름. {@code <prefix>-<서버 ID>-<0..count-1>}. */
+    public List<String> of(String prefix, int count) {
+        return IntStream.range(0, count).mapToObj(index -> of(prefix) + "-" + index).toList();
     }
 
     private static String hostName() {

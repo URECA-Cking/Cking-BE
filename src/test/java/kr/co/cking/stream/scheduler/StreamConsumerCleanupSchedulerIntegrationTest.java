@@ -43,7 +43,7 @@ class StreamConsumerCleanupSchedulerIntegrationTest {
         redisTemplate.afterPropertiesSet();
         cleanUpKeys();
         scheduler = new StreamConsumerCleanupScheduler(redisTemplate, new StreamConsumerNames("self"),
-                SPEND_STREAM, GROUP, EARN_STREAM, GROUP, COMMON_EARN_STREAM, GROUP, IDLE);
+                SPEND_STREAM, GROUP, 2, EARN_STREAM, GROUP, COMMON_EARN_STREAM, GROUP, IDLE);
     }
 
     @AfterEach
@@ -57,6 +57,9 @@ class StreamConsumerCleanupSchedulerIntegrationTest {
         redisTemplate.opsForStream().createGroup(SPEND_STREAM, ReadOffset.from("0"), GROUP);
         readAndAck("spend-departed-empty");
         read("spend-departed-pending");
+        readAndAck("spend-self-0");
+        readAndAck("spend-self-1");
+        // 서버당 소비자를 여러 개로 바꾸기 전의 이름. 이 서버 이름 목록에 없으므로 떠난 소비자처럼 정리된다.
         readAndAck("spend-self");
         readAndAck(SpendStreamPelRecoveryScheduler.RECOVERY_CONSUMER);
         // 운영 Listener처럼 메시지 없이 기다리는 읽기만 반복한다. 기준 시간의 두 배 동안 이어 간다.
@@ -67,8 +70,8 @@ class StreamConsumerCleanupSchedulerIntegrationTest {
 
         scheduler.cleanUp();
 
-        assertThat(consumerNames(SPEND_STREAM)).containsExactlyInAnyOrder("spend-departed-pending", "spend-self",
-                SpendStreamPelRecoveryScheduler.RECOVERY_CONSUMER, "spend-listening");
+        assertThat(consumerNames(SPEND_STREAM)).containsExactlyInAnyOrder("spend-departed-pending", "spend-self-0",
+                "spend-self-1", SpendStreamPelRecoveryScheduler.RECOVERY_CONSUMER, "spend-listening");
     }
 
     @Test

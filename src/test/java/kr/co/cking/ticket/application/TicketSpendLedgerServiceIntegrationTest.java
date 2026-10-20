@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -419,5 +420,44 @@ class TicketSpendLedgerServiceIntegrationTest {
         assertThat(entryCount).isEqualTo(1);
         assertThat(ledgerCount).isEqualTo(1);
         assertThat(balance.getBalance()).isEqualTo(96L);
+    }
+
+    // #672: 소비자 여러 개가 같은 회원의 다른 응모를 동시에 반영해도 잔액 행 잠금으로 차례대로 반영된다.
+    @Test
+    void 같은_회원의_다른_응모를_동시에_반영해도_잔액과_원장이_맞는다() throws Exception {
+        int threadCount = 10;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        List<Future<SpendApplyResult>> futures = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < threadCount; i++) {
+                SpendCommand command = command(UUID.randomUUID().toString(), 3L);
+                String streamId = (i + 1) + "-0";
+                futures.add(executor.submit(() -> {
+                    startLatch.await();
+                    return ticketSpendLedgerService.apply(command, streamId);
+                }));
+            }
+            startLatch.countDown();
+            for (Future<SpendApplyResult> future : futures) {
+                assertThat(future.get()).isEqualTo(SpendApplyResult.APPLIED);
+            }
+        } finally {
+            executor.shutdown();
+        }
+
+        UserTicketBalance balance = userTicketBalanceRepository
+                .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID).orElseThrow();
+        List<Map<String, Object>> ledgers = jdbcTemplate.queryForList(
+                "SELECT balance_before, balance_after FROM ticket_ledger WHERE member_id = ? ORDER BY balance_before DESC",
+                MEMBER_ID);
+        assertThat(balance.getBalance()).isEqualTo(100L - 3L * threadCount);
+        assertThat(ledgers).hasSize(threadCount);
+        // 각 원장의 반영 후 잔액이 다음 원장의 반영 전 잔액과 이어진다(같은 잔액을 두 번 읽고 깎지 않았다).
+        for (int i = 0; i < ledgers.size(); i++) {
+            assertThat(((Number) ledgers.get(i).get("balance_before")).longValue()).isEqualTo(100L - 3L * i);
+            assertThat(((Number) ledgers.get(i).get("balance_after")).longValue()).isEqualTo(100L - 3L * (i + 1));
+        }
     }
 }
