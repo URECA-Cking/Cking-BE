@@ -2,6 +2,7 @@ package kr.co.cking.creator.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
@@ -13,7 +14,6 @@ import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorApplicationRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceTemplateRepository;
-import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -71,7 +71,7 @@ class CreatorSpaceProfileIntegrationTest {
     private MemberRepository memberRepository;
 
     @Autowired
-    private ProfileImageUrlResolver memberImageUrlResolver;
+    private ObjectStorage objectStorage;
 
     @Autowired
     private CreatorRepository creatorRepository;
@@ -100,6 +100,10 @@ class CreatorSpaceProfileIntegrationTest {
                     memberId
             );
             jdbcTemplate.update(
+                    "DELETE FROM creator_space_profile_image WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
+                    memberId
+            );
+            jdbcTemplate.update(
                     "DELETE FROM mission WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
                     memberId
             );
@@ -113,10 +117,12 @@ class CreatorSpaceProfileIntegrationTest {
 
 
     @Test
-    void 승인할_때_회원_프로필_사진을_Space_기본_사진으로_이어받는다() {
+    void 승인할_때_회원_프로필_사진을_Space용_파일로_복사해_연결한다() {
         Member admin = createMember("사진승인관리자", MemberRole.ADMIN);
         Member owner = createMember("사진승계대상", MemberRole.USER);
         String imageKey = "member-profile-images/" + owner.getMemberId() + "/existing-photo.jpg";
+        byte[] photo = {10, 20, 30, 40};
+        objectStorage.put(imageKey, photo, "image/jpeg");
         owner.updateProfileImageKey(imageKey);
         memberRepository.saveAndFlush(owner);
 
@@ -126,10 +132,16 @@ class CreatorSpaceProfileIntegrationTest {
 
         Creator creator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
         CreatorSpace space = profileService.findByCreatorId(creator.getCreatorId()).space();
-        String expectedUrl = memberImageUrlResolver.resolve(imageKey);
-        assertThat(space.getProfileImageUrl()).isEqualTo(expectedUrl);
-        assertThat(space.getDefaultProfileImageUrl()).isEqualTo(expectedUrl);
+        // Space는 회원 파일이 아니라 자기 파일을 가리키므로 회원이 사진을 바꿔도 깨지지 않는다.
+        assertThat(space.getProfileImageKey())
+                .startsWith("creator-space-profile-images/" + creator.getCreatorId() + "/");
+        assertThat(space.getProfileImageKey()).isNotEqualTo(imageKey);
+        assertThat(objectStorage.get(space.getProfileImageKey())).isEqualTo(photo);
+        // 기본 이미지로 되돌리는 대상은 템플릿 이미지다.
+        assertThat(space.getDefaultProfileImageUrl()).isEqualTo(TEMPLATE_FIELDS.profileImageUrl());
         assertThat(space.getBannerImageUrl()).isEqualTo(TEMPLATE_FIELDS.bannerImageUrl());
+        objectStorage.delete(imageKey);
+        objectStorage.delete(space.getProfileImageKey());
     }
 
     @Test

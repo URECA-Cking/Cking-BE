@@ -8,8 +8,9 @@ import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
-import kr.co.cking.member.application.MemberProfileImageProperties;
-import kr.co.cking.member.application.ProfileImageUrlResolver;
+import kr.co.cking.common.storage.ObjectNotFoundException;
+import kr.co.cking.common.storage.ObjectStorage;
+import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
@@ -76,12 +77,15 @@ class CreatorSpaceServiceTest {
         order.verify(spaceRepository).save(any(CreatorSpace.class));
     }
 
-    /** 회원이 프로필 사진을 올려 둔 상태였다면 템플릿 기본 이미지 대신 그 사진이 Space 프로필 사진의 기본값이 된다. */
+    /** 회원 사진 URL만 가리키면 회원이 사진을 바꿀 때 깨지므로, Space용 파일로 복사해 연결한다. 기본 이미지(복귀 대상)는 템플릿 이미지다. */
     @Test
-    void carriesOverTheMemberProfileImageInsteadOfTheTemplateOne() {
+    void copiesTheMemberProfileImageIntoASpaceOwnedFile() {
         CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
         CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
-        givenCreatorWithMemberImage("members/7/photo.png");
+        givenCreatorWithMemberImage("members/7/photo.jpg");
+        byte[] bytes = {1, 2, 3};
+        given(objectStorage.get("members/7/photo.jpg")).willReturn(bytes);
+        given(imageRepository.link(any(), any(), any())).willReturn(1);
         given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
         given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
                 1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
@@ -90,10 +94,36 @@ class CreatorSpaceServiceTest {
 
         CreatorSpace space = service.createFromActiveTemplateIfAbsent(42L);
 
-        assertThat(space.getProfileImageUrl()).isEqualTo("https://member-cdn.example/members/7/photo.png");
-        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/banner.png");
-        // 쓰지 않는 템플릿 프로필 이미지는 고정하지 않고 배너만 고정한다.
-        verify(imagePinner).pin(null, "https://img/banner.png");
+        ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
+        verify(objectStorage).put(key.capture(), org.mockito.ArgumentMatchers.eq(bytes), org.mockito.ArgumentMatchers.eq("image/jpeg"));
+        assertThat(key.getValue()).startsWith("creator-space-profile-images/42/").endsWith(".jpg");
+        assertThat(space.getProfileImageKey()).isEqualTo(key.getValue());
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://space-cdn.example/" + key.getValue());
+        // 기본 이미지로 되돌리면 템플릿 이미지로 돌아간다.
+        space.restoreDefaultProfileImage();
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
+        verify(imagePinner).pin("https://img/profile.png", "https://img/banner.png");
+    }
+
+    /** 원본이 이미 사라졌다면 승인을 막지 않고 템플릿 기본 이미지를 쓴다. */
+    @Test
+    void fallsBackToTheTemplateImageWhenTheMemberImageCannotBeCopied() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        givenCreatorWithMemberImage("members/7/gone.jpg");
+        given(objectStorage.get("members/7/gone.jpg")).willThrow(new ObjectNotFoundException("members/7/gone.jpg"));
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
+        given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        CreatorSpace space = service.createFromActiveTemplateIfAbsent(42L);
+
+        assertThat(space.getProfileImageKey()).isNull();
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
+        verify(imageRepository, never()).save(any());
+        verify(objectStorage, never()).put(any(), any(), any());
     }
 
     @Test
@@ -110,7 +140,7 @@ class CreatorSpaceServiceTest {
         CreatorSpace space = service.createFromActiveTemplateIfAbsent(42L);
 
         assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
-        verify(imagePinner).pin("https://img/profile.png", "https://img/banner.png");
+        verify(objectStorage, never()).get(any());
     }
 
     private void givenCreatorWithMemberImage(String imageKey) {
@@ -321,6 +351,8 @@ class CreatorSpaceServiceTest {
     private final CreatorContentOutbox contentOutbox = mock(CreatorContentOutbox.class);
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final ObjectStorage objectStorage = mock(ObjectStorage.class);
+    private final CreatorSpaceProfileImageRepository imageRepository = mock(CreatorSpaceProfileImageRepository.class);
 
     private CreatorSpaceService newService(CreatorSpaceRepository spaceRepository, CreatorSpaceTemplateService templateService) {
         return new CreatorSpaceService(
@@ -328,6 +360,7 @@ class CreatorSpaceServiceTest {
                 new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), imagePinner, contentOutbox,
                 creatorRepository, memberRepository,
-                new ProfileImageUrlResolver(new MemberProfileImageProperties("https://member-cdn.example")));
+                objectStorage, imageRepository,
+                new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://space-cdn.example")));
     }
 }
