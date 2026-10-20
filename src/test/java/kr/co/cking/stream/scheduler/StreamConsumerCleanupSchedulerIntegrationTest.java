@@ -10,6 +10,9 @@ import kr.co.cking.stream.application.config.StreamConsumerNames;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -19,6 +22,7 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 /** 떠난 소비자만 지우고, 대기 메시지가 있거나 읽기를 시도 중인 소비자, 이 서버와 재처리 소비자는 남기는지 검증한다. */
+@ExtendWith(OutputCaptureExtension.class)
 class StreamConsumerCleanupSchedulerIntegrationTest {
 
     private static final String SPEND_STREAM = "stream:consumer-cleanup-test:spend";
@@ -68,10 +72,26 @@ class StreamConsumerCleanupSchedulerIntegrationTest {
     }
 
     @Test
-    void Stream이나_그룹이_없어도_실패하지_않는다() {
+    void Stream이나_그룹이_없어도_실패하지_않는다(CapturedOutput output) {
+        redisTemplate.opsForStream().add(EARN_STREAM, Map.of("type", "test"));
+
         scheduler.cleanUp();
 
         assertThat(redisTemplate.hasKey(SPEND_STREAM)).isFalse();
+        assertThat(output).doesNotContain("Stream 소비자 정리에 실패했습니다");
+    }
+
+    @Test
+    void Stream이_아닌_키면_경고를_남기고_다른_Stream은_계속_정리한다(CapturedOutput output) throws InterruptedException {
+        redisTemplate.opsForValue().set(EARN_STREAM, "not-a-stream");
+        redisTemplate.opsForStream().createGroup(SPEND_STREAM, ReadOffset.from("0"), GROUP);
+        readAndAck("spend-departed-empty");
+        Thread.sleep(IDLE.toMillis() * 2);
+
+        scheduler.cleanUp();
+
+        assertThat(output).contains("Stream 소비자 정리에 실패했습니다", "stream=" + EARN_STREAM);
+        assertThat(consumerNames(SPEND_STREAM)).doesNotContain("spend-departed-empty");
     }
 
     private void readAndAck(String consumer) {

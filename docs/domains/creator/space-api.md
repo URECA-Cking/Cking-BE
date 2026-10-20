@@ -4,7 +4,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 
 ## 범위와 권한
 
-- Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 이 API는 만들어진 Space의 조회·수정만 다룬다.
+- Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 승인 때 회원이 올려 둔 프로필 사진이 있으면 그 파일을 Space용 파일로 복사해 프로필 사진으로 연결한다(회원이 나중에 사진을 바꾸거나 지워도 Space 사진은 유지된다). 기본 이미지로 되돌리면 템플릿 이미지다. 사진이 없거나 복사에 실패하면 템플릿 이미지를 쓴다. 승인을 거치지 않아 Space가 없는 Creator가 `PATCH /api/creator/space`를 처음 호출하면 같은 방식으로 Space를 만든 뒤 요청 값을 그대로 적용한다. 값의 우선순위는 요청에 담은 값 > 회원 프로필 사진 > 템플릿 기본값이다.
 - 공개 조회(`GET /api/creators`, `GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)는 인증 없이 호출할 수 있다.
 - 본인 API(`/api/creator/space`, `/api/creator/space/slug`, `/api/creator/space/profile-images`, `/api/creator/space/profile-image`, `/api/creator/space/banner-images`, `/api/creator/space/banner-image`, `/api/creator/profile`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 공유 URL은 프론트엔드의 `/space/{slug}` 형식이다. slug는 이 공개 조회의 탐색에만 사용하고, 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용한다. slug를 업무 기록에 저장하지 않는다.
@@ -206,7 +206,7 @@ Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 
 - 목록 조회의 `page`·`size`·`keyword`가 제약을 어기거나 숫자가 아니면 `VALIDATION_FAILED`(400)다.
 - 본인 API에서 JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`(401)다.
 - 본인 API 호출자가 Creator가 아니면 `FORBIDDEN`(403)이다.
-- 본인 API 호출자가 Creator지만 Space가 없으면 `RESOURCE_NOT_FOUND`(404)다. V19 백필이 건너뛰어진 기존 Creator가 해당한다([README.md](README.md#기존-승인-creator-백필v19)).
+- 본인 API 호출자가 Creator지만 Space가 없으면 `GET /api/creator/space`와 `PATCH /api/creator/space/slug`는 `RESOURCE_NOT_FOUND`(404)다. V19 백필이 건너뛰어진 기존 Creator가 해당한다([README.md](README.md#기존-승인-creator-백필v19)). `PATCH /api/creator/space`는 404 대신 Space를 만든 뒤 요청 값을 적용한다. 활성 템플릿이 없으면 이때도 `NO_ACTIVE_SPACE_TEMPLATE`로 실패한다.
 - 요청 필드가 누락되거나 공백·길이 초과·slug 형식 위반이면 `VALIDATION_FAILED`(400)다.
 - 업로드 파일이 이미지 형식·크기·해상도 규칙을 어기거나, 연결하려는 키가 본인의 업로드 완료 이미지가 아니면 `INVALID_SPACE_PROFILE_IMAGE`(400)이다.
 - 배너 업로드 파일이 이미지 형식·크기·해상도 규칙을 어기거나, 연결하려는 키가 본인이 배너로 올린 업로드 완료 이미지가 아니면 `INVALID_SPACE_BANNER_IMAGE`(400)이다.

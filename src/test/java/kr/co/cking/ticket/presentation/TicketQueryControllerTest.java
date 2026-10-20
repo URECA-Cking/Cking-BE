@@ -44,7 +44,7 @@ class TicketQueryControllerTest {
     @Test
     void creator별_ledger와_cursor를_반환한다() throws Exception {
         TicketLedgerItemResponse item = new TicketLedgerItemResponse(
-                10L, 3L, "EARN", 5L, null, "출석", "request-1",
+                10L, 3L, "EARN", 5L, "출석체크", 8L, "가을 이벤트", "출석", "request-1",
                 Instant.parse("2026-09-16T02:00:00Z"));
         when(ticketQueryService.getLedger(2L, 1L, 20, null))
                 .thenReturn(new TicketLedgerPage(1L, 2L, List.of(item), null, false));
@@ -56,6 +56,8 @@ class TicketQueryControllerTest {
                 .andExpect(jsonPath("$.data.items[0].deltaAmount").value(3))
                 .andExpect(jsonPath("$.data.items[0].type").value("EARN"))
                 .andExpect(jsonPath("$.data.items[0].missionId").value(5))
+                .andExpect(jsonPath("$.data.items[0].missionName").value("출석체크"))
+                .andExpect(jsonPath("$.data.items[0].eventTitle").value("가을 이벤트"))
                 .andExpect(jsonPath("$.data.userId").value(1))
                 .andExpect(jsonPath("$.data.creatorId").value(2))
                 .andExpect(jsonPath("$.data.hasNext").value(false));

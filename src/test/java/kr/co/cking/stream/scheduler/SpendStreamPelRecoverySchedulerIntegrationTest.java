@@ -25,6 +25,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.event.repository.EventEntryRepository;
+import kr.co.cking.stream.application.SpendRedeductionRefunder;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.domain.DeadStreamType;
 import kr.co.cking.stream.presentation.SpendStreamListener;
@@ -182,12 +183,13 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
         );
         assertThat(delivered).hasSize(1);
 
-        ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
+        ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields), delivered.get(0).getId().getValue());
 
         SimpleMeterRegistry redeliveryMetrics = new SimpleMeterRegistry();
         SpendStreamListener redeliveryListener = new SpendStreamListener(
-                ticketSpendLedgerService, redisTemplate, redeliveryMetrics, Clock.systemUTC(),
-                REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
+                ticketSpendLedgerService,
+                new SpendRedeductionRefunder(redisTemplate, REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP),
+                redisTemplate, redeliveryMetrics, Clock.systemUTC(), REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
         SpendStreamPelRecoveryScheduler redeliveryScheduler = new SpendStreamPelRecoveryScheduler(
                 redisTemplate, redeliveryListener, deadStreamMessageRepository, objectMapper,
                 REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP, 100L, 5L);

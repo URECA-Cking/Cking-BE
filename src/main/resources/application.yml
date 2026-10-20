@@ -245,6 +245,9 @@ cking:
       # 대기 메시지가 없고 이 시간 이상 읽기 시도가 없는 소비자를 지운다. 살아 있는 소비자는 2초마다 읽는다.
       idle: PT1H
       interval-ms: 600000
+    trim:
+      # 한 번에 최대 10,000건을 지우므로 초당 약 333건까지 따라간다. DB 반영 처리량보다 커야 한다.
+      interval-ms: 30000
   snapshot:
     recovery:
       interval-ms: 60000

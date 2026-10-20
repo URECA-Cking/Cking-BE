@@ -69,7 +69,8 @@ class EntrySpendServiceIntegrationTest {
             "req-guard-stuck",
             "req-guard-conflict",
             "req-decrby-fail",
-            "req-guard-ttl",
+            "req-guard-ttl-far",
+            "req-guard-ttl-near",
             "req-maintenance-lock",
             "req-maintenance-lock-replay",
             "req-real-lock",
@@ -381,25 +382,33 @@ class EntrySpendServiceIntegrationTest {
         assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(EVENT_ID))).isEqualTo("2");
     }
 
-    // issue #106: guard는 idemTtl이 아니라 endAt까지 유지돼야 한다 - idemTtl로
-    // 통일하면 이벤트가 1시간보다 오래 열려 있을 때 idem 저장 실패 후 guard까지
-    // 만료돼 재차감이 다시 가능해진다. endAt을 idemTtl보다 먼 2시간 뒤로 잡아
-    // guard TTL이 그만큼 유지되는지 확인한다.
+    // #673: guard가 이벤트 종료까지 남으면 응모가 쌓이는 만큼 Redis 메모리가 늘어난다.
+    // 종료 시각이 멀면 idemTtl(3600초) + 여유 10분 뒤에 만료된다.
     @Test
-    void guard_TTL은_idemTtl이_아니라_이벤트_종료_시각까지_유지된다() {
-        long endAtMillis = System.currentTimeMillis() + TimeUnit.HOURS.toMillis(2);
+    void guard는_종료_시각이_멀면_idemTtl에_여유를_더한_시간까지_유지된다() {
+        long guardTtl = spendAndGetGuardTtl(TimeUnit.HOURS.toMillis(2), "req-guard-ttl-far");
+
+        assertThat(guardTtl).isBetween(4190L, 4200L);
+    }
+
+    // 종료 뒤에는 Gate가 신규 요청을 막으므로 guard를 종료 시각보다 오래 둘 필요가 없다.
+    @Test
+    void guard는_종료_시각이_가까우면_종료_시각에_만료된다() {
+        long guardTtl = spendAndGetGuardTtl(TimeUnit.MINUTES.toMillis(30), "req-guard-ttl-near");
+
+        assertThat(guardTtl).isBetween(1790L, 1800L);
+    }
+
+    private long spendAndGetGuardTtl(long endAtFromNowMillis, String requestId) {
+        long endAtMillis = System.currentTimeMillis() + endAtFromNowMillis;
         redisTemplate.opsForValue().set(EntryRedisKeys.status(EVENT_ID), "OPEN");
         redisTemplate.opsForValue().set(EntryRedisKeys.endAt(EVENT_ID), String.valueOf(endAtMillis));
         redisTemplate.opsForValue().set(EntryRedisKeys.balance(CREATOR_ID, USER_ID), "10");
 
-        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, "req-guard-ttl", 2, CouponType.CREATOR);
+        EntrySpendResult result = entrySpendService.spend(EVENT_ID, USER_ID, CREATOR_ID, requestId, 2, CouponType.CREATOR);
 
         assertThat(result.code()).isEqualTo(EntrySpendResultCode.SUCCESS);
-
-        // idemTtl(3600초)보다 길게 유지되어야 하며, endAt(2시간 뒤)에 맞춰 7200초 근방이어야 한다.
-        Long guardTtl = redisTemplate.getExpire(EntryRedisKeys.spendGuard("req-guard-ttl"), TimeUnit.SECONDS);
-        assertThat(guardTtl).isGreaterThan(3600L);
-        assertThat(guardTtl).isBetween(7190L, 7200L);
+        return redisTemplate.getExpire(EntryRedisKeys.spendGuard(requestId), TimeUnit.SECONDS);
     }
 
     @Test

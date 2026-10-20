@@ -7,7 +7,9 @@ public interface CommonTicketLedgerView {
     Long getDeltaAmount();
     String getType();
     Long getMissionId();
+    String getMissionType();
     Long getEventId();
+    String getEventTitle();
     String getReason();
     String getRequestId();
     Instant getCreatedAt();
