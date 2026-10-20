@@ -4,8 +4,9 @@ on:
   pull_request:
     branches: [develop, main]
   # 기본 브랜치에서 한 번 돌아야 Gradle 캐시가 저장되고, 이후 모든 PR이 그걸 재사용한다.
+  # main push는 운영 배포다.
   push:
-    branches: [develop]
+    branches: [develop, main]
 
 # 기본은 읽기만 주고, 필요한 권한은 job별로 연다. 서드파티 액션이 쓸 수 있는 범위를 좁힌다.
 permissions:
@@ -119,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 셸 스크립트 검사
-        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh
+        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh scripts/prod-refresh.sh scripts/prod-recover.sh
       - name: 워크플로 검사
         run: >
           docker run --rm -v "$PWD:/repo:ro" -w /repo
@@ -136,7 +137,7 @@ jobs:
     name: Build and Push to GHCR
     # 검증을 통과한 커밋만 이미지로 만든다. 이미지 빌드는 -x test라 자체 검증이 없다.
     needs: [test, migration-version, lint]
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     # 개발 서버가 t4g(ARM)이므로 ARM 러너에서 네이티브 빌드한다.
     # x86 러너에서 QEMU로 크로스 빌드하면 Gradle 빌드가 몇 배 느려진다.
     runs-on: ubuntu-24.04-arm
@@ -293,3 +294,15 @@ jobs:
           FRONTEND_ORIGIN: https://dev.cking.co.kr
           EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: k6 run k6/smoke.js
+
+  # 운영 배포 단계는 수동 되돌리기와 같은 재사용 워크플로를 쓴다(deploy-prod.yml).
+  deploy-prod:
+    name: Deploy to prod
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-prod.yml
+    with:
+      image_tag: ${{ needs.build-and-push.outputs.image_tag }}
