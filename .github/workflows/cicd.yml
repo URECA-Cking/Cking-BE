@@ -12,12 +12,14 @@ on:
 permissions:
   contents: read
 
-# push 실행은 브랜치마다 push 순서대로 하나씩 돈다(#694). 실행은 push 순서로 만들어지고 대기 자리는 하나라, 연달아 머지하면
-# 가운데 실행은 취소되고 가장 최근 실행이 남는다. 진행 중인 실행(배포 포함)은 취소하지 않는다. 작업 단위 취소는 작업이 시작한
-# 순서(테스트가 끝난 순서)를 따라 옛 커밋의 빌드가 새 커밋의 빌드를 취소할 수 있어 쓰지 않는다. PR 실행은 실행마다 그룹이 달라 서로 기다리지 않는다.
+# push 실행은 브랜치마다 하나씩 돈다(#694). 진행 중인 실행(배포 포함)은 취소하지 않고, 대기 실행은 밀어내지 않고 모두 남긴다(queue: max).
+# 그룹 안의 순서는 보장되지 않으므로, 옛 커밋이 새 커밋 배포 뒤에 돌면 배포 단계의 비교(scripts/check-deploy-order.sh)가 건너뛴다.
+# 작업 단위 취소는 작업이 시작한 순서(테스트가 끝난 순서)를 따라 옛 커밋의 빌드가 새 커밋의 빌드를 취소할 수 있어 쓰지 않는다.
+# PR 실행은 실행마다 그룹이 달라 서로 기다리지 않는다.
 concurrency:
   group: ${{ github.event_name == 'push' && format('cicd-push-{0}', github.ref) || format('cicd-{0}', github.run_id) }}
   cancel-in-progress: false
+  queue: max
 
 env:
   AWS_REGION: ap-northeast-2
@@ -128,11 +130,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 셸 스크립트 검사
         run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh scripts/prod-refresh.sh scripts/prod-recover.sh scripts/check-deploy-order.sh
+      # actionlint는 concurrency의 queue 키를 아직 몰라 그 오류 하나만 무시한다(#694).
       - name: 워크플로 검사
         run: >
           docker run --rm -v "$PWD:/repo:ro" -w /repo
           rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
           -no-color
+          -ignore 'unexpected key "queue" for "concurrency" section'
       # 값은 배포 때 Parameter Store에서 들어오므로 변수 치환 없이 구조만 검사한다.
       - name: compose 검사
         run: |
@@ -197,7 +201,6 @@ jobs:
     permissions:
       contents: read
       id-token: write   # OIDC 토큰 발급. AWS 역할을 맡는 데 필요하다.
-      actions: read     # 최신 커밋 실행이 취소됐는지 확인
     # 실행 중인 배포는 취소하지 않는다. 컨테이너 교체 도중 워크플로가 취소되는 것을 막고,
     # dev 서버에는 한 번에 하나의 배포만 들어가도록 직렬화한다.
     concurrency:
@@ -212,6 +215,7 @@ jobs:
 
       # 동시 실행 그룹 안의 순서는 보장되지 않아 옛 커밋의 실행이 새 커밋 배포 뒤에 돌 수 있다(#694).
       # 개발 서버가 응답 헤더로 알려 주는 지금 이미지 태그와 비교해, 이번 커밋이 더 오래됐으면 배포하지 않는다.
+      # 서버가 응답하지 않아 태그를 모르면 배포한다(망가진 서버를 고치는 배포는 나가야 한다).
       - name: 배포된 커밋보다 오래됐는지 확인
         id: order
         env:
@@ -317,19 +321,6 @@ jobs:
           EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: k6 run k6/smoke.js
 
-      # 대기 중이던 최신 커밋의 실행이 옛 실행에 밀려 취소되면 그 커밋은 다음 실행 전까지 배포되지 않는다.
-      - name: 최신 커밋 실행이 취소됐는지 확인
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
-          if [ "$HEAD_SHA" != "$GITHUB_SHA" ]; then
-            CONCLUSION=$(gh run list --workflow cicd.yml --commit "$HEAD_SHA" --limit 1 --json conclusion --jq '.[0].conclusion // ""')
-            if [ "$CONCLUSION" = cancelled ]; then
-              echo "::warning::브랜치 마지막 커밋 ${HEAD_SHA:0:7}의 실행이 취소돼 배포되지 않았다. 그 실행을 다시 돌린다."
-            fi
-          fi
-
   # 운영 배포 단계는 수동 되돌리기와 같은 재사용 워크플로를 쓴다(deploy-prod.yml).
   deploy-prod:
     name: Deploy to prod
@@ -338,7 +329,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      actions: read
     uses: ./.github/workflows/deploy-prod.yml
     with:
       image_tag: ${{ needs.build-and-push.outputs.image_tag }}

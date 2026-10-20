@@ -32,7 +32,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      actions: read     # 최신 커밋 실행이 취소됐는지 확인
     # 운영 배포는 한 번에 하나만 들어간다. 서버 교체 도중 취소하지 않는다.
     concurrency:
       group: cd-deploy-prod
@@ -51,14 +50,22 @@ jobs:
 
       # 동시 실행 그룹 안의 순서는 보장되지 않아 옛 main 커밋의 실행이 새 커밋 배포 뒤에 돌 수 있다(#694).
       # 지금 운영 태그보다 오래된 커밋이면 배포하지 않는다. 되돌리기는 일부러 옛 태그를 올리므로 검사하지 않는다.
+      # 태그가 없으면(첫 배포) 배포하고, 권한·API 오류로 읽지 못하면 검사 없이 배포하지 않도록 멈춘다.
       - name: 운영 태그보다 오래됐는지 확인
         id: order
         if: github.event_name != 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          DEPLOYED=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG --query Parameter.Value --output text 2>/dev/null) \
-            || DEPLOYED=""
+          if DEPLOYED=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG \
+            --query Parameter.Value --output text 2>order-tag.err); then
+            :
+          elif grep -q ParameterNotFound order-tag.err; then
+            DEPLOYED=""
+          else
+            cat order-tag.err >&2
+            exit 1
+          fi
           RESULT=$(scripts/check-deploy-order.sh "$DEPLOYED" "$GITHUB_SHA")
           echo "$RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "deploy=$([ "${RESULT%% *}" = deploy ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -165,17 +172,3 @@ jobs:
           EXPECTED_IMAGE_TAG: ${{ steps.tag.outputs.previous }}
           DOCS_DISABLED: "1"
         run: k6 run k6/smoke.js
-
-      # 대기 중이던 최신 main 커밋의 실행이 옛 실행에 밀려 취소되면 그 커밋은 다음 실행 전까지 배포되지 않는다.
-      - name: 최신 커밋 실행이 취소됐는지 확인
-        if: github.event_name != 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
-          if [ "$HEAD_SHA" != "$GITHUB_SHA" ]; then
-            CONCLUSION=$(gh run list --workflow cicd.yml --commit "$HEAD_SHA" --limit 1 --json conclusion --jq '.[0].conclusion // ""')
-            if [ "$CONCLUSION" = cancelled ]; then
-              echo "::warning::main 마지막 커밋 ${HEAD_SHA:0:7}의 실행이 취소돼 운영에 배포되지 않았다. 그 실행을 다시 돌린다."
-            fi
-          fi
