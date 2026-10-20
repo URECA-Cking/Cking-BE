@@ -17,11 +17,14 @@ public interface TicketLedgerRepository extends JpaRepository<TicketLedger, Long
 
     @Query(value = """
             select l.ledger_id as ledgerId, l.delta_amount as deltaAmount, l.type as type,
-                   mc.mission_id as missionId, ee.event_id as eventId,
+                   mc.mission_id as missionId, m.type as missionType,
+                   ee.event_id as eventId, e.title as eventTitle,
                    l.reason as reason, l.request_id as requestId, l.created_at as createdAt
             from ticket_ledger l
             left join mission_completion mc on mc.completion_id = l.mission_completion_id
+            left join mission m on m.mission_id = mc.mission_id
             left join event_entry ee on ee.entry_id = l.event_entry_id
+            left join event e on e.event_id = ee.event_id
             where l.member_id = :memberId and l.creator_id = :creatorId
             order by l.created_at desc, l.ledger_id desc
             """, nativeQuery = true)
@@ -31,11 +34,14 @@ public interface TicketLedgerRepository extends JpaRepository<TicketLedger, Long
 
     @Query(value = """
             select l.ledger_id as ledgerId, l.delta_amount as deltaAmount, l.type as type,
-                   mc.mission_id as missionId, ee.event_id as eventId,
+                   mc.mission_id as missionId, m.type as missionType,
+                   ee.event_id as eventId, e.title as eventTitle,
                    l.reason as reason, l.request_id as requestId, l.created_at as createdAt
             from ticket_ledger l
             left join mission_completion mc on mc.completion_id = l.mission_completion_id
+            left join mission m on m.mission_id = mc.mission_id
             left join event_entry ee on ee.entry_id = l.event_entry_id
+            left join event e on e.event_id = ee.event_id
             where l.member_id = :memberId and l.creator_id = :creatorId
               and (l.created_at < :createdAt
                    or (l.created_at = :createdAt and l.ledger_id < :ledgerId))

@@ -72,7 +72,7 @@ class TicketAdminServiceTest {
     @Test
     void ADMIN은_Creator_전용_이력을_기존_조회_서비스로_반환한다() {
         TicketLedgerItemResponse item = new TicketLedgerItemResponse(
-                10L, 3L, "EARN", 5L, null, "출석", "request-1", Instant.parse("2026-10-13T00:00:00Z"));
+                10L, 3L, "EARN", 5L, null, null, null, "출석", "request-1", Instant.parse("2026-10-13T00:00:00Z"));
         when(ticketQueryService.getLedger(CREATOR_ID, MEMBER_ID, 20, null))
                 .thenReturn(new TicketLedgerPage(MEMBER_ID, CREATOR_ID, java.util.List.of(item), null, false));
 
@@ -91,7 +91,7 @@ class TicketAdminServiceTest {
     @Test
     void ADMIN은_공용_이력을_기존_조회_서비스로_반환한다() {
         CommonTicketLedgerItemResponse item = new CommonTicketLedgerItemResponse(
-                11L, -2L, "SPEND", null, 7L, null, "request-2", Instant.parse("2026-10-13T00:00:00Z"));
+                11L, -2L, "SPEND", null, null, 7L, null, null, "request-2", Instant.parse("2026-10-13T00:00:00Z"));
         when(commonTicketQueryService.getLedger(MEMBER_ID, 20, "cursor"))
                 .thenReturn(new CommonTicketLedgerPage(MEMBER_ID, java.util.List.of(item), "next", true));
 

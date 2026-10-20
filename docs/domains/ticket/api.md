@@ -29,7 +29,9 @@ Query: 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범�
     "deltaAmount": -3,
     "type": "SPEND",
     "missionId": null,
+    "missionName": null,
     "eventId": 5,
+    "eventTitle": "가을 팬미팅 응모",
     "reason": null,
     "requestId": "550e8400-e29b-41d4-a716-446655440000",
     "createdAt": "2026-09-18T00:00:00Z"
@@ -38,6 +40,8 @@ Query: 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범�
   "hasNext": false
 }
 ```
+
+`eventTitle`은 `eventId`가 있을 때 해당 이벤트 제목, `missionName`은 `missionId`가 있을 때 미션 유형의 표시 이름(`ATTENDANCE` 출석체크 · `LIKE` 좋아요 · `SHARE` 공유 · `YOUTUBE_SUBSCRIPTION` 유튜브 구독)이고, 없으면 둘 다 `null`이다. 이벤트가 소프트 삭제됐거나 미션이 종료돼도 제목·이름은 내려간다(원장은 과거 기록이므로). 같은 SQL의 JOIN으로 읽어 N+1이 없다. 표시 이름 매핑은 `MissionType.displayNameOf`가 유일한 정의다.
 
 cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDATION_FAILED`다.
 
@@ -53,7 +57,7 @@ cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDA
   `createdAt DESC, ledgerId DESC` cursor 조회를 그대로 사용한다. `cursor`는 두 종류 모두 기존
   URL-safe Base64 `(createdAt, ledgerId)` 형식이다.
 - `EARN`, `SPEND`, `COMPENSATE` 항목에 발생 시각, 증감량, 유형, 관련 미션·이벤트, 사유를 포함한다.
-  공용 응모권은 `creatorId`가 `null`이다.
+  공용 응모권은 `creatorId`가 `null`이다. 항목은 사용자 원장과 같은 `missionName`·`eventTitle`도 담는다.
 
 ```json
 {
@@ -65,7 +69,9 @@ cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDA
     "deltaAmount": -3,
     "type": "SPEND",
     "missionId": null,
+    "missionName": null,
     "eventId": 5,
+    "eventTitle": "가을 팬미팅 응모",
     "reason": null,
     "requestId": "550e8400-e29b-41d4-a716-446655440000",
     "createdAt": "2026-09-18T00:00:00Z"
@@ -168,7 +174,7 @@ GET /api/admin/tickets/balance?memberId=1&couponType=CREATOR&creatorId=2
 
 ## GET /api/tickets/common/history
 
-Query: 선택 `cursor`, 선택 `size`(기본 20, 1~100). 형식은 `GET /api/creators/{creatorId}/tickets/history`와 같되 `creatorId`가 없다.
+Query: 선택 `cursor`, 선택 `size`(기본 20, 1~100). 형식은 `GET /api/creators/{creatorId}/tickets/history`와 같되 `creatorId`가 없다. `eventTitle`·`missionName` 규칙도 같다(공용 미션은 현재 출석체크뿐).
 
 ```json
 {
@@ -178,7 +184,9 @@ Query: 선택 `cursor`, 선택 `size`(기본 20, 1~100). 형식은 `GET /api/cre
     "deltaAmount": 1,
     "type": "EARN",
     "missionId": 100,
+    "missionName": "출석체크",
     "eventId": null,
+    "eventTitle": null,
     "reason": null,
     "requestId": "550e8400-e29b-41d4-a716-446655440000",
     "createdAt": "2026-09-18T00:00:00Z"
