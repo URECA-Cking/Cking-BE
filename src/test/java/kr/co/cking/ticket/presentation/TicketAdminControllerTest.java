@@ -50,7 +50,7 @@ class TicketAdminControllerTest {
     @Test
     void 관리자가_Creator_전용_이력을_조회한다() throws Exception {
         TicketLedgerItemResponse item = new TicketLedgerItemResponse(
-                10L, 3L, "EARN", 5L, null, "출석", "request-1", Instant.parse("2026-10-13T00:00:00Z"));
+                10L, 3L, "EARN", 5L, null, null, null, "출석", "request-1", Instant.parse("2026-10-13T00:00:00Z"));
         when(ticketAdminService.getHistory(1L, 2L, CouponType.CREATOR, 3L, 20, null))
                 .thenReturn(new AdminTicketLedgerPage(2L, CouponType.CREATOR, 3L, java.util.List.of(item), null, false));
 
@@ -68,7 +68,7 @@ class TicketAdminControllerTest {
     @Test
     void 관리자가_공용_이력을_조회한다() throws Exception {
         TicketLedgerItemResponse item = new TicketLedgerItemResponse(
-                11L, -2L, "SPEND", null, 7L, null, "request-2", Instant.parse("2026-10-13T00:00:00Z"));
+                11L, -2L, "SPEND", null, null, 7L, null, null, "request-2", Instant.parse("2026-10-13T00:00:00Z"));
         when(ticketAdminService.getHistory(1L, 2L, CouponType.COMMON, null, 20, null))
                 .thenReturn(new AdminTicketLedgerPage(2L, CouponType.COMMON, null, java.util.List.of(item), "next", true));
 
@@ -117,9 +117,9 @@ class TicketAdminControllerTest {
     @Test
     void 이력_조회_nextCursor로_다음_페이지를_조회한다() throws Exception {
         TicketLedgerItemResponse firstItem = new TicketLedgerItemResponse(
-                10L, 1L, "EARN", 5L, null, null, "request-1", Instant.parse("2026-10-13T02:00:00Z"));
+                10L, 1L, "EARN", 5L, null, null, null, null, "request-1", Instant.parse("2026-10-13T02:00:00Z"));
         TicketLedgerItemResponse nextItem = new TicketLedgerItemResponse(
-                9L, -1L, "SPEND", null, 7L, null, "request-2", Instant.parse("2026-10-13T01:00:00Z"));
+                9L, -1L, "SPEND", null, null, 7L, null, null, "request-2", Instant.parse("2026-10-13T01:00:00Z"));
         when(ticketAdminService.getHistory(1L, 2L, CouponType.CREATOR, 3L, 1, null))
                 .thenReturn(new AdminTicketLedgerPage(2L, CouponType.CREATOR, 3L,
                         java.util.List.of(firstItem), "next-cursor", true));
