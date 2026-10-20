@@ -410,6 +410,11 @@ class QuizGenerationContentReviewIntegrationTest {
         GROUNDER.hold();
         long id = request(creator);
         awaitState(id, "RUNNING", "GROUNDING");
+        // 상태는 Worker A가 점유한 직후 보인다. 그 뒤 Worker A가 spy를 부르는 중에 예외를 지정하면 지정이 엉킨다.
+        for (int attempt = 0; attempt < 100 && GROUNDER.calls() == 0; attempt++) {
+            sleep();
+        }
+        assertThat(GROUNDER.calls()).as("Worker A가 Grounding 호출 중").isEqualTo(1);
 
         doThrow(new QueryTimeoutException("Lock wait timeout")).when(targetGenerationStore()).claim(eq(id), any());
         worker.run(id);
