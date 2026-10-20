@@ -126,6 +126,48 @@ class CreatorSpaceServiceTest {
         verify(objectStorage, never()).put(any(), any(), any());
     }
 
+    /** 저장소 쓰기가 실패해도 승인은 진행된다. 올리다 만 기록은 연결되지 않은 업로드로 남아 정리 작업이 회수한다. */
+    @Test
+    void fallsBackToTheTemplateImageWhenStoringTheCopyFails() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        givenCreatorWithMemberImage("members/7/photo.jpg");
+        given(objectStorage.get("members/7/photo.jpg")).willReturn(new byte[]{1});
+        willThrow(new IllegalStateException("storage down")).given(objectStorage).put(any(), any(), any());
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
+        given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        CreatorSpace space = service.createFromActiveTemplateIfAbsent(42L);
+
+        assertThat(space.getProfileImageKey()).isNull();
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
+        verify(imageRepository, never()).markUploaded(any(), any());
+        verify(imageRepository, never()).link(any(), any(), any());
+    }
+
+    /** DB 오류를 삼키면 트랜잭션이 rollback-only인 채 이어져 승인 커밋이 실패하므로, 그대로 전파해 승인 전체를 되돌린다. */
+    @Test
+    void propagatesDatabaseFailuresWhileRecordingTheCopy() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        givenCreatorWithMemberImage("members/7/photo.jpg");
+        given(objectStorage.get("members/7/photo.jpg")).willReturn(new byte[]{1});
+        willThrow(new IllegalStateException("db down")).given(imageRepository).save(any());
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
+        given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        assertThatThrownBy(() -> service.createFromActiveTemplateIfAbsent(42L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("db down");
+        verify(objectStorage, never()).put(any(), any(), any());
+    }
+
     @Test
     void usesTheTemplateProfileImageWhenTheMemberHasNoProfileImage() {
         CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);

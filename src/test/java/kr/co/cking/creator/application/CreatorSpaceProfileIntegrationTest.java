@@ -145,6 +145,28 @@ class CreatorSpaceProfileIntegrationTest {
     }
 
     @Test
+    void 회원_사진이_있는_Creator의_첫_저장은_요청한_프로필_이미지_URL을_우선한다() {
+        Member admin = createMember("첫저장사진관리자", MemberRole.ADMIN);
+        Member owner = createMember("첫저장사진크리에이터", MemberRole.USER);
+        String imageKey = "member-profile-images/" + owner.getMemberId() + "/first-save.jpg";
+        objectStorage.put(imageKey, new byte[]{1, 2, 3}, "image/jpeg");
+        owner.updateProfileImageKey(imageKey);
+        memberRepository.saveAndFlush(owner);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "첫저장사진 크리에이터"));
+
+        CreatorSpace space = profileService.updateMine(owner.getMemberId(),
+                new CreatorSpaceProfileFields("첫 소개", "https://img/mine.png", "https://img/banner.png")).space();
+
+        // 요청 값이 복사해 둔 회원 사진보다 우선이고, 복사본 연결은 풀린다.
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/mine.png");
+        assertThat(space.getProfileImageKey()).isNull();
+        assertThat(space.getIntroText()).isEqualTo("첫 소개");
+        objectStorage.delete(imageKey);
+    }
+
+    @Test
     void Space가_없는_Creator의_동시_첫_저장은_한_행만_생성한다() throws Exception {
         Member admin = createMember("첫저장관리자", MemberRole.ADMIN);
         Member owner = createMember("첫저장크리에이터", MemberRole.USER);

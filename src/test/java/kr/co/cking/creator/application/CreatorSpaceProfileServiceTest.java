@@ -249,6 +249,34 @@ class CreatorSpaceProfileServiceTest {
         assertThat(space.getIntroText()).isEqualTo(NEW_PROFILE.introText());
     }
 
+    /** 첫 저장으로 만든 Space에 회원 사진이 복사돼 있어도, 요청이 다른 프로필 이미지 URL을 보냈다면 요청 값이 우선이다. */
+    @Test
+    void updateMineReleasesTheCarriedMemberImageWhenTheFirstRequestSendsAnotherUrl() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty());
+        space.updateProfileImage("creator-space-profile-images/42/copy.jpg", "https://cdn/copy.jpg");
+        given(spaceService.createFromActiveTemplateIfAbsent(42L)).willReturn(space);
+
+        service.updateMine(7L, new CreatorSpaceProfileFields("소개", "https://img/mine.png", "https://img/banner.png"));
+
+        then(profileImageManager).should().apply(creator, space, null, true);
+    }
+
+    /** 현재 URL을 그대로 보낸 첫 저장은 복사해 둔 회원 사진을 건드리지 않는다. */
+    @Test
+    void updateMineKeepsTheCarriedMemberImageWhenTheFirstRequestSendsTheCurrentUrl() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty());
+        space.updateProfileImage("creator-space-profile-images/42/copy.jpg", "https://cdn/copy.jpg");
+        given(spaceService.createFromActiveTemplateIfAbsent(42L)).willReturn(space);
+
+        service.updateMine(7L, new CreatorSpaceProfileFields("소개", "https://cdn/copy.jpg", "https://img/banner.png"));
+
+        then(profileImageManager).should(never()).apply(creator, space, null, true);
+    }
+
     /** Space가 이미 있어도 락 순서를 유지하되, 새 Space를 만들지 않는다. */
     @Test
     void updateMineDoesNotCreateASpaceWhenOneExists() {

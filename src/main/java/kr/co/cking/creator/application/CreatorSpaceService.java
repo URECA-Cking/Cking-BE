@@ -26,8 +26,8 @@ import java.util.UUID;
  * 활성 템플릿을 복사해 Space를 만든다(승인 트랜잭션, 그리고 Space가 없는 Creator의 첫 수정). 템플릿이 없거나 slug 규칙이
  * 유효하지 않으면 예외를 던져 호출 전체를 롤백한다. 기존 템플릿 데이터도 생성 직전에 검증한다.
  * 회원이 프로필 사진을 올려 둔 상태였다면 그 파일을 Space용 파일로 복사해 프로필 사진으로 연결한다. 회원 사진 URL만 가리키면
- * 회원이 사진을 교체·삭제할 때 Space 사진이 깨지므로 Space가 자기 파일을 갖는다. 복사에 실패하면 승인·저장을 막지 않고
- * 템플릿 기본 이미지로 둔다.
+ * 회원이 사진을 교체·삭제할 때 Space 사진이 깨지므로 Space가 자기 파일을 갖는다. 저장소 읽기·쓰기에 실패하면 승인·저장을 막지 않고
+ * 템플릿 기본 이미지로 둔다(DB 오류는 그대로 전파한다).
  */
 @Service
 @RequiredArgsConstructor
@@ -74,7 +74,7 @@ public class CreatorSpaceService {
 
     /**
      * 회원이 올려 둔 프로필 사진이 있으면 Space 소유 파일로 복사해 프로필 사진으로 연결한다. 기본 이미지(복귀 대상)는 템플릿 이미지로 남는다.
-     * 원본이 이미 사라졌거나 저장소 오류로 복사하지 못하면 기록만 남기고 템플릿 이미지를 그대로 쓴다.
+     * 원본이 이미 사라졌거나 저장소 오류로 복사하지 못하면 기록만 남기고 템플릿 이미지를 그대로 쓴다. DB 오류는 삼키지 않는다.
      */
     private void carryOverMemberProfileImage(Long creatorId, CreatorSpace space) {
         String memberKey = creatorRepository.findById(creatorId)
@@ -85,20 +85,30 @@ public class CreatorSpaceService {
         if (memberKey == null) {
             return;
         }
+        byte[] bytes;
         try {
-            byte[] bytes = objectStorage.get(memberKey);
-            String key = "%s%d/%s.jpg".formatted(SPACE_IMAGE_KEY_PREFIX, creatorId, UUID.randomUUID());
-            Instant uploadedAt = clock.instant();
-            imageRepository.save(CreatorSpaceProfileImage.uploading(key, creatorId, uploadedAt));
-            objectStorage.put(key, bytes, "image/jpeg");
-            imageRepository.markUploaded(key, uploadedAt);
-            if (imageRepository.link(key, creatorId, uploadedAt) != 1) {
-                throw new IllegalStateException("복사한 프로필 사진을 연결하지 못했습니다. key=" + key);
-            }
-            space.updateProfileImage(key, imageUrlResolver.resolve(key));
+            bytes = objectStorage.get(memberKey);
         } catch (RuntimeException exception) {
-            log.warn("회원 프로필 사진을 Space로 복사하지 못해 템플릿 기본 이미지를 씁니다. creatorId={}", creatorId, exception);
+            log.warn("회원 프로필 사진을 읽지 못해 템플릿 기본 이미지를 씁니다. creatorId={}", creatorId, exception);
+            return;
         }
+        String key = "%s%d/%s.jpg".formatted(SPACE_IMAGE_KEY_PREFIX, creatorId, UUID.randomUUID());
+        Instant uploadedAt = clock.instant();
+        // DB 오류는 잡지 않는다. 잡아도 트랜잭션이 rollback-only일 수 있어 승인 커밋이 실패하므로, 저장소 오류만 대체 처리한다.
+        imageRepository.save(CreatorSpaceProfileImage.uploading(key, creatorId, uploadedAt));
+        try {
+            objectStorage.put(key, bytes, "image/jpeg");
+        } catch (RuntimeException exception) {
+            // 연결되지 않은 업로드 기록은 정리 작업이 회수한다.
+            log.warn("회원 프로필 사진을 Space 저장소에 복사하지 못해 템플릿 기본 이미지를 씁니다. creatorId={}", creatorId, exception);
+            return;
+        }
+        imageRepository.markUploaded(key, uploadedAt);
+        if (imageRepository.link(key, creatorId, uploadedAt) != 1) {
+            log.warn("복사한 프로필 사진을 연결하지 못해 템플릿 기본 이미지를 씁니다. creatorId={}, key={}", creatorId, key);
+            return;
+        }
+        space.updateProfileImage(key, imageUrlResolver.resolve(key));
     }
 
     /**

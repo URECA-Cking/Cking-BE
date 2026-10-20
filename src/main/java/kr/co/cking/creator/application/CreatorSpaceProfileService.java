@@ -24,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -118,8 +119,11 @@ public class CreatorSpaceProfileService {
         // 모든 첫 저장 요청이 Creator 행을 먼저 잠근 뒤 Space를 조회하도록 락 순서를 통일한다.
         creatorRepository.findByIdForUpdate(creator.getCreatorId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
-        CreatorSpace space = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId())
-                .orElseGet(() -> spaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId()));
+        Optional<CreatorSpace> existing = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId());
+        CreatorSpace space = existing.orElseGet(() -> spaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId()));
+        if (existing.isEmpty()) {
+            releaseCarriedImageForRequestedUrl(creator, space, fields);
+        }
         // URL 입력이 실제로 새로 적용되는 경우만 템플릿 이미지를 고정한다. 클라이언트는 현재 URL을 그대로 다시 보내므로,
         // 바뀌지 않는 URL까지 고정하면 이미 정리된 이미지를 가진 Space는 소개글만 고쳐도 계속 거절된다.
         imagePinner.pin(
@@ -211,6 +215,18 @@ public class CreatorSpaceProfileService {
     private CreatorSpace requireSpace(Long creatorId) {
         return spaceRepository.findByCreatorId(creatorId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    /**
+     * 방금 만든 Space에 회원 사진을 복사해 연결했는데 이번 요청이 다른 프로필 이미지 URL을 보냈다면, 요청 값이 우선이므로 복사본 연결을 풀고
+     * (이전 파일은 삭제 대기) 이어지는 URL 적용이 그대로 반영되게 한다. 현재 URL을 그대로 보냈거나 키를 명시한 요청은 건드리지 않는다.
+     */
+    private void releaseCarriedImageForRequestedUrl(Creator creator, CreatorSpace space, CreatorSpaceProfileFields fields) {
+        if (space.getProfileImageKey() != null
+                && !fields.profileImageKeyProvided()
+                && !Objects.equals(fields.profileImageUrl(), space.getProfileImageUrl())) {
+            profileImageManager.apply(creator, space, null, true);
+        }
     }
 
     /** 수정·slug 변경에 사용할 Creator Space를 비관적 잠금으로 조회한다. */
