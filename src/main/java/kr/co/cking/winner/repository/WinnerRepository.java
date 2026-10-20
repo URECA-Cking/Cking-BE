@@ -10,6 +10,8 @@ public interface WinnerRepository extends JpaRepository<Winner, Long> {
 
     List<Winner> findAllByDrawingIdOrderByRankInDrawingAsc(Long drawingId);
 
+    long countByDrawingId(Long drawingId);
+
     /**
      * Event의 공개·완료 Drawing에 속한 Winner만 추첨 회차와 순위 순으로 조회한다.
      *
