@@ -48,9 +48,31 @@ jobs:
           role-to-assume: ${{ env.PROD_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # 동시 실행 그룹 안의 순서는 보장되지 않아 옛 main 커밋의 실행이 새 커밋 배포 뒤에 돌 수 있다(#694).
+      # 지금 운영 태그보다 오래된 커밋이면 배포하지 않는다. 되돌리기는 일부러 옛 태그를 올리므로 검사하지 않는다.
+      # 태그가 없으면(첫 배포) 배포하고, 권한·API 오류로 읽지 못하면 검사 없이 배포하지 않도록 멈춘다.
+      - name: 운영 태그보다 오래됐는지 확인
+        id: order
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if DEPLOYED=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG \
+            --query Parameter.Value --output text 2>order-tag.err); then
+            :
+          elif grep -q ParameterNotFound order-tag.err; then
+            DEPLOYED=""
+          else
+            cat order-tag.err >&2
+            exit 1
+          fi
+          RESULT=$(scripts/check-deploy-order.sh "$DEPLOYED" "$GITHUB_SHA")
+          echo "$RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "deploy=$([ "${RESULT%% *}" = deploy ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       # main 머지는 이번 태그의 배포 파일을 올린다. 되돌리기는 예전에 올린 파일이 있는지만 확인한다.
       - name: 배포 파일 S3 업로드
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name != 'workflow_dispatch' && steps.order.outputs.deploy == 'true'
         run: |
           aws s3 cp docker-compose.prod.yml "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/docker-compose.yml"
           aws s3 cp deploy/deploy.sh        "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh"
@@ -74,6 +96,7 @@ jobs:
       # 권한·API 오류로 읽지 못하면 되돌릴 태그 없이 배포하지 않도록 여기서 멈춘다.
       - name: 배포 태그 갱신
         id: tag
+        if: steps.order.outputs.deploy != 'false'
         run: |
           if PREVIOUS=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG \
             --query Parameter.Value --output text 2>get-tag.err); then
@@ -89,6 +112,7 @@ jobs:
 
       - name: 앱 서버 교체
         id: refresh
+        if: steps.order.outputs.deploy != 'false'
         run: scripts/prod-refresh.sh "$PROD_ASG"
 
       # 교체가 실패하면 교체를 취소하고 배포 태그를 되돌린다. 취소해도 이미 바뀐 서버는 되돌아가지 않으므로,
@@ -103,6 +127,7 @@ jobs:
         run: scripts/prod-recover.sh "$PROD_ASG" "$REFRESH_ID" "$STARTED" "$PREVIOUS"
 
       - name: k6 설치
+        if: steps.order.outputs.deploy != 'false'
         env:
           K6_VERSION: v2.2.0
           K6_SHA256: b5a8003c86f35f5cd5ceef1490312c48e587696c94d998cefc6d7b3b4cb1597d
@@ -116,6 +141,7 @@ jobs:
       # 서버 안 검사가 보지 못하는 ALB·인증서·WAF 경로까지 사용자와 같은 경로로 확인한다.
       - name: 스모크 테스트
         id: smoke
+        if: steps.order.outputs.deploy != 'false'
         env:
           BASE_URL: https://api.cking.co.kr
           FRONTEND_ORIGIN: https://cking.co.kr
