@@ -16,7 +16,7 @@
 
 ## 소유 데이터
 
-`creator_follow` (V33, V86): `member_id`, `creator_id`, `created_at`, `last_read_at`(nullable). 같은 사용자·크리에이터 쌍은 `uk_creator_follow_member_creator`로 하나만 존재한다. V86은 읽음 시각을 추가한다.
+`creator_follow` (V33, V87): `member_id`, `creator_id`, `created_at`, `last_read_at`(nullable). 같은 사용자·크리에이터 쌍은 `uk_creator_follow_member_creator`로 하나만 존재한다. V87은 읽음 시각을 추가한다.
 
 ## 불변조건
 
