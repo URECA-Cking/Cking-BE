@@ -4,6 +4,7 @@ import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.domain.CreatorApplicationStatus;
 import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.repository.CreatorApplicationRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.member.domain.Member;
@@ -12,6 +13,7 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +38,9 @@ class CreatorApplicationServiceIntegrationTest {
 
     @Autowired
     private CreatorRepository creatorRepository;
+
+    @Autowired
+    private CreatorApplicationRepository creatorApplicationRepository;
 
     @Autowired
     private CreatorSpaceRepository creatorSpaceRepository;
@@ -75,6 +80,27 @@ class CreatorApplicationServiceIntegrationTest {
                 .orElseThrow();
         assertThat(space.getIntroText()).isEqualTo("소개");
         assertThat(space.getSlug()).isEqualTo("creator-" + creator.orElseThrow().getCreatorId());
+    }
+
+    @Test
+    void adminCanFilterApplicationsByStatusWithPagination() {
+        Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
+        CreatorApplication pending = creatorApplicationRepository.save(new CreatorApplication(
+                memberRepository.save(configuredApplicant()).getMemberId()));
+        CreatorApplication rejected = new CreatorApplication(memberRepository.save(configuredApplicant()).getMemberId());
+        rejected.reject(admin.getMemberId(), "거절 사유");
+        creatorApplicationRepository.save(rejected);
+        CreatorApplication approved = new CreatorApplication(memberRepository.save(configuredApplicant()).getMemberId());
+        approved.approve(admin.getMemberId());
+        creatorApplicationRepository.save(approved);
+
+        var result = creatorApplicationService.findAllForAdmin(
+                admin.getMemberId(), CreatorApplicationStatus.PENDING, PageRequest.of(0, 1));
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent()).extracting(CreatorApplicationService.AdminApplication::application)
+                .containsExactly(pending);
+        assertThat(result.hasNext()).isFalse();
     }
 
     private Member configuredApplicant() {

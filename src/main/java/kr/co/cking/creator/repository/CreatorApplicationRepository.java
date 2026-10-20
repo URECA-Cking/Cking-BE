@@ -17,5 +17,10 @@ public interface CreatorApplicationRepository extends JpaRepository<CreatorAppli
 
     Page<CreatorApplication> findByMemberIdOrderByRequestedAtDescIdDesc(Long memberId, Pageable pageable);
 
+    Page<CreatorApplication> findByStatusOrderByRequestedAtAscIdAsc(
+            CreatorApplicationStatus status,
+            Pageable pageable
+    );
+
     Page<CreatorApplication> findAllByOrderByRequestedAtAscIdAsc(Pageable pageable);
 }
