@@ -22,6 +22,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.event.domain.EventEntry;
 import kr.co.cking.event.repository.EventEntryRepository;
+import kr.co.cking.ticket.application.dto.SpendApplyResult;
 import kr.co.cking.ticket.application.dto.SpendCommand;
 import kr.co.cking.ticket.domain.CommonTicketLedger;
 import kr.co.cking.ticket.domain.CouponType;
@@ -148,7 +149,7 @@ class TicketSpendLedgerServiceIntegrationTest {
     void COMMON_요청은_공용_잔액과_공용_Ledger에_반영되고_크리에이터_잔액은_그대로다() {
         String requestId = UUID.randomUUID().toString();
 
-        ticketSpendLedgerService.apply(commonCommand(requestId, 3L));
+        ticketSpendLedgerService.apply(commonCommand(requestId, 3L), null);
 
         EventEntry entry = eventEntryRepository.findByRequestId(requestId).orElseThrow();
         assertThat(entry.getUsedTicketCount()).isEqualTo(3L);
@@ -176,7 +177,7 @@ class TicketSpendLedgerServiceIntegrationTest {
         userCommonTicketBalanceRepository.deleteById(MEMBER_ID);
         String requestId = UUID.randomUUID().toString();
 
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(commonCommand(requestId, 3L)))
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(commonCommand(requestId, 3L), null))
                 .isInstanceOf(IllegalStateException.class);
 
         assertThat(eventEntryRepository.findByRequestId(requestId)).isEmpty();
@@ -186,7 +187,7 @@ class TicketSpendLedgerServiceIntegrationTest {
     void Entry_Ledger_Balance를_한_트랜잭션으로_반영한다() {
         String requestId = UUID.randomUUID().toString();
 
-        ticketSpendLedgerService.apply(command(requestId, 3L));
+        ticketSpendLedgerService.apply(command(requestId, 3L), null);
 
         EventEntry entry = eventEntryRepository.findByRequestId(requestId).orElseThrow();
         assertThat(entry.getMemberId()).isEqualTo(MEMBER_ID);
@@ -211,8 +212,8 @@ class TicketSpendLedgerServiceIntegrationTest {
         String requestId = UUID.randomUUID().toString();
         SpendCommand command = command(requestId, 4L);
 
-        assertThat(ticketSpendLedgerService.apply(command)).isTrue();
-        assertThat(ticketSpendLedgerService.apply(command)).isFalse(); // at-least-once 재전달 시뮬레이션
+        assertThat(ticketSpendLedgerService.apply(command, null)).isEqualTo(SpendApplyResult.APPLIED);
+        assertThat(ticketSpendLedgerService.apply(command, null)).isEqualTo(SpendApplyResult.ALREADY_APPLIED); // at-least-once 재전달 시뮬레이션
 
         Integer entryCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM event_entry WHERE member_id = ?", Integer.class, MEMBER_ID);
@@ -227,13 +228,50 @@ class TicketSpendLedgerServiceIntegrationTest {
     }
 
     @Test
+    void 반영한_메시지_ID를_저장하고_같은_메시지가_다시_오면_이미_반영으로_본다() {
+        String requestId = UUID.randomUUID().toString();
+        SpendCommand command = command(requestId, 4L);
+
+        assertThat(ticketSpendLedgerService.apply(command, "1-0")).isEqualTo(SpendApplyResult.APPLIED);
+        assertThat(ticketSpendLedgerService.apply(command, "1-0")).isEqualTo(SpendApplyResult.ALREADY_APPLIED);
+
+        assertThat(eventEntryRepository.findByRequestId(requestId).orElseThrow().getSourceStreamId()).isEqualTo("1-0");
+    }
+
+    // #673: idem·guard가 만료된 뒤 같은 requestId로 재시도하면 응모 Lua가 새 메시지로 다시 차감한다.
+    @Test
+    void 이미_반영된_requestId가_새_메시지로_오면_다시_차감으로_보고_DB는_바꾸지_않는다() {
+        String requestId = UUID.randomUUID().toString();
+        SpendCommand command = command(requestId, 4L);
+        ticketSpendLedgerService.apply(command, "1-0");
+
+        assertThat(ticketSpendLedgerService.apply(command, "2-0")).isEqualTo(SpendApplyResult.REDEDUCTED);
+
+        Integer ledgerCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM ticket_ledger WHERE member_id = ?", Integer.class, MEMBER_ID);
+        UserTicketBalance balance = userTicketBalanceRepository
+                .findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID).orElseThrow();
+        assertThat(ledgerCount).isEqualTo(1);
+        assertThat(balance.getBalance()).isEqualTo(96L);
+    }
+
+    @Test
+    void 반영한_메시지_ID가_없는_기존_응모는_새_메시지가_와도_이미_반영으로_본다() {
+        String requestId = UUID.randomUUID().toString();
+        SpendCommand command = command(requestId, 4L);
+        ticketSpendLedgerService.apply(command, null);
+
+        assertThat(ticketSpendLedgerService.apply(command, "2-0")).isEqualTo(SpendApplyResult.ALREADY_APPLIED);
+    }
+
+    @Test
     void 같은_requestId에_다른_ticketCount가_들어오면_반영하지_않는다() {
         String requestId = UUID.randomUUID().toString();
-        ticketSpendLedgerService.apply(command(requestId, 4L));
+        ticketSpendLedgerService.apply(command(requestId, 4L), null);
 
         SpendCommand conflicting = command(requestId, 999L);
 
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting))
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting, null))
                 .isInstanceOf(IllegalStateException.class);
 
         UserTicketBalance balance = userTicketBalanceRepository
@@ -246,11 +284,11 @@ class TicketSpendLedgerServiceIntegrationTest {
     @Test
     void 같은_requestId에_couponType만_달라도_반영하지_않는다() {
         String requestId = UUID.randomUUID().toString();
-        ticketSpendLedgerService.apply(command(requestId, 4L)); // CREATOR로 최초 반영
+        ticketSpendLedgerService.apply(command(requestId, 4L), null); // CREATOR로 최초 반영
 
         SpendCommand conflicting = commonCommand(requestId, 4L); // 같은 requestId, COMMON로 재전달
 
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting))
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting, null))
                 .isInstanceOf(IllegalStateException.class);
 
         // 최초 CREATOR 반영만 남아있고 COMMON Ledger는 생기지 않아야 한다.
@@ -271,8 +309,8 @@ class TicketSpendLedgerServiceIntegrationTest {
         seedCommonMissionEarnLedger(sharedRequestId);
 
         SpendCommand command = command(sharedRequestId, 4L);
-        ticketSpendLedgerService.apply(command); // 최초 반영
-        ticketSpendLedgerService.apply(command); // at-least-once 재전달 - 예외 없이 통과해야 한다
+        ticketSpendLedgerService.apply(command, null); // 최초 반영
+        ticketSpendLedgerService.apply(command, null); // at-least-once 재전달 - 예외 없이 통과해야 한다
 
         Integer entryCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM event_entry WHERE member_id = ? AND request_id = ?",
@@ -314,11 +352,11 @@ class TicketSpendLedgerServiceIntegrationTest {
     @Test
     void 같은_requestId에_creatorId만_달라도_반영하지_않는다() {
         String requestId = UUID.randomUUID().toString();
-        ticketSpendLedgerService.apply(command(requestId, 4L));
+        ticketSpendLedgerService.apply(command(requestId, 4L), null);
 
         SpendCommand conflicting = new SpendCommand(eventId, MEMBER_ID, OTHER_CREATOR_ID, requestId, 4L, CouponType.CREATOR);
 
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting))
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(conflicting, null))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -327,7 +365,7 @@ class TicketSpendLedgerServiceIntegrationTest {
         SpendCommand command = new SpendCommand(
                 otherCreatorEventId, MEMBER_ID, CREATOR_ID, UUID.randomUUID().toString(), 3L, CouponType.CREATOR);
 
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(command))
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(command, null))
                 .isInstanceOf(IllegalStateException.class);
 
         assertThat(eventEntryRepository.findByRequestId(command.requestId())).isEmpty();
@@ -348,7 +386,7 @@ class TicketSpendLedgerServiceIntegrationTest {
                 futures.add(executor.submit(() -> {
                     startLatch.await();
                     try {
-                        ticketSpendLedgerService.apply(command);
+                        ticketSpendLedgerService.apply(command, null);
                         return true;
                     } catch (DataAccessException e) {
                         return false;

@@ -19,8 +19,10 @@ import kr.co.cking.ticket.application.TicketEarnEventDispatcher;
 import kr.co.cking.ticket.application.QuizRewardLedgerService;
 import kr.co.cking.ticket.application.TicketEarnLedgerService;
 import kr.co.cking.ticket.application.TicketSpendLedgerService;
+import kr.co.cking.ticket.application.dto.SpendApplyResult;
 import kr.co.cking.ticket.application.dto.SpendCommand;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 운영자가 Dead Stream으로 이동한 메시지를 확인한 뒤 수동으로 재처리할 때 쓴다
@@ -30,6 +32,7 @@ import lombok.RequiredArgsConstructor;
  * {@link CommonMissionEarnLedgerService#apply}가 requestId 기준으로 멱등하므로 중복 replay를 눌러도 안전하다.
  * EARN 메시지는 정상 소비와 같은 {@link TicketEarnEventDispatcher}로 적립 원인·버전을 나눈다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DeadStreamReplayService {
@@ -57,7 +60,7 @@ public class DeadStreamReplayService {
         switch (message.getStreamType()) {
             // 정상 소비와 같은 적립 원인·버전 분기를 쓴다. Quiz 메시지를 Mission으로 바꾸지 않는다.
             case EARN -> earnEventDispatcher.apply(fields);
-            case SPEND -> ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
+            case SPEND -> replaySpend(fields, message.getSourceStreamId());
             case COMMON_EARN -> commonEarnEventDispatcher.apply(fields);
             // PR #250 리뷰(문구): enum switch 문은 case 누락을 컴파일러가 잡아주지 않는다 -
             // DeadStreamType에 값이 추가되고 case를 빠뜨리면 아무것도 재적용하지 않은 채
@@ -68,6 +71,16 @@ public class DeadStreamReplayService {
 
         message.resolve(resolvedBy, Instant.now());
         return message;
+    }
+
+    // 다시 차감된 메시지가 여기까지 오는 경우는 되돌리기가 5번 넘게 실패했을 때뿐이다. ACK가 이미 끝난 메시지라
+    // 되돌리기와 ACK를 한 번에 묶을 수 없어, 되돌리지 않고 수동 보정이 필요하다고 남긴다(#673).
+    private void replaySpend(Map<String, String> fields, String sourceStreamId) {
+        SpendCommand command = SpendCommand.fromStreamFields(fields);
+        if (ticketSpendLedgerService.apply(command, sourceStreamId) == SpendApplyResult.REDEDUCTED) {
+            log.warn("Dead Stream replay: 다시 차감된 SPEND라 Redis 잔액이 DB보다 적습니다. resyncRedisToDb로 보정이 필요합니다. "
+                    + "requestId={}, userId={}, sourceStreamId={}", command.requestId(), command.userId(), sourceStreamId);
+        }
     }
 
     private Map<String, String> readPayload(String payload) {

@@ -92,8 +92,9 @@ guard의 만료 시각은 `min(지금 + guardTtl, event:endat)`이다(#673). gua
 - 이벤트 종료 뒤에는 Gate/시각 검증이 모든 신규 요청을 막으므로 종료 시각보다 오래 둘 필요가 없다.
 - 처음(#106)에는 이벤트 종료 시각까지 유지했다. guard는 모든 신규 응모에 한 건씩 생기므로(약 200B), 종료 시각이 먼 이벤트에 응모가 쌓이면 Redis 메모리가 계속 늘어 noeviction 상한에서 응모가 실패한다. 그래서 idemTtl 기준으로 줄였다.
 - guard는 idem보다 먼저 기록되므로 guardTtl이 idemTtl 이상이면 재시도 보호가 끊기지 않는다. 10분은 오류 화면을 열어 둔 채 재시도하는 경우의 여유다.
-- 남는 위험: idem 저장이 실패했거나 idem이 만료된 뒤, guardTtl이 지나 같은 `requestId`로 재시도가 오면 다시 차감된다. FE는 `NETWORK_ERROR`·`SYSTEM_ERROR`일 때만 같은 `requestId`로 재시도하고 화면 상태에만 보관하지만, 시간 제한은 없다.
-- 피해 범위: DB 반영은 `TicketSpendLedgerService`가 `requestId`로 걸러 한 번만 들어가므로 원장·응모 기록·추첨은 그대로다. 어긋나는 것은 해당 사용자의 Redis 잔액(차감한 수만큼 적음)과 실시간 응모 현황 집계다. 잔액은 `TicketBalanceReconciliationScheduler`가 Redis·DB 불일치를 로그로 감지하고 `resyncRedisToDb`로 보정한다.
+- guardTtl이 지난 뒤 같은 `requestId`로 재시도가 오면(idem 저장 실패 또는 idem 만료 후) 이 스크립트는 다시 차감하고 새 Stream 메시지를 발행한다. FE는 `NETWORK_ERROR`·`SYSTEM_ERROR`일 때만 같은 `requestId`로 재시도하고 화면 상태에만 보관하지만, 시간 제한은 없다.
+- 되돌리기: DB 반영은 `TicketSpendLedgerService`가 `requestId`로 걸러 한 번만 들어가므로 원장·응모 기록·추첨은 그대로다. 반영 단계는 `event_entry.source_stream_id`(처음 반영한 메시지 ID)와 다른 메시지가 오면 다시 차감된 것으로 보고, `entry-spend-refund.lua`로 Redis 잔액(공용이면 공용 잔액)과 실시간 응모 현황 집계를 되돌린 뒤 같은 스크립트에서 XACK한다. 수동 보정 락이 있으면 되돌리지 않고 PEL에 남긴다. 되돌리기 전까지(반영 지연만큼) 그 사용자의 Redis 잔액은 차감한 수만큼 적다.
+- 되돌리지 못하는 경우: `source_stream_id`가 없는 응모(V88 전에 반영)와 Dead Stream replay로 들어온 메시지는 로그만 남긴다. 잔액은 `TicketBalanceReconciliationScheduler`가 Redis·DB 불일치를 로그로 감지하고 `resyncRedisToDb`로 보정한다.
 
 ## 결과 코드 (FR-P2-036, 기존 10종 + BALANCE_MAINTENANCE)
 

@@ -43,6 +43,7 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
 - 있지만 내용이 다르면 `IllegalStateException`을 던진다. `process()`가 catch해 ACK하지 않고 PEL에 남긴다.
 - 동시 재전달로 UNIQUE(`uk_entry_request` 등)가 충돌하면 그 자리에서 복구하지 않고 롤백한다. 재전달 때 새 트랜잭션에서 위 조회로 판정한다.
 - SPEND는 Event의 `creatorId`와 Stream의 `creatorId`가 다르면 신규·재전달 구분 없이 예외로 거부한다.
+- SPEND는 반영한 메시지 ID를 `event_entry.source_stream_id`에 저장한다. 같은 ID가 다시 오면 PEL 재전달이다. 다른 ID로 오면 응모 Lua가 guard 만료 뒤의 재시도를 다시 차감한 것이므로(#673) `SpendRedeductionRefunder`가 Redis 잔액·실시간 집계를 되돌리고 같은 Lua(`entry-spend-refund.lua`)에서 XACK한다. 되돌리기와 ACK를 나누면 ACK 실패 후 재전달 때 두 번 되돌린다. 수동 보정 락이 있으면 PEL에 남긴다. 규칙과 한계는 [Lua API](../event/lua-api.md)의 guard 절에 있다.
 - SPEND 메시지의 `couponType`(`CREATOR`|`COMMON`)이 어느 잔액·Ledger에 반영할지 정한다(이슈 #243) — `COMMON`이면 `common_ticket_ledger`/`user_common_ticket_balance`(#219/#224)에, 그 외는 기존 크리에이터 전용 Balance·Ledger에 반영한다. `couponType` 필드가 없는 배포 전 메시지·Dead Stream 원본은 `CREATOR`로 해석한다. `creatorId` 필드는 couponType과 무관하게 항상 Event에서 resolve된 값이 실린다 - 위 교차검증용이지, 어느 잔액을 차감했는지의 근거가 아니다.
 - Balance는 `SELECT ... FOR UPDATE`(`findByMemberIdAndCreatorIdForUpdate`)로 잠근 뒤 갱신한다.
 

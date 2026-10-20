@@ -34,13 +34,16 @@ public class EventEntry {
     private String requestId;
     private Long usedTicketCount;
     private Instant appliedAt;
+    private String sourceStreamId;
 
     @Builder
-    private EventEntry(Long memberId, Long eventId, String requestId, Long usedTicketCount, Instant appliedAt) {
+    private EventEntry(Long memberId, Long eventId, String requestId, Long usedTicketCount, Instant appliedAt,
+                       String sourceStreamId) {
         this.memberId = memberId;
         this.eventId = eventId;
         this.requestId = requestId;
         this.usedTicketCount = usedTicketCount;
         this.appliedAt = appliedAt;
+        this.sourceStreamId = sourceStreamId;
     }
 }
