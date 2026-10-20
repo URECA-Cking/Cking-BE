@@ -1,0 +1,35 @@
+-- 대기 메시지(PEL)가 없고 오래 쉰 소비자를 Consumer Group에서 지운다.
+-- XGROUP DELCONSUMER는 그 소비자의 PEL 기록도 지우므로, 확인과 삭제를 한 스크립트로 묶어
+-- 확인 뒤 삭제 전에 새 메시지가 배정되는 일을 막는다.
+--
+-- KEYS[1] = Stream 키
+-- ARGV[1] = Consumer Group
+-- ARGV[2] = 지울 최소 쉰 시간(ms). XINFO CONSUMERS의 idle(마지막 읽기 시도 뒤 지난 시간) 기준
+-- ARGV[3..] = 지우지 않을 이름(이 서버의 소비자, 서버들이 함께 쓰는 재처리 소비자)
+--
+-- 반환: 지운 소비자 이름 목록. Stream이나 그룹이 없으면 빈 목록
+
+local consumers = redis.pcall('XINFO', 'CONSUMERS', KEYS[1], ARGV[1])
+if type(consumers) == 'table' and consumers.err then
+    return {}
+end
+
+local minIdle = tonumber(ARGV[2])
+local keep = {}
+for i = 3, #ARGV do
+    keep[ARGV[i]] = true
+end
+local removed = {}
+for _, consumer in ipairs(consumers) do
+    local fields = {}
+    for i = 1, #consumer, 2 do
+        fields[consumer[i]] = consumer[i + 1]
+    end
+    if not keep[fields['name']]
+            and tonumber(fields['pending']) == 0
+            and tonumber(fields['idle']) >= minIdle then
+        redis.call('XGROUP', 'DELCONSUMER', KEYS[1], ARGV[1], fields['name'])
+        removed[#removed + 1] = fields['name']
+    end
+end
+return removed
