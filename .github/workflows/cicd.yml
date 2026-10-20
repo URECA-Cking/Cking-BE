@@ -4,8 +4,9 @@ on:
   pull_request:
     branches: [develop, main]
   # 기본 브랜치에서 한 번 돌아야 Gradle 캐시가 저장되고, 이후 모든 PR이 그걸 재사용한다.
+  # main push는 운영 배포다.
   push:
-    branches: [develop]
+    branches: [develop, main]
 
 # 기본은 읽기만 주고, 필요한 권한은 job별로 연다. 서드파티 액션이 쓸 수 있는 범위를 좁힌다.
 permissions:
@@ -16,6 +17,9 @@ env:
   AWS_ROLE_ARN: arn:aws:iam::551372961758:role/dev-cking-github-actions-role
   DEPLOY_BUCKET: dev-cking-deploy-551372961758
   INSTANCE_ID: i-0735892ba2bb25a70
+  PROD_ROLE_ARN: arn:aws:iam::551372961758:role/prod-cking-be-github-actions-role
+  PROD_DEPLOY_BUCKET: prod-cking-deploy-551372961758-ap-northeast-2-an
+  PROD_ASG: prod-cking-app
 
 jobs:
   test:
@@ -135,7 +139,7 @@ jobs:
     name: Build and Push to GHCR
     # 검증을 통과한 커밋만 이미지로 만든다. 이미지 빌드는 -x test라 자체 검증이 없다.
     needs: [test, migration-version, lint]
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     # 개발 서버가 t4g(ARM)이므로 ARM 러너에서 네이티브 빌드한다.
     # x86 러너에서 QEMU로 크로스 빌드하면 Gradle 빌드가 몇 배 느려진다.
     runs-on: ubuntu-24.04-arm
@@ -291,4 +295,105 @@ jobs:
           BASE_URL: https://dev-api.cking.co.kr
           FRONTEND_ORIGIN: https://dev.cking.co.kr
           EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: k6 run k6/smoke.js
+
+  deploy-prod:
+    name: Deploy to prod
+    needs: build-and-push
+    # 실제 차단은 IAM 신뢰 정책(sub = main)이 한다. 이 조건은 배포 대상이 아님을 skipped로 드러낸다.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    # 운영 배포는 한 번에 하나만 들어간다. 서버 교체 도중 취소하지 않는다.
+    concurrency:
+      group: cd-deploy-prod
+      cancel-in-progress: false
+
+    env:
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ env.PROD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 배포 파일 S3 업로드
+        run: |
+          aws s3 cp docker-compose.prod.yml "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/docker-compose.yml"
+          aws s3 cp deploy/deploy.sh        "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh"
+
+      # 운영 배포는 서버 교체다. 새 서버는 부팅하며 이 태그로 앱을 띄운다.
+      # 교체가 실패하면 되돌릴 수 있게 이전 태그를 남긴다. 처음 배포면 이전 태그가 없다.
+      - name: 배포 태그 갱신
+        id: tag
+        run: |
+          PREVIOUS=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG \
+            --query Parameter.Value --output text 2>/dev/null || true)
+          echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
+          aws ssm put-parameter --name /cking/prod/RELEASE_TAG --type String --value "$IMAGE_TAG" --overwrite
+
+      # 새 서버를 먼저 띄우고 ALB 헬스체크를 통과한 뒤 옛 서버를 뺀다(Infra 앱 서버 그룹 설정과 같은 값).
+      - name: 앱 서버 교체 시작
+        id: refresh
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$PROD_ASG" \
+            --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":200}' \
+            --query InstanceRefreshId --output text)
+          echo "id=$REFRESH_ID" >> "$GITHUB_OUTPUT"
+
+      # 한 번에 모두 교체되며, 첫 부팅 유예(600초)와 투입 대기(300초)를 합친 15분에 여유를 두어 30분까지 기다린다.
+      - name: 교체 결과 확인
+        env:
+          REFRESH_ID: ${{ steps.refresh.outputs.id }}
+        run: |
+          for _ in $(seq 1 60); do
+            STATUS=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$PROD_ASG" \
+              --instance-refresh-ids "$REFRESH_ID" --query 'InstanceRefreshes[0].Status' --output text)
+            case "$STATUS" in
+              Successful) echo "교체 완료"; exit 0 ;;
+              Pending|InProgress) sleep 30 ;;
+              *)
+                aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$PROD_ASG" \
+                  --instance-refresh-ids "$REFRESH_ID" --query 'InstanceRefreshes[0].[Status,StatusReason]' --output text
+                exit 1 ;;
+            esac
+          done
+          echo "교체 결과 확인 시간 초과 (30분)"
+          exit 1
+
+      # 교체가 실패하면 옛 서버는 남아 있지만, 이후 새로 뜨는 서버가 실패한 태그로 뜨지 않게 태그를 되돌린다.
+      - name: 실패 시 배포 태그 되돌리기
+        if: failure() && steps.tag.outputs.previous != ''
+        env:
+          PREVIOUS: ${{ steps.tag.outputs.previous }}
+          REFRESH_ID: ${{ steps.refresh.outputs.id }}
+        run: |
+          if [ -n "$REFRESH_ID" ]; then
+            aws autoscaling cancel-instance-refresh --auto-scaling-group-name "$PROD_ASG" || true
+          fi
+          aws ssm put-parameter --name /cking/prod/RELEASE_TAG --type String --value "$PREVIOUS" --overwrite
+          echo "배포 태그를 $PREVIOUS로 되돌렸다"
+
+      - name: k6 설치
+        env:
+          K6_VERSION: v2.2.0
+          K6_SHA256: b5a8003c86f35f5cd5ceef1490312c48e587696c94d998cefc6d7b3b4cb1597d
+        run: |
+          curl -fsSLo k6.tar.gz "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz"
+          echo "${K6_SHA256}  k6.tar.gz" | sha256sum -c -
+          tar -xzf k6.tar.gz
+          sudo mv "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      - name: 스모크 테스트
+        env:
+          BASE_URL: https://api.cking.co.kr
+          FRONTEND_ORIGIN: https://cking.co.kr
+          EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DOCS_DISABLED: "1"
         run: k6 run k6/smoke.js

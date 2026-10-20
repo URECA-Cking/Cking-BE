@@ -1,10 +1,11 @@
-// 배포 후 개발 서버의 주요 경로를 검증한다.
+// 배포 후 서버의 주요 경로를 검증한다. 운영은 API 문서를 끄므로 DOCS_DISABLED=1로 문서가 없는지 확인한다.
 import http from 'k6/http';
 import { check } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const FRONTEND_ORIGIN = __ENV.FRONTEND_ORIGIN || 'https://dev.cking.co.kr';
 const EXPECTED_IMAGE_TAG = __ENV.EXPECTED_IMAGE_TAG || '';
+const DOCS_DISABLED = __ENV.DOCS_DISABLED === '1';
 
 export const options = {
   vus: 1,
@@ -19,7 +20,11 @@ export default function () {
   eventList();
   authRequired();
   notFound();
-  docsProtected();
+  if (DOCS_DISABLED) {
+    docsDisabled();
+  } else {
+    docsProtected();
+  }
   corsAllowed();
   oauthLogin('google', 'accounts.google.com');
   oauthLogin('kakao', 'kauth.kakao.com');
@@ -72,6 +77,14 @@ function docsProtected() {
     'swagger 401': (r) => r.status === 401,
     'swagger Basic 인증': (r) => (r.headers['Www-Authenticate'] || '').startsWith('Basic'),
   });
+}
+
+function docsDisabled() {
+  const res = http.get(`${BASE_URL}/swagger-ui/index.html`, {
+    responseCallback: http.expectedStatuses(404),
+    tags: { name: 'swagger' },
+  });
+  check(res, { 'swagger 404': (r) => r.status === 404 });
 }
 
 function corsAllowed() {
