@@ -12,6 +12,13 @@ on:
 permissions:
   contents: read
 
+# push 실행은 브랜치마다 push 순서대로 하나씩 돈다(#694). 실행은 push 순서로 만들어지고 대기 자리는 하나라, 연달아 머지하면
+# 가운데 실행은 취소되고 가장 최근 실행이 남는다. 진행 중인 실행(배포 포함)은 취소하지 않는다. 작업 단위 취소는 작업이 시작한
+# 순서(테스트가 끝난 순서)를 따라 옛 커밋의 빌드가 새 커밋의 빌드를 취소할 수 있어 쓰지 않는다. PR 실행은 실행마다 그룹이 달라 서로 기다리지 않는다.
+concurrency:
+  group: ${{ github.event_name == 'push' && format('cicd-push-{0}', github.ref) || format('cicd-{0}', github.run_id) }}
+  cancel-in-progress: false
+
 env:
   AWS_REGION: ap-northeast-2
   AWS_ROLE_ARN: arn:aws:iam::551372961758:role/dev-cking-github-actions-role
@@ -144,10 +151,6 @@ jobs:
     permissions:
       contents: read
       packages: write   # GHCR push
-    # 같은 브랜치에 push가 연달아 오면 오래된 빌드를 취소한다. 뒤 커밋이 앞 커밋을 포함하므로 결과는 같다.
-    concurrency:
-      group: cd-build-${{ github.ref }}
-      cancel-in-progress: true
 
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
