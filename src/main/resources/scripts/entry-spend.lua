@@ -2,7 +2,7 @@
 -- 처리 순서: ticketCount 검증 → 멱등성 확인 → guard 확인 → Gate 확인 → 시각 확인
 -- → 잔액 확인 → guard 선점 → 차감 → Stream 발행 → 멱등 결과 저장
 -- idem이 남아 있는 동일 요청은 마감 이후에도 DUPLICATE_REPLAY로 처리한다.
--- idem 저장 실패 시 Guard는 이벤트 진행 중 재차감만 막고, 종료 뒤에는 Gate/시각 검증을 따른다.
+-- Guard는 idem 저장 실패나 idem 만료 뒤의 재시도를 guardTtl 동안(이벤트 종료 시각까지만) 막고, 그 뒤에는 Gate/시각 검증을 따른다.
 -- 멱등키가 없는 신규 요청만 Gate·시각·잔액을 검증한다.
 --
 -- KEYS[1] = event:status:{eventId}                   String(OPEN/CLOSED)
@@ -17,13 +17,14 @@
 -- ARGV[1] = ticketCount
 -- ARGV[2] = fingerprint      (EntrySpendService가 eventId+userId+ticketCount로 계산)
 -- ARGV[3] = streamKey        (예: stream:ticket-deducted)
--- ARGV[4] = idemTtlSeconds   (FR-P2-033: 1시간 = 3600. idem 전용 - guard는 endAt 기준)
+-- ARGV[4] = idemTtlSeconds   (FR-P2-033: 1시간 = 3600. idem 전용)
 -- ARGV[5] = eventId
 -- ARGV[6] = userId
 -- ARGV[7] = creatorId
 -- ARGV[8] = requestId
 -- ARGV[9] = couponType     (CREATOR|COMMON. 이슈 #243: KEYS[3]·KEYS[6]을 어느 쪽으로 넘길지는
 --                           이미 Java가 정해서 넘겼으므로 여기서는 분기 없이 Stream 필드로만 싣는다)
+-- ARGV[10] = guardTtlSeconds (idemTtl 이상. 만료는 min(지금 + guardTtl, endAt), #673)
 --
 -- 반환: { resultCode, ...옵션 필드 } (FR-P2-036, 기존 10종 + BALANCE_MAINTENANCE)
 --   GATE_NOT_LOADED        -- Gate 키 자체가 없음(2.4절: 없음=OPEN으로 간주 금지)
@@ -57,6 +58,7 @@ local userId      = ARGV[6]
 local creatorId   = ARGV[7]
 local requestId   = ARGV[8]
 local couponType  = ARGV[9]
+local guardTtl    = tonumber(ARGV[10])
 
 if ticketCount == nil or ticketCount < 1 or ticketCount > 100 then
     return { 'INVALID_TICKET_COUNT' }
@@ -126,7 +128,7 @@ local guardAcquired = redis.call('SET', guardKey,
 if not guardAcquired then
     return redis.error_reply('GUARD_ACQUIRE_FAILED: unexpected guard conflict for requestId=' .. requestId)
 end
-redis.call('PEXPIREAT', guardKey, tonumber(endAt))
+redis.call('PEXPIREAT', guardKey, math.min(nowMillis + guardTtl * 1000, tonumber(endAt)))
 
 -- 6) 차감 + Stream 발행 + 멱등 결과 저장. Redis Lua는 오류가 나도 이전 쓰기를 자동
 -- 롤백하지 않는다. DECRBY는 Balance가 손상돼(예: "1.5") tonumber() 검증은 통과해도
