@@ -29,6 +29,8 @@ import kr.co.cking.snapshot.domain.SnapshotVerificationStatus;
 import kr.co.cking.snapshot.repository.DrawSnapshotRepository;
 import kr.co.cking.winner.repository.WinnerRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class AdminEventOperationQueryServiceTest {
@@ -100,6 +102,43 @@ class AdminEventOperationQueryServiceTest {
         verify(winnerRepository, never()).countByDrawingId(org.mockito.ArgumentMatchers.anyLong());
     }
 
+    @ParameterizedTest
+    @EnumSource(value = EventStatus.class, names = {
+            "DRAFT", "OPEN", "CLOSING", "DRAW_COMPLETED", "PUBLISHED"
+    })
+    void 관리자_운영_상세는_Event상태를_그대로_반환한다(EventStatus status) {
+        MemberQueryService memberQueryService = mock(MemberQueryService.class);
+        EventRepository eventRepository = mock(EventRepository.class);
+        CreatorRepository creatorRepository = mock(CreatorRepository.class);
+        DrawSnapshotRepository snapshotRepository = mock(DrawSnapshotRepository.class);
+        DrawingRepository drawingRepository = mock(DrawingRepository.class);
+        WinnerRepository winnerRepository = mock(WinnerRepository.class);
+        Event event = event(7L, 3L, status);
+        given(eventRepository.findByEventIdAndDeletedAtIsNull(7L)).willReturn(Optional.of(event));
+        given(creatorRepository.findById(3L)).willReturn(Optional.of(creator(3L)));
+        given(snapshotRepository.findByEventId(7L)).willReturn(Optional.empty());
+        given(drawingRepository.findByEventIdAndDrawNo(7L, 0)).willReturn(Optional.empty());
+
+        AdminEventOperationResult result = service(memberQueryService, eventRepository, creatorRepository,
+                snapshotRepository, drawingRepository, winnerRepository).getOperation(1L, 7L);
+
+        assertThat(result.event().status()).isEqualTo(status);
+    }
+
+    @Test
+    void 삭제된_Event는_관리자_운영_상세에서_찾을_수_없다() {
+        MemberQueryService memberQueryService = mock(MemberQueryService.class);
+        EventRepository eventRepository = mock(EventRepository.class);
+        given(eventRepository.findByEventIdAndDeletedAtIsNull(7L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service(memberQueryService, eventRepository, mock(CreatorRepository.class),
+                mock(DrawSnapshotRepository.class), mock(DrawingRepository.class), mock(WinnerRepository.class))
+                .getOperation(1L, 7L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
     @Test
     void 권한검증에_실패하면_Event를_조회하지_않는다() {
         MemberQueryService memberQueryService = mock(MemberQueryService.class);
@@ -122,11 +161,15 @@ class AdminEventOperationQueryServiceTest {
     }
 
     private Event event(Long eventId, Long creatorId) {
+        return event(eventId, creatorId, EventStatus.CLOSED);
+    }
+
+    private Event event(Long eventId, Long creatorId, EventStatus status) {
         Event event = new Event(creatorId, "운영 이벤트", "설명", Instant.parse("2026-10-21T00:00:00Z"),
                 Instant.parse("2026-10-22T00:00:00Z"), 2, DrawMethod.WEIGHTED, 1L,
                 "550e8400-e29b-41d4-a716-446655440000");
         ReflectionTestUtils.setField(event, "eventId", eventId);
-        ReflectionTestUtils.setField(event, "status", EventStatus.CLOSED);
+        ReflectionTestUtils.setField(event, "status", status);
         return event;
     }
 

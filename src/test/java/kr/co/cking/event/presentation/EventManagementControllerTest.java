@@ -338,6 +338,16 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.initialDrawing").doesNotExist());
     }
 
+    @Test
+    void operationReturnsNotFoundForDeletedEvent() throws Exception {
+        willThrow(new BusinessException(kr.co.cking.common.exception.CommonErrorCode.RESOURCE_NOT_FOUND))
+                .given(adminEventOperationQueryService).getOperation(1L, 7L);
+
+        mockMvc.perform(get("/api/admin/events/{eventId}/operation", 7L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
     /** 관리자 보관·복원 API가 PUBLISHED 상태와 보관 메타데이터를 반환하는지 검증한다. */
     @Test
     void archiveAndUnarchiveReturnArchiveResultEnvelope() throws Exception {
