@@ -5,6 +5,7 @@
 ## 책임
 
 - 팔로우·언팔로우와 팔로우 여부·내 팔로우 목록 조회를 제공한다.
+- 현재 팔로우의 회원·Creator별 게시글 마지막 읽음 시각과 새 글 일괄 조회를 제공한다. 읽음 기록이 없으면 현재 팔로우 시작 시각을 기준으로 한다.
 - 다른 도메인은 `CreatorFollowQueryService.isFollowing(memberId, creatorId)`로 팔로우 여부를 확인한다. Creator Space 게시글의 팔로워 공개(FOLLOWERS) 권한 확인(#318)이 첫 사용처다.
 - 개인화 추천은 `findFollowedCreatorIds(memberId)`로 전체 seed Creator ID를 한 번에 읽는다. 추천 집계와 유사 후보 조회는 Creator 도메인이 담당한다.
 - 추천 카드의 팔로워 수는 `countFollowersByCreatorIds(creatorIds)`로 여러 Creator를 그룹 쿼리 한 번에 센다. 요청한 모든 ID가 키로 반환되며 팔로워가 없으면 0이다.
@@ -15,7 +16,7 @@
 
 ## 소유 데이터
 
-`creator_follow` (V33): `member_id`, `creator_id`, `created_at`. 같은 사용자·크리에이터 쌍은 `uk_creator_follow_member_creator`로 하나만 존재한다.
+`creator_follow` (V33, V86): `member_id`, `creator_id`, `created_at`, `last_read_at`(nullable). 같은 사용자·크리에이터 쌍은 `uk_creator_follow_member_creator`로 하나만 존재한다. V86은 읽음 시각을 추가한다.
 
 ## 불변조건
 
