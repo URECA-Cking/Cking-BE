@@ -51,7 +51,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 ## GET /api/admin/creator-applications
 
-Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 `page`, `size`다. 기본 정렬은 `requestedAt ASC, applicationId ASC`다.
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 선택 `status`(`PENDING`, `APPROVED`, `REJECTED`), `page`, `size`다. `status`를 생략하면 모든 상태를, 전달하면 해당 상태만 DB에서 페이지로 조회한다. 기본 정렬은 `requestedAt ASC, applicationId ASC`다.
 
 ```json
 {

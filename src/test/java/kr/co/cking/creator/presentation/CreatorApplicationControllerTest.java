@@ -89,7 +89,7 @@ class CreatorApplicationControllerTest {
     void 관리자_목록_조회는_JWT의_memberId를_서비스에_전달한다() throws Exception {
         CreatorApplication application = applicationWithId(1L);
         PageRequest pageable = PageRequest.of(0, 20);
-        given(creatorApplicationService.findAllForAdmin(10L, pageable))
+        given(creatorApplicationService.findAllForAdmin(10L, null, pageable))
                 .willReturn(new PageImpl<>(
                         List.of(new CreatorApplicationService.AdminApplication(application, "신청자")), pageable, 1));
 
@@ -97,7 +97,38 @@ class CreatorApplicationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].applicationId").value(1));
 
-        then(creatorApplicationService).should().findAllForAdmin(10L, pageable);
+        then(creatorApplicationService).should().findAllForAdmin(10L, null, pageable);
+    }
+
+    @Test
+    void 관리자_목록은_상태_필터와_페이지를_서비스에_전달한다() throws Exception {
+        CreatorApplication application = applicationWithId(1L);
+        PageRequest pageable = PageRequest.of(1, 10);
+        given(creatorApplicationService.findAllForAdmin(
+                10L, kr.co.cking.creator.domain.CreatorApplicationStatus.PENDING, pageable))
+                .willReturn(new PageImpl<>(
+                        List.of(new CreatorApplicationService.AdminApplication(application, "신청자")), pageable, 11));
+
+        mockMvc.perform(get("/api/admin/creator-applications")
+                        .queryParam("status", "PENDING")
+                        .queryParam("page", "1")
+                        .queryParam("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(10))
+                .andExpect(jsonPath("$.data.totalElements").value(11));
+
+        then(creatorApplicationService).should().findAllForAdmin(
+                10L, kr.co.cking.creator.domain.CreatorApplicationStatus.PENDING, pageable);
+    }
+
+    @Test
+    void 관리자_목록은_잘못된_상태_필터를_검증한다() throws Exception {
+        mockMvc.perform(get("/api/admin/creator-applications")
+                        .queryParam("status", "INVALID"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
