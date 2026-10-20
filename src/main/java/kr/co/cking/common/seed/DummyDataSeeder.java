@@ -17,9 +17,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.follow.repository.CreatorFollowRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.post.domain.CreatorPost;
+import kr.co.cking.post.domain.PostVisibility;
+import kr.co.cking.post.repository.CreatorPostRepository;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserTicketBalanceRepository;
@@ -74,6 +78,8 @@ public class DummyDataSeeder implements CommandLineRunner {
     private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;
     private final UserTicketBalanceRepository balanceRepository;
+    private final CreatorFollowRepository followRepository;
+    private final CreatorPostRepository postRepository;
     private final StringRedisTemplate redisTemplate;
 
     @Override
@@ -100,6 +106,7 @@ public class DummyDataSeeder implements CommandLineRunner {
         List<Member> users = ensureDummyUsers();
         List<Creator> creators = ensureDummyCreators();
         seedBalances(users, creators);
+        seedCreatorNews(users.getFirst(), creators);
 
         log.info("더미 데이터 시딩 완료 - 유저 {}명, 크리에이터 {}명, 유저당 초기 잔액 {}장",
                 users.size(), creators.size(), INITIAL_BALANCE);
@@ -156,6 +163,21 @@ public class DummyDataSeeder implements CommandLineRunner {
                 redisTemplate.opsForValue().set(
                         TicketRedisKeys.balance(creator.getCreatorId(), user.getMemberId()),
                         String.valueOf(balance.getBalance()));
+            }
+        }
+    }
+
+    /** 첫 더미 회원에게 NEW 한 건과 팔로우 이전의 읽지 않음 아님 한 건을 제공한다. */
+    private void seedCreatorNews(Member fan, List<Creator> creators) {
+        Instant now = Instant.now();
+        Instant followedAt = now.minus(Duration.ofHours(1));
+        for (int i = 0; i < 2; i++) {
+            Creator creator = creators.get(i);
+            followRepository.insertIfAbsent(fan.getMemberId(), creator.getCreatorId(), followedAt);
+            String content = "[더미 새 소식] " + (i + 1);
+            if (!postRepository.existsByCreatorIdAndContent(creator.getCreatorId(), content)) {
+                Instant postedAt = i == 0 ? now : followedAt.minus(Duration.ofMinutes(1));
+                postRepository.save(new CreatorPost(creator.getCreatorId(), content, PostVisibility.PUBLIC, postedAt));
             }
         }
     }

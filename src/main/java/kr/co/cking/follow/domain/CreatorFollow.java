@@ -36,4 +36,7 @@ public class CreatorFollow {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    @Column(name = "last_read_at")
+    private Instant lastReadAt;
 }

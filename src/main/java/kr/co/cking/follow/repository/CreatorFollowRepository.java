@@ -1,16 +1,19 @@
 package kr.co.cking.follow.repository;
 
+import jakarta.persistence.LockModeType;
 import kr.co.cking.follow.domain.CreatorFollow;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Long> {
 
@@ -36,6 +39,23 @@ public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Lo
     int deleteByMemberIdAndCreatorId(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
 
     boolean existsByMemberIdAndCreatorId(Long memberId, Long creatorId);
+
+    /** 읽음 처리 중 언팔로우가 관계를 삭제하지 못하도록 현재 팔로우 행을 잠근다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select f from CreatorFollow f where f.memberId = :memberId and f.creatorId = :creatorId")
+    Optional<CreatorFollow> findForReadUpdate(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
+
+    /** 같은 회원·Creator의 병렬 읽음 요청은 DB 행 잠금으로 직렬화되고 저장 시각은 앞으로만 간다. */
+    @Modifying
+    @Query(value = """
+            UPDATE creator_follow
+            SET last_read_at = GREATEST(COALESCE(last_read_at, created_at), UTC_TIMESTAMP(6))
+            WHERE member_id = :memberId AND creator_id = :creatorId
+            """, nativeQuery = true)
+    int markPostsRead(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
+
+    @Query("select f.lastReadAt from CreatorFollow f where f.memberId = :memberId and f.creatorId = :creatorId")
+    Instant findLastReadAt(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
 
     /** 크리에이터의 팔로워 수. idx_creator_follow_creator로 집계한다. */
     long countByCreatorId(Long creatorId);
