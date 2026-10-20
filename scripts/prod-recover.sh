@@ -46,7 +46,7 @@ fi
 
 started_epoch=$(date -u -d "$STARTED" +%s)
 mapfile -t in_service < <(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG" \
-  --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' --output text | tr '\t' '\n' | grep .)
+  --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId" --output text | tr '\t' '\n' | grep .)
 newer=()
 if [ "${#in_service[@]}" -gt 0 ]; then
   while read -r id launched; do
