@@ -220,6 +220,13 @@ class DummyDataSeederTest {
         jdbcTemplate.update("DELETE FROM creator_post WHERE creator_id IN "
                 + "(SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
                 + "WHERE m.email LIKE 'dummy-creator-%@cking.test')");
+        // 기존 로컬 더미 Creator에 남은 Space·일정도 Creator FK보다 먼저 정리한다.
+        jdbcTemplate.update("DELETE FROM creator_space WHERE creator_id IN "
+                + "(SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                + "WHERE m.email LIKE 'dummy-creator-%@cking.test')");
+        jdbcTemplate.update("DELETE FROM creator_schedule WHERE creator_id IN "
+                + "(SELECT c.creator_id FROM creator c JOIN member m ON c.member_id = m.member_id "
+                + "WHERE m.email LIKE 'dummy-creator-%@cking.test')");
         jdbcTemplate.update("DELETE FROM creator WHERE member_id IN "
                 + "(SELECT member_id FROM member WHERE email LIKE 'dummy-creator-%@cking.test')");
         jdbcTemplate.update("DELETE FROM member WHERE email LIKE ?", DUMMY_EMAIL_LIKE);
