@@ -127,7 +127,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 셸 스크립트 검사
-        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh scripts/prod-refresh.sh scripts/prod-recover.sh
+        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh scripts/prod-refresh.sh scripts/prod-recover.sh scripts/check-deploy-order.sh
       - name: 워크플로 검사
         run: >
           docker run --rm -v "$PWD:/repo:ro" -w /repo
@@ -197,6 +197,7 @@ jobs:
     permissions:
       contents: read
       id-token: write   # OIDC 토큰 발급. AWS 역할을 맡는 데 필요하다.
+      actions: read     # 최신 커밋 실행이 취소됐는지 확인
     # 실행 중인 배포는 취소하지 않는다. 컨테이너 교체 도중 워크플로가 취소되는 것을 막고,
     # dev 서버에는 한 번에 하나의 배포만 들어가도록 직렬화한다.
     concurrency:
@@ -209,12 +210,26 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # 동시 실행 그룹 안의 순서는 보장되지 않아 옛 커밋의 실행이 새 커밋 배포 뒤에 돌 수 있다(#694).
+      # 개발 서버가 응답 헤더로 알려 주는 지금 이미지 태그와 비교해, 이번 커밋이 더 오래됐으면 배포하지 않는다.
+      - name: 배포된 커밋보다 오래됐는지 확인
+        id: order
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DEPLOYED=$(curl -sS -o /dev/null -D - --max-time 10 "https://dev-api.cking.co.kr/api/events?page=0&size=1" \
+            | tr -d '\r' | awk -F': ' 'tolower($1) == "x-image-tag" { print $2 }') || DEPLOYED=""
+          RESULT=$(scripts/check-deploy-order.sh "$DEPLOYED" "$GITHUB_SHA")
+          echo "$RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "deploy=$([ "${RESULT%% *}" = deploy ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: 배포 파일 S3 업로드
+        if: steps.order.outputs.deploy == 'true'
         # 태그별 경로에 둔다. 어느 배포에 어떤 compose가 쓰였는지 추적할 수 있다.
         run: |
           aws s3 cp docker-compose.dev.yml "s3://$DEPLOY_BUCKET/releases/$IMAGE_TAG/docker-compose.yml"
@@ -222,6 +237,7 @@ jobs:
 
       - name: SSM Run Command 전송
         id: send
+        if: steps.order.outputs.deploy == 'true'
         # deploy.sh는 자기 자신을 받을 수 없으므로 인라인 명령이 먼저 받아서 실행한다.
         # Run Command는 명령들을 하나의 스크립트로 합쳐 실행하고 마지막 줄의 결과만 본다.
         # set -e가 없으면 다운로드가 실패해도 서버에 남은 이전 deploy.sh가 실행되어 성공으로 기록된다.
@@ -239,6 +255,7 @@ jobs:
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
 
       - name: 배포 결과 확인
+        if: steps.order.outputs.deploy == 'true'
         # Run Command는 비동기다. 상태를 폴링해 Success가 아니면 워크플로를 실패시킨다.
         env:
           COMMAND_ID: ${{ steps.send.outputs.command_id }}
@@ -279,6 +296,7 @@ jobs:
 
       # 배포 권한이 있는 job이라 서드파티 액션 대신 공식 릴리스를 받아 지문을 확인한 뒤 설치한다.
       - name: k6 설치
+        if: steps.order.outputs.deploy == 'true'
         env:
           K6_VERSION: v2.2.0
           K6_SHA256: b5a8003c86f35f5cd5ceef1490312c48e587696c94d998cefc6d7b3b4cb1597d
@@ -292,11 +310,25 @@ jobs:
       # deploy.sh의 헬스체크는 앱 기동만 보므로, 사용자와 같은 경로(ALB·인증서)로 설정까지 검증한다.
       # 연속 배포 시 다음 배포가 끼어들지 않도록 배포 잠금 안에서 실행한다.
       - name: 스모크 테스트
+        if: steps.order.outputs.deploy == 'true'
         env:
           BASE_URL: https://dev-api.cking.co.kr
           FRONTEND_ORIGIN: https://dev.cking.co.kr
           EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: k6 run k6/smoke.js
+
+      # 대기 중이던 최신 커밋의 실행이 옛 실행에 밀려 취소되면 그 커밋은 다음 실행 전까지 배포되지 않는다.
+      - name: 최신 커밋 실행이 취소됐는지 확인
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
+          if [ "$HEAD_SHA" != "$GITHUB_SHA" ]; then
+            CONCLUSION=$(gh run list --workflow cicd.yml --commit "$HEAD_SHA" --limit 1 --json conclusion --jq '.[0].conclusion // ""')
+            if [ "$CONCLUSION" = cancelled ]; then
+              echo "::warning::브랜치 마지막 커밋 ${HEAD_SHA:0:7}의 실행이 취소돼 배포되지 않았다. 그 실행을 다시 돌린다."
+            fi
+          fi
 
   # 운영 배포 단계는 수동 되돌리기와 같은 재사용 워크플로를 쓴다(deploy-prod.yml).
   deploy-prod:
@@ -306,6 +338,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      actions: read
     uses: ./.github/workflows/deploy-prod.yml
     with:
       image_tag: ${{ needs.build-and-push.outputs.image_tag }}
