@@ -75,6 +75,41 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: scripts/check-migration-versions.sh "$BASE"
 
+  # 롤링 배포 중에는 옛 버전 서버가 새 마이그레이션이 적용된 DB로 요청을 받는다. PR의 마이그레이션을 적용한 DB에서
+  # 대상 브랜치 코드가 기동하는지 PR 단계에서 확인한다. 마이그레이션을 바꾼 PR에서만 준비 단계를 실행한다.
+  migration-compat:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: migration-compat-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # PR 이벤트는 대상 브랜치에 PR을 합친 커밋을 받으므로 첫 번째 부모가 대상 브랜치다.
+      - name: 마이그레이션 변경 확인
+        id: changed
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- src/main/resources/db/migration; then
+            echo "migration=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "migration=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: MySQL·Redis 기동
+        if: steps.changed.outputs.migration == 'true'
+        run: docker compose -f docker-compose.yml up -d --wait mysql redis
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        if: steps.changed.outputs.migration == 'true'
+        with:
+          java-version: "21"
+          distribution: "temurin"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        if: steps.changed.outputs.migration == 'true'
+      - name: 대상 브랜치 코드의 새 DB 구조 호환 검사
+        if: steps.changed.outputs.migration == 'true'
+        run: scripts/check-migration-compat.sh HEAD^1 HEAD
+
   # 배포 워크플로·스크립트·compose는 develop에 머지된 뒤에야 실행되어, 오류가 배포 때 드러난다.
   lint:
     runs-on: ubuntu-latest
@@ -84,7 +119,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 셸 스크립트 검사
-        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh
+        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh
       - name: 워크플로 검사
         run: >
           docker run --rm -v "$PWD:/repo:ro" -w /repo
