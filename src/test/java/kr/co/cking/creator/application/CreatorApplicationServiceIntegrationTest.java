@@ -86,11 +86,13 @@ class CreatorApplicationServiceIntegrationTest {
     void adminCanFilterApplicationsByStatusWithPagination() {
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
         CreatorApplication pending = creatorApplicationRepository.save(new CreatorApplication(
-                memberRepository.save(configuredApplicant()).getMemberId()));
-        CreatorApplication rejected = new CreatorApplication(memberRepository.save(configuredApplicant()).getMemberId());
+                memberRepository.save(configuredApplicant("대기신청자", "대기닉네임")).getMemberId()));
+        CreatorApplication rejected = new CreatorApplication(memberRepository.save(
+                configuredApplicant("반려신청자", "반려닉네임")).getMemberId());
         rejected.reject(admin.getMemberId(), "거절 사유");
         creatorApplicationRepository.save(rejected);
-        CreatorApplication approved = new CreatorApplication(memberRepository.save(configuredApplicant()).getMemberId());
+        CreatorApplication approved = new CreatorApplication(memberRepository.save(
+                configuredApplicant("승인신청자", "승인닉네임")).getMemberId());
         approved.approve(admin.getMemberId());
         creatorApplicationRepository.save(approved);
 
@@ -104,8 +106,12 @@ class CreatorApplicationServiceIntegrationTest {
     }
 
     private Member configuredApplicant() {
-        Member applicant = new Member("신청자", null, null, MemberRole.USER);
-        applicant.setInitialNickname(MemberNickname.of("신청자닉네임"));
+        return configuredApplicant("신청자", "신청자닉네임");
+    }
+
+    private Member configuredApplicant(String name, String nickname) {
+        Member applicant = new Member(name, null, null, MemberRole.USER);
+        applicant.setInitialNickname(MemberNickname.of(nickname));
         return applicant;
     }
 }
