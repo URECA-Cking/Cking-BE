@@ -8,6 +8,9 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.Limit;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -23,6 +26,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * 모든 그룹이 처리를 끝낸 앞쪽 메시지만 지우고, PEL·아직 전달되지 않은 메시지는 남기는지 검증한다.
  * MINID ~는 100건 묶음 단위로 지우므로 묶음보다 많이 넣는다.
  */
+@ExtendWith(OutputCaptureExtension.class)
 class StreamTrimSchedulerIntegrationTest {
 
     private static final String SPEND_STREAM = "stream:trim-test:spend";
@@ -116,6 +120,19 @@ class StreamTrimSchedulerIntegrationTest {
         assertThat(redisTemplate.hasKey(SPEND_STREAM)).isFalse();
         assertThat(redisTemplate.opsForStream().size(EARN_STREAM)).isLessThan(TOTAL);
         assertThat(redisTemplate.opsForStream().size(COMMON_EARN_STREAM)).isLessThan(TOTAL);
+    }
+
+    @Test
+    void Stream이_아닌_키면_경고를_남기고_다른_Stream은_계속_정리한다(CapturedOutput output) {
+        redisTemplate.opsForValue().set(SPEND_STREAM, "not-a-stream");
+        add(EARN_STREAM, TOTAL);
+        createGroup(EARN_STREAM, GROUP);
+        read(EARN_STREAM, GROUP, TOTAL).forEach(id -> ack(EARN_STREAM, GROUP, id));
+
+        scheduler.trim();
+
+        assertThat(output).contains("처리가 끝난 Stream 메시지를 지우지 못했습니다", "stream=" + SPEND_STREAM);
+        assertThat(redisTemplate.opsForStream().size(EARN_STREAM)).isLessThan(TOTAL);
     }
 
     private List<RecordId> add(String stream, int count) {

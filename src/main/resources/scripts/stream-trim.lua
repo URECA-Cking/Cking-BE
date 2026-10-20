@@ -6,10 +6,14 @@
 --
 -- KEYS[1] = Stream 키
 --
--- 반환: 지운 메시지 수. Stream이나 그룹이 없으면 0
+-- 반환: 지운 메시지 수. Stream이나 그룹이 없으면 0. 키가 있는데 XINFO가 실패하면(Stream이 아닌 키 등) 오류를 그대로
+-- 돌려 스케줄러가 경고를 남기게 한다. 삼키면 정리가 멈춰도 알 수 없다.
 
-local groups = redis.pcall('XINFO', 'GROUPS', KEYS[1])
-if (type(groups) == 'table' and groups.err) or #groups == 0 then
+if redis.call('EXISTS', KEYS[1]) == 0 then
+    return 0
+end
+local groups = redis.call('XINFO', 'GROUPS', KEYS[1])
+if #groups == 0 then
     return 0
 end
 
