@@ -5,7 +5,13 @@ import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceSlugReservation;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.member.application.MemberProfileImageProperties;
+import kr.co.cking.member.application.ProfileImageUrlResolver;
+import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.creator.repository.CreatorSpaceSlugReservationRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -68,6 +74,51 @@ class CreatorSpaceServiceTest {
         InOrder order = inOrder(imagePinner, spaceRepository);
         order.verify(imagePinner).pin("https://img/profile.png", "https://img/banner.png");
         order.verify(spaceRepository).save(any(CreatorSpace.class));
+    }
+
+    /** 회원이 프로필 사진을 올려 둔 상태였다면 템플릿 기본 이미지 대신 그 사진이 Space 프로필 사진의 기본값이 된다. */
+    @Test
+    void carriesOverTheMemberProfileImageInsteadOfTheTemplateOne() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        givenCreatorWithMemberImage("members/7/photo.png");
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
+        given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        CreatorSpace space = service.createFromActiveTemplateIfAbsent(42L);
+
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://member-cdn.example/members/7/photo.png");
+        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/banner.png");
+        // 쓰지 않는 템플릿 프로필 이미지는 고정하지 않고 배너만 고정한다.
+        verify(imagePinner).pin(null, "https://img/banner.png");
+    }
+
+    @Test
+    void usesTheTemplateProfileImageWhenTheMemberHasNoProfileImage() {
+        CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
+        CreatorSpaceTemplateService templateService = mock(CreatorSpaceTemplateService.class);
+        givenCreatorWithMemberImage(null);
+        given(spaceRepository.findByCreatorId(42L)).willReturn(Optional.empty());
+        given(templateService.findActive()).willReturn(Optional.of(new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}")));
+        given(spaceRepository.save(any(CreatorSpace.class))).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorSpaceService service = newService(spaceRepository, templateService);
+
+        CreatorSpace space = service.createFromActiveTemplateIfAbsent(42L);
+
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
+        verify(imagePinner).pin("https://img/profile.png", "https://img/banner.png");
+    }
+
+    private void givenCreatorWithMemberImage(String imageKey) {
+        Creator creator = new Creator(7L, "크리에이터");
+        Member member = mock(Member.class);
+        given(member.getProfileImageKey()).willReturn(imageKey);
+        given(creatorRepository.findById(42L)).willReturn(Optional.of(creator));
+        given(memberRepository.findById(7L)).willReturn(Optional.of(member));
     }
 
     /** 삭제가 확정된 이미지를 가리키는 템플릿으로는 Space를 만들지 않는다. 승인을 다시 하면 최신 템플릿을 읽는다. */
@@ -268,11 +319,15 @@ class CreatorSpaceServiceTest {
     private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
     private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
     private final CreatorContentOutbox contentOutbox = mock(CreatorContentOutbox.class);
+    private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
 
     private CreatorSpaceService newService(CreatorSpaceRepository spaceRepository, CreatorSpaceTemplateService templateService) {
         return new CreatorSpaceService(
                 spaceRepository, templateService,
                 new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), imagePinner, contentOutbox);
+                Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), imagePinner, contentOutbox,
+                creatorRepository, memberRepository,
+                new ProfileImageUrlResolver(new MemberProfileImageProperties("https://member-cdn.example")));
     }
 }

@@ -150,10 +150,17 @@ public class CreatorSpace {
     }
 
     public static CreatorSpace fromTemplate(Long creatorId, CreatorSpaceTemplate template, String slug) {
+        return fromTemplate(creatorId, template, slug, null);
+    }
+
+    /** {@code profileImageUrl}이 있으면 템플릿 프로필 이미지 대신 그 URL을 프로필 사진의 기본값으로 쓴다. */
+    public static CreatorSpace fromTemplate(
+            Long creatorId, CreatorSpaceTemplate template, String slug, String profileImageUrl
+    ) {
         return new CreatorSpace(
                 creatorId,
                 template.getIntroText(),
-                template.getProfileImageUrl(),
+                profileImageUrl != null ? profileImageUrl : template.getProfileImageUrl(),
                 template.getBannerImageUrl(),
                 slug
         );

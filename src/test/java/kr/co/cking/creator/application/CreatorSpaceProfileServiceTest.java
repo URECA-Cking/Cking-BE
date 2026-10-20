@@ -56,9 +56,10 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorSpaceProfileImageManager profileImageManager = mock(CreatorSpaceProfileImageManager.class);
     private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
     private final CreatorContentOutbox contentOutbox = mock(CreatorContentOutbox.class);
+    private final CreatorSpaceService spaceService = mock(CreatorSpaceService.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
             creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox);
+            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox, spaceService);
 
     private Creator creator;
     private CreatorSpace space;
@@ -213,6 +214,45 @@ class CreatorSpaceProfileServiceTest {
         assertErrorCode(() -> service.findMine(8L), CommonErrorCode.FORBIDDEN);
     }
 
+    /** Space가 없는 Creator가 처음 저장하면 템플릿으로 만든 뒤 보낸 값이 그대로 적용된다. */
+    @Test
+    void updateMineCreatesTheMissingSpaceAndAppliesTheRequestedValues() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty());
+        given(spaceService.createFromActiveTemplateIfAbsent(42L)).willReturn(space);
+
+        service.updateMine(7L, NEW_PROFILE);
+
+        assertThat(space.getIntroText()).isEqualTo(NEW_PROFILE.introText());
+        assertThat(space.getBannerImageUrl()).isEqualTo(NEW_PROFILE.bannerImageUrl());
+    }
+
+    /** Creator 행을 잠근 사이 다른 요청이 Space를 만들었다면 새로 만들지 않고 그 Space를 쓴다. */
+    @Test
+    void updateMineUsesTheSpaceCreatedByAConcurrentRequest() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty(), Optional.of(space));
+
+        service.updateMine(7L, NEW_PROFILE);
+
+        then(spaceService).should(never()).createFromActiveTemplateIfAbsent(any());
+        assertThat(space.getIntroText()).isEqualTo(NEW_PROFILE.introText());
+    }
+
+    /** Space가 이미 있으면 Creator 행을 따로 잠그거나 새로 만들지 않는다. */
+    @Test
+    void updateMineDoesNotCreateASpaceWhenOneExists() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+
+        service.updateMine(7L, NEW_PROFILE);
+
+        then(spaceService).should(never()).createFromActiveTemplateIfAbsent(any());
+        then(creatorRepository).should(never()).findByIdForUpdate(any());
+    }
+
     @Test
     void updateMineChangesOwnSpaceProfile() {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
@@ -297,7 +337,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox, spaceService);
 
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
                 "새 소개", "https://cdn/current.jpg", "https://img/b2.png", null, true));
@@ -333,7 +373,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox, spaceService);
 
         // 클라이언트가 현재 배너 URL(업로드 이미지)을 그대로 보내도 기본 배너로 저장되지 않아야 한다.
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(

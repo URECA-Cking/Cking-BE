@@ -44,6 +44,7 @@ public class CreatorSpaceProfileService {
     private final EventQueryService eventQueryService;
     private final CreatorSpaceTemplateImagePinner imagePinner;
     private final CreatorContentOutbox contentOutbox;
+    private final CreatorSpaceService spaceService;
 
     /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
@@ -113,7 +114,8 @@ public class CreatorSpaceProfileService {
     @Transactional
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
-        CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
+        CreatorSpace space = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId())
+                .orElseGet(() -> createMissingSpace(creator.getCreatorId()));
         // URL 입력이 실제로 새로 적용되는 경우만 템플릿 이미지를 고정한다. 클라이언트는 현재 URL을 그대로 다시 보내므로,
         // 바뀌지 않는 URL까지 고정하면 이미 정리된 이미지를 가진 Space는 소개글만 고쳐도 계속 거절된다.
         imagePinner.pin(
@@ -205,6 +207,18 @@ public class CreatorSpaceProfileService {
     private CreatorSpace requireSpace(Long creatorId) {
         return spaceRepository.findByCreatorId(creatorId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    /**
+     * Space가 없는 Creator의 첫 수정이면 템플릿으로 Space를 만든다. 호출자가 이어서 요청 값을 그 위에 적용하므로
+     * 보낸 값은 그대로 저장되고, 보내지 않은 값만 템플릿 기본값으로 남는다. Space 행은 아직 잠글 수 없어서 Creator 행을
+     * 먼저 잠가 같은 Creator의 동시 요청이 Space를 둘 만들지 않게 하고, 잠근 뒤 한 번 더 확인한다.
+     */
+    private CreatorSpace createMissingSpace(Long creatorId) {
+        creatorRepository.findByIdForUpdate(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        return spaceRepository.findByCreatorIdForUpdate(creatorId)
+                .orElseGet(() -> spaceService.createFromActiveTemplateIfAbsent(creatorId));
     }
 
     /** 수정·slug 변경에 사용할 Creator Space를 비관적 잠금으로 조회한다. */

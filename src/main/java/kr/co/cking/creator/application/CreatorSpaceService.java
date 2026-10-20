@@ -5,7 +5,11 @@ import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceSlugRule;
 import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.member.application.ProfileImageUrlResolver;
+import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,8 +18,9 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 
 /**
- * 승인 트랜잭션에서 활성 템플릿을 복사해 Space를 만든다. 템플릿이 없거나 slug 규칙이
- * 유효하지 않으면 예외를 던져 승인 전체를 롤백한다. 기존 템플릿 데이터도 생성 직전에 검증한다.
+ * 활성 템플릿을 복사해 Space를 만든다(승인 트랜잭션, 그리고 Space가 없는 Creator의 첫 수정). 템플릿이 없거나 slug 규칙이
+ * 유효하지 않으면 예외를 던져 호출 전체를 롤백한다. 기존 템플릿 데이터도 생성 직전에 검증한다.
+ * 회원이 프로필 사진을 올려 둔 상태였다면 템플릿 기본 이미지 대신 그 사진을 Space 프로필 사진의 기본값으로 이어받는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -30,6 +35,9 @@ public class CreatorSpaceService {
     private final Clock clock;
     private final CreatorSpaceTemplateImagePinner imagePinner;
     private final CreatorContentOutbox contentOutbox;
+    private final CreatorRepository creatorRepository;
+    private final MemberRepository memberRepository;
+    private final ProfileImageUrlResolver memberImageUrlResolver;
 
     /** 이미 Space가 있으면 그대로 반환한다. */
     public CreatorSpace createFromActiveTemplateIfAbsent(Long creatorId) {
@@ -42,13 +50,24 @@ public class CreatorSpaceService {
                 .orElseThrow(() -> new BusinessException(CreatorErrorCode.NO_ACTIVE_SPACE_TEMPLATE));
         // 템플릿 URL을 Space로 복사하기 전에 같은 트랜잭션에서 업로드한 템플릿 이미지를 고정한다. 읽은 뒤 관리자가 템플릿을
         // 바꾸고 정리 작업이 그 이미지의 삭제를 확정했다면 여기서 거절되고, 아니면 정리 작업이 이 Space의 참조를 보게 된다.
-        imagePinner.pin(template.getProfileImageUrl(), template.getBannerImageUrl());
+        // 회원 사진을 이어받으면 템플릿 프로필 이미지는 쓰지 않으므로 고정하지 않는다.
+        String memberImageUrl = memberProfileImageUrl(creatorId);
+        imagePinner.pin(memberImageUrl != null ? null : template.getProfileImageUrl(), template.getBannerImageUrl());
         LocalDateTime now = LocalDateTime.now(clock);
         String slug = availableSlug(buildSlug(template.getSlugRule(), creatorId), creatorId, now);
         slugRegistry.clearReservation(slug);
-        CreatorSpace space = spaceRepository.save(CreatorSpace.fromTemplate(creatorId, template, slug));
+        CreatorSpace space = spaceRepository.save(CreatorSpace.fromTemplate(creatorId, template, slug, memberImageUrl));
         contentOutbox.enqueue(space);
         return space;
+    }
+
+    /** Creator 회원이 올려 둔 프로필 사진의 공개 URL. 사진이 없거나 회원을 찾지 못하면 null이다. */
+    private String memberProfileImageUrl(Long creatorId) {
+        return creatorRepository.findById(creatorId)
+                .map(Creator::getMemberId)
+                .flatMap(memberRepository::findById)
+                .map(member -> memberImageUrlResolver.resolve(member.getProfileImageKey()))
+                .orElse(null);
     }
 
     /**
