@@ -1,19 +1,16 @@
 package kr.co.cking.follow.repository;
 
-import jakarta.persistence.LockModeType;
 import kr.co.cking.follow.domain.CreatorFollow;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 
 public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Long> {
 
@@ -40,12 +37,7 @@ public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Lo
 
     boolean existsByMemberIdAndCreatorId(Long memberId, Long creatorId);
 
-    /** 읽음 처리 중 언팔로우가 관계를 삭제하지 못하도록 현재 팔로우 행을 잠근다. */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select f from CreatorFollow f where f.memberId = :memberId and f.creatorId = :creatorId")
-    Optional<CreatorFollow> findForReadUpdate(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
-
-    /** 같은 회원·Creator의 병렬 읽음 요청은 DB 행 잠금으로 직렬화되고 저장 시각은 앞으로만 간다. */
+    /** UPDATE 자체의 행 잠금으로 병렬 요청을 직렬화하고 저장 시각을 앞으로만 옮긴다. */
     @Modifying
     @Query(value = """
             UPDATE creator_follow

@@ -25,13 +25,17 @@ public class CreatorPostNewsService {
     /** 서버 DB 시각과 조건부 갱신으로 읽음 시각의 단조 증가를 보장한다. */
     @Transactional
     public Instant markRead(Long memberId, Long creatorId) {
+        followRepository.markPostsRead(memberId, creatorId);
+        Instant lastReadAt = followRepository.findLastReadAt(memberId, creatorId);
+        if (lastReadAt != null) {
+            return lastReadAt;
+        }
+        // UPDATE 건수는 드라이버의 matched/changed rows 설정에 따라 달라질 수 있다.
+        // 갱신된 시각이 없을 때만 Creator 존재 여부를 확인해 404와 403을 구분한다.
         if (!creatorRepository.existsById(creatorId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
-        followRepository.findForReadUpdate(memberId, creatorId)
-                .orElseThrow(() -> new BusinessException(FollowErrorCode.FOLLOW_REQUIRED));
-        followRepository.markPostsRead(memberId, creatorId);
-        return followRepository.findLastReadAt(memberId, creatorId);
+        throw new BusinessException(FollowErrorCode.FOLLOW_REQUIRED);
     }
 
     /** 현재 팔로우 관계와 볼 수 있는 최신 글을 한 번의 DB 질의로 조회한다. */
