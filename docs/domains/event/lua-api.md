@@ -14,7 +14,7 @@ Java 연동: `kr.co.cking.event.application` (`EntrySpendService`/`EntrySpendSer
 | `event:cutoff:{eventId}` | STRING | 시스템2가 확정한 마감 barrier Stream ID. 재시도 시 같은 값을 재사용 |
 | `ticket:balance:{creatorId}:{userId}` | STRING(integer) | 크리에이터 전용 응모권 잔액. `couponType=COMMON`이면 대신 `ticket:balance:common:{userId}`를 쓴다(이슈 #243) |
 | `idem:{requestId}` | STRING(JSON) | `{fingerprint, result}`. TTL 1시간(FR-P2-033) |
-| `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. TTL은 이벤트 종료 시각까지 |
+| `entry:spend-guard:{requestId}` | STRING(JSON) | `{fingerprint}`. idem 저장 실패에 대비한 2차 멱등성 백스톱(issue #106, ticket-earn.lua의 mission:earn-guard와 동일 원칙). DECRBY 이전에 한 번만 기록되고 다시 갱신되지 않는다. 만료는 `min(지금 + 70분, 이벤트 종료 시각)`(#673) |
 | `ticket:maint:{creatorId}:{userId}` | STRING | `TicketCompensationService.resyncRedisToDb()`가 해당 조합을 보정하는 동안 존재. Lua는 `EXISTS`만 확인하고 값·TTL은 보정 서비스 쪽 책임이다(issue #172). `couponType=COMMON`이면 `ticket:maint:common:{userId}`를 대신 확인한다 — `CommonTicketCompensationService.resyncRedisToDb()`(이슈 #256)가 공용 보정 중에만 이 키를 잡으므로, 평소에는 미존재(EXISTS=false)다 |
 | `event:entry-total:{eventId}` | STRING(integer) | 실시간 응모 현황(FR-P2-045~050) 누적 사용 응모권 수. `event-gate-load.lua`가 Gate 최초 적재 시 DB 집계로 초기화하고, 이 스크립트가 신규 SUCCESS 경로에서만 증가시킨다 |
 | `event:entrants:{eventId}` | HASH(userId → 사용 응모권 수) | 실시간 응모 현황 참여자별 집계. `HLEN`이 참여자 수다. 초기화·증가 시점은 위와 같다 |
@@ -87,7 +87,13 @@ Redis Lua는 명령 하나가 에러를 던져도 그 전에 실행된 쓰기를
 
 guard 히트 시 결과 payload를 재구성하지 않아도 되는 이유는 SPEND 성공 응답 스키마가 `code`·`requestId`·`eventId`·`accepted` 4개뿐이고 `streamId`/`balance`는 애초에 반환하지 않기 때문이다(취합/API명세 확정 사항, `EntrySpendResult.streamId()`/`.balance()`를 읽는 내부 소비자도 현재 없음). 이 덕분에 "guard 예약 SET과 idem SET이 모두 실패해 결과를 재현할 수 없는" 잔여 상태 자체가 이 순서에서는 발생하지 않는다 — guard는 한 번 쓰이면 그 값이 영원히 고정이라, 있으면 무조건 "이미 접수됨"이고 없으면 "신규 요청"인 두 상태만 존재한다.
 
-guard의 만료 시각은 idemTtl이 아니라 `event:endat`(이벤트 종료 시각)에 `PEXPIREAT`로 맞춘다. 이벤트가 idemTtl(1시간)보다 오래 열려 있어도 guard가 만료되지 않아 재차감을 이벤트 진행 기간 내내 막는다 — 이벤트 종료 이후에는 Gate/시각 검증이 어차피 모든 신규 요청을 차단하므로 그 이상 유지할 필요는 없다. (EARN의 guard가 idem보다 긴 TTL을 쓰는 건 미션 중복 방지라는 별개의 도메인 이유지만, SPEND의 guard는 idem 저장 실패에 대한 순수 기술적 백스톱이라는 별도 근거로 이벤트 종료 시각까지 유지한다.)
+guard의 만료 시각은 `min(지금 + guardTtl, event:endat)`이다(#673). guardTtl은 idemTtl(1시간) + 10분이다.
+
+- 이벤트 종료 뒤에는 Gate/시각 검증이 모든 신규 요청을 막으므로 종료 시각보다 오래 둘 필요가 없다.
+- 처음(#106)에는 이벤트 종료 시각까지 유지했다. guard는 모든 신규 응모에 한 건씩 생기므로(약 200B), 종료 시각이 먼 이벤트에 응모가 쌓이면 Redis 메모리가 계속 늘어 noeviction 상한에서 응모가 실패한다. 그래서 idemTtl 기준으로 줄였다.
+- guard는 idem보다 먼저 기록되므로 guardTtl이 idemTtl 이상이면 재시도 보호가 끊기지 않는다. 10분은 오류 화면을 열어 둔 채 재시도하는 경우의 여유다.
+- 남는 위험: idem 저장이 실패했거나 idem이 만료된 뒤, guardTtl이 지나 같은 `requestId`로 재시도가 오면 다시 차감된다. FE는 `NETWORK_ERROR`·`SYSTEM_ERROR`일 때만 같은 `requestId`로 재시도하고 화면 상태에만 보관하지만, 시간 제한은 없다.
+- 피해 범위: DB 반영은 `TicketSpendLedgerService`가 `requestId`로 걸러 한 번만 들어가므로 원장·응모 기록·추첨은 그대로다. 어긋나는 것은 해당 사용자의 Redis 잔액(차감한 수만큼 적음)과 실시간 응모 현황 집계다. 잔액은 `TicketBalanceReconciliationScheduler`가 Redis·DB 불일치를 로그로 감지하고 `resyncRedisToDb`로 보정한다.
 
 ## 결과 코드 (FR-P2-036, 기존 10종 + BALANCE_MAINTENANCE)
 

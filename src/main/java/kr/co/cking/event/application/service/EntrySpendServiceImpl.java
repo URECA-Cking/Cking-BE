@@ -27,6 +27,8 @@ public class EntrySpendServiceImpl implements EntrySpendService {
 
     // FR-P2-033: idem TTL은 1시간이다.
     private static final long IDEM_TTL_SECONDS = 3600L;
+    // #673: idem TTL 이상이어야 재시도 보호가 끊기지 않는다. 10분은 오류 화면을 열어 둔 채 재시도하는 경우의 여유다.
+    private static final long GUARD_TTL_SECONDS = IDEM_TTL_SECONDS + 600L;
 
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> entrySpendLuaScript;
@@ -105,7 +107,8 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                     String.valueOf(userId),
                     String.valueOf(creatorId),
                     requestId,
-                    couponType.name()
+                    couponType.name(),
+                    String.valueOf(GUARD_TTL_SECONDS)
             );
         } catch (DataAccessException e) {
             // Lua는 DECRBY/XADD 실패 시 잔액과 guard를 정리한 뒤 오류를 반환한다.
