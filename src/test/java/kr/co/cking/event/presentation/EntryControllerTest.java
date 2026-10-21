@@ -11,6 +11,8 @@ import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.event.application.dto.EntryOutcome;
 import kr.co.cking.event.application.dto.EntryStatusResponse;
 import kr.co.cking.event.domain.EntryResultCode;
+import kr.co.cking.event.domain.EntryErrorCode;
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.event.presentation.dto.EntryRequest;
 import kr.co.cking.ticket.domain.CouponType;
 import org.junit.jupiter.api.Test;
@@ -138,6 +140,20 @@ class EntryControllerTest {
                 .andExpect(jsonPath("$.data.eventId").value(1))
                 .andExpect(jsonPath("$.data.accepted").value(true))
                 .andExpect(jsonPath("$.data.entryId").doesNotExist());
+    }
+
+    /** 본인 Event 응모 거절은 클라이언트에 403과 전용 오류 코드로 전달한다. */
+    @Test
+    void 본인_이벤트_응모는_403을_반환한다() throws Exception {
+        EntryRequest request = new EntryRequest(UUID.randomUUID(), 2, CouponType.COMMON);
+        when(eventEntryService.apply(eq(1L), any()))
+                .thenThrow(new BusinessException(EntryErrorCode.OWN_EVENT_ENTRY_NOT_ALLOWED));
+
+        mockMvc.perform(post("/api/events/1/entries")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("OWN_EVENT_ENTRY_NOT_ALLOWED"));
     }
 
     @Test

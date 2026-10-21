@@ -17,6 +17,13 @@ public class CreatorQueryService {
         return creatorRepository.existsByMemberId(memberId);
     }
 
+    /** 요청 회원이 지정한 Creator 계정의 소유자인지 확인한다. */
+    public boolean isOwner(Long memberId, Long creatorId) {
+        return creatorRepository.findByMemberId(memberId)
+                .map(creator -> creator.getCreatorId().equals(creatorId))
+                .orElse(false);
+    }
+
     /**
      * Creator는 팬 닉네임 대신 활동명으로 공개 활동하므로, Creator인 경우에만 활동명 설정을 요구한다.
      * Creator가 아닌 Member는 호출자가 별도의 Member 프로필 규칙을 적용한다.

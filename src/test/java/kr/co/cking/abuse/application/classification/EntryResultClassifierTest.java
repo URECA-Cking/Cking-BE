@@ -68,6 +68,7 @@ class EntryResultClassifierTest {
     void 잘못된_응모권_수량은_관찰하지_않는다() {
         assertThat(classifier.classify(EntryResultCode.INVALID_TICKET_COUNT)).isEmpty();
         assertThat(classifier.classify(EntryErrorCode.INVALID_TICKET_COUNT)).isEmpty();
+        assertThat(classifier.classify(EntryErrorCode.OWN_EVENT_ENTRY_NOT_ALLOWED)).isEmpty();
     }
 
     @ParameterizedTest

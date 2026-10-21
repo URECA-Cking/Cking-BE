@@ -6,6 +6,7 @@ import kr.co.cking.abuse.application.AbuseObservationExecutor;
 import kr.co.cking.abuse.application.classification.EntryResultClassifier;
 import kr.co.cking.abuse.domain.AbuseObservationEvent;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.event.application.dto.CachedEvent;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.application.dto.EntryCommand;
@@ -53,6 +54,9 @@ class EventEntryServiceTest {
     private MemberProfileGuard memberProfileGuard;
 
     @Mock
+    private CreatorQueryService creatorQueryService;
+
+    @Mock
     private EntryAbuseObserver abuseObserver;
 
     @Mock
@@ -64,6 +68,38 @@ class EventEntryServiceTest {
     private final CachedEvent event = new CachedEvent(1L, 2L, "여름 이벤트", "설명",
             Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-30T00:00:00Z"),
             3, "WEIGHTED", EventStatus.OPEN);
+
+    /** 소유 회원의 응모는 Lua에 전달하지 않아 잔액 차감과 Stream 발행을 막는다. */
+    @Test
+    void 본인_이벤트_응모는_Lua_호출_전에_거절한다() {
+        EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.COMMON);
+        when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
+        when(creatorQueryService.isOwner(10L, 2L)).thenReturn(true);
+
+        assertThatThrownBy(() -> eventEntryService.apply(1L, command))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(EntryErrorCode.OWN_EVENT_ENTRY_NOT_ALLOWED);
+
+        verifyNoInteractions(entrySpendService, abuseObserver);
+    }
+
+    /** 다른 Creator의 Event와 일반 회원은 기존 차감 경로를 그대로 이용한다. */
+    @Test
+    void 타인_이벤트와_일반_회원의_응모는_허용한다() {
+        EntryCommand otherCreator = new EntryCommand(10L, UUID.randomUUID(), 1, CouponType.CREATOR);
+        EntryCommand fan = new EntryCommand(11L, UUID.randomUUID(), 1, CouponType.COMMON);
+        when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
+        when(entrySpendService.spend(any(), any(), any(), any(), anyInt(), any()))
+                .thenReturn(EntrySpendResult.ofSuccess(EntrySpendResultCode.SUCCESS, "1-0", 1L));
+
+        assertThat(eventEntryService.apply(1L, otherCreator).code()).isEqualTo(EntryResultCode.SUCCESS);
+        assertThat(eventEntryService.apply(1L, fan).code()).isEqualTo(EntryResultCode.SUCCESS);
+        verify(creatorQueryService).isOwner(10L, 2L);
+        verify(creatorQueryService).isOwner(11L, 2L);
+        verify(entrySpendService).spend(1L, 10L, 2L, otherCreator.requestId().toString(), 1, CouponType.CREATOR);
+        verify(entrySpendService).spend(1L, 11L, 2L, fan.requestId().toString(), 1, CouponType.COMMON);
+    }
 
     @Test
     void SUCCESS면_accepted_응답을_반환한다() {
@@ -175,6 +211,7 @@ class EventEntryServiceTest {
         doThrow(new IllegalStateException("Redis failure"))
                 .when(failedExecutor).observe(any(AbuseObservationEvent.class));
         EventEntryService service = new EventEntryService(eventQueryService, entrySpendService, memberProfileGuard,
+                creatorQueryService,
                 new EntryAbuseObserver(new EntryResultClassifier(), failedExecutor, fixedClock), fixedClock);
         EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.COMMON);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);
@@ -191,6 +228,7 @@ class EventEntryServiceTest {
         doThrow(new IllegalStateException("Redis failure"))
                 .when(failedExecutor).observe(any(AbuseObservationEvent.class));
         EventEntryService service = new EventEntryService(eventQueryService, entrySpendService, memberProfileGuard,
+                creatorQueryService,
                 new EntryAbuseObserver(new EntryResultClassifier(), failedExecutor, fixedClock), fixedClock);
         EntryCommand command = new EntryCommand(10L, UUID.randomUUID(), 2, CouponType.CREATOR);
         when(eventQueryService.getCachedEvent(1L)).thenReturn(event);

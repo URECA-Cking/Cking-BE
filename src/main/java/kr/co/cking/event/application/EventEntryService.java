@@ -5,6 +5,7 @@ import java.time.Instant;
 import kr.co.cking.abuse.application.EntryAbuseObserver;
 import kr.co.cking.abuse.application.EntryObservationContext;
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.event.application.dto.CachedEvent;
 import kr.co.cking.event.application.dto.EntryCommand;
 import kr.co.cking.event.application.dto.EntryOutcome;
@@ -23,12 +24,17 @@ public class EventEntryService {
     private final EventQueryService eventQueryService;
     private final EntrySpendService entrySpendService;
     private final MemberProfileGuard memberProfileGuard;
+    private final CreatorQueryService creatorQueryService;
     private final EntryAbuseObserver abuseObserver;
     private final Clock clock;
 
+    /** 요청 회원의 프로필과 Event 소유권을 검증한 뒤 응모권 차감을 요청한다. */
     public EntryOutcome apply(Long eventId, EntryCommand command) {
         memberProfileGuard.requireConfigured(command.userId());
         CachedEvent event = eventQueryService.getCachedEvent(eventId);
+        if (creatorQueryService.isOwner(command.userId(), event.creatorId())) {
+            throw new BusinessException(EntryErrorCode.OWN_EVENT_ENTRY_NOT_ALLOWED);
+        }
         Instant requestedAt = clock.instant();
         EntryObservationContext observation = new EntryObservationContext(
                 command.userId(), event.creatorId(), eventId, command.requestId(), command.couponType(), requestedAt);

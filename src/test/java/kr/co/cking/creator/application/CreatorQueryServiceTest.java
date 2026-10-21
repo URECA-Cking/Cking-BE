@@ -28,6 +28,19 @@ class CreatorQueryServiceTest {
         verify(creatorRepository).existsByMemberId(1L);
     }
 
+    /** 회원에게 연결된 Creator ID가 Event의 소유자 ID와 일치하는지 확인한다. */
+    @Test
+    void Creator_소유권을_회원_ID와_Creator_ID로_검사한다() {
+        Creator creator = new Creator(1L, "creator-1");
+        ReflectionTestUtils.setField(creator, "creatorId", 2L);
+        when(creatorRepository.findByMemberId(1L)).thenReturn(Optional.of(creator));
+        when(creatorRepository.findByMemberId(3L)).thenReturn(Optional.empty());
+
+        assertThat(creatorQueryService.isOwner(1L, 2L)).isTrue();
+        assertThat(creatorQueryService.isOwner(1L, 4L)).isFalse();
+        assertThat(creatorQueryService.isOwner(3L, 2L)).isFalse();
+    }
+
     @Test
     void 활동명_미설정_Creator의_공개_활동_검증은_설정_필요_오류를_반환한다() {
         Creator creator = new Creator(1L, "creator-1");
