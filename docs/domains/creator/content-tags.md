@@ -94,7 +94,7 @@ Creator가 아닌 회원은 403, 없는 Space는 404다.
    `taxonomy_snapshot`과 모든 hash를 동일 검토본에서 생성한다. 서비스도 snapshot과 hash를 재검증한다.
 4. 작업자를 중지하고 단일 DB 트랜잭션에서 기존 active를 해제하고 승인 행을 approved/active로 전환한다.
    configHash는 실행 순서 장벽이다. 오래된 설정은 409가 된다. 새 설정으로 재시작하고 일일 보정을 실행한다.
-5. 운영 token-hash는 환경변수 `CKING_CONTENT_TAG_TOKEN_HASH`로 넣고, LLM에는 평문 전용 토큰을
+5. token-hash는 환경변수 `CKING_CONTENT_TAG_TOKEN_HASH`로 넣고(개발은 `/cking/dev/` 필수 값, 운영은 `/cking/prod/`에 등록된 경우에만), LLM에는 평문 전용 토큰을
    `CKING_CONTENT_TAG_ACCESS_TOKEN` 시크릿으로 전달한다. 추천 키와 별도로 회전한다.
 
 설정/코드 변경 시 LLM 캐시·payload·application ledger를 임의 삭제하지 않는다.

@@ -36,9 +36,10 @@ case "$PARAM_PATH" in
               SUBSCRIPTION_GEMINI_API_KEY ADMIN_ACCOUNT_LOGIN_ID ADMIN_ACCOUNT_PASSWORD
               GEMINI_API_KEY OPENAI_API_KEY)
     OPTIONAL=()
-    # 필터 Lambda는 개발에만 있다. 같은 이미지·compose·dev 프로필을 쓰는 부하 테스트는 필터와 지급 완료 알림을 끈다.
+    # 필터 Lambda와 추천 배치 서버는 개발에만 있다. 같은 이미지·compose·dev 프로필을 쓰는 부하 테스트는
+    # 필터와 지급 완료 알림을 끄고, 추천 배치 인증 해시를 넘기지 않아 키 인증이 꺼진다.
     if [ "$PARAM_PATH" = /cking/dev/ ]; then
-      REQUIRED+=(COMMENT_FILTER_BASE_URL)
+      REQUIRED+=(COMMENT_FILTER_BASE_URL CKING_RECOMMENDATION_API_KEY_HASHES CKING_CONTENT_TAG_TOKEN_HASH)
     else
       export COMMENT_FILTER_ENABLED=false
       export TICKET_REWARD_NOTIFICATION_ENABLED=false
