@@ -19,6 +19,7 @@ public enum EntryErrorCode implements ErrorCode {
     INSUFFICIENT_BALANCE(HttpStatus.CONFLICT, "응모권 잔액이 부족합니다."),
     INVALID_TICKET_COUNT(HttpStatus.BAD_REQUEST, "응모 수량이 올바르지 않습니다."),
     IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT, "동일 requestId에 다른 요청 내용이 전달되었습니다."),
+    OWN_EVENT_ENTRY_NOT_ALLOWED(HttpStatus.FORBIDDEN, "본인 이벤트에는 응모할 수 없습니다."),
     GATE_NOT_LOADED(HttpStatus.SERVICE_UNAVAILABLE, "응모 처리 준비 중입니다. 잠시 후 다시 시도해주세요."),
     BALANCE_NOT_LOADED(HttpStatus.SERVICE_UNAVAILABLE, "잔액 정보 준비 중입니다. 잠시 후 다시 시도해주세요."),
     BALANCE_MAINTENANCE(HttpStatus.SERVICE_UNAVAILABLE, "잔액 보정 처리 중입니다. 잠시 후 동일 요청으로 다시 시도해주세요."),

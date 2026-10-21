@@ -28,6 +28,15 @@ class CreatorQueryServiceTest {
         verify(creatorRepository).existsByMemberId(1L);
     }
 
+    /** Event 캐시를 채울 때 회원 ID 한 컬럼만 읽는다. */
+    @Test
+    void Creator_소유_회원_ID를_조회한다() {
+        when(creatorRepository.findOwnerMemberId(2L)).thenReturn(Optional.of(1L));
+
+        assertThat(creatorQueryService.findOwnerMemberId(2L)).contains(1L);
+        verify(creatorRepository).findOwnerMemberId(2L);
+    }
+
     @Test
     void 활동명_미설정_Creator의_공개_활동_검증은_설정_필요_오류를_반환한다() {
         Creator creator = new Creator(1L, "creator-1");

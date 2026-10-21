@@ -1,6 +1,7 @@
 package kr.co.cking.event.application;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.event.application.dto.CachedEvent;
 import kr.co.cking.event.application.dto.EventDetail;
 import kr.co.cking.event.domain.DisplayStatus;
@@ -37,8 +38,9 @@ class EventQueryServiceGetEventTest {
     private final CommonTicketBalanceQueryService commonTicketBalanceQueryService = mock(CommonTicketBalanceQueryService.class);
     private final EventCache eventCache = mock(EventCache.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final CreatorQueryService creatorQueryService = mock(CreatorQueryService.class);
     private final EventQueryService service =
-            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), mock(EventCountsCache.class), memberRepository);
+            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), mock(EventCountsCache.class), memberRepository, creatorQueryService);
 
     @BeforeEach
     void setUp() {
@@ -60,6 +62,7 @@ class EventQueryServiceGetEventTest {
     void 이벤트_상세에_내_잔액을_포함한다() {
         when(eventCache.find(1L)).thenReturn(Optional.empty());
         when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
+        when(creatorQueryService.findOwnerMemberId(7L)).thenReturn(Optional.of(200L));
         when(ticketBalanceQueryService.getBalance(7L, 100L)).thenReturn(42L);
         when(commonTicketBalanceQueryService.getBalanceDetail(100L))
                 .thenReturn(new CommonTicketBalanceResponse(100L, 9L, null));
@@ -159,7 +162,7 @@ class EventQueryServiceGetEventTest {
 
     @Test
     void 캐시에_있으면_레포지토리를_거치지_않는다() {
-        CachedEvent cached = CachedEvent.from(event);
+        CachedEvent cached = CachedEvent.from(event, 200L);
         when(eventCache.find(1L)).thenReturn(Optional.of(cached));
         when(ticketBalanceQueryService.getBalance(7L, 100L)).thenReturn(5L);
 
@@ -168,16 +171,18 @@ class EventQueryServiceGetEventTest {
         assertThat(detail.myTicketBalance()).isEqualTo(5L);
         assertThat(detail.title()).isEqualTo("여름 이벤트");
         verify(eventRepository, never()).findById(any());
+        verifyNoInteractions(creatorQueryService);
     }
 
     @Test
     void 캐시에_없으면_조회후_캐시에_적재한다() {
         when(eventCache.find(1L)).thenReturn(Optional.empty());
         when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
+        when(creatorQueryService.findOwnerMemberId(7L)).thenReturn(Optional.of(200L));
 
         service.getEvent(1L, 100L);
 
-        verify(eventCache).save(CachedEvent.from(event));
+        verify(eventCache).save(CachedEvent.from(event, 200L));
     }
 
     @Test
