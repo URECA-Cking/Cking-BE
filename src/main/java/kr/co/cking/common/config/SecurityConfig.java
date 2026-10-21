@@ -3,6 +3,7 @@ package kr.co.cking.common.config;
 import kr.co.cking.common.security.RecommendationApiKeyAuthenticationFilter;
 import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
+import kr.co.cking.auth.presentation.NoOpOAuth2AuthorizedClientRepository;
 import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
 import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
 import kr.co.cking.auth.presentation.RedisOAuth2AuthorizationRequestRepository;
@@ -234,6 +235,7 @@ public class SecurityConfig {
             http.oauth2Login(oauth2 -> oauth2
                     .authorizationEndpoint(endpoint -> endpoint
                             .authorizationRequestRepository(authorizationRequestRepositoryProvider.getObject()))
+                    .authorizedClientRepository(new NoOpOAuth2AuthorizedClientRepository())
                     .successHandler(oauth2LoginSuccessHandler)
                     .failureHandler(oauth2LoginFailureHandler));
         }
