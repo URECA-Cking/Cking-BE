@@ -12,7 +12,7 @@ import java.util.List;
  * @param imageCount 잠금 여부와 무관한 이미지 수
  * @param likeCount  좋아요 수. 잠긴 게시글도 포함한다
  * @param liked      조회자가 좋아요했는지. 비로그인이면 false
- * @param commentCount 댓글 수. 필터·관리자 숨김 댓글도 센다
+ * @param commentCount 댓글 수. 필터·관리자 숨김 댓글은 스페이스 주인 Creator에게만 센다. 그 외 조회자에게는 본인이 쓴 것만 센다
  */
 public record CreatorPostView(
         Long postId,

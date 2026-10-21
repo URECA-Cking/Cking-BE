@@ -52,7 +52,7 @@ public class CreatorPostQueryService {
                                 Collectors.mapping(CreatorPostImage::getObjectKey, Collectors.toList())));
 
         Map<Long, PostEngagement> engagements = engagementReader.read(
-                posts.map(CreatorPost::getPostId).toList(), viewerMemberId);
+                posts.map(CreatorPost::getPostId).toList(), viewerMemberId, isOwner(creator, viewerMemberId));
 
         return posts.map(post -> viewAssembler.assemble(
                 post,
@@ -68,6 +68,10 @@ public class CreatorPostQueryService {
         List<String> imageKeys = imageRepository.findByPostIdOrderByDisplayOrderAsc(postId).stream()
                 .map(CreatorPostImage::getObjectKey)
                 .toList();
-        return viewAssembler.assemble(post, imageKeys, false, engagementReader.read(postId, viewerMemberId));
+        return viewAssembler.assemble(post, imageKeys, false, engagementReader.read(postId, viewerMemberId, isOwner(creator, viewerMemberId)));
+    }
+
+    private boolean isOwner(Creator creator, Long viewerMemberId) {
+        return creator.getMemberId().equals(viewerMemberId);
     }
 }

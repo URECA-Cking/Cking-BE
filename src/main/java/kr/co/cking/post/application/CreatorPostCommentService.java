@@ -63,14 +63,21 @@ public class CreatorPostCommentService {
     private final ApplicationEventPublisher eventPublisher;
     private final SanctionQueryService sanctionQueryService;
 
-    /** @param viewerMemberId 비로그인이면 null */
+    /**
+     * 필터가 차단했거나 관리자가 숨긴 댓글은 스페이스 주인 Creator와 작성자 본인에게만 내려간다(이슈 #721). 그 외
+     * 조회자에게는 응답 항목에서 뺀다.
+     *
+     * @param viewerMemberId 비로그인이면 null
+     */
     @Transactional(readOnly = true)
     public Page<CreatorPostCommentView> findByPost(
             Long creatorId, Long postId, Long viewerMemberId, Pageable pageable) {
         Creator creator = accessPolicy.requireCreator(creatorId);
         accessPolicy.requireViewablePost(creator, postId, viewerMemberId);
 
-        Page<CreatorPostComment> comments = commentRepository.findByPostIdOldestFirst(postId, pageable);
+        Page<CreatorPostComment> comments = isOwner(creator, viewerMemberId)
+                ? commentRepository.findByPostIdOldestFirst(postId, pageable)
+                : commentRepository.findVisibleByPostIdOldestFirst(postId, viewerMemberId, pageable);
         Map<Long, Member> authors = comments.isEmpty()
                 ? Map.of()
                 : memberRepository.findAllById(comments.map(CreatorPostComment::getMemberId).toSet()).stream()
@@ -84,9 +91,9 @@ public class CreatorPostCommentService {
     }
 
     /**
-     * 필터링(BLOCK)된 댓글의 원문. 게시글을 볼 수 있는 사람이면 누구나 요청할 수 있다. 개인정보 규칙으로 막힌 댓글과
-     * 관리자가 숨긴 댓글은 {@code COMMENT_NOT_REVEALABLE}(403)이다. 필터링되지 않았거나 조회자가 작성자 본인이면 필터링된 댓글로 보이지
-     * 않으므로 404다.
+     * 필터링(BLOCK)된 댓글의 원문. 스페이스 주인 Creator만 요청할 수 있다(이슈 #721). 개인정보 규칙으로 막힌 댓글과
+     * 관리자가 숨긴 댓글은 {@code COMMENT_NOT_REVEALABLE}(403)이다. 필터링되지 않았거나 조회자가 작성자 본인이거나 스페이스
+     * 주인이 아니면 그 조회자에게는 없는 댓글이므로 404다.
      *
      * @param viewerMemberId 비로그인이면 null
      */
@@ -98,7 +105,7 @@ public class CreatorPostCommentService {
 
         CreatorPostComment comment = commentRepository.findById(commentId)
                 .filter(found -> found.belongsTo(postId))
-                .filter(found -> found.isConcealed() && !found.isWrittenBy(viewerMemberId))
+                .filter(found -> isOwner(creator, viewerMemberId) && found.isConcealed() && !found.isWrittenBy(viewerMemberId))
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         if (comment.isBlockedForPrivacy() || comment.isHiddenByAdmin()) {
             throw new BusinessException(PostErrorCode.COMMENT_NOT_REVEALABLE);
@@ -216,6 +223,10 @@ public class CreatorPostCommentService {
                 filtered && !comment.isBlockedForPrivacy() && !comment.isHiddenByAdmin(),
                 comment.getCreatedAt(),
                 comment.getUpdatedAt());
+    }
+
+    private boolean isOwner(Creator creator, Long viewerMemberId) {
+        return creator.getMemberId().equals(viewerMemberId);
     }
 
     private boolean isWrittenByOwner(Creator creator, Long commentMemberId) {
