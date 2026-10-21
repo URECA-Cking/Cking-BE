@@ -37,8 +37,10 @@
 - matchedTags는 실제 저장 태그와 선택의 교집합이다. 개인화의 interestCodes와 다른 필드다.
 - 자격 검증 뒤 OR 최대 코사인 점수 DESC, creatorId ASC로 정렬하고 size를 적용한다.
   전역 Top-20을 먼저 잘라 관련 후보를 누락하지 않는다. 인기순/팔로우/다른 태그 보충은 없다.
-- 현재 태그 snapshot과 점수가 다르면 PENDING/빈 목록이다. 일치 후보가 아예 없으면 READY/빈 목록이다.
-  FE는 PENDING을 순위 갱신 안내로 처리하며 다른 후보로 대체하지 않는다.
+- 점수는 Creator별 `(inputRevision, confirmationId)`와 taxonomy/configHash로 검증한다.
+  소개·확인이 바뀐 후보나 아직 점수가 없는 후보만 제외하고, 유효한 나머지 후보는 READY로 반환한다.
+  선택 태그에 현재 적격 후보가 있지만 유효한 점수가 하나도 없으면 PENDING/빈 목록이다.
+  적격 후보 자체가 없으면 READY/빈 목록이다. FE는 PENDING을 순위 갱신 안내로 처리하며 다른 후보로 대체하지 않는다.
 - 이 API는 행동 추적 snapshot을 아직 만들지 않아 requestId는 항상 null이다. FE는 노출·클릭을 수집하지 않고
   다른 개인화 응답 ID를 재사용하지 않는다. 기존 개인화 추적은 그대로다.
 - 콘텐츠 snapshot이 상위 표시명을 따로 제공하지 않으므로 상위 name은 코드 자체다. 상위 설명은 자식 세부 정의를
@@ -85,11 +87,21 @@ score는 -1~1, 소수점 8자리 이하다. 미등록 쌍·중복·누락은 400
 응답은 `{applied:true|false,applicationSequence,snapshotHash}`다.
 같은 적용 번호·payload는 false, 같은 번호의 다른 payload는 409 CONTENT_PAYLOAD_CONFLICT다.
 더 작은 번호 또는 변경 snapshot은 409 CONTENT_INPUT_CONFLICT다. 더 큰 번호의 A→B→A 복귀는 허용한다.
-V91 singleton 행 잠금·트랜잭션으로 전체 점수를 원자 교체한다. 과거 점수는 조회 hash 검증으로 숨긴다.
+V91 singleton 행 잠금·트랜잭션으로 점수 JSON과 V92 후보별 점수를 함께 원자 교체한다.
+내부 적재는 전체 snapshotHash 검증을 유지하며, 공개 조회는 V92의 후보별 revision·확인 ID·taxonomy/configHash를 비교한다.
+V92 점수의 applicationSequence도 V91 현재 번호와 같아야 한다. 롤링 배포 중 구버전이 V91만 갱신하면
+신버전은 이전 V92 점수를 숨기며 새 배치 적재 전까지 PENDING으로 처리한다.
+중복·누락·미등록 쌍·점수 범위/정밀도 오류는 INVALID_CONTENT_TAG를 유지하고 message와 로그에 고정 사유 코드를 남긴다.
+저장 확인 tags가 중복·비문자열 등으로 손상되었으면 해당 Creator만 snapshot·검색에서 제외한다.
 
 ## 운영 경계
 
 BE를 먼저 배포하고 LLM #82 별도 명령/opt-in 작업자를 활성화한다. 확인만 바뀌어도 일일 순회에서 재조회한다.
-전체 확인 후보 PK 조인과 JSON 파싱·전체 점수 JSON을 쓰는 MVP다. 원문 사본은 DB에 추가하지 않는다.
-규모 확대 전 응답/DB packet 크기와 조회 지연을 측정하고 태그별 inverted index·분할 저장을 검토한다.
-후보 하나의 태그가 바뀌어도 전체 순위가 PENDING이며 기존 개인화는 계속 동작한다.
+카탈로그는 승인 taxonomy만 읽는다. 공개 검색은 선택 태그의 확인 후보를 SQL에서 선별하고,
+V92 `(tag_type, tag_code, creator_id)` 인덱스의 해당 점수를 읽는다. 전체 snapshot SHA-256 생성이나 V91 점수 JSON 읽기/파싱을 하지 않는다.
+후보별 최신 소개 hash 검증은 선별한 행에만 수행한다. 짧은 캐시로 변경 직후 과거 확인을 노출하지 않는다.
+배치 inputs/apply는 전체 snapshot·점수 JSON 계약을 유지한다. 원문 사본은 DB에 추가하지 않는다.
+태그별 후보가 많은 경우에는 여전히 후보 수에 비례하므로 규모 확대 전 조회 지연·packet 크기와 실행 계획을 측정한다.
+V92 배포 직후 기존 V91 JSON은 자동 이관하지 않는다. 작업자를 멈추고 LLM saved-tags 상태의 current.json을 보관 후
+상태 경로에서 제거한 뒤 apply를 실행한다. 서버 lastApplicationSequence보다 큰 번호로 새 전체 snapshot을 적재해야 한다.
+배치 전까지 점수가 없는 선택은 PENDING이며, 새 후보 추가·한 후보의 소개/확인 변경이 다른 후보 점수를 무효화하지 않는다.
