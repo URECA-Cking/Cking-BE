@@ -11,12 +11,9 @@ import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
-import kr.co.cking.creator.repository.PopularCreatorCandidate;
-import kr.co.cking.creator.repository.PopularCreatorQueryRepository;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import kr.co.cking.interest.application.InterestRecommendationQueryService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,26 +29,25 @@ import kr.co.cking.creator.domain.RecommendationSourceType;
 
 /**
  * 요청 중 모델 API를 호출하지 않고 저장된 활성 추천 결과만 합쳐 개인화 목록을 만든다. 회원이 고른 관심 분야의 후보와 팔로우
- * seed의 후보를 {@link PersonalizedCreatorRecommendationPolicy}로 합친다. 합친 결과가 비어 있으면 팔로워 수 순 인기 Creator로 채운다.
+ * seed의 후보를 {@link PersonalizedCreatorRecommendationPolicy}로 합친다. 자격을 통과한 후보만 집계하며 빈 결과를 보충하지 않는다.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class CreatorRecommendationQueryService {
 
-    public static final String POPULAR_FALLBACK_VERSION = "POPULAR_FALLBACK_V1";
-
     private final CreatorFollowQueryService followQueryService;
     private final InterestRecommendationQueryService interestQueryService;
     private final CreatorRepository creatorRepository;
     private final CreatorSimilarityCandidateRepository candidateRepository;
     private final CreatorSpaceRepository spaceRepository;
-    private final PopularCreatorQueryRepository popularRepository;
     private final PersonalizedCreatorRecommendationPolicy policy;
+    private final RecommendationEligibilityService eligibility;
+    private final kr.co.cking.interest.application.MemberInterestService memberInterests;
 
     /**
      * 회원의 개인화 추천을 만든다. 팔로우·관심 분야 저장 후보를 합쳐 정렬하고 {@code size}를 적용한 뒤, 선택된 Creator의
-     * 프로필·Space와 팔로워 수를 각각 일괄 조회해 카드로 만든다. 합친 결과가 비면 인기순 대체 결과를 반환한다.
+     * 프로필·Space와 팔로워 수를 각각 일괄 조회해 카드로 만든다. 합친 결과가 비면 빈 목록을 반환한다.
      */
     public PersonalizedCreatorRecommendationView findForMember(Long memberId, int size) {
         List<Long> followedCreatorIds = followQueryService.findFollowedCreatorIds(memberId);
@@ -63,11 +59,18 @@ public class CreatorRecommendationQueryService {
         List<ActiveCreatorRecommendationCandidate> followRows = followedCreatorIds.isEmpty() ? List.of()
                 : candidateRepository.findActiveCandidatesBySeedCreatorIds(followedCreatorIds);
         List<ActiveInterestRecommendationCandidate> interestRows = interestQueryService.findActiveCandidates(memberId);
+        var selectedInterests = Set.copyOf(memberInterests.findMine(memberId).interestCodes());
+        var followRefs = followRows.stream().map(r -> new RecommendationEligibilityService.Ref(r.generationId(),r.seedCreatorId(),r.candidateCreatorId(),selectedInterests)).toList();
+        var interestRefs = interestRows.stream().map(r -> new RecommendationEligibilityService.Ref(r.generationId(),null,r.creatorId(),Set.of(r.interestCode()))).toList();
+        var validFollow = eligibility.valid("SIMILAR",followRefs);
+        var validInterest = eligibility.valid("INTEREST",interestRefs);
+        followRows = followRows.stream().filter(r -> validFollow.contains(new RecommendationEligibilityService.Ref(r.generationId(),r.seedCreatorId(),r.candidateCreatorId(),selectedInterests))).toList();
+        interestRows = interestRows.stream().filter(r -> validInterest.contains(new RecommendationEligibilityService.Ref(r.generationId(),null,r.creatorId(),Set.of(r.interestCode())))).toList();
         PersonalizedCreatorRecommendationPolicy.Recommendation recommendation =
                 policy.recommend(followRows, interestRows, excludedCreatorIds);
 
         if (recommendation.items().isEmpty()) {
-            return popularFallback(excludedCreatorIds, size);
+            return new PersonalizedCreatorRecommendationView(recommendation.policyVersion(),List.of());
         }
 
         List<PersonalizedCreatorRecommendationPolicy.Item> ranked = recommendation.items().stream()
@@ -104,31 +107,6 @@ public class CreatorRecommendationQueryService {
                                 spaces.get(candidate.creatorId()),
                                 sourcesByCreator.getOrDefault(candidate.creatorId(), List.of()),
                                 followerCounts.getOrDefault(candidate.creatorId(), 0L)))
-                        .toList());
-    }
-
-    /**
-     * 제외 대상(본인·기팔로우)을 SQL이 아니라 읽은 뒤에 거르므로, 그만큼 더 읽어 {@code size}를 채운다. 점수 자리에는 팔로워 수를
-     * 넣고 추천 근거(관심 분야·seed)는 없다.
-     */
-    private PersonalizedCreatorRecommendationView popularFallback(Set<Long> excludedCreatorIds, int size) {
-        List<PopularCreatorCandidate> popular = popularRepository.findPopular(
-                PageRequest.of(0, size + excludedCreatorIds.size()));
-        return new PersonalizedCreatorRecommendationView(
-                POPULAR_FALLBACK_VERSION,
-                popular.stream()
-                        .filter(candidate -> !excludedCreatorIds.contains(candidate.creatorId()))
-                        .limit(size)
-                        .map(candidate -> new PersonalizedCreatorRecommendationView.Item(
-                                candidate.creatorId(),
-                                candidate.creatorName(),
-                                candidate.introText(),
-                                candidate.profileImageUrl(),
-                                BigDecimal.valueOf(candidate.followerCount()),
-                                List.of(),
-                                List.of(),
-                                List.of(),
-                                candidate.followerCount()))
                         .toList());
     }
 

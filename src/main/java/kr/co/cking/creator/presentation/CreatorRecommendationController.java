@@ -31,7 +31,7 @@ public class CreatorRecommendationController {
             summary = "내 Creator 추천 조회",
             description = "회원이 고른 관심 분야와 팔로우한 Creator들의 현재 활성 추천을 저장 결과만으로 집계합니다. "
                     + "입력 신호에 따라 policyVersion이 HYBRID/INTEREST/FOLLOW_PERSONALIZED로 정해지고, "
-                    + "개인화 결과가 비면 팔로워 수 순 인기 Creator(POPULAR_FALLBACK_V1)로 대체합니다. "
+                    + "현재 소개와 관련성 근거가 유효한 후보만 집계하며 결과가 비면 빈 목록을 반환합니다. "
                     + "각 항목의 followerCount는 카드 표시용 팔로워 수이며 점수·정렬에는 쓰이지 않습니다."
     )
     public ApiResponse<CreatorRecommendationResponse.Result> findMine(

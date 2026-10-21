@@ -28,6 +28,7 @@ public class CreatorSimilarityQueryService {
     private final CreatorSimilarityGenerationRepository generationRepository;
     private final CreatorSimilarityCandidateRepository candidateRepository;
     private final CreatorSimilarityStateRepository stateRepository;
+    private final RecommendationEligibilityService eligibility;
 
     public CreatorSimilarityView findSimilar(Long creatorId, int size) {
         if (!creatorRepository.existsById(creatorId)) {
@@ -42,7 +43,10 @@ public class CreatorSimilarityQueryService {
         CreatorSimilarityGeneration generation = generationRepository.findById(generationId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.SYSTEM_ERROR));
         var candidates = candidateRepository.findByGenerationIdOrderByRankAsc(
-                generationId, PageRequest.of(0, size));
+                generationId, PageRequest.of(0, 100));
+        var refs=candidates.stream().map(c -> new RecommendationEligibilityService.Ref(generationId,creatorId,c.getSimilarCreatorId(),java.util.Set.of())).toList();
+        var valid=eligibility.valid("SIMILAR",refs);
+        candidates=candidates.stream().filter(c -> valid.contains(new RecommendationEligibilityService.Ref(generationId,creatorId,c.getSimilarCreatorId(),java.util.Set.of()))).limit(size).toList();
         Map<Long, Creator> creators = creatorRepository.findByCreatorIdIn(candidates.stream()
                         .map(candidate -> candidate.getSimilarCreatorId())
                         .toList()).stream()
