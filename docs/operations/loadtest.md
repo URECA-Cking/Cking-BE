@@ -176,7 +176,9 @@ DB 쪽은 `verify.sh`의 6번이 같은 요청 라운드 회원(앞쪽 절반)�
 
 ### 운영 데이터 되돌리기
 
-Redis와 DB를 비운 뒤 앱 서버를 모두 교체한다. 새 서버가 Flyway로 스키마를 만들고 관리자 초기 계정을 만든다. 테스트가 끝난 뒤에는 `JWT_SECRET`도 바꾼다. k6 서버가 이 값으로 어느 회원의 Access Token이든 서명할 수 있었고, 앱은 기동할 때 값을 읽으므로 값만 바꾸면 실행 중인 서버는 이전 키로 계속 검증한다.
+k6 실행이 끝난 뒤, 모든 앱 서버의 앱을 멈추고 Redis·DB를 비운 다음 각 서버에서 앱을 다시 띄운다. 앱이 도는 중에 비우면 일정 작업(`EventLifecycleScheduler`, 10초 간격)이 남은 DB로 Redis Gate·집계를 다시 채우고, 새로 뜬 앱은 이미 있는 값을 덮어쓰지 않아(`event-gate-load.lua`의 `NX`) 다음 측정에 남는다. 앱 서버 그룹은 ALB 상태 검사로 서버를 판정하므로, 앱을 멈추기 전에 그룹의 자동 교체를 멈춘다.
+
+테스트가 끝난 뒤에는 `JWT_SECRET`도 바꾼다. k6 서버가 이 값으로 어느 회원의 Access Token이든 서명할 수 있었다. 앱은 `deploy.sh`가 기동할 때 읽은 값으로 검증하므로, 앱을 다시 띄워야 새 키가 쓰인다. 진행 중에는 ALB 대상이 비정상이 되어 운영 경보가 울린다.
 
 1. (테스트 뒤에만) k6 서버, "3. k6 실행 준비"의 셸(`JWT_SECRET`이 이전 키)에서 확인용 토큰을 만든다. 토큰은 셸 변수에만 둔다:
 
@@ -188,14 +190,30 @@ Redis와 DB를 비운 뒤 앱 서버를 모두 교체한다. 새 서버가 Flywa
    OLD_TOKEN=$(k6 run -q --log-format raw token-check.js 2>&1 | grep '^ey')
    ```
 
-2. (테스트 뒤에만) Mac, 새 키를 넣는다. 값은 화면에 나오지 않는다:
+2. Mac, 앱 서버 그룹의 자동 교체·확장을 멈추고 서버 목록을 본다:
+
+   ```bash
+   R=ap-northeast-2; ASG=prod-cking-app
+   aws autoscaling suspend-processes --region $R --auto-scaling-group-name $ASG
+   aws autoscaling describe-auto-scaling-groups --region $R --auto-scaling-group-names $ASG \
+     --query 'AutoScalingGroups[0].Instances[].InstanceId' --output text
+   ```
+
+3. 앱 서버마다(root) 앱을 멈추고 멈췄는지 본다(`false`):
+
+   ```bash
+   docker stop cking-app
+   docker inspect -f '{{.State.Running}}' cking-app
+   ```
+
+4. (테스트 뒤에만) Mac, 새 키를 넣는다. 값은 화면에 나오지 않는다:
 
    ```bash
    aws ssm put-parameter --region ap-northeast-2 --name /cking/prod/JWT_SECRET --type SecureString --overwrite \
      --value "$(openssl rand -base64 48)"
    ```
 
-3. 운영 앱 서버 한 대(root), Redis와 DB를 비운다:
+5. 앱 서버 한 대(root), Redis와 DB를 비운다:
 
    ```bash
    P=/cking/prod; R=ap-northeast-2
@@ -209,14 +227,21 @@ Redis와 DB를 비운 뒤 앱 서버를 모두 교체한다. 새 서버가 Flywa
    unset MYSQL_PWD REDISCLI_AUTH
    ```
 
-4. Mac, 지금 배포된 태그로 `Deploy to prod`를 실행해 앱 서버를 모두 교체하고, 실행이 끝날 때까지 기다린다. 교체가 끝나기 전까지 옛 서버는 테이블과 Stream 그룹이 없어 오류 로그를 남긴다:
+6. 앱 서버마다(root) 한 대씩 앱을 다시 띄운다. `deploy.sh`가 Parameter Store를 다시 읽고 `/readyz`가 UP이 될 때까지 기다린다. 첫 서버의 앱이 Flyway로 스키마를, 관리자 초기 계정을 만들고, 다음 서버는 그 뒤에 띄운다:
 
    ```bash
-   TAG=$(aws ssm get-parameter --region ap-northeast-2 --name /cking/prod/RELEASE_TAG --query Parameter.Value --output text)
-   gh workflow run deploy-prod.yml --repo URECA-Cking/Cking-BE --ref main -f image_tag="$TAG"
+   PARAM_PATH=/cking/prod/ /opt/cking/deploy.sh "$(aws ssm get-parameter --region ap-northeast-2 --name /cking/prod/RELEASE_TAG --query Parameter.Value --output text)"
    ```
 
-5. 확인. 운영 앱 서버 한 대에서 3번처럼 DB 변수를 읽고 `SELECT (SELECT COUNT(*) FROM member), (SELECT COUNT(*) FROM admin_account), (SELECT COUNT(*) FROM creator), (SELECT COUNT(*) FROM event)`가 `1 1 0 0`인지 본다(`seed.sql`의 새 DB 조건). 테스트 뒤에는 k6 서버에서 이전 키 토큰은 401, 새 키 토큰은 401이 아닌지 본다. 새 키 토큰은 401이 키 때문인지 가르는 대조군이다:
+7. Mac, ALB 대상이 모두 `healthy`가 된 뒤 자동 교체·확장을 다시 켠다. 비정상 대상이 남은 채로 켜면 그룹이 그 서버를 교체한다:
+
+   ```bash
+   TG=$(aws elbv2 describe-target-groups --region $R --names prod-cking-app-tg --query 'TargetGroups[0].TargetGroupArn' --output text)
+   aws elbv2 describe-target-health --region $R --target-group-arn "$TG" --query 'TargetHealthDescriptions[].TargetHealth.State' --output text
+   aws autoscaling resume-processes --region $R --auto-scaling-group-name $ASG
+   ```
+
+8. 확인. 앱 서버 한 대에서 5번처럼 DB 변수를 읽고 `SELECT (SELECT COUNT(*) FROM member), (SELECT COUNT(*) FROM admin_account), (SELECT COUNT(*) FROM creator), (SELECT COUNT(*) FROM event)`가 `1 1 0 0`인지 본다(`seed.sql`의 새 DB 조건). 테스트 뒤에는 k6 서버에서 이전 키 토큰은 401, 새 키 토큰은 401이 아닌지 본다. 새 키 토큰은 401이 키 때문인지 가르는 대조군이다:
 
    ```bash
    curl -s -o /dev/null -w '이전 키 %{http_code}\n' -H "Authorization: Bearer $OLD_TOKEN" https://api.cking.co.kr/api/me
