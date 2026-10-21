@@ -91,4 +91,3 @@ ALTER TABLE common_ticket_ledger ALTER COLUMN reward_notification_retry_at SET D
 ALTER TABLE ticket_ledger ALTER COLUMN reward_notification_state SET DEFAULT 1, ALGORITHM=INSTANT;
 
 ALTER TABLE common_ticket_ledger ALTER COLUMN reward_notification_state SET DEFAULT 1, ALGORITHM=INSTANT;
-
