@@ -8,6 +8,8 @@ public enum CommentFilterFailureType {
     NETWORK,
     /** 필터 서비스가 5xx를 응답했다. */
     SERVER_ERROR,
+    /** 필터 서비스가 호출을 제한했다(429). 일시적인 제한이므로 재필터링이 다시 처리한다. */
+    THROTTLED,
     /** 필터 서비스가 요청을 거절했다(4xx). */
     REJECTED,
     /** 필터 서비스가 인증·권한을 거부했다(401·403). 서명 설정이나 호출 권한 문제다. */
