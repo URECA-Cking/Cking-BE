@@ -180,6 +180,8 @@ k6 실행이 끝난 뒤, 모든 앱 서버의 앱을 멈추고 Redis·DB를 비�
 
 테스트가 끝난 뒤에는 `JWT_SECRET`도 바꾼다. k6 서버가 이 값으로 어느 회원의 Access Token이든 서명할 수 있었다. 앱은 `deploy.sh`가 기동할 때 읽은 값으로 검증하므로, 앱을 다시 띄워야 새 키가 쓰인다. 진행 중에는 ALB 대상이 비정상이 되어 운영 경보가 울린다.
 
+각 단계는 앞 단계가 성공했을 때만 진행한다. 5단계가 `초기화 완료`를 출력하지 않으면 6단계로 가지 않고, 원인을 고친 뒤 5단계를 다시 실행한다(다시 실행해도 결과가 같다).
+
 1. (테스트 뒤에만) k6 서버, "3. k6 실행 준비"의 셸(`JWT_SECRET`이 이전 키)에서 확인용 토큰을 만든다. 토큰은 셸 변수에만 둔다:
 
    ```bash
@@ -213,21 +215,27 @@ k6 실행이 끝난 뒤, 모든 앱 서버의 앱을 멈추고 Redis·DB를 비�
      --value "$(openssl rand -base64 48)"
    ```
 
-5. 앱 서버 한 대(root), Redis와 DB를 비운다:
+5. 앱 서버 한 대(root), Redis를 비우고 비워졌는지 확인한 뒤 DB를 비운다. 한 스크립트로 실행해 어느 명령이든 실패하면 그 자리에서 멈춘다. `valkey-cli`는 인증 실패(`NOAUTH`)·권한 없음(`NOPERM`)에도 종료 코드 0을 돌려주므로 응답이 `OK`인지 직접 본다:
 
    ```bash
+   bash -euo pipefail <<'EOF'
    P=/cking/prod; R=ap-northeast-2
    param() { aws ssm get-parameter --region $R --name "$P/$1" --with-decryption --query Parameter.Value --output text; }
    DB_HOST=$(param DB_HOST); DB_USER=$(param DB_USERNAME); MYSQL_PWD=$(param DB_PASSWORD); export MYSQL_PWD
    REDIS_HOST=$(param REDIS_HOST); REDIS_USER=$(param REDIS_USERNAME); REDISCLI_AUTH=$(param REDIS_PASSWORD); export REDISCLI_AUTH
-   docker run --rm -e REDISCLI_AUTH -v /etc/ssl/certs/ca-certificates.crt:/ca.crt:ro valkey/valkey:7.2 \
-     valkey-cli --tls --cacert /ca.crt -h "$REDIS_HOST" --user "$REDIS_USER" FLUSHALL
+   vk() {
+     docker run --rm -e REDISCLI_AUTH -v /etc/ssl/certs/ca-certificates.crt:/ca.crt:ro valkey/valkey:7.2 \
+       valkey-cli --tls --cacert /ca.crt -h "$REDIS_HOST" --user "$REDIS_USER" "$@"
+   }
+   out=$(vk FLUSHALL); [[ "$out" == OK ]] || { echo "Redis 초기화 실패: $out" >&2; exit 1; }
+   out=$(vk DBSIZE); [[ "$out" == 0 ]] || { echo "Redis에 키가 남음: $out" >&2; exit 1; }
    docker run --rm -e MYSQL_PWD --network host mysql:8.4 \
-     mysql -h "$DB_HOST" -u "$DB_USER" -e "DROP DATABASE cking; CREATE DATABASE cking;"
-   unset MYSQL_PWD REDISCLI_AUTH
+     mysql -h "$DB_HOST" -u "$DB_USER" -e "DROP DATABASE IF EXISTS cking; CREATE DATABASE cking;"
+   echo "초기화 완료"
+   EOF
    ```
 
-6. 앱 서버마다(root) 한 대씩 앱을 다시 띄운다. `deploy.sh`가 Parameter Store를 다시 읽고 `/readyz`가 UP이 될 때까지 기다린다. 첫 서버의 앱이 Flyway로 스키마를, 관리자 초기 계정을 만들고, 다음 서버는 그 뒤에 띄운다:
+6. 앱 서버마다(root) 한 대씩 앱을 다시 띄운다. `deploy.sh`가 Parameter Store를 다시 읽고 `/readyz`가 UP이 될 때까지 기다린다. 첫 서버의 앱이 Flyway로 스키마를, 관리자 초기 계정을 만들고, 다음 서버는 그 뒤에 띄운다. `deploy.sh`가 실패하면 다음 서버로 넘어가지 않는다:
 
    ```bash
    PARAM_PATH=/cking/prod/ /opt/cking/deploy.sh "$(aws ssm get-parameter --region ap-northeast-2 --name /cking/prod/RELEASE_TAG --query Parameter.Value --output text)"
