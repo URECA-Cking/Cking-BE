@@ -8,6 +8,7 @@ import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostCommentOriginalView;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
@@ -63,21 +64,14 @@ public class CreatorPostCommentService {
     private final ApplicationEventPublisher eventPublisher;
     private final SanctionQueryService sanctionQueryService;
 
-    /**
-     * 필터가 차단했거나 관리자가 숨긴 댓글은 스페이스 주인 Creator와 작성자 본인에게만 내려간다(이슈 #721). 그 외
-     * 조회자에게는 응답 항목에서 뺀다.
-     *
-     * @param viewerMemberId 비로그인이면 null
-     */
+    /** @param viewerMemberId 비로그인이면 null */
     @Transactional(readOnly = true)
     public Page<CreatorPostCommentView> findByPost(
             Long creatorId, Long postId, Long viewerMemberId, Pageable pageable) {
         Creator creator = accessPolicy.requireCreator(creatorId);
         accessPolicy.requireViewablePost(creator, postId, viewerMemberId);
 
-        Page<CreatorPostComment> comments = isOwner(creator, viewerMemberId)
-                ? commentRepository.findByPostIdOldestFirst(postId, pageable)
-                : commentRepository.findVisibleByPostIdOldestFirst(postId, viewerMemberId, pageable);
+        Page<CreatorPostComment> comments = commentRepository.findByPostIdOldestFirst(postId, pageable);
         Map<Long, Member> authors = comments.isEmpty()
                 ? Map.of()
                 : memberRepository.findAllById(comments.map(CreatorPostComment::getMemberId).toSet()).stream()
@@ -91,9 +85,9 @@ public class CreatorPostCommentService {
     }
 
     /**
-     * 필터링(BLOCK)된 댓글의 원문. 스페이스 주인 Creator만 요청할 수 있다(이슈 #721). 개인정보 규칙으로 막힌 댓글과
-     * 관리자가 숨긴 댓글은 {@code COMMENT_NOT_REVEALABLE}(403)이다. 필터링되지 않았거나 조회자가 작성자 본인이거나 스페이스
-     * 주인이 아니면 그 조회자에게는 없는 댓글이므로 404다.
+     * 필터링(BLOCK)된 댓글의 원문. 스페이스 주인 Creator와 관리자만 받을 수 있고(이슈 #721), 그 외 조회자는
+     * {@code FORBIDDEN}(403)이다. 개인정보 규칙으로 막힌 댓글과 관리자가 숨긴 댓글은 관리자에게만 열리고 주인에게는
+     * {@code COMMENT_NOT_REVEALABLE}(403)이다. 필터링되지 않았거나 조회자가 작성자 본인이면 필터링된 댓글로 보이지 않으므로 404다.
      *
      * @param viewerMemberId 비로그인이면 null
      */
@@ -105,12 +99,22 @@ public class CreatorPostCommentService {
 
         CreatorPostComment comment = commentRepository.findById(commentId)
                 .filter(found -> found.belongsTo(postId))
-                .filter(found -> isOwner(creator, viewerMemberId) && found.isConcealed() && !found.isWrittenBy(viewerMemberId))
+                .filter(found -> found.isConcealed() && !found.isWrittenBy(viewerMemberId))
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        if (comment.isBlockedForPrivacy() || comment.isHiddenByAdmin()) {
+        boolean admin = isAdmin(viewerMemberId);
+        if (!admin && !creator.getMemberId().equals(viewerMemberId)) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        }
+        if (!admin && (comment.isBlockedForPrivacy() || comment.isHiddenByAdmin())) {
             throw new BusinessException(PostErrorCode.COMMENT_NOT_REVEALABLE);
         }
         return new CreatorPostCommentOriginalView(comment.getCommentId(), comment.getContent());
+    }
+
+    private boolean isAdmin(Long viewerMemberId) {
+        return viewerMemberId != null && memberRepository.findById(viewerMemberId)
+                .map(member -> member.getRole() == MemberRole.ADMIN)
+                .orElse(false);
     }
 
     public CreatorPostCommentView create(Long memberId, Long creatorId, Long postId, String content) {
@@ -223,10 +227,6 @@ public class CreatorPostCommentService {
                 filtered && !comment.isBlockedForPrivacy() && !comment.isHiddenByAdmin(),
                 comment.getCreatedAt(),
                 comment.getUpdatedAt());
-    }
-
-    private boolean isOwner(Creator creator, Long viewerMemberId) {
-        return creator.getMemberId().equals(viewerMemberId);
     }
 
     private boolean isWrittenByOwner(Creator creator, Long commentMemberId) {

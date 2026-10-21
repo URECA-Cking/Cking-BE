@@ -34,47 +34,16 @@ public interface CreatorPostCommentRepository extends JpaRepository<CreatorPostC
     @Query("select c.memberId from CreatorPostComment c where c.commentId = :commentId")
     Optional<Long> findMemberIdByCommentId(@Param("commentId") Long commentId);
 
-    /** 한 페이지 게시글의 댓글 수를 한 번에 센다. 댓글이 없는 게시글은 결과에 없다. 필터·관리자 숨김 댓글도 센다(스페이스 주인용). */
+    /** 한 페이지 게시글의 댓글 수를 한 번에 센다. 댓글이 없는 게시글은 결과에 없다. 필터·관리자 숨김 댓글도 센다. */
     @Query("select c.postId as postId, count(c) as total from CreatorPostComment c where c.postId in :postIds group by c.postId")
     List<PostCount> countByPostIds(@Param("postIds") Collection<Long> postIds);
 
-    /**
-     * 한 페이지 게시글의 댓글 수를 조회자에게 보이는 댓글만으로 센다(이슈 #721). 필터가 차단했거나 관리자가 숨긴 댓글은
-     * 조회자 본인이 쓴 것만 센다. 비로그인({@code viewerMemberId}가 null)은 가려진 댓글을 세지 않는다.
-     */
-    @Query("""
-            select c.postId as postId, count(c) as total from CreatorPostComment c
-             where c.postId in :postIds
-               and ((c.filterAction is null or c.filterAction <> kr.co.cking.post.domain.CommentFilterAction.BLOCK)
-                    and c.adminHiddenAt is null
-                    or c.memberId = :viewerMemberId)
-             group by c.postId
-            """)
-    List<PostCount> countVisibleByPostIds(
-            @Param("postIds") Collection<Long> postIds, @Param("viewerMemberId") Long viewerMemberId);
-
-    /** 스페이스 주인용. 가려진 댓글까지 모두 조회한다. */
     @Query("""
             select c from CreatorPostComment c
              where c.postId = :postId
              order by c.createdAt asc, c.commentId asc
             """)
     Page<CreatorPostComment> findByPostIdOldestFirst(@Param("postId") Long postId, Pageable pageable);
-
-    /**
-     * 스페이스 주인이 아닌 조회자용(이슈 #721). 필터가 차단했거나 관리자가 숨긴 댓글은 조회자 본인이 쓴 것만 포함한다.
-     * 비로그인({@code viewerMemberId}가 null)은 가려진 댓글을 모두 뺀다.
-     */
-    @Query("""
-            select c from CreatorPostComment c
-             where c.postId = :postId
-               and ((c.filterAction is null or c.filterAction <> kr.co.cking.post.domain.CommentFilterAction.BLOCK)
-                    and c.adminHiddenAt is null
-                    or c.memberId = :viewerMemberId)
-             order by c.createdAt asc, c.commentId asc
-            """)
-    Page<CreatorPostComment> findVisibleByPostIdOldestFirst(
-            @Param("postId") Long postId, @Param("viewerMemberId") Long viewerMemberId, Pageable pageable);
 
     /**
      * 다시 필터에 제출할 댓글. 재시도한 적 없는 댓글({@code filterNextAttemptAt}이 NULL)은 마지막 수정·작성 뒤

@@ -20,8 +20,8 @@
 | `authorProfileImageUrl` | 작성자 프로필 사진의 공개 URL(만료되지 않는 CDN 주소). 팬은 Member 사진, 승인된 Creator는 게시글 소유 여부와 관계없이 **Creator Space 프로필 사진**이다. 사진을 설정하지 않았거나 Space가 없으면 `null`이고, **원문이 가려진 댓글(`filtered`)이면 `null`** |
 | `writtenByCreator` | 게시글을 작성한 Creator 본인이 단 댓글이면 true |
 | `content` | 본문 (1~500자). **필터링된 댓글(`filtered`)이면 `null`** |
-| `filtered` | 필터가 차단(BLOCK)했거나 관리자가 숨겨 원문을 가린 댓글이면 true. 이런 댓글은 **스페이스 주인 Creator와 작성자 본인에게만** 내려가며, 작성자 본인에게는 항상 false다. 그 외 조회자에게는 댓글 자체가 내려가지 않으므로 true를 받을 수 있는 조회자는 스페이스 주인뿐이다 |
-| `revealable` | `filtered`일 때 원문 보기를 누를 수 있는지. 스페이스 주인에게만 의미가 있다. 개인정보로 막힌 댓글과 관리자가 숨긴 댓글은 false다. `filtered`가 false면 항상 false다 |
+| `filtered` | 필터가 차단(BLOCK)했거나 관리자가 숨겨 원문을 가린 댓글이면 true. **작성자 본인에게는 항상 false**다 |
+| `revealable` | `filtered`일 때 원문 보기를 누를 수 있는지. 개인정보로 막힌 댓글과 관리자가 숨긴 댓글은 false다. `filtered`가 false면 항상 false다 |
 | `createdAt`, `updatedAt` | UTC Instant |
 
 ## 필터링
@@ -29,12 +29,11 @@
 댓글은 저장한 뒤 별도 필터 서비스가 비동기로 판정한다(이슈 #460). 판정 상태와 결과는 `creator_post_comment`의 `filter_*` 컬럼에 저장하며, 판정 사유(`filter_reasons`)는 어떤 응답에도 담지 않는다.
 
 - 판정받은 적 없는 댓글(`PENDING`·`FAILED`)과 통과(`PASS`)한 댓글은 평소처럼 원문을 내려준다. 가려지는 기준은 가장 최근 판정이 `BLOCK`인지다.
-- 차단(`BLOCK`)된 댓글은 **스페이스 주인 Creator와 작성자 본인에게만** 내려간다(이슈 #721). 그 외 조회자(비로그인, 다른 팬, 다른 Creator)의 목록 응답에는 항목 자체가 없다. 목록의 `page`·`size`·`totalElements`·`totalPages`는 조회자에게 보이는 댓글만 센다. 스페이스 주인에게는 `content`를 비우고 `filtered: true`로 내려주며, 원문은 아래 `/original` 요청으로만 받는다.
-- 게시글 응답(`commentCount`)의 댓글 수도 같은 기준이다. 스페이스 주인은 가려진 댓글을 포함해 세고, 그 외 조회자는 가려진 댓글 중 본인이 쓴 것만 센다([Post 게시글 API](api.md)).
+- 차단(`BLOCK`)된 댓글은 **작성자 본인이 아닌 조회자**(비로그인, 다른 사용자, 게시글 작성 Creator 포함)에게 `content`를 비우고 `filtered: true`로 내려준다. 원문은 아래 `/original` 요청으로만 받을 수 있고, 그 요청은 스페이스 주인 Creator와 관리자만 성공한다(이슈 #721). 필터링된 댓글이 있다는 사실(자리 표시, 댓글 수)은 모든 조회자에게 그대로 보인다.
 - 작성자 본인에게는 필터링 여부를 알리지 않고 원문과 작성자 이름·프로필 사진을 그대로 내려준다(`filtered: false`).
-- 원문이 가려진 댓글(필터 차단, 관리자 숨김)은 스페이스 주인에게 **작성자 이름(`authorName`)과 프로필 사진(`authorProfileImageUrl`)도 `null`**로 내려준다(이슈 #546). `authorMemberId`와 `writtenByCreator`는 그대로 내려준다.
+- 원문이 가려진 댓글(필터 차단, 관리자 숨김)은 작성자 본인이 아닌 조회자에게 **작성자 이름(`authorName`)과 프로필 사진(`authorProfileImageUrl`)도 `null`**로 내려준다(이슈 #546). `authorMemberId`와 `writtenByCreator`는 그대로 내려준다.
 - 개인정보 규칙(`privacy:*`)으로 막힌 댓글은 `revealable: false`이며 누구에게도 원문을 내려주지 않는다.
-- **관리자가 숨긴 댓글**(이슈 #499)은 필터 판정과 별개로 `admin_hidden_at`에 저장한다. 스페이스 주인에게 `content`를 비우고 `filtered: true`, `revealable: false`로 내려주며 `/original`도 `COMMENT_NOT_REVEALABLE`(403)이다. 그 외 조회자에게는 목록에 나오지 않는다. 작성자 본인에게는 가려졌는지 알리지 않고 원문을 그대로 내려준다. 숨김은 필터 재판정이나 댓글 본문 수정으로 풀리지 않고, 되돌리는 API도 없다.
+- **관리자가 숨긴 댓글**(이슈 #499)은 필터 판정과 별개로 `admin_hidden_at`에 저장한다. 작성자 본인이 아닌 조회자에게 `content`를 비우고 `filtered: true`, `revealable: false`로 내려주며 `/original`도 `COMMENT_NOT_REVEALABLE`(403)이다. 작성자 본인에게는 가려졌는지 알리지 않고 원문을 그대로 내려준다. 숨김은 필터 재판정이나 댓글 본문 수정으로 풀리지 않고, 되돌리는 API도 없다.
 - 댓글 본문을 수정하면 다시 판정한다. 판정이 끝날 때까지(또는 재판정이 실패해도) 이전 판정이 `BLOCK`이면 계속 가려지고, 이전 판정이 `PASS`이거나 판정받은 적이 없으면 원문으로 보인다. 재판정 결과가 이전 판정을 덮어쓴다.
 - `cking.comment-filter.enabled`가 꺼져 있으면(기본값) 새 판정을 하지 않는다. 판정받은 적 없는 댓글은 원문으로 보이고, 필터가 켜져 있을 때 이미 `BLOCK`된 댓글은 필터를 꺼도 계속 가려진다(수정한 댓글의 이전 `BLOCK`도 마찬가지다).
 
@@ -54,7 +53,7 @@
 }
 ```
 
-필터링되어 원문이 가려진 댓글은 스페이스 주인에게만 다음과 같이 내려간다. 작성자 이름과 프로필 사진도 함께 가려진다.
+필터링되어 원문이 가려진 댓글은 다음과 같다. 작성자 이름과 프로필 사진도 함께 가려진다.
 
 ```json
 {
@@ -74,7 +73,7 @@
 
 ## GET /api/creators/{creatorId}/posts/{postId}/comments
 
-댓글을 작성 순(`createdAt` 오름차순, tie-breaker `commentId` 오름차순)으로 조회한다. `page`(기본 0), `size`(기본 20, 최대 100)는 공통 페이지네이션을 따른다. 필터링되거나 관리자가 숨긴 댓글은 스페이스 주인 Creator와 작성자 본인에게만 포함하고 그 외 조회자에게는 빼며, 페이지와 개수는 조회자에게 보이는 댓글 기준이다([필터링](#필터링)).
+댓글을 작성 순(`createdAt` 오름차순, tie-breaker `commentId` 오름차순)으로 조회한다. `page`(기본 0), `size`(기본 20, 최대 100)는 공통 페이지네이션을 따른다.
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
@@ -83,13 +82,14 @@
 
 ## GET /api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original
 
-필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려준다(이슈 #721). **해당 스페이스의 주인 Creator만** 받을 수 있다. 호출자는 선택적 Access JWT로 식별하며, 스페이스 주인이 아닌 조회자(비로그인, 팔로워, 다른 Creator, 댓글 작성자 본인)에게는 그 댓글이 목록에도 없으므로 `RESOURCE_NOT_FOUND`(404)다. 응답은 `{ "commentId": 501, "content": "..." }`.
+필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려준다. **해당 스페이스의 주인 Creator와 관리자만** 받을 수 있다(이슈 #721). 호출자는 선택적 Access JWT로 식별하며, 그 외 조회자(비로그인, 팔로워, 다른 Creator)는 `FORBIDDEN`(403)이다. 관리자는 개인정보로 막힌 댓글과 관리자가 숨긴 댓글의 원문도 받는다. 게시글 공개 범위 규칙(`POST_FOLLOWERS_ONLY`)은 관리자에게도 같다. 응답은 `{ "commentId": 501, "content": "..." }`.
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
 | `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
-| `COMMENT_NOT_REVEALABLE` | 403 | 개인정보 규칙으로 막힌 댓글, 관리자가 숨긴 댓글 |
-| `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음, 다른 게시글의 댓글, **필터링되지 않은 댓글**, **조회자가 스페이스 주인이 아님**(작성자 본인 포함, 이들에게는 필터링된 댓글로 보이지 않는다) |
+| `FORBIDDEN` | 403 | 조회자가 스페이스 주인 Creator도 관리자도 아님(필터링된 댓글에 한함) |
+| `COMMENT_NOT_REVEALABLE` | 403 | 스페이스 주인이 요청했지만 개인정보 규칙으로 막힌 댓글, 관리자가 숨긴 댓글(관리자에게는 열림) |
+| `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음, 다른 게시글의 댓글, **필터링되지 않은 댓글**, **조회자가 작성자 본인인 댓글**(본인에게는 필터링된 댓글로 보이지 않는다) |
 
 ## POST /api/creators/{creatorId}/posts/{postId}/comments
 

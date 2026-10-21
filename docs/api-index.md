@@ -119,7 +119,7 @@
 | 113 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts` | 크리에이터 게시글 목록(팔로워 공개는 잠금 표시) | - |
 | 114 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}` | 크리에이터 게시글 상세 | - |
 | 115 | 외부 | 구독 인증 | ADMIN | GET | `/api/admin/subscription-verifications/{verificationId}/image-reuse` | 이미지 재사용 탐지 감사 결과 조회 | - |
-| 116 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments` | 게시글 댓글 목록(필터링·관리자 숨김 댓글은 스페이스 주인·작성자 본인에게만) | - |
+| 116 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments` | 게시글 댓글 목록 | - |
 | 117 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/comments` | 게시글 댓글 작성(팔로워·작성 Creator) | - |
 | 118 | 외부 | Post | USER | PATCH | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}` | 게시글 댓글 수정(작성자) | 상태 기반 |
 | 119 | 외부 | Post | USER | DELETE | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}` | 게시글 댓글 삭제(작성자·게시글 Creator) | 상태 기반 |
@@ -134,7 +134,7 @@
 | 128 | 외부 | 관심 분야 | USER | PUT | `/api/me/interests` | 내 관심 분야 전체 교체 저장(0~3개, 세부 주제는 상위당 3개·생략 시 유지) | 전체 교체(멱등) |
 | 129 | 외부 | 관심 분야 추천 | ADMIN 또는 추천 적재 API Key | PUT | `/api/admin/interests/{interestCode}/recommendations` | LLM 관심 분야별 추천 후보 묶음 검증·원자 교체 | `taxonomyVersion + interestCode + applicationSequence` |
 | 130 | 외부 | Auth | PUBLIC | POST | `/api/auth/admin/login` | 관리자 ID/PW를 기존 Access JWT·Refresh Cookie로 교환 | - |
-| 131 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original` | 필터링된 게시글 댓글 원문 조회(스페이스 주인 Creator만, 개인정보 차단·관리자 숨김 댓글 제외) | - |
+| 131 | 외부 | Post | PUBLIC | GET | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original` | 필터링된 게시글 댓글 원문 조회(스페이스 주인 Creator·관리자만, 개인정보 차단·관리자 숨김 댓글은 관리자만) | - |
 | 132 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/refresh` | 관리자 Refresh Cookie를 회전해 ADMIN Access JWT 갱신 | Refresh Token 1회 소비 |
 | 133 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/logout` | 관리자 Refresh Token 폐기 및 관리자 Cookie 만료 | - |
 | 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |

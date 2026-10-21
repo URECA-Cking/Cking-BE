@@ -98,7 +98,7 @@ class CreatorPostCommentServiceTest {
 
     @Test
     void 비로그인도_전체_공개_게시글의_댓글을_작성_순으로_보고_Creator_댓글을_구분한다() {
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE)).willReturn(new PageImpl<>(List.of(
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
                 comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID), comment(2L, PUBLIC_POST_ID, OWNER_MEMBER_ID)), PAGE, 2));
         given(memberRepository.findAllById(Set.of(FAN_MEMBER_ID, OWNER_MEMBER_ID)))
                 .willReturn(List.of(member(FAN_MEMBER_ID), member(OWNER_MEMBER_ID)));
@@ -122,7 +122,6 @@ class CreatorPostCommentServiceTest {
         assertError(() -> service.findByPost(CREATOR_ID, FOLLOWERS_POST_ID, STRANGER_MEMBER_ID, PAGE),
                 PostErrorCode.POST_FOLLOWERS_ONLY);
         verify(commentRepository, never()).findByPostIdOldestFirst(any(), any());
-        verify(commentRepository, never()).findVisibleByPostIdOldestFirst(any(), any(), any());
     }
 
     @Test
@@ -195,7 +194,7 @@ class CreatorPostCommentServiceTest {
     @Test
     void 댓글_작성_수정_삭제는_게시글을_공유_잠금으로_읽고_목록은_잠그지_않는다() {
         given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)));
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE))
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE))
                 .willReturn(new PageImpl<>(List.of(), PAGE, 0));
 
         service.create(FAN_MEMBER_ID, CREATOR_ID, PUBLIC_POST_ID, "응원해요");
@@ -380,10 +379,10 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void BLOCK된_댓글은_스페이스_주인에게_원문과_판정을_빼고_filtered로_내려준다() {
+    void BLOCK된_댓글은_다른_사람에게_원문과_판정을_빼고_filtered로_내려준다() {
         stubCommentPage(blocked(1L, FAN_MEMBER_ID, "profanity:병신"), passed(2L, FAN_MEMBER_ID));
 
-        List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent();
+        List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent();
 
         assertThat(views.get(0).filtered()).isTrue();
         assertThat(views.get(0).revealable()).isTrue();
@@ -393,7 +392,7 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void BLOCK된_댓글을_수정하면_재판정_중에도_스페이스_주인에게_가려진_채_미판정으로_돌아간다() {
+    void BLOCK된_댓글을_수정하면_재판정_중에도_다른_사람에게_가려진_채_미판정으로_돌아간다() {
         CreatorPostComment comment = blocked(1L, FAN_MEMBER_ID, "profanity:병신");
         given(commentRepository.findByIdForUpdate(1L)).willReturn(Optional.of(comment));
 
@@ -401,7 +400,7 @@ class CreatorPostCommentServiceTest {
 
         assertThat(comment.getFilterStatus()).isEqualTo(CommentFilterStatus.PENDING);
         stubCommentPage(comment);
-        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent().get(0).filtered())
+        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0).filtered())
                 .isTrue();
     }
 
@@ -444,23 +443,16 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void 가려진_댓글은_스페이스_주인만_전체_조회로_받고_다른_조회자는_가려진_댓글을_뺀_조회로_받는다() {
+    void BLOCK된_댓글도_비로그인과_게시글_Creator에게는_똑같이_가려진다() {
         stubCommentPage(blocked(1L, FAN_MEMBER_ID, "spam:link"));
-        stubVisibleCommentPage(null);
-        stubVisibleCommentPage(STRANGER_MEMBER_ID);
 
-        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent())
-                .extracting(CreatorPostCommentView::filtered).containsExactly(true);
-        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent()).isEmpty();
-        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent()).isEmpty();
-        verify(commentRepository, times(1)).findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE);
-        verify(commentRepository).findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE);
-        verify(commentRepository).findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE);
+        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, null, PAGE).getContent().get(0).filtered()).isTrue();
+        assertThat(service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent().get(0).filtered()).isTrue();
     }
 
     @Test
     void BLOCK된_댓글도_작성자_본인에게는_원문이_그대로_보이고_필터링_표시가_없다() {
-        stubVisibleCommentPage(FAN_MEMBER_ID, blocked(1L, FAN_MEMBER_ID, "profanity:병신"));
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "profanity:병신"));
 
         CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, FAN_MEMBER_ID, PAGE).getContent().get(0);
 
@@ -473,7 +465,7 @@ class CreatorPostCommentServiceTest {
     void 개인정보로_막힌_댓글은_가려지고_원문_보기도_허용하지_않는다() {
         stubCommentPage(blocked(1L, FAN_MEMBER_ID, "classifier,privacy:phone"));
 
-        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent().get(0);
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0);
 
         assertThat(view.filtered()).isTrue();
         assertThat(view.revealable()).isFalse();
@@ -481,12 +473,12 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void 관리자가_숨긴_댓글은_스페이스_주인에게도_가려지고_원문_보기도_허용하지_않는다() {
+    void 관리자가_숨긴_댓글은_다른_사람에게_가려지고_원문_보기도_허용하지_않는다() {
         CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
         hidden.hideByAdmin(9L, NOW);
         stubCommentPage(hidden);
 
-        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent().get(0);
+        CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent().get(0);
 
         assertThat(view.filtered()).isTrue();
         assertThat(view.revealable()).isFalse();
@@ -497,7 +489,7 @@ class CreatorPostCommentServiceTest {
     void 관리자가_숨긴_댓글도_작성자_본인에게는_원문이_그대로_보인다() {
         CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
         hidden.hideByAdmin(9L, NOW);
-        stubVisibleCommentPage(FAN_MEMBER_ID, hidden);
+        stubCommentPage(hidden);
 
         CreatorPostCommentView view = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, FAN_MEMBER_ID, PAGE).getContent().get(0);
 
@@ -535,7 +527,7 @@ class CreatorPostCommentServiceTest {
         withPhoto.updateProfileImageKey("member-profile-images/20/a.jpg");
         given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
                 .willReturn("https://cdn.example.com/member-profile-images/20/a.jpg");
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE)).willReturn(new PageImpl<>(List.of(
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
                 comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID), comment(2L, PUBLIC_POST_ID, STRANGER_MEMBER_ID)), PAGE, 2));
         given(memberRepository.findAllById(Set.of(FAN_MEMBER_ID, STRANGER_MEMBER_ID)))
                 .willReturn(List.of(withPhoto, member(STRANGER_MEMBER_ID)));
@@ -551,7 +543,7 @@ class CreatorPostCommentServiceTest {
     void Creator_본인_댓글은_Space_프로필_사진을_쓰고_댓글이_여럿이어도_Space는_한_번만_읽는다() {
         Member owner = member(OWNER_MEMBER_ID);
         owner.updateProfileImageKey("member-profile-images/10/own.jpg");
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE)).willReturn(new PageImpl<>(List.of(
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
                 comment(1L, PUBLIC_POST_ID, OWNER_MEMBER_ID), comment(2L, PUBLIC_POST_ID, OWNER_MEMBER_ID),
                 comment(3L, PUBLIC_POST_ID, FAN_MEMBER_ID)), PAGE, 3));
         given(memberRepository.findAllById(Set.of(OWNER_MEMBER_ID, FAN_MEMBER_ID)))
@@ -572,7 +564,7 @@ class CreatorPostCommentServiceTest {
 
     @Test
     void Creator_Space가_없으면_Creator_본인_댓글의_사진은_null이다() {
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE)).willReturn(new PageImpl<>(List.of(
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
                 comment(1L, PUBLIC_POST_ID, OWNER_MEMBER_ID)), PAGE, 1));
         given(memberRepository.findAllById(Set.of(OWNER_MEMBER_ID))).willReturn(List.of(member(OWNER_MEMBER_ID)));
         given(creatorPublicProfileQueryService.findByMemberIds(Set.of(OWNER_MEMBER_ID)))
@@ -589,7 +581,7 @@ class CreatorPostCommentServiceTest {
     void 다른_Creator가_작성한_댓글도_게시글_소유자_여부와_관계없이_활동명과_Space_사진을_쓴다() {
         Member otherCreator = member(STRANGER_MEMBER_ID);
         otherCreator.updateProfileImageKey("member-profile-images/30/private.jpg");
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE)).willReturn(new PageImpl<>(List.of(
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
                 comment(1L, PUBLIC_POST_ID, STRANGER_MEMBER_ID)), PAGE, 1));
         given(memberRepository.findAllById(Set.of(STRANGER_MEMBER_ID))).willReturn(List.of(otherCreator));
         given(creatorPublicProfileQueryService.findByMemberIds(Set.of(STRANGER_MEMBER_ID)))
@@ -606,7 +598,7 @@ class CreatorPostCommentServiceTest {
 
     @Test
     void 작성자를_찾지_못한_댓글은_이름과_사진이_null이다() {
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, null, PAGE)).willReturn(new PageImpl<>(List.of(
+        given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE)).willReturn(new PageImpl<>(List.of(
                 comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID)), PAGE, 1));
         given(memberRepository.findAllById(Set.of(FAN_MEMBER_ID))).willReturn(List.of());
 
@@ -617,7 +609,7 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void 필터가_차단하거나_관리자가_숨긴_댓글은_스페이스_주인에게_작성자_이름과_사진도_가린다() {
+    void 필터가_차단하거나_관리자가_숨긴_댓글은_다른_사람에게_작성자_이름과_사진도_가린다() {
         Member fan = member(FAN_MEMBER_ID);
         fan.updateProfileImageKey("member-profile-images/20/a.jpg");
         given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
@@ -628,7 +620,7 @@ class CreatorPostCommentServiceTest {
         given(memberRepository.findAllById(any())).willReturn(List.of(fan));
 
         List<CreatorPostCommentView> views =
-                service.findByPost(CREATOR_ID, PUBLIC_POST_ID, OWNER_MEMBER_ID, PAGE).getContent();
+                service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent();
 
         assertThat(views.get(0).authorName()).isNull();
         assertThat(views.get(0).authorProfileImageUrl()).isNull();
@@ -640,14 +632,12 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void 가려진_댓글도_작성자_본인에게는_이름과_사진이_보이고_스페이스_주인에게는_가려진다() {
+    void 가려진_댓글도_작성자_본인에게는_이름과_사진이_보이고_게시글_Creator에게는_가려진다() {
         Member fan = member(FAN_MEMBER_ID);
         fan.updateProfileImageKey("member-profile-images/20/a.jpg");
         given(profileImageUrlResolver.resolve("member-profile-images/20/a.jpg"))
                 .willReturn("https://cdn.example.com/member-profile-images/20/a.jpg");
-        CreatorPostComment blockedComment = blocked(1L, FAN_MEMBER_ID, "profanity:test");
-        stubCommentPage(blockedComment);
-        stubVisibleCommentPage(FAN_MEMBER_ID, blockedComment);
+        stubCommentPage(blocked(1L, FAN_MEMBER_ID, "profanity:test"));
         given(memberRepository.findAllById(any())).willReturn(List.of(fan));
 
         CreatorPostCommentView seenByAuthor =
@@ -699,7 +689,7 @@ class CreatorPostCommentServiceTest {
         CreatorPostComment pending = comment(1L, PUBLIC_POST_ID, FAN_MEMBER_ID);
         CreatorPostComment failed = comment(2L, PUBLIC_POST_ID, FAN_MEMBER_ID);
         failed.markFilterFailed();
-        stubVisibleCommentPage(STRANGER_MEMBER_ID, pending, failed);
+        stubCommentPage(pending, failed);
 
         List<CreatorPostCommentView> views = service.findByPost(CREATOR_ID, PUBLIC_POST_ID, STRANGER_MEMBER_ID, PAGE).getContent();
 
@@ -714,19 +704,15 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void 스페이스_주인이_아닌_조회자의_필터링된_댓글_원문_요청은_404다() {
+    void 스페이스_주인이_아닌_조회자의_필터링된_댓글_원문_요청은_403이다() {
         given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
 
-        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, null), CommonErrorCode.RESOURCE_NOT_FOUND);
-        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
-                CommonErrorCode.RESOURCE_NOT_FOUND);
-        // 팔로워도 작성자 본인도 열 수 없다.
-        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, FAN_MEMBER_ID),
-                CommonErrorCode.RESOURCE_NOT_FOUND);
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, null), CommonErrorCode.FORBIDDEN);
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID), CommonErrorCode.FORBIDDEN);
     }
 
     @Test
-    void 개인정보로_막힌_댓글의_원문은_403이다() {
+    void 개인정보로_막힌_댓글의_원문은_스페이스_주인에게도_403이다() {
         given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "privacy:email")));
 
         assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, OWNER_MEMBER_ID),
@@ -734,11 +720,36 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
+    void 관리자는_개인정보로_막힌_댓글과_관리자가_숨긴_댓글을_포함해_필터링된_댓글의_원문을_받는다() {
+        long adminId = 99L;
+        given(memberRepository.findById(adminId))
+                .willReturn(Optional.of(new Member("관리자", null, null, kr.co.cking.member.domain.MemberRole.ADMIN)));
+        CreatorPostComment hidden = passed(3L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(adminId, NOW);
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
+        given(commentRepository.findById(2L)).willReturn(Optional.of(blocked(2L, FAN_MEMBER_ID, "privacy:email")));
+        given(commentRepository.findById(3L)).willReturn(Optional.of(hidden));
+
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, adminId).content()).isEqualTo("댓글 1");
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 2L, adminId).content()).isEqualTo("댓글 2");
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 3L, adminId).content()).isEqualTo("댓글 3");
+    }
+
+    @Test
+    void 관리자가_아닌_일반_회원은_원문을_받지_못한다() {
+        given(memberRepository.findById(STRANGER_MEMBER_ID))
+                .willReturn(Optional.of(new Member("일반", null, null, kr.co.cking.member.domain.MemberRole.USER)));
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID), CommonErrorCode.FORBIDDEN);
+    }
+
+    @Test
     void 필터링되지_않은_댓글이나_작성자_본인의_원문_요청은_404다() {
         given(commentRepository.findById(1L)).willReturn(Optional.of(passed(1L, FAN_MEMBER_ID)));
         given(commentRepository.findById(2L)).willReturn(Optional.of(blocked(2L, FAN_MEMBER_ID, "profanity:병신")));
 
-        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, OWNER_MEMBER_ID),
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
                 CommonErrorCode.RESOURCE_NOT_FOUND);
         assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 2L, FAN_MEMBER_ID),
                 CommonErrorCode.RESOURCE_NOT_FOUND);
@@ -748,9 +759,9 @@ class CreatorPostCommentServiceTest {
     void 다른_게시글의_댓글이나_없는_댓글의_원문은_404다() {
         given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
 
-        assertError(() -> service.findOriginal(CREATOR_ID, FOLLOWERS_POST_ID, 1L, OWNER_MEMBER_ID),
+        assertError(() -> service.findOriginal(CREATOR_ID, FOLLOWERS_POST_ID, 1L, FAN_MEMBER_ID),
                 CommonErrorCode.RESOURCE_NOT_FOUND);
-        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 999L, OWNER_MEMBER_ID),
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 999L, FAN_MEMBER_ID),
                 CommonErrorCode.RESOURCE_NOT_FOUND);
     }
 
@@ -762,13 +773,6 @@ class CreatorPostCommentServiceTest {
 
     private void stubCommentPage(CreatorPostComment... comments) {
         given(commentRepository.findByPostIdOldestFirst(PUBLIC_POST_ID, PAGE))
-                .willReturn(new PageImpl<>(List.of(comments), PAGE, comments.length));
-        given(memberRepository.findAllById(any())).willReturn(List.of(member(FAN_MEMBER_ID)));
-    }
-
-    /** 스페이스 주인이 아닌 조회자용 목록 조회. 저장소가 가려진 댓글을 빼므로 넘긴 댓글이 그대로 내려온다고 가정한다. */
-    private void stubVisibleCommentPage(Long viewerMemberId, CreatorPostComment... comments) {
-        given(commentRepository.findVisibleByPostIdOldestFirst(PUBLIC_POST_ID, viewerMemberId, PAGE))
                 .willReturn(new PageImpl<>(List.of(comments), PAGE, comments.length));
         given(memberRepository.findAllById(any())).willReturn(List.of(member(FAN_MEMBER_ID)));
     }

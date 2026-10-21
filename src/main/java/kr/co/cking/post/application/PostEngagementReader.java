@@ -27,17 +27,14 @@ class PostEngagementReader {
 
     /**
      * @param viewerMemberId 비로그인이면 null
-     * @param viewerIsOwner 조회자가 게시글 소유 Creator 본인이면 true. 아니면 댓글 수에서 가려진 댓글(조회자 본인이 쓴 것 제외)을 뺀다.
      * @return 게시글 ID별 반응. {@code postIds}의 모든 ID가 키로 들어 있다.
      */
-    Map<Long, PostEngagement> read(Collection<Long> postIds, Long viewerMemberId, boolean viewerIsOwner) {
+    Map<Long, PostEngagement> read(Collection<Long> postIds, Long viewerMemberId) {
         if (postIds.isEmpty()) {
             return Map.of();
         }
         Map<Long, Long> likeCounts = toMap(likeRepository.countByPostIds(postIds));
-        Map<Long, Long> commentCounts = toMap(viewerIsOwner
-                ? commentRepository.countByPostIds(postIds)
-                : commentRepository.countVisibleByPostIds(postIds, viewerMemberId));
+        Map<Long, Long> commentCounts = toMap(commentRepository.countByPostIds(postIds));
         Set<Long> liked = viewerMemberId == null
                 ? Set.of()
                 : new HashSet<>(likeRepository.findLikedPostIds(viewerMemberId, postIds));
@@ -52,8 +49,8 @@ class PostEngagementReader {
         return result;
     }
 
-    PostEngagement read(Long postId, Long viewerMemberId, boolean viewerIsOwner) {
-        return read(List.of(postId), viewerMemberId, viewerIsOwner).get(postId);
+    PostEngagement read(Long postId, Long viewerMemberId) {
+        return read(List.of(postId), viewerMemberId).get(postId);
     }
 
     private Map<Long, Long> toMap(List<PostCount> counts) {

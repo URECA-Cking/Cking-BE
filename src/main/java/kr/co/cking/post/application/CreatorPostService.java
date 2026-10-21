@@ -76,7 +76,7 @@ public class CreatorPostService {
         release(postId, removedKeys, now);
         link(addedKeys, creator.getCreatorId(), postId, now);
         applyDisplayOrder(imageKeys, postId);
-        return viewAssembler.assemble(post, imageKeys, false, engagementReader.read(postId, memberId, true));
+        return viewAssembler.assemble(post, imageKeys, false, engagementReader.read(postId, memberId));
     }
 
     public void delete(Long memberId, Long postId) {
