@@ -3,10 +3,15 @@ import { SharedArray } from 'k6/data';
 import { Counter } from 'k6/metrics';
 import { tokenFactory } from './token.js';
 
-// 실행 대상은 부하 테스트 환경만 허용한다. 개발 서버 데이터를 바꾸지 않게 한다.
+// 실행 대상은 부하 테스트 환경과 운영만 허용한다. 개발 서버 데이터를 바꾸지 않게 한다.
+// 운영은 잘못 붙여 넣은 명령으로 실행되지 않게 CONFIRM_PROD에 운영 호스트를 한 번 더 적어야 한다.
+const PROD_HOST = 'api.cking.co.kr';
 export const BASE_URL = (__ENV.BASE_URL || '').replace(/\/$/, '');
-if (!/^https:\/\/[a-z0-9-]*loadtest[a-z0-9-]*\.cking\.co\.kr$/.test(BASE_URL)) {
-  throw new Error('BASE_URL은 부하 테스트 환경 주소여야 합니다(예: https://loadtest-api.cking.co.kr).');
+const loadtestTarget = /^https:\/\/[a-z0-9-]*loadtest[a-z0-9-]*\.cking\.co\.kr$/.test(BASE_URL);
+const prodTarget = BASE_URL === `https://${PROD_HOST}` && __ENV.CONFIRM_PROD === PROD_HOST;
+if (!loadtestTarget && !prodTarget) {
+  throw new Error(`BASE_URL은 부하 테스트 환경 주소(예: https://loadtest-api.cking.co.kr)이거나, `
+    + `CONFIRM_PROD=${PROD_HOST}와 함께 쓴 https://${PROD_HOST}여야 합니다.`);
 }
 
 // seed.sql과 같은 값. 회원 ID 1..CREATORS는 크리에이터 본인, 그 뒤 MEMBERS명이 응모한다.
