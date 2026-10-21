@@ -121,6 +121,10 @@ cking:
     # 대기 4명 중 맨 뒤는 앞의 두 장씩 두 묶음이 끝나야 시작한다. 개발 서버에서 20MP 두 장 동시 처리가 최대 1.61초라 약 3.2초를 기다리고, 예열·GC 튐을 더해 5초.
     acquire-timeout: 5s
   member:
+    profile-guard:
+      # 응모 프로필 검사를 통과한 회원을 기억하는 최대 수(#706). Caffeine에서 회원 1명당 107~132B를 써서 10만 명이면
+      # 약 12.6MiB(힙 460MiB의 2.7%)에서 멈춘다. 넘치면 밀려난 회원만 다음 응모 때 DB로 다시 검사한다.
+      max-size: 100000
     profile-image:
       # local 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
       public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
