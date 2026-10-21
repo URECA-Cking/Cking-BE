@@ -216,6 +216,21 @@ class CommentFilterWorkerTest {
     }
 
     @Test
+    void 필터가_호출을_제한하면_요청_형식_오류가_아니라_재필터링할_실패로_남긴다(CapturedOutput output) {
+        givenTarget(CONTENT);
+        given(client.moderate(COMMENT_ID, CONTENT)).willThrow(new CommentFilterException(
+                "필터 서비스가 호출을 제한했습니다. status=429", CommentFilterFailureType.THROTTLED, 429, null));
+
+        worker.process(COMMENT_ID);
+
+        verify(resultService).saveFailure(COMMENT_ID, CONTENT);
+        assertThat(output.getAll())
+                .contains("재필터링이 다시 처리합니다")
+                .contains("httpStatus=429", "failureKind=THROTTLED")
+                .doesNotContain("요청 형식을 확인하세요");
+    }
+
+    @Test
     void 판정_결과를_저장할_수_없으면_실패로_기록한다() {
         givenTarget(CONTENT);
         given(client.moderate(COMMENT_ID, CONTENT)).willReturn(BLOCK);

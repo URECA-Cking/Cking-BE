@@ -21,6 +21,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.FORBIDDEN;
 import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
+import static org.springframework.http.HttpStatus.TOO_MANY_REQUESTS;
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 class RestCommentFilterClientTest {
@@ -116,6 +117,17 @@ class RestCommentFilterClientTest {
                         assertThat(exception.httpStatus()).isEqualTo(status.value());
                     });
         }
+    }
+
+    @Test
+    void 필터_서비스의_429는_요청_형식_오류가_아니라_일시적_제한으로_구분한다() {
+        server.expect(requestTo("http://filter/moderate")).andRespond(withStatus(TOO_MANY_REQUESTS));
+        assertThatThrownBy(() -> client.moderate(1L, "본문"))
+                .isInstanceOfSatisfying(CommentFilterException.class, exception -> {
+                    assertThat(exception).isNotInstanceOf(CommentFilterRejectedException.class);
+                    assertThat(exception.type()).isEqualTo(CommentFilterFailureType.THROTTLED);
+                    assertThat(exception.httpStatus()).isEqualTo(429);
+                });
     }
 
     @Test
