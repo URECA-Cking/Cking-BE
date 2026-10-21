@@ -1,5 +1,7 @@
 package kr.co.cking.member.application;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.CreatorQueryService;
@@ -15,13 +17,18 @@ public class MemberProfileGuard {
 
     private final MemberRepository memberRepository;
     private final CreatorQueryService creatorQueryService;
+    // 닉네임·활동명은 설정 뒤 미설정으로 돌아가지 않으므로, 통과한 회원은 DB를 다시 읽지 않는다(#706).
+    private final Set<Long> configuredMemberIds = ConcurrentHashMap.newKeySet();
 
     public void requireConfigured(Long memberId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        if (creatorQueryService.requireActivityNameConfiguredForCreator(memberId)) {
+        if (configuredMemberIds.contains(memberId)) {
             return;
         }
-        member.requireProfileConfigured();
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (!creatorQueryService.requireActivityNameConfiguredForCreator(memberId)) {
+            member.requireProfileConfigured();
+        }
+        configuredMemberIds.add(memberId);
     }
 }
