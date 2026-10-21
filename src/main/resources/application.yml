@@ -240,7 +240,8 @@ cking:
     enabled: ${COMMENT_FILTER_ENABLED:false}
     base-url: ${COMMENT_FILTER_BASE_URL:http://localhost:8000}
     connect-timeout: ${COMMENT_FILTER_CONNECT_TIMEOUT:PT2S}
-    read-timeout: ${COMMENT_FILTER_READ_TIMEOUT:PT5S}
+    # 필터 Lambda 콜드 스타트(측정 6~17초)보다 짧으면 첫 판정이 시간 초과되고 1분 뒤 재시도에서야 저장된다. 최악값에 여유를 둔다.
+    read-timeout: ${COMMENT_FILTER_READ_TIMEOUT:PT30S}
     # Lambda 함수 URL(IAM 인증)을 부를 때 aws-iam. 서버 역할 자격 증명으로 요청에 SigV4 서명을 붙인다.
     auth: ${COMMENT_FILTER_AUTH:none}
     signing-region: ${COMMENT_FILTER_SIGNING_REGION:ap-northeast-2}

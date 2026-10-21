@@ -15,7 +15,7 @@ public class CommentFilterProperties {
     private boolean enabled = false;
     private String baseUrl = "http://localhost:8000";
     private Duration connectTimeout = Duration.ofSeconds(2);
-    private Duration readTimeout = Duration.ofSeconds(5);
+    private Duration readTimeout = Duration.ofSeconds(30);
     private Auth auth = Auth.NONE;
     private String signingRegion = "ap-northeast-2";
     private Executor executor = new Executor();

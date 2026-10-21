@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +44,12 @@ class CommentFilterConfigurationTest {
             assertThat(executor.getThreadPoolExecutor().getQueue().remainingCapacity()).isEqualTo(100);
             assertThat(executor.getThreadNamePrefix()).isEqualTo("comment-filter-");
         });
+    }
+
+    @Test
+    void 필터_응답_대기_기본값은_Lambda_콜드_스타트보다_길다() {
+        runner.withPropertyValues("cking.comment-filter.enabled=true").run(context ->
+                assertThat(context.getBean(CommentFilterProperties.class).getReadTimeout()).isEqualTo(Duration.ofSeconds(30)));
     }
 
     @Test
