@@ -55,13 +55,13 @@ public class EventController {
         return ApiResponse.success(eventQueryService.getEventCounts());
     }
 
-    /** 인증된 사용자의 응모권 정보를 포함해 Event 상세를 조회한다. */
+    /** 공개 Event 상세를 조회하고, 인증된 사용자에게만 본인 응모권 잔액을 포함한다. */
     @Operation(
             summary = "이벤트 상세 조회",
-            description = "이벤트 정보와 요청 사용자의 해당 크리에이터 보유 응모권 수와 공통 응모권 수를 함께 조회합니다."
+            description = "로그인 없이 공개 이벤트를 조회할 수 있습니다. 로그인한 경우 내 크리에이터 응모권과 공통 응모권 잔액을 반환하고, 비로그인 시 두 잔액은 0입니다."
     )
     @GetMapping("/api/events/{eventId}")
-    public ApiResponse<EventDetail> getEvent(@PathVariable Long eventId, @CurrentMemberId Long memberId) {
+    public ApiResponse<EventDetail> getEvent(@PathVariable Long eventId, @CurrentMemberId(required = false) Long memberId) {
         return ApiResponse.success(eventQueryService.getEvent(eventId, memberId));
     }
 }
