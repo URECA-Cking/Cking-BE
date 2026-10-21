@@ -1,5 +1,6 @@
 package kr.co.cking.creator.application;
 
+import java.util.Optional;
 import kr.co.cking.creator.repository.CreatorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,11 +18,9 @@ public class CreatorQueryService {
         return creatorRepository.existsByMemberId(memberId);
     }
 
-    /** 요청 회원이 지정한 Creator 계정의 소유자인지 확인한다. */
-    public boolean isOwner(Long memberId, Long creatorId) {
-        return creatorRepository.findByMemberId(memberId)
-                .map(creator -> creator.getCreatorId().equals(creatorId))
-                .orElse(false);
+    /** Event 캐시 적재 시 Creator의 소유 회원 ID만 조회한다. */
+    public Optional<Long> findOwnerMemberId(Long creatorId) {
+        return creatorRepository.findOwnerMemberId(creatorId);
     }
 
     /**

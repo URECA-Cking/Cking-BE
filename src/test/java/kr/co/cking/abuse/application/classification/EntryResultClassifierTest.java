@@ -68,6 +68,11 @@ class EntryResultClassifierTest {
     void 잘못된_응모권_수량은_관찰하지_않는다() {
         assertThat(classifier.classify(EntryResultCode.INVALID_TICKET_COUNT)).isEmpty();
         assertThat(classifier.classify(EntryErrorCode.INVALID_TICKET_COUNT)).isEmpty();
+    }
+
+    /** 차감 전 거절한 본인 Event 응모는 Abuse 관측 대상에서 제외한다. */
+    @Test
+    void 본인_이벤트_응모는_관찰하지_않는다() {
         assertThat(classifier.classify(EntryErrorCode.OWN_EVENT_ENTRY_NOT_ALLOWED)).isEmpty();
     }
 

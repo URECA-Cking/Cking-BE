@@ -50,7 +50,9 @@ public class EventCache {
      */
     public Optional<CachedEvent> find(Long eventId) {
         try {
-            return Optional.ofNullable(redisTemplate.opsForValue().get(key(eventId)));
+            CachedEvent cached = redisTemplate.opsForValue().get(key(eventId));
+            // 이전 버전 payload에는 소유 회원 ID가 없으므로 캐시를 다시 채운다.
+            return cached == null || cached.ownerMemberId() == null ? Optional.empty() : Optional.of(cached);
         } catch (SerializationException exception) {
             log.warn("Failed to deserialize cached event, treating as cache miss: eventId={}", eventId, exception);
             return Optional.empty();

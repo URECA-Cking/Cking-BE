@@ -23,7 +23,8 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 닉네임 미설정 팬은 `PROFILE_SETUP_REQUIRED`, 활동명 미설정 Creator는 `ACTIVITY_NAME_SETUP_REQUIRED`(각각 409)를
 반환한다. Creator가 팬으로 응모해도 당첨 공개 목록에는 OAuth 원본 이름이 아닌 Creator 활동명이 표시된다.
 단, 요청 Member에게 연결된 Creator가 Event 소유자이면 `OWN_EVENT_ENTRY_NOT_ALLOWED`(403)로 거절한다.
-이 검증은 Event 조회 후 Lua 차감 전에 수행하므로 거절된 요청은 응모권 잔액·멱등 키·Stream을 변경하지 않는다.
+소유 회원 ID는 공개 Event 캐시를 채울 때 Creator 저장소에서 확인한다. 캐시 적중 시 별도 DB 조회 없이
+Lua 차감 전에 검사하므로 거절된 요청은 응모권 잔액·멱등 키·Stream을 변경하지 않는다.
 다른 Creator의 Event에 응모하는 경로와 일반 회원 응모는 그대로 허용한다.
 
 같은 `requestId`와 동일한 요청은 기존 성공 결과를 재현한다. 같은 `requestId`에 다른 요청 본문을

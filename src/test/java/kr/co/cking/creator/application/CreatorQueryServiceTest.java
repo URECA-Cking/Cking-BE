@@ -28,17 +28,13 @@ class CreatorQueryServiceTest {
         verify(creatorRepository).existsByMemberId(1L);
     }
 
-    /** 회원에게 연결된 Creator ID가 Event의 소유자 ID와 일치하는지 확인한다. */
+    /** Event 캐시를 채울 때 회원 ID 한 컬럼만 읽는다. */
     @Test
-    void Creator_소유권을_회원_ID와_Creator_ID로_검사한다() {
-        Creator creator = new Creator(1L, "creator-1");
-        ReflectionTestUtils.setField(creator, "creatorId", 2L);
-        when(creatorRepository.findByMemberId(1L)).thenReturn(Optional.of(creator));
-        when(creatorRepository.findByMemberId(3L)).thenReturn(Optional.empty());
+    void Creator_소유_회원_ID를_조회한다() {
+        when(creatorRepository.findOwnerMemberId(2L)).thenReturn(Optional.of(1L));
 
-        assertThat(creatorQueryService.isOwner(1L, 2L)).isTrue();
-        assertThat(creatorQueryService.isOwner(1L, 4L)).isFalse();
-        assertThat(creatorQueryService.isOwner(3L, 2L)).isFalse();
+        assertThat(creatorQueryService.findOwnerMemberId(2L)).contains(1L);
+        verify(creatorRepository).findOwnerMemberId(2L);
     }
 
     @Test
