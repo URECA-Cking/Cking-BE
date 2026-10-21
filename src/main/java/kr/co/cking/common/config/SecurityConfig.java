@@ -5,6 +5,7 @@ import kr.co.cking.common.security.RestAccessDeniedHandler;
 import kr.co.cking.common.security.RestAuthenticationEntryPoint;
 import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
 import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
+import kr.co.cking.auth.presentation.RedisOAuth2AuthorizationRequestRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.core.userdetails.User;
@@ -56,6 +58,7 @@ public class SecurityConfig {
     private final OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
     private final OAuth2LoginFailureHandler oauth2LoginFailureHandler;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
+    private final ObjectProvider<RedisOAuth2AuthorizationRequestRepository> authorizationRequestRepositoryProvider;
     private final Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter;
 
     @Value("${cking.docs.username:}")
@@ -115,6 +118,8 @@ public class SecurityConfig {
         return http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
+                // 인증은 JWT로 하고 OAuth 인가 요청은 Redis에 두므로 서버 세션을 만들지 않는다(#678).
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/readyz", "/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers(RecommendationApiKeyAuthenticationFilter.WRITE_ENDPOINTS)
@@ -227,6 +232,8 @@ public class SecurityConfig {
     private void configureOAuth2LoginIfRegistered(HttpSecurity http) throws Exception {
         if (clientRegistrationRepositoryProvider.getIfAvailable() != null) {
             http.oauth2Login(oauth2 -> oauth2
+                    .authorizationEndpoint(endpoint -> endpoint
+                            .authorizationRequestRepository(authorizationRequestRepositoryProvider.getObject()))
                     .successHandler(oauth2LoginSuccessHandler)
                     .failureHandler(oauth2LoginFailureHandler));
         }
