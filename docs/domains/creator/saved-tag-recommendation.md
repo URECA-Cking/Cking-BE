@@ -1,6 +1,6 @@
 # 실제 저장 태그 추천 (#736)
 
-기존 개인화 추천·인기순 fallback과 별도다. 회원 관심 분야를 저장하거나 모델 태그를 새로 부여하지 않는다.
+기존 추천 화면은 아래 INTEREST/FOLLOW 경로를 사용한다. 과거 개인화/인기순 API는 호환용으로 남지만 이 화면의 후보를 보충하는 데 사용하지 않는다. 조회는 회원 관심 분야를 저장하거나 모델 태그를 새로 부여하지 않는다.
 자격은 현재 공개 확인 태그, 순위는 배치 임베딩이다. 실제 분류의 의미 정확도 보증은 아니다.
 
 ## 공개 API (JWT 필수)
@@ -9,6 +9,16 @@
   tags는 `{type:PARENT|TOPIC,code,name,description}` 배열이다. 기존 `/api/interests`의 버전과 구분한다.
 - `GET /api/me/creator-recommendations/by-tags`: query `taxonomyVersion`, `parentCodes`, `topicCodes`, `size`(기본 10, 1~20).
   코드는 반복 query 또는 쉼표 구분이다. 선택이 있으면 카탈로그 응답의 버전을 필수로 보낸다.
+
+### 기존 추천 화면의 두 영역
+
+같은 `/by-tags`에 `source`를 보낸다. 기본값 `EXPLICIT`는 기존 명시 코드 검색이며, `INTEREST`/`FOLLOW`에는 명시 코드·taxonomyVersion을 함께 보내지 않는다. size 상한은 동일하다.
+
+- `source=INTEREST`: 회원이 가입/분야 편집에서 저장한 관심 분야 코드만 읽는다. 승인 콘텐츠 taxonomy의 PARENT에 존재하는 동일 코드만 연결한다. 두 taxonomy 버전은 독립이며 이름 유사도/추측 매핑으로 확장하지 않는다. 정확 일치한 현재 확인 태그 후보 안에서 임베딩 점수로 정렬한다. 분야 편집 저장 후 재조회에도 같은 규칙이다.
+- `source=FOLLOW`: 전체 팔로우 중 현재 소개와 확인 태그가 유효한 seed를 읽는다. seed의 실제 부모/세부 코드 합집합과 후보 태그를 OR 비교한다. 같은 세부는 동일 태그, 같은 부모의 서로 다른 세부는 관련 태그로 취급한다. 서로 다른 부모 사이의 유사 관계는 임의로 만들지 않는다. 3개 부모/9개 세부 제한은 EXPLICIT 검색 선택 제한이며 여러 팔로우의 합집합에는 적용하지 않는다.
+- 결과 policyVersion은 `SAVED_TAG_INTEREST_V1`/`SAVED_TAG_FOLLOW_V1`. 각 항목에 실제 기여 `interestCodes`/`seedCreatorIds`를 제공한다. INTEREST에 팔로우를 섞거나 빈 관심 분야를 FOLLOW/인기순으로 대체하지 않는다.
+- 두 경로 모두 본인·전체 기팔로우, 소개 없음, 미확인/과거 확인, 잘못된 taxonomy/config를 제외한 뒤 Top-N. 20 요청에 2 적격이면 2명, 0이면 빈 목록. 순위 미생성 후보만 있으면 PENDING이다. 확인 없는 seed를 소개 임베딩만으로 추측하지 않는다.
+- 아직 추천 추적 snapshot을 만들지 않으므로 requestId=null. FE 기존 카드/분야 편집/두 영역 디자인은 유지하며 새 태그 탭을 추가하지 않는다.
 
 ```text
 ?taxonomyVersion=approved-content-v1&parentCodes=FOOD&topicCodes=FOOD_BAKING&size=20

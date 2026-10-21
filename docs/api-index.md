@@ -213,6 +213,6 @@ No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service M
 | 역할 | Method | 경로 | 기능 |
 | --- | --- | --- | --- |
 | USER JWT | GET | `/api/me/creator-recommendations/tag-catalog` | 승인 콘텐츠 태그 선택 목록 |
-| USER JWT | GET | `/api/me/creator-recommendations/by-tags` | 실제 태그 OR 추천, 부족 후보 허용 |
+| USER JWT | GET | `/api/me/creator-recommendations/by-tags` | INTEREST/FOLLOW 분리·실제 태그 OR 추천, 부족 후보 허용 |
 | CONTENT_TAG_BATCH | GET | `/api/internal/content-tags/saved-recommendations/inputs` | 공개 확인 후보 전체 snapshot |
 | CONTENT_TAG_BATCH | PUT | `/api/internal/content-tags/saved-recommendations/rankings` | snapshot 전체 임베딩 점수 적재 |
