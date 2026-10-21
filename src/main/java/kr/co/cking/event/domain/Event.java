@@ -56,6 +56,7 @@ public class Event {
     private EventStatus status;
 
     private String cutoffStreamId;
+    private Instant closeRequestedAt;
     private Instant closedAt;
     private Instant publishedAt;
     private Instant deletedAt;
@@ -340,10 +341,11 @@ public class Event {
         }
     }
 
-    /** Gate 차단·cutoff 확정 이후 호출. OPEN인 이벤트만 CLOSING으로 전이한다. */
-    public void startClosing(String cutoffStreamId) {
+    /** Gate 차단·cutoff 확정 이후 호출. OPEN인 이벤트만 CLOSING으로 전이하며 마감 요청 시각을 기록한다. */
+    public void startClosing(String cutoffStreamId, Instant closeRequestedAt) {
         requireStatus(EventStatus.OPEN);
         this.cutoffStreamId = cutoffStreamId;
+        this.closeRequestedAt = closeRequestedAt;
         this.status = EventStatus.CLOSING;
     }
 

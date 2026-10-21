@@ -27,11 +27,13 @@ public class EventController {
 
     private final EventQueryService eventQueryService;
 
+    /** 크리에이터·표시 상태 조건으로 공개 이벤트 목록을 페이지 단위로 조회한다. */
     @Operation(
             summary = "이벤트 목록 조회",
             description = "크리에이터와 화면 표시 상태로 이벤트를 조회합니다. "
                     + "page는 0부터 시작하며 size의 기본값은 20, 최댓값은 100입니다. "
-                    + "로그인한 경우 각 항목에 내 공통 응모권 수(myCommonTicketBalance)를 함께 반환합니다."
+                    + "로그인한 경우 각 항목에 내 공통 응모권 수(myCommonTicketBalance)를 함께 반환합니다. "
+                    + "마감 요청 이후 상태에는 실제 마감 요청 시각(closeRequestedAt)이 포함되며, 그 전이거나 과거 데이터면 null입니다."
     )
     @GetMapping("/api/events")
     public ApiResponse<PageResponse<EventSummary>> getEvents(
@@ -46,6 +48,7 @@ public class EventController {
         return ApiResponse.success(events);
     }
 
+    /** 표시 상태(예정·진행 중·종료)별 공개 이벤트 개수를 조회한다. */
     @Operation(
             summary = "이벤트 상태별 개수 조회",
             description = "공개 이벤트 수를 표시 상태(예정·진행 중·종료)별로 한 번에 반환합니다. 분류 규칙은 이벤트 목록과 같습니다."
@@ -58,7 +61,8 @@ public class EventController {
     /** 공개 Event 상세를 조회하고, 인증된 사용자에게만 본인 응모권 잔액을 포함한다. */
     @Operation(
             summary = "이벤트 상세 조회",
-            description = "로그인 없이 공개 이벤트를 조회할 수 있습니다. 로그인한 경우 내 크리에이터 응모권과 공통 응모권 잔액을 반환하고, 비로그인 시 두 잔액은 0입니다."
+            description = "로그인 없이 공개 이벤트를 조회할 수 있습니다. 로그인한 경우 내 크리에이터 응모권과 공통 응모권 잔액을 반환하고, 비로그인 시 두 잔액은 0입니다. "
+                    + "마감 요청 이후 상태에는 실제 마감 요청 시각(closeRequestedAt)이 포함되며, 그 전이거나 과거 데이터면 null입니다."
     )
     @GetMapping("/api/events/{eventId}")
     public ApiResponse<EventDetail> getEvent(@PathVariable Long eventId, @CurrentMemberId(required = false) Long memberId) {

@@ -18,6 +18,8 @@ OPEN
   -> OfficialSnapshotService.createIfAbsent(eventId)
 ```
 
+`OPEN -> CLOSING` 전이 시점의 서버 시각을 `closeRequestedAt`으로 저장해 공개 Event 조회 응답에 내려준다(사용자 기준 마감 시각). Drain 완료 시각 `closedAt`과 의미가 다르며 관리자 운영 상세에서만 노출한다. 이 컬럼 도입 전에 마감된 Event는 백필하지 않고 `null`로 둔다.
+
 마감 시작 전 Event 상태가 OPEN이 아니면 `INVALID_STATE`다. Gate·barrier·cutoff는 `EventCutoffBarrier`가 처리하고, 상태 전이는 `EventCommandService.startClosing()`과 `completeClosing()`만 수행한다.
 
 `EventCutoffBarrier`는 새 cutoff를 확정할 때 실시간 응모 현황(FR-P2-045~050) 집계 키(`event:entry-total`,
