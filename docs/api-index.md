@@ -1,5 +1,7 @@
 # 전체 API 인덱스
 
+- [저장 태그 추천 API](domains/creator/saved-tag-recommendation.md): JWT 태그 카탈로그/엄격 검색과 내부 배치 snapshot·점수 적재.
+
 외부 API와 내부 Service 호출의 탐색용 목록이다. 요청·응답·오류 상세는 공통 API 또는 해당 도메인 문서에서 관리한다. 도메인 문서가 아직 없으면 그 도메인 작업자가 `docs/domains/<도메인>/` 아래에 추가한다.
 
 | No. | 구분 | 도메인 | 역할 | Method | 경로·호출 | 기능 | 멱등성 |
@@ -205,3 +207,12 @@ No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service M
 ## Creator AI 콘텐츠 태그
 
 자동 적재·내구성 변경 작업, 본인 조회·확인, 공개 조회의 경로/인증은 [콘텐츠 태그 API](domains/creator/content-tags.md)를 따른다.
+
+## 실제 저장 태그 추천
+
+| 역할 | Method | 경로 | 기능 |
+| --- | --- | --- | --- |
+| USER JWT | GET | `/api/me/creator-recommendations/tag-catalog` | 승인 콘텐츠 태그 선택 목록 |
+| USER JWT | GET | `/api/me/creator-recommendations/by-tags` | 실제 태그 OR 추천, 부족 후보 허용 |
+| CONTENT_TAG_BATCH | GET | `/api/internal/content-tags/saved-recommendations/inputs` | 공개 확인 후보 전체 snapshot |
+| CONTENT_TAG_BATCH | PUT | `/api/internal/content-tags/saved-recommendations/rankings` | snapshot 전체 임베딩 점수 적재 |

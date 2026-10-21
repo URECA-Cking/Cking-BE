@@ -1,5 +1,7 @@
 # Creator 신청 API
 
+엄격한 실제 저장 태그 검색은 [저장 태그 추천 API](saved-tag-recommendation.md)를 따른다.
+
 Creator 신청·심사 API의 상세 계약이다. 모든 성공·실패 응답은 [공통 API 규약](../../common/api.md)의 응답 봉투를 사용하며, 아래 Response 예시는 `data` 값이다.
 
 ## 상태와 권한
