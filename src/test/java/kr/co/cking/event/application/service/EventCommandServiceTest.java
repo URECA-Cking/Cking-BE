@@ -87,13 +87,14 @@ class EventCommandServiceTest {
         assertThat(result).isEqualTo(EventStatus.CLOSING);
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
         assertThat(event.getCutoffStreamId()).isEqualTo("123-0");
+        assertThat(event.getCloseRequestedAt()).isEqualTo(FIXED_NOW);
         verify(eventPublisher).publishEvent(new EventClosingStateChangedEvent(1L));
     }
 
     @Test
     void startClosing은_동일_cutoff로_이미_CLOSING이면_멱등하게_아무것도_하지_않는다() {
         Event event = eventOf(EventStatus.OPEN);
-        event.startClosing("123-0");
+        event.startClosing("123-0", FIXED_NOW);
         when(eventRepository.findByEventId(1L)).thenReturn(java.util.Optional.of(event));
 
         EventStatus result = eventCommandService.startClosing(1L, "123-0");

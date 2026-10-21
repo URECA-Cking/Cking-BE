@@ -20,14 +20,15 @@ public record EventDetail(
         String prizeAlgorithmVersion,
         long myTicketBalance,
         long myCommonTicketBalance,
-        List<PrizeResult> prizes
+        List<PrizeResult> prizes,
+        Instant closeRequestedAt
 ) {
 
     public EventDetail(Long eventId, Long creatorId, String title, String description, Instant startAt, Instant endAt,
                        EventStatus status, DisplayStatus displayStatus, Integer winnerCount, String drawMethod,
                        long myTicketBalance, long myCommonTicketBalance) {
         this(eventId, creatorId, title, description, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
-                "PRIZE_WEIGHTED_V1", myTicketBalance, myCommonTicketBalance, List.of());
+                "PRIZE_WEIGHTED_V1", myTicketBalance, myCommonTicketBalance, List.of(), null);
     }
 
     public EventDetail {
@@ -49,7 +50,8 @@ public record EventDetail(
                 event.prizeAlgorithmVersion(),
                 myTicketBalance,
                 myCommonTicketBalance,
-                event.prizes().stream().map(PrizeResult::from).toList()
+                event.prizes().stream().map(PrizeResult::from).toList(),
+                event.closeRequestedAt()
         );
     }
 }
