@@ -33,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -78,7 +79,7 @@ class CreatorPostQueryServiceTest {
     void 목록은_좋아요_수와_내_좋아요_댓글_수를_한_페이지_단위로_집계하고_잠긴_게시글에도_수치를_준다() {
         given(followQueryService.isFollowing(VIEWER_MEMBER_ID, CREATOR_ID)).willReturn(false);
         given(likeRepository.countByPostIds(List.of(101L, 100L))).willReturn(List.of(count(101L, 7), count(100L, 2)));
-        given(commentRepository.countByPostIds(List.of(101L, 100L))).willReturn(List.of(count(100L, 3)));
+        given(commentRepository.countVisibleByPostIds(List.of(101L, 100L), VIEWER_MEMBER_ID)).willReturn(List.of(count(100L, 3)));
         given(likeRepository.findLikedPostIds(VIEWER_MEMBER_ID, List.of(101L, 100L))).willReturn(List.of(100L));
 
         List<CreatorPostView> posts = service.findByCreator(CREATOR_ID, VIEWER_MEMBER_ID, PAGE).getContent();
@@ -93,8 +94,23 @@ class CreatorPostQueryServiceTest {
         assertThat(open.liked()).isTrue();
         assertThat(open.commentCount()).isEqualTo(3);
         verify(likeRepository, times(1)).countByPostIds(any());
-        verify(commentRepository, times(1)).countByPostIds(any());
+        verify(commentRepository, times(1)).countVisibleByPostIds(any(), eq(VIEWER_MEMBER_ID));
+        verify(commentRepository, never()).countByPostIds(any());
         verify(likeRepository, times(1)).findLikedPostIds(anyLong(), any());
+    }
+
+    @Test
+    void 댓글_수는_스페이스_주인에게만_가려진_댓글까지_세고_다른_조회자는_가려진_댓글을_뺀_수를_받는다() {
+        given(commentRepository.countByPostIds(List.of(101L, 100L))).willReturn(List.of(count(100L, 5)));
+        given(commentRepository.countVisibleByPostIds(List.of(101L, 100L), null)).willReturn(List.of(count(100L, 3)));
+
+        CreatorPostView seenByOwner = service.findByCreator(CREATOR_ID, OWNER_MEMBER_ID, PAGE).getContent().get(1);
+        CreatorPostView seenByAnonymous = service.findByCreator(CREATOR_ID, null, PAGE).getContent().get(1);
+
+        assertThat(seenByOwner.commentCount()).isEqualTo(5);
+        assertThat(seenByAnonymous.commentCount()).isEqualTo(3);
+        verify(commentRepository, times(1)).countByPostIds(any());
+        verify(commentRepository, times(1)).countVisibleByPostIds(any(), isNull());
     }
 
     @Test
@@ -113,7 +129,7 @@ class CreatorPostQueryServiceTest {
         given(postRepository.findById(100L)).willReturn(Optional.of(publicPost));
         given(imageRepository.findByPostIdOrderByDisplayOrderAsc(100L)).willReturn(List.of());
         given(likeRepository.countByPostIds(List.of(100L))).willReturn(List.of(count(100L, 4)));
-        given(commentRepository.countByPostIds(List.of(100L))).willReturn(List.of(count(100L, 1)));
+        given(commentRepository.countVisibleByPostIds(List.of(100L), VIEWER_MEMBER_ID)).willReturn(List.of(count(100L, 1)));
         given(likeRepository.findLikedPostIds(VIEWER_MEMBER_ID, List.of(100L))).willReturn(List.of(100L));
 
         CreatorPostView detail = service.findDetail(CREATOR_ID, 100L, VIEWER_MEMBER_ID);
