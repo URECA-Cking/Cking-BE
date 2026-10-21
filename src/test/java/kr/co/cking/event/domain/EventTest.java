@@ -94,7 +94,8 @@ class EventTest {
         event.startClosing("123-0", CLOSE_REQUESTED);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
-        assertThat(event.getCutoffStreamId()).isEqualTo("123-0");        assertThat(event.getCloseRequestedAt()).isEqualTo(CLOSE_REQUESTED);
+        assertThat(event.getCutoffStreamId()).isEqualTo("123-0");
+        assertThat(event.getCloseRequestedAt()).isEqualTo(CLOSE_REQUESTED);
     }
 
     @Test
