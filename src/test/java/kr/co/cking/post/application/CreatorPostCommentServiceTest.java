@@ -498,12 +498,12 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void 관리자가_숨긴_댓글의_원문은_403이고_작성자_본인은_404다() {
+    void 관리자가_숨긴_댓글의_원문은_스페이스_주인에게도_403이고_작성자_본인은_404다() {
         CreatorPostComment hidden = passed(1L, FAN_MEMBER_ID);
         hidden.hideByAdmin(9L, NOW);
         given(commentRepository.findById(1L)).willReturn(Optional.of(hidden));
 
-        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, OWNER_MEMBER_ID),
                 PostErrorCode.COMMENT_NOT_REVEALABLE);
         assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, FAN_MEMBER_ID),
                 CommonErrorCode.RESOURCE_NOT_FOUND);
@@ -697,19 +697,51 @@ class CreatorPostCommentServiceTest {
     }
 
     @Test
-    void 필터링된_댓글의_원문은_게시글을_볼_수_있는_누구나_받는다() {
+    void 필터링된_댓글의_원문은_스페이스_주인만_받는다() {
         given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
 
-        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, null).content()).isEqualTo("댓글 1");
-        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID).content()).isEqualTo("댓글 1");
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, OWNER_MEMBER_ID).content()).isEqualTo("댓글 1");
     }
 
     @Test
-    void 개인정보로_막힌_댓글의_원문은_403이다() {
+    void 스페이스_주인이_아닌_조회자의_필터링된_댓글_원문_요청은_403이다() {
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, null), CommonErrorCode.FORBIDDEN);
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID), CommonErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    void 개인정보로_막힌_댓글의_원문은_스페이스_주인에게도_403이다() {
         given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "privacy:email")));
 
-        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID),
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, OWNER_MEMBER_ID),
                 PostErrorCode.COMMENT_NOT_REVEALABLE);
+    }
+
+    @Test
+    void 관리자는_개인정보로_막힌_댓글과_관리자가_숨긴_댓글을_포함해_필터링된_댓글의_원문을_받는다() {
+        long adminId = 99L;
+        given(memberRepository.findById(adminId))
+                .willReturn(Optional.of(new Member("관리자", null, null, kr.co.cking.member.domain.MemberRole.ADMIN)));
+        CreatorPostComment hidden = passed(3L, FAN_MEMBER_ID);
+        hidden.hideByAdmin(adminId, NOW);
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
+        given(commentRepository.findById(2L)).willReturn(Optional.of(blocked(2L, FAN_MEMBER_ID, "privacy:email")));
+        given(commentRepository.findById(3L)).willReturn(Optional.of(hidden));
+
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, adminId).content()).isEqualTo("댓글 1");
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 2L, adminId).content()).isEqualTo("댓글 2");
+        assertThat(service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 3L, adminId).content()).isEqualTo("댓글 3");
+    }
+
+    @Test
+    void 관리자가_아닌_일반_회원은_원문을_받지_못한다() {
+        given(memberRepository.findById(STRANGER_MEMBER_ID))
+                .willReturn(Optional.of(new Member("일반", null, null, kr.co.cking.member.domain.MemberRole.USER)));
+        given(commentRepository.findById(1L)).willReturn(Optional.of(blocked(1L, FAN_MEMBER_ID, "profanity:병신")));
+
+        assertError(() -> service.findOriginal(CREATOR_ID, PUBLIC_POST_ID, 1L, STRANGER_MEMBER_ID), CommonErrorCode.FORBIDDEN);
     }
 
     @Test

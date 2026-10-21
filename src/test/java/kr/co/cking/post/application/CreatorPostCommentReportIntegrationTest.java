@@ -365,7 +365,7 @@ class CreatorPostCommentReportIntegrationTest {
         assertThat(row.pendingReportCount()).isZero();
         assertThat(row.content()).isEqualTo("신고될 댓글");
 
-        // 사용자 목록: 다른 사람에게는 가려지고 원문 보기가 허용되지 않으며 작성자 본인에게는 그대로 보인다.
+        // 사용자 목록: 다른 사람에게는 가려지고 작성자 본인에게는 그대로 보인다.
         CreatorPostCommentView seenByStranger = commentService.findByPost(
                 creator.getCreatorId(), postId, stranger.getMemberId(), PageRequest.of(0, 50)).getContent().get(0);
         assertThat(seenByStranger.filtered()).isTrue();
@@ -375,10 +375,15 @@ class CreatorPostCommentReportIntegrationTest {
                 creator.getCreatorId(), postId, author.getMemberId(), PageRequest.of(0, 50)).getContent().get(0);
         assertThat(seenByAuthor.filtered()).isFalse();
         assertThat(seenByAuthor.content()).isEqualTo("신고될 댓글");
+        // 원문 요청: 스페이스 주인에게도 관리자가 숨긴 댓글은 403(COMMENT_NOT_REVEALABLE)이고, 주인이 아닌 조회자는 403(FORBIDDEN)이다.
+        assertThatThrownBy(() -> commentService.findOriginal(
+                creator.getCreatorId(), postId, commentId, creator.getMemberId()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(PostErrorCode.COMMENT_NOT_REVEALABLE));
         assertThatThrownBy(() -> commentService.findOriginal(
                 creator.getCreatorId(), postId, commentId, stranger.getMemberId()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
-                        assertThat(exception.getErrorCode()).isEqualTo(PostErrorCode.COMMENT_NOT_REVEALABLE));
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.FORBIDDEN));
 
         // 숨긴 댓글에는 새 신고를 받지 않고, 같은 조치는 멱등이며, 다른 조치는 충돌한다.
         assertThatThrownBy(() -> reportService.report(stranger.getMemberId(), creator.getCreatorId(), postId,

@@ -8,6 +8,7 @@ import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.post.application.dto.CreatorPostCommentOriginalView;
 import kr.co.cking.post.application.dto.CreatorPostCommentView;
@@ -84,9 +85,9 @@ public class CreatorPostCommentService {
     }
 
     /**
-     * 필터링(BLOCK)된 댓글의 원문. 게시글을 볼 수 있는 사람이면 누구나 요청할 수 있다. 개인정보 규칙으로 막힌 댓글과
-     * 관리자가 숨긴 댓글은 {@code COMMENT_NOT_REVEALABLE}(403)이다. 필터링되지 않았거나 조회자가 작성자 본인이면 필터링된 댓글로 보이지
-     * 않으므로 404다.
+     * 필터링(BLOCK)된 댓글의 원문. 스페이스 주인 Creator와 관리자만 받을 수 있고(이슈 #721), 그 외 조회자는
+     * {@code FORBIDDEN}(403)이다. 개인정보 규칙으로 막힌 댓글과 관리자가 숨긴 댓글은 관리자에게만 열리고 주인에게는
+     * {@code COMMENT_NOT_REVEALABLE}(403)이다. 필터링되지 않았거나 조회자가 작성자 본인이면 필터링된 댓글로 보이지 않으므로 404다.
      *
      * @param viewerMemberId 비로그인이면 null
      */
@@ -100,10 +101,20 @@ public class CreatorPostCommentService {
                 .filter(found -> found.belongsTo(postId))
                 .filter(found -> found.isConcealed() && !found.isWrittenBy(viewerMemberId))
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        if (comment.isBlockedForPrivacy() || comment.isHiddenByAdmin()) {
+        boolean admin = isAdmin(viewerMemberId);
+        if (!admin && !creator.getMemberId().equals(viewerMemberId)) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        }
+        if (!admin && (comment.isBlockedForPrivacy() || comment.isHiddenByAdmin())) {
             throw new BusinessException(PostErrorCode.COMMENT_NOT_REVEALABLE);
         }
         return new CreatorPostCommentOriginalView(comment.getCommentId(), comment.getContent());
+    }
+
+    private boolean isAdmin(Long viewerMemberId) {
+        return viewerMemberId != null && memberRepository.findById(viewerMemberId)
+                .map(member -> member.getRole() == MemberRole.ADMIN)
+                .orElse(false);
     }
 
     public CreatorPostCommentView create(Long memberId, Long creatorId, Long postId, String content) {

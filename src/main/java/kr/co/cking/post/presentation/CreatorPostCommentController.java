@@ -56,9 +56,9 @@ public class CreatorPostCommentController {
 
     @Operation(
             summary = "필터링된 게시글 댓글 원문 조회",
-            description = "필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려줍니다. 게시글을 볼 수 있는 사람이면 누구나 "
-                    + "조회할 수 있으며, 개인정보로 막힌 댓글은 403(COMMENT_NOT_REVEALABLE)입니다. 필터링되지 않은 댓글과 "
-                    + "작성자 본인의 댓글은 404입니다."
+            description = "필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려줍니다. 스페이스 주인 Creator와 관리자만 "
+                    + "조회할 수 있으며, 그 외에는 403(FORBIDDEN)입니다. 개인정보로 막힌 댓글과 관리자가 숨긴 댓글은 "
+                    + "주인에게 403(COMMENT_NOT_REVEALABLE)이고 관리자에게만 열립니다. 필터링되지 않은 댓글과 작성자 본인의 댓글은 404입니다."
     )
     @GetMapping("/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original")
     public ApiResponse<CreatorPostCommentOriginalResponse> findOriginal(

@@ -29,7 +29,7 @@
 댓글은 저장한 뒤 별도 필터 서비스가 비동기로 판정한다(이슈 #460). 판정 상태와 결과는 `creator_post_comment`의 `filter_*` 컬럼에 저장하며, 판정 사유(`filter_reasons`)는 어떤 응답에도 담지 않는다.
 
 - 판정받은 적 없는 댓글(`PENDING`·`FAILED`)과 통과(`PASS`)한 댓글은 평소처럼 원문을 내려준다. 가려지는 기준은 가장 최근 판정이 `BLOCK`인지다.
-- 차단(`BLOCK`)된 댓글은 **작성자 본인이 아닌 조회자**(비로그인, 다른 사용자, 게시글 작성 Creator 포함)에게 `content`를 비우고 `filtered: true`로 내려준다. 원문은 아래 `/original` 요청으로만 받는다.
+- 차단(`BLOCK`)된 댓글은 **작성자 본인이 아닌 조회자**(비로그인, 다른 사용자, 게시글 작성 Creator 포함)에게 `content`를 비우고 `filtered: true`로 내려준다. 원문은 아래 `/original` 요청으로만 받을 수 있고, 그 요청은 스페이스 주인 Creator와 관리자만 성공한다(이슈 #721). 필터링된 댓글이 있다는 사실(자리 표시, 댓글 수)은 모든 조회자에게 그대로 보인다.
 - 작성자 본인에게는 필터링 여부를 알리지 않고 원문과 작성자 이름·프로필 사진을 그대로 내려준다(`filtered: false`).
 - 원문이 가려진 댓글(필터 차단, 관리자 숨김)은 작성자 본인이 아닌 조회자에게 **작성자 이름(`authorName`)과 프로필 사진(`authorProfileImageUrl`)도 `null`**로 내려준다(이슈 #546). `authorMemberId`와 `writtenByCreator`는 그대로 내려준다.
 - 개인정보 규칙(`privacy:*`)으로 막힌 댓글은 `revealable: false`이며 누구에게도 원문을 내려주지 않는다.
@@ -82,12 +82,13 @@
 
 ## GET /api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original
 
-필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려준다. 게시글을 볼 수 있는 사람이면 누구나 요청할 수 있고 로그인은 필요 없다(목록 조회와 같은 규칙). 응답은 `{ "commentId": 501, "content": "..." }`.
+필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려준다. **해당 스페이스의 주인 Creator와 관리자만** 받을 수 있다(이슈 #721). 호출자는 선택적 Access JWT로 식별하며, 그 외 조회자(비로그인, 팔로워, 다른 Creator)는 `FORBIDDEN`(403)이다. 관리자는 개인정보로 막힌 댓글과 관리자가 숨긴 댓글의 원문도 받는다. 게시글 공개 범위 규칙(`POST_FOLLOWERS_ONLY`)은 관리자에게도 같다. 응답은 `{ "commentId": 501, "content": "..." }`.
 
 | 오류 코드 | HTTP | 조건 |
 | --- | --- | --- |
 | `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
-| `COMMENT_NOT_REVEALABLE` | 403 | 개인정보 규칙으로 막힌 댓글, 관리자가 숨긴 댓글 |
+| `FORBIDDEN` | 403 | 조회자가 스페이스 주인 Creator도 관리자도 아님(필터링된 댓글에 한함) |
+| `COMMENT_NOT_REVEALABLE` | 403 | 스페이스 주인이 요청했지만 개인정보 규칙으로 막힌 댓글, 관리자가 숨긴 댓글(관리자에게는 열림) |
 | `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음, 다른 게시글의 댓글, **필터링되지 않은 댓글**, **조회자가 작성자 본인인 댓글**(본인에게는 필터링된 댓글로 보이지 않는다) |
 
 ## POST /api/creators/{creatorId}/posts/{postId}/comments
