@@ -41,6 +41,8 @@ class CreatorRecommendationQueryServiceTest {
             mock(CreatorSimilarityCandidateRepository.class);
     private final CreatorSpaceRepository spaceRepository = mock(CreatorSpaceRepository.class);
     private final PopularCreatorQueryRepository popularRepository = mock(PopularCreatorQueryRepository.class);
+    private final RecommendationEligibilityService eligibility = mock(RecommendationEligibilityService.class);
+    private final kr.co.cking.interest.application.MemberInterestService memberInterests = mock(kr.co.cking.interest.application.MemberInterestService.class);
     private CreatorRecommendationQueryService service;
 
     @BeforeEach
@@ -51,8 +53,9 @@ class CreatorRecommendationQueryServiceTest {
                 creatorRepository,
                 candidateRepository,
                 spaceRepository,
-                popularRepository,
-                new PersonalizedCreatorRecommendationPolicy());
+                new PersonalizedCreatorRecommendationPolicy(), eligibility, memberInterests);
+        given(memberInterests.findMine(any())).willReturn(new kr.co.cking.interest.application.dto.MemberInterests("v0.2", List.of()));
+        org.mockito.Mockito.lenient().when(eligibility.valid(any(), any())).thenAnswer(i -> new java.util.HashSet<>(i.<List<RecommendationEligibilityService.Ref>>getArgument(1)));
     }
 
     @Test
@@ -63,7 +66,7 @@ class CreatorRecommendationQueryServiceTest {
 
         PersonalizedCreatorRecommendationView result = service.findForMember(7L, 10);
 
-        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
         assertThat(result.items()).isEmpty();
         then(candidateRepository).should(never()).findActiveCandidatesBySeedCreatorIds(any());
     }
@@ -84,30 +87,24 @@ class CreatorRecommendationQueryServiceTest {
     }
 
     @Test
-    void 개인화_결과가_없으면_팔로워_수_순_인기_Creator를_본인과_기팔로우를_제외하고_size만큼_채운다() {
-        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of(1L));
-        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator(9L, "own")));
+    void 개인화_결과가_없어도_인기순으로_보충하지_않는다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of());
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
         given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
-        given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L))).willReturn(List.of());
-        // 제외 대상(기팔로우 1, 본인 9)을 읽은 뒤에 거르므로 size + 제외 수만큼 읽는다.
-        given(popularRepository.findPopular(PageRequest.of(0, 4))).willReturn(List.of(
-                new PopularCreatorCandidate(9L, "own", "소개9", "p9", 12),
-                new PopularCreatorCandidate(1L, "followed", "소개1", "p1", 9),
-                new PopularCreatorCandidate(2L, "first", "소개2", "p2", 5),
-                new PopularCreatorCandidate(3L, "second", "소개3", "p3", 0)));
+        var result = service.findForMember(7L, 20);
+        assertThat(result.items()).isEmpty();
+        then(popularRepository).shouldHaveNoInteractions();
+    }
 
-        PersonalizedCreatorRecommendationView result = service.findForMember(7L, 2);
-
-        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
-        assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::creatorId)
-                .containsExactly(2L, 3L);
-        assertThat(result.items().getFirst().aggregateScore()).isEqualByComparingTo("5");
-        // 인기순은 정렬에 쓴 집계값을 followerCount로 그대로 쓰므로 추가 조회가 없다.
-        assertThat(result.items()).extracting(PersonalizedCreatorRecommendationView.Item::followerCount)
-                .containsExactly(5L, 0L);
-        then(followQueryService).should(never()).countFollowersByCreatorIds(any());
-        assertThat(result.items().getFirst().interestCodes()).isEmpty();
-        assertThat(result.items().getFirst().seedCreatorIds()).isEmpty();
+    @Test
+    void 저장된_후보도_현재_자격을_통과하지_않으면_빈_목록이다() {
+        given(followQueryService.findFollowedCreatorIds(7L)).willReturn(List.of(1L));
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.empty());
+        given(interestQueryService.findActiveCandidates(7L)).willReturn(List.of());
+        given(candidateRepository.findActiveCandidatesBySeedCreatorIds(List.of(1L))).willReturn(List.of(row(1L, 20L, 1)));
+        org.mockito.Mockito.doReturn(java.util.Set.of()).when(eligibility).valid(any(), any());
+        assertThat(service.findForMember(7L, 20).items()).isEmpty();
+        then(popularRepository).shouldHaveNoInteractions();
     }
 
     @Test

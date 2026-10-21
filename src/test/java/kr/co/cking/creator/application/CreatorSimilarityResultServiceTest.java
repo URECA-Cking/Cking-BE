@@ -43,6 +43,7 @@ class CreatorSimilarityResultServiceTest {
     @Mock CreatorSimilarityCandidateRepository candidateRepository;
     @Mock CreatorSimilarityStateRepository stateRepository;
 
+    @Mock RecommendationEligibilityService eligibility;
     @InjectMocks CreatorSimilarityResultService service;
 
     @BeforeEach

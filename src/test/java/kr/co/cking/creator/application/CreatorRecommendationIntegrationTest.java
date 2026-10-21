@@ -74,6 +74,8 @@ class CreatorRecommendationIntegrationTest {
 
         followService.follow(fan.getMemberId(), firstSeed.getCreatorId());
         followService.follow(fan.getMemberId(), secondSeed.getCreatorId());
+        createSpace(firstSeed, "요리 seed", "p");
+        createSpace(secondSeed, "요리 seed", "p");
         activate(firstSeed, "M2", List.of(
                 candidate(repeatedCandidate, "0.90000000", 1),
                 candidate(secondSeed, "0.80000000", 2),
@@ -114,6 +116,7 @@ class CreatorRecommendationIntegrationTest {
         createSpace(candidate, "후보 소개", "candidate-profile");
         followService.follow(fan.getMemberId(), missingSeed.getCreatorId());
         followService.follow(fan.getMemberId(), activeSeed.getCreatorId());
+        createSpace(activeSeed, "요리 seed", "p");
         activate(activeSeed, "M4", List.of(candidate(candidate, "0.50000000", 1)));
 
         PersonalizedCreatorRecommendationView result =
@@ -124,25 +127,21 @@ class CreatorRecommendationIntegrationTest {
     }
 
     @Test
-    void 후보가_없는_빈_세대가_활성화되어도_이전_후보_없이_인기순으로_대체된다() {
+    void 후보가_없는_빈_세대는_이전_후보나_인기순으로_보충하지_않는다() {
         Member fan = member("fan-empty-generation");
         Creator seed = creator("empty-generation-seed");
         Creator previousCandidate = creator("previous-candidate");
         createSpace(previousCandidate, "이전 후보 소개", "previous-profile");
         followService.follow(fan.getMemberId(), seed.getCreatorId());
+        createSpace(seed, "요리 seed", "p");
         activate(seed, "M4", List.of(candidate(previousCandidate, "0.90000000", 1)));
         activate(seed, "M2", List.of());
 
         PersonalizedCreatorRecommendationView result =
                 recommendationQueryService.findForMember(fan.getMemberId(), 10);
 
-        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
-        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
-        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
-        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
-            assertThat(item.interestCodes()).isEmpty();
-            assertThat(item.seedCreatorIds()).isEmpty();
-        });
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
+        assertThat(result.items()).isEmpty();
     }
 
     @Test
@@ -153,6 +152,7 @@ class CreatorRecommendationIntegrationTest {
         Creator availableCandidate = creator("available-candidate");
         createSpace(availableCandidate, "정상 후보 소개", "available-profile");
         followService.follow(fan.getMemberId(), seed.getCreatorId());
+        createSpace(seed, "요리 seed", "p");
         activate(seed, "M4", List.of(
                 candidate(missingSpaceCandidate, "0.90000000", 1),
                 candidate(availableCandidate, "0.80000000", 2)));
@@ -206,6 +206,10 @@ class CreatorRecommendationIntegrationTest {
                 .map(spec -> new CreatorSimilarityCandidate(
                         generation.getGenerationId(), spec.creator().getCreatorId(), spec.score(), spec.rank()))
                 .toList());
+        var proofIds = new java.util.ArrayList<Long>();
+        proofIds.add(seed.getCreatorId());
+        candidateSpecs.forEach(spec -> proofIds.add(spec.creator().getCreatorId()));
+        EligibilityTestFixture.mark(jdbcTemplate,"SIMILAR",generation.getGenerationId(),"v0.2",proofIds,"FOOD");
         CreatorSimilarityState state = stateRepository.findById(seed.getCreatorId())
                 .orElseGet(() -> new CreatorSimilarityState(
                         seed.getCreatorId(), generation.getGenerationId()));

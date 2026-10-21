@@ -104,6 +104,7 @@ class CreatorRecommendationEndToEndIntegrationTest {
         jdbc.update("DELETE FROM interest_recommendation_candidate WHERE generation_id IN "
                 + "(SELECT generation_id FROM interest_recommendation_generation WHERE generation_id > ? AND model_version = ?)",
                 maxGenerationBefore, MODEL);
+        jdbc.update("DELETE FROM recommendation_eligibility WHERE source_kind='INTEREST' AND generation_id IN (SELECT generation_id FROM interest_recommendation_generation WHERE generation_id > ? AND model_version = ?)",maxGenerationBefore,MODEL);
         jdbc.update("DELETE FROM interest_recommendation_generation WHERE generation_id > ? AND model_version = ?",
                 maxGenerationBefore, MODEL);
     }
@@ -150,7 +151,7 @@ class CreatorRecommendationEndToEndIntegrationTest {
         // V47이 기존 이력을 음수 실행 번호로 바꿨으므로, 빈 DB와 음수 이력만 있는 DB에서도 sequence - 1이 1 이상이도록 한다.
         long sequence = jdbc.queryForObject("SELECT GREATEST(COALESCE(MAX(application_sequence), 0), 0) + 2 "
                 + "FROM interest_recommendation_generation", Long.class);
-        List<Creator> ranked = List.of(own, first, withoutSpace, second, third);
+        List<Creator> ranked = List.of(own, first, second, third);
         Map<String, Object> batch = batch(sequence, ranked);
         assertThat(ingest(batch, null, null).statusCode()).isEqualTo(401);
         assertThat(ingest(batch, "wrong-key", null).statusCode()).isEqualTo(401);
@@ -253,6 +254,7 @@ class CreatorRecommendationEndToEndIntegrationTest {
         batch.put("modelVersion", MODEL);
         batch.put("inputHash", inputHash);
         batch.put("candidates", candidates);
+        batch.put("eligibility", EligibilityTestFixture.payload(jdbc,taxonomyVersion,ranked.stream().map(Creator::getCreatorId).toList(),interestCode));
         return batch;
     }
 
