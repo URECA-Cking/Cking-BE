@@ -10,8 +10,8 @@
 | 7 | 외부 | Ticket | USER | GET | `/api/creators/{creatorId}/tickets` | Balance 조회 | - |
 | 8 | 외부 | Ticket | USER | GET | `/api/creators/{creatorId}/tickets/history` | Ledger 조회 | - |
 | 9 | 내부 | EARN | INTERNAL | CALL | `TicketEarnService.earn()` | EARN | `requestId` |
-| 10 | 외부 | Event | USER | GET | `/api/events` | Event 목록 | - |
-| 11 | 외부 | Event | PUBLIC | GET | `/api/events/{eventId}` | Event 상세 | - |
+| 10 | 외부 | Event | USER | GET | `/api/events` | Event 목록(마감 요청 시각 `closeRequestedAt` 포함) | - |
+| 11 | 외부 | Event | PUBLIC | GET | `/api/events/{eventId}` | Event 상세(마감 요청 시각 `closeRequestedAt` 포함) | - |
 | 12 | 외부 | Entry | USER | POST | `/api/events/{eventId}/entries` | 응모 | `requestId` |
 | 13 | 외부 | Entry | USER | GET | `/api/events/{eventId}/entries/me` | 내 응모 조회 | - |
 | 14 | 외부 | Creator 운영 | CREATOR | GET | `/api/creator/events` | 내 이벤트 목록(`description`, REJECTED면 최근 반려 사유 `rejectReason` 포함) | - |

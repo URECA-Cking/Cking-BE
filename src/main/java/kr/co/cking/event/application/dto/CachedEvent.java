@@ -20,13 +20,14 @@ public record CachedEvent(
         String drawMethod,
         String prizeAlgorithmVersion,
         EventStatus status,
-        List<PrizeConfig> prizes
+        List<PrizeConfig> prizes,
+        Instant closeRequestedAt
 ) implements Serializable {
 
     public CachedEvent(Long eventId, Long creatorId, Long ownerMemberId, String title, String description, Instant startAt, Instant endAt,
                        Integer winnerCount, String drawMethod, EventStatus status) {
         this(eventId, creatorId, ownerMemberId, title, description, startAt, endAt, winnerCount, drawMethod,
-                "PRIZE_WEIGHTED_V1", status, List.of());
+                "PRIZE_WEIGHTED_V1", status, List.of(), null);
     }
 
     public CachedEvent {
@@ -53,7 +54,8 @@ public record CachedEvent(
                 event.getDrawMethod(),
                 event.getPrizeAlgorithmVersion(),
                 event.getStatus(),
-                event.getPrizeConfigs()
+                event.getPrizeConfigs(),
+                event.getCloseRequestedAt()
         );
     }
 }

@@ -50,6 +50,11 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 `UPCOMING`, `OPEN`은 현재 시각이 `endAt` 전이면 `IN_PROGRESS`, 이후와 `CLOSING` 이후 상태는
 `CLOSED`로 표시한다.
 
+각 항목과 `GET /api/events/{eventId}` 응답에는 `closeRequestedAt`이 포함된다. 마감 요청 시각(`OPEN -> CLOSING`
+전이 시점)이며 자동·수동 마감에 같은 규칙으로 기록된다. 자동 마감은 스케줄러가 `endAt` 이후 마감을 시작한 시각이라
+`endAt`보다 수 초 늦을 수 있다. 마감 전 상태와 이 필드가 생기기 전에 마감된 Event는 `null`이므로 FE는 `endAt`으로
+대체해 표시한다. Drain 완료 시각인 `closedAt`은 관리자 운영 상세에만 있다.
+
 ## GET /api/events/counts
 
 인증이 필요 없다. 공개 Event 수를 표시 상태별로 한 번의 집계 쿼리로 반환한다. 삭제·비공개 상태
