@@ -74,7 +74,7 @@ public class EntryController {
             summary = "이벤트 응모",
             description = "사용자의 응모권으로 이벤트에 응모합니다. requestId가 같은 재요청은 멱등하게 처리됩니다. "
                     + "couponType을 생략하면 CREATOR(해당 크리에이터 전용 응모권)로 처리하고, COMMON을 주면 "
-                    + "크리에이터 무관 공용 응모권을 대신 씁니다."
+                    + "크리에이터 무관 공용 응모권을 대신 씁니다. 본인이 소유한 이벤트에는 응모할 수 없습니다."
     )
     @PostMapping("/api/events/{eventId}/entries")
     public ApiResponse<EntryResponse> apply(

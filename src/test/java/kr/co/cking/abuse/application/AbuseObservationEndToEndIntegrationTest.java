@@ -140,7 +140,7 @@ class AbuseObservationEndToEndIntegrationTest {
         commonMissionId = commonMissionRepository.findByTypeIn(List.of(CommonMissionType.ATTENDANCE))
                 .getFirst().getMissionId();
         when(eventQueryService.getCachedEvent(eventId)).thenReturn(new CachedEvent(
-                eventId, creator.getCreatorId(), "Abuse E2E Event", "설명",
+                eventId, creator.getCreatorId(), owner.getMemberId(), "Abuse E2E Event", "설명",
                 Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2027-01-01T00:00:00Z"),
                 10, "WEIGHTED", EventStatus.OPEN));
     }

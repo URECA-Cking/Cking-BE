@@ -15,6 +15,10 @@ public interface CreatorRepository extends JpaRepository<Creator, Long> {
 
     Optional<Creator> findByMemberId(Long memberId);
 
+    /** Event 캐시 적재에 필요한 Creator 소유 회원 ID만 조회한다. */
+    @Query("select c.memberId from Creator c where c.creatorId = :creatorId")
+    Optional<Long> findOwnerMemberId(@Param("creatorId") Long creatorId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Creator c where c.memberId = :memberId")
     Optional<Creator> findByMemberIdForUpdate(@Param("memberId") Long memberId);

@@ -22,6 +22,10 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 팬은 Member 닉네임을 설정해야 하며, 승인된 Creator는 Member 닉네임 대신 활동명을 설정해야 응모할 수 있다. 따라서
 닉네임 미설정 팬은 `PROFILE_SETUP_REQUIRED`, 활동명 미설정 Creator는 `ACTIVITY_NAME_SETUP_REQUIRED`(각각 409)를
 반환한다. Creator가 팬으로 응모해도 당첨 공개 목록에는 OAuth 원본 이름이 아닌 Creator 활동명이 표시된다.
+단, 요청 Member에게 연결된 Creator가 Event 소유자이면 `OWN_EVENT_ENTRY_NOT_ALLOWED`(403)로 거절한다.
+소유 회원 ID는 공개 Event 캐시를 채울 때 Creator 저장소에서 확인한다. 캐시 적중 시 별도 DB 조회 없이
+Lua 차감 전에 검사하므로 거절된 요청은 응모권 잔액·멱등 키·Stream을 변경하지 않는다.
+다른 Creator의 Event에 응모하는 경로와 일반 회원 응모는 그대로 허용한다.
 
 같은 `requestId`와 동일한 요청은 기존 성공 결과를 재현한다. 같은 `requestId`에 다른 요청 본문을
 보내면 `IDEMPOTENCY_CONFLICT`다. 성공 응답 `data`는 `requestId`, `eventId`, `accepted: true`를
@@ -40,6 +44,7 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 | `EVENT_CLOSED` | 409 | Gate는 `OPEN`이지만 `endAt`을 지남(마감 배치가 Gate를 닫기 전) | 재시도 무의미 |
 | `INSUFFICIENT_BALANCE` | 409 | 응모권 잔액 부족 | 잔액 확인 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 동일 `requestId`에 다른 요청 내용 | 새 `requestId` |
+| `OWN_EVENT_ENTRY_NOT_ALLOWED` | 403 | 요청 회원이 Event 소유 Creator임. Lua 실행 전 거절 | 응모 불가 안내 |
 | `GATE_NOT_LOADED` | 503 | Gate 키 미적재(OPEN 전이 전이거나 Redis 유실). OPEN으로 간주하지 않는다 | 잠시 후 재시도 |
 | `BALANCE_NOT_LOADED` | 503 | 잔액 키 미적재. 0으로 간주하지 않는다. 서버가 안전 조건(미반영 메시지·보정 락 없음)에서 DB 기준으로 적재해 1회 재실행하므로, 이 코드는 그 조건을 채우지 못할 때만 나온다 | 잠시 후 재시도 |
 | `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(issue #172) | 잠시 후 동일 `requestId`로 재시도 |
@@ -48,6 +53,10 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 1~100 범위를 벗어난 `ticketCount`, UUID 형식이 아닌 `requestId`, `CREATOR`/`COMMON`이 아닌 `couponType`은 Lua에 도달하기 전에 Controller가 공통 `VALIDATION_FAILED`(400)로 거절한다.
 
 `GATE_NOT_LOADED`·`BALANCE_NOT_LOADED`·`BALANCE_MAINTENANCE`·`SYSTEM_ERROR`는 동일 `requestId`로 재시도해도 이중 차감이 없다. 재시도 결과와 타임아웃 처리는 [응모 Lua API](lua-api.md#redis-타임아웃과-system_error)를 따른다.
+
+기존에 수락된 본인 Event 응모는 이 요청 차단만으로 소급 삭제하거나 추첨에서 제외하지 않는다. 운영 데이터의 해당 기록은
+`event_entry`와 `event`, `creator`를 `member_id`·`creator_id`로 연결해 읽기 전용으로 확인하고,
+발견 시 추첨·당첨 처리 방침을 별도 작업에서 결정한다.
 
 ## GET /api/events/{eventId}/entries/me
 

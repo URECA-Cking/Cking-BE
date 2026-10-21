@@ -2,6 +2,7 @@ package kr.co.cking.event.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.event.application.dto.CachedEvent;
 import kr.co.cking.event.application.dto.CachedEventPage;
 import kr.co.cking.event.application.dto.EventCounts;
@@ -45,6 +46,7 @@ public class EventQueryService {
     private final EventListCache eventListCache;
     private final EventCountsCache eventCountsCache;
     private final MemberRepository memberRepository;
+    private final CreatorQueryService creatorQueryService;
 
     /**
      * API 명세 §1.7: page=0부터, size 기본 20·최대 100(범위 검증은 컨트롤러에서),
@@ -114,11 +116,15 @@ public class EventQueryService {
                         EventRepository.CreatorEventCount::getTotal));
     }
 
+    /** 공개 Event를 조회하고, 로그인한 호출자에게만 개인 응모권 잔액을 붙인다. */
     public EventDetail getEvent(Long eventId, Long userId) {
-        if (!memberRepository.existsById(userId)) {
+        if (userId != null && !memberRepository.existsById(userId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
         }
         CachedEvent event = getCachedEvent(eventId);
+        if (userId == null) {
+            return EventDetail.of(event, clock.instant(), 0L, 0L);
+        }
         long myTicketBalance = ticketBalanceQueryService.getBalance(event.creatorId(), userId);
         long myCommonTicketBalance = commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
         return EventDetail.of(event, clock.instant(), myTicketBalance, myCommonTicketBalance);
@@ -150,11 +156,14 @@ public class EventQueryService {
         eventCache.evict(eventId);
     }
 
+    /** 공개 Event와 Creator 소유 회원을 조회해 검증 가능한 상세 캐시를 적재한다. */
     private CachedEvent loadAndCache(Long eventId) {
         Event event = eventRepository.findById(eventId)
                 .filter(e -> e.getDeletedAt() == null && !e.isArchived() && e.getStatus().isPubliclyVisible())
                 .orElseThrow(() -> new BusinessException(EventErrorCode.EVENT_NOT_FOUND));
-        CachedEvent cached = CachedEvent.from(event);
+        Long ownerMemberId = creatorQueryService.findOwnerMemberId(event.getCreatorId())
+                .orElseThrow(() -> new IllegalStateException("Event Creator의 소유 회원을 찾을 수 없습니다."));
+        CachedEvent cached = CachedEvent.from(event, ownerMemberId);
         eventCache.save(cached);
         return cached;
     }

@@ -39,13 +39,14 @@ public class EntryResultClassifier {
         return Optional.empty();
     }
 
+    /** 차감 전 거절된 본인 Event 응모는 Abuse 관측 대상에서 제외한다. */
     private Optional<ResultClassification> classifyEntryError(EntryErrorCode errorCode) {
         return switch (errorCode) {
             case EVENT_NOT_OPEN, EVENT_CLOSED, INSUFFICIENT_BALANCE, IDEMPOTENCY_CONFLICT ->
                     Optional.of(ResultClassification.BUSINESS_FAILURE);
             case GATE_NOT_LOADED, BALANCE_NOT_LOADED, BALANCE_MAINTENANCE, SYSTEM_ERROR ->
                     Optional.of(ResultClassification.SYSTEM_FAILURE);
-            case INVALID_TICKET_COUNT -> Optional.empty();
+            case INVALID_TICKET_COUNT, OWN_EVENT_ENTRY_NOT_ALLOWED -> Optional.empty();
         };
     }
 }

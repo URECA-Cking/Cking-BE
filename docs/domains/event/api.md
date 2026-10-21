@@ -50,6 +50,11 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 `UPCOMING`, `OPEN`은 현재 시각이 `endAt` 전이면 `IN_PROGRESS`, 이후와 `CLOSING` 이후 상태는
 `CLOSED`로 표시한다.
 
+각 항목과 `GET /api/events/{eventId}` 응답에는 `closeRequestedAt`이 포함된다. 마감 요청 시각(`OPEN -> CLOSING`
+전이 시점)이며 자동·수동 마감에 같은 규칙으로 기록된다. 자동 마감은 스케줄러가 `endAt` 이후 마감을 시작한 시각이라
+`endAt`보다 수 초 늦을 수 있다. 마감 전 상태와 이 필드가 생기기 전에 마감된 Event는 `null`이므로 FE는 `endAt`으로
+대체해 표시한다. Drain 완료 시각인 `closedAt`은 관리자 운영 상세에만 있다.
+
 ## GET /api/events/counts
 
 인증이 필요 없다. 공개 Event 수를 표시 상태별로 한 번의 집계 쿼리로 반환한다. 삭제·비공개 상태
@@ -65,9 +70,14 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 
 ## GET /api/events/{eventId}
 
-Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 공개 Event 정보와 해당 Event의 Creator 기준 요청 사용자의 보유 응모권 수를
-함께 반환한다. 존재하지 않는 사용자는 공통 `RESOURCE_NOT_FOUND`, 존재하지 않거나 삭제·비공개 상태인
-Event는 Event 전용 `EVENT_NOT_FOUND`다. 보관 Event도 사용자에게는 존재하지 않는 Event와 같이 처리한다.
+인증 없이 공개 Event 정보를 조회할 수 있다. 유효한 Bearer Access JWT가 있으면 `@CurrentMemberId`로
+호출자를 식별해 해당 Creator의 보유 응모권 수(`myTicketBalance`)와 공통 응모권 수
+(`myCommonTicketBalance`)를 함께 반환한다. 비로그인 호출에서는 두 필드를 모두 `0`으로 반환하며
+Member 확인이나 잔액 조회를 하지 않는다. 개인 잔액은 공개 Event 캐시 밖에서 응답에 붙인다.
+만료·유효하지 않은 Bearer Access JWT를 보내면 `UNAUTHORIZED`(401)다. 인증된 Member가 없으면
+공통 `RESOURCE_NOT_FOUND`, 존재하지 않거나 삭제·비공개 상태인 Event는 Event 전용
+`EVENT_NOT_FOUND`다. 보관 Event도 사용자에게는 존재하지 않는 Event와 같이 처리한다.
+공개 범위는 상세 GET만이며 응모·내 응모·실시간 현황 경로는 인증이 필요하다.
 
 ## POST /api/events/{eventId}/entries
 
