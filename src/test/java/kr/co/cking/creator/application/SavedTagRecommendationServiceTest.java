@@ -26,6 +26,8 @@ class SavedTagRecommendationServiceTest {
         when(content.taxonomy(false)).thenReturn(new ContentTagRepository.Taxonomy("v1",taxHash,"c".repeat(64),config,"[]","{}",encode(snapshot)));
         when(repo.ranking(false)).thenReturn(new SavedTagRecommendationRepository.Ranking(0,null,null,null,null));
         when(repo.ranking(true)).thenReturn(new SavedTagRecommendationRepository.Ranking(0,null,null,null,null));
+        when(repo.candidates(anyList(), anyList(), anyString(), anyString())).thenAnswer(invocation ->
+            repo.confirmed().stream().map(r -> new SavedTagRecommendationRepository.Candidate(r, null)).toList());
         when(creators.findByMemberId(7L)).thenReturn(Optional.empty());
         when(follows.findFollowedCreatorIds(7L)).thenReturn(List.of());
     }
@@ -38,9 +40,19 @@ class SavedTagRecommendationServiceTest {
         return new Delivery(sequence,(String)service.inputs().get("snapshotHash"),METHOD,"fake",scores);
     }
     void ready(List<Score> scores) {
-        String snapshotHash=(String)service.inputs().get("snapshotHash");
-        when(repo.ranking(false)).thenReturn(new SavedTagRecommendationRepository.Ranking(1,
-                snapshotHash,"hash","fake",encode(scores)));
+        var identities = new HashMap<Long, SavedTagRecommendationRepository.Confirmed>();
+        repo.confirmed().forEach(r -> identities.put(r.creatorId(), r));
+        doAnswer(invocation -> {
+            List<String> parents = invocation.getArgument(0), topics = invocation.getArgument(1);
+            return repo.confirmed().stream().map(r -> {
+                var original = identities.get(r.creatorId());
+                BigDecimal score = original == null || original.revision() != r.revision()
+                    || original.confirmationId() != r.confirmationId() ? null : scores.stream()
+                    .filter(v -> v.creatorId() == r.creatorId() && (v.type().equals("PARENT") ? parents : topics).contains(v.code()))
+                    .map(Score::score).max(BigDecimal::compareTo).orElse(null);
+                return new SavedTagRecommendationRepository.Candidate(r, score);
+            }).toList();
+        }).when(repo).candidates(anyList(), anyList(), anyString(), anyString());
     }
     @Test void fewerThanRequestedAndExactTopicOnly() {
         when(repo.confirmed()).thenReturn(List.of(row(21,"빵 소개",1,taxHash),row(22,"빵 소개",1,taxHash)));
@@ -69,9 +81,12 @@ class SavedTagRecommendationServiceTest {
         assertThat(service.find(7,"v1",List.of("FOOD"),List.of(),20)).containsEntry("rankingStatus","PENDING").containsEntry("items",List.of());
     }
     @Test void followsAndSelfAreExcludedBeforeLimit() {
-        when(repo.confirmed()).thenReturn(List.of(row(1,"intro",1,taxHash),row(21,"intro",1,taxHash)));
+        when(repo.confirmed()).thenReturn(List.of(row(1,"intro",1,taxHash),row(2,"intro",1,taxHash),row(21,"intro",1,taxHash)));
+        var self = mock(kr.co.cking.creator.domain.Creator.class);
+        when(self.getCreatorId()).thenReturn(2L);
+        when(creators.findByMemberId(7L)).thenReturn(Optional.of(self));
         when(follows.findFollowedCreatorIds(7L)).thenReturn(List.of(1L));
-        ready(List.of(new Score("PARENT","FOOD",1,BigDecimal.ONE),new Score("PARENT","FOOD",21,BigDecimal.ZERO)));
+        ready(List.of(new Score("PARENT","FOOD",1,BigDecimal.ONE),new Score("PARENT","FOOD",2,BigDecimal.ONE),new Score("PARENT","FOOD",21,BigDecimal.ZERO)));
         assertThat(node(service.find(7,"v1",List.of("FOOD"),List.of(),1)).path("items").get(0).path("creatorId").asLong()).isEqualTo(21);
     }
     @Test void duplicateVersionAndSizeAreValidated() {
@@ -96,9 +111,8 @@ class SavedTagRecommendationServiceTest {
     }
     @Test void confirmationChangeInvalidatesRankingWithoutIntroChange() {
         when(repo.confirmed()).thenReturn(List.of(row(21,"intro",1,taxHash)));
-        String hash=(String)service.inputs().get("snapshotHash");
+        ready(List.of(new Score("PARENT", "FOOD", 21, BigDecimal.ONE)));
         when(repo.confirmed()).thenReturn(List.of(row(22,"intro",1,taxHash)));
-        when(repo.ranking(false)).thenReturn(new SavedTagRecommendationRepository.Ranking(1,hash,"h","fake","[]"));
         assertThat(service.find(7,"v1",List.of("FOOD"),List.of(),20)).containsEntry("rankingStatus","PENDING");
     }
     @Test void completeScoresAreAcceptedButDuplicatesAndOutOfRangeAreRejected() {
@@ -115,5 +129,39 @@ class SavedTagRecommendationServiceTest {
         assertThatThrownBy(()->service.apply(delivery(List.of(),4))).isInstanceOf(BusinessException.class);
         assertThatThrownBy(()->service.apply(new Delivery(6,"a".repeat(64),METHOD,"fake",List.of()))).isInstanceOf(BusinessException.class);
         verify(repo,never()).replace(anyLong(),anyString(),anyString(),anyString(),anyString());
+    }
+
+    @Test void catalogNeverReadsCandidatesOrRanking() {
+        clearInvocations(repo);
+        assertThat(service.catalog()).containsEntry("taxonomyVersion", "v1");
+        verifyNoInteractions(repo);
+    }
+
+    @Test void unrelatedAndNewCandidateDoNotInvalidateExistingScores() {
+        when(repo.confirmed()).thenReturn(List.of(row(21, "intro", 1, taxHash)));
+        ready(List.of(new Score("PARENT", "FOOD", 21, BigDecimal.ONE)));
+        when(repo.confirmed()).thenReturn(List.of(row(21, "intro", 1, taxHash), row(22, "new intro", 1, taxHash)));
+        var result = service.find(7, "v1", List.of("FOOD"), List.of(), 20);
+        assertThat(result).containsEntry("rankingStatus", "READY");
+        assertThat(node(result).path("items")).hasSize(1);
+        verify(repo, never()).ranking(false);
+    }
+
+    @Test void corruptStoredTagsOnlyExcludeThatCreator() {
+        var original = row(22, "intro", 1, taxHash);
+        for (String tags : List.of("{\"parents\":[\"FOOD\",\"FOOD\"],\"topics\":[]}",
+                "{\"parents\":[3],\"topics\":[]}", "bad-json")) {
+            var corrupt = new SavedTagRecommendationRepository.Confirmed(22, original.introduction(), 1,
+                original.name(), original.image(), original.slug(), 22, 1, original.inputHash(), config,
+                1, original.confirmedInputHash(), taxHash, tags);
+            when(repo.confirmed()).thenReturn(List.of(row(21, "intro", 1, taxHash), corrupt));
+            assertThat(node(service.inputs()).path("items")).hasSize(1);
+            assertThat(service.catalog()).containsEntry("taxonomyVersion", "v1");
+        }
+    }
+
+    @Test void snapshotHashMatchesPythonGoldenVector() {
+        when(repo.confirmed()).thenReturn(List.of(row(21, "빵\r\n소개 e\u0301", 1, taxHash)));
+        assertThat(service.inputs().get("snapshotHash")).isEqualTo("b3543714ded21a34f8f28972379229c7bed9d543fbd77c2bd7076d0e37d1b333");
     }
 }

@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     kr.co.cking.common.security.RestAccessDeniedHandler.class
 })
 @org.springframework.test.context.TestPropertySource(properties={
+    "cking.content-tags.token-hash=b42cae7bdd6c1f48d105f8f08541fe2d377281fdd74b2732d9145e5b48d89deb",
     "cking.auth.jwt.secret=2YNYNyIIJTSCD8zOXH/RpPp/Nm5+/n9gyVQpF5uRXlA="
 })
 class SavedTagRecommendationControllerTest {
@@ -61,5 +62,28 @@ class SavedTagRecommendationControllerTest {
         mvc.perform(get("/api/internal/content-tags/saved-recommendations/inputs").header("Authorization",token())).andExpect(status().isUnauthorized());
         mvc.perform(put("/api/internal/content-tags/saved-recommendations/rankings").header("Authorization",token()).contentType("application/json").content("{}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test void catalogReturnsTaxonomyWithoutBatchInputs() throws Exception {
+        when(service.catalog()).thenReturn(Map.of("taxonomyVersion", "v1", "tags", List.of(), "maxParents", 3));
+        mvc.perform(get("/api/me/creator-recommendations/tag-catalog").header("Authorization", token()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.taxonomyVersion").value("v1"));
+        verify(service, never()).inputs();
+    }
+
+    @Test void batchCredentialCanApplyRankings() throws Exception {
+        when(service.apply(any())).thenReturn(Map.of("applied", true, "applicationSequence", 1, "snapshotHash", "a".repeat(64)));
+        mvc.perform(put("/api/internal/content-tags/saved-recommendations/rankings")
+            .header("Authorization", "Bearer saved-tag-test-token").contentType("application/json")
+            .content("{\"applicationSequence\":1,\"snapshotHash\":\"" + "a".repeat(64)
+                + "\",\"method\":\"SAVED_TAG_M2_V1\",\"modelVersion\":\"fake\",\"scores\":[]}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(true));
+        verify(service).apply(argThat(d -> d.applicationSequence() == 1 && d.scores().isEmpty()));
+    }
+
+    @Test void nonIntegerSizeUsesContentErrorCode() throws Exception {
+        mvc.perform(get("/api/me/creator-recommendations/by-tags").header("Authorization", token()).param("size", "abc"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_CONTENT_TAG"));
+        verifyNoInteractions(service);
     }
 }
