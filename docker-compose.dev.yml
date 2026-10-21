@@ -55,10 +55,9 @@ services:
       ADMIN_ACCOUNT_PASSWORD: ${ADMIN_ACCOUNT_PASSWORD:?ADMIN_ACCOUNT_PASSWORD가 지정되지 않았습니다}
       IMAGE_TAG: ${IMAGE_TAG}
       CKING_CONSUMER_ID: ${CKING_CONSUMER_ID:-}
-      # 아래는 Parameter Store에 값이 있을 때만 deploy.sh가 넘긴다. 없으면 필터가 꺼진 기본값을 쓴다.
-      COMMENT_FILTER_ENABLED: ${COMMENT_FILTER_ENABLED:-false}
-      COMMENT_FILTER_BASE_URL: ${COMMENT_FILTER_BASE_URL:-http://localhost:8000}
-      COMMENT_FILTER_AUTH: ${COMMENT_FILTER_AUTH:-none}
+      # 필터는 application-dev.yml에서 켠다. 아래 값은 deploy.sh가 넘길 때만 전달한다(개발은 주소, 부하 테스트는 끄기).
+      COMMENT_FILTER_ENABLED:
+      COMMENT_FILTER_BASE_URL:
       REDIS_HOST: redis
       # 상한을 걸면 JVM이 힙(상한의 25%)과 GC를 다시 고르므로 상한 전 값(힙 460MiB, G1)을 고정한다.
       JDK_JAVA_OPTIONS: "-Xmx460m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"

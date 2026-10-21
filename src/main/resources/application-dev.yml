@@ -74,6 +74,10 @@ cking:
         enabled: ${QUIZ_GENERATION_CONTENT_REVIEW_ENABLED:true}
     judge:
       enabled: ${QUIZ_JUDGE_ENABLED:true}
+  # 필터 Lambda 함수 URL은 IAM 인증이다. 주소는 Parameter Store 필수 값 COMMENT_FILTER_BASE_URL로 받는다.
+  comment-filter:
+    enabled: ${COMMENT_FILTER_ENABLED:true}
+    auth: aws-iam
 
 info:
   image:
