@@ -234,6 +234,9 @@ cking:
     base-url: ${COMMENT_FILTER_BASE_URL:http://localhost:8000}
     connect-timeout: ${COMMENT_FILTER_CONNECT_TIMEOUT:PT2S}
     read-timeout: ${COMMENT_FILTER_READ_TIMEOUT:PT5S}
+    # Lambda 함수 URL(IAM 인증)을 부를 때 aws-iam. 서버 역할 자격 증명으로 요청에 SigV4 서명을 붙인다.
+    auth: ${COMMENT_FILTER_AUTH:none}
+    signing-region: ${COMMENT_FILTER_SIGNING_REGION:ap-northeast-2}
     executor:
       core-pool-size: ${COMMENT_FILTER_EXECUTOR_CORE_POOL_SIZE:2}
       max-pool-size: ${COMMENT_FILTER_EXECUTOR_MAX_POOL_SIZE:2}

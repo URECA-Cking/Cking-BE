@@ -55,6 +55,11 @@ public class CommentFilterWorker {
             long startedAt = System.nanoTime();
             try {
                 result = client.moderate(commentId, judgedContent);
+            } catch (CommentFilterAuthorizationException exception) {
+                log.error("필터 서비스가 인증·권한을 거부했습니다. 서명 설정과 호출 권한을 확인하세요. commentId={}, httpStatus={}, failureKind={}, latencyMs={}",
+                        commentId, exception.httpStatus(), exception.type(), elapsedMillis(startedAt));
+                recordFailure(commentId, judgedContent);
+                return;
             } catch (CommentFilterRejectedException exception) {
                 // 예외 객체는 넘기지 않는다. cause 메시지에 필터 응답 본문(댓글 원문 포함 가능)이 들어 있다.
                 log.error("필터 서비스가 요청을 거절했습니다. 요청 형식을 확인하세요. commentId={}, httpStatus={}, failureKind={}, latencyMs={}",

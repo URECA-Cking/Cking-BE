@@ -46,6 +46,30 @@ class CommentFilterConfigurationTest {
     }
 
     @Test
+    void IAM_서명은_https_주소와_리전이_있을_때만_기동한다() {
+        runner.withPropertyValues(
+                "cking.comment-filter.enabled=true",
+                "cking.comment-filter.auth=aws-iam",
+                "cking.comment-filter.base-url=https://abc123.lambda-url.ap-northeast-2.on.aws")
+                .run(context -> assertThat(context).hasNotFailed().hasSingleBean(CommentFilterClient.class));
+
+        runner.withPropertyValues(
+                "cking.comment-filter.enabled=true",
+                "cking.comment-filter.auth=aws-iam",
+                "cking.comment-filter.base-url=http://localhost:8000")
+                .run(context -> assertThat(context).hasFailed()
+                        .getFailure().rootCause().hasMessageContaining("https"));
+
+        runner.withPropertyValues(
+                "cking.comment-filter.enabled=true",
+                "cking.comment-filter.auth=aws-iam",
+                "cking.comment-filter.base-url=https://abc123.lambda-url.ap-northeast-2.on.aws",
+                "cking.comment-filter.signing-region= ")
+                .run(context -> assertThat(context).hasFailed()
+                        .getFailure().rootCause().hasMessageContaining("리전"));
+    }
+
+    @Test
     void Executor_설정을_바꾸면_반영한다() {
         runner.withPropertyValues(
                 "cking.comment-filter.enabled=true",

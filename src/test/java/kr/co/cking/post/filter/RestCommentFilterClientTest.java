@@ -3,6 +3,7 @@ package kr.co.cking.post.filter;
 import kr.co.cking.post.domain.CommentFilterAction;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -18,7 +19,9 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.FORBIDDEN;
 import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
+import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 class RestCommentFilterClientTest {
 
@@ -99,6 +102,20 @@ class RestCommentFilterClientTest {
         assertThatThrownBy(() -> client.moderate(1L, "본문"))
                 .isInstanceOf(CommentFilterException.class)
                 .isNotInstanceOf(CommentFilterRejectedException.class);
+    }
+
+    @Test
+    void 필터_서비스의_401과_403은_요청_형식_오류가_아니라_인증_거부로_구분한다() {
+        for (HttpStatus status : new HttpStatus[] {UNAUTHORIZED, FORBIDDEN}) {
+            server.reset();
+            server.expect(requestTo("http://filter/moderate")).andRespond(withStatus(status));
+            assertThatThrownBy(() -> client.moderate(1L, "본문"))
+                    .isInstanceOfSatisfying(CommentFilterAuthorizationException.class, exception -> {
+                        assertThat(exception).isNotInstanceOf(CommentFilterRejectedException.class);
+                        assertThat(exception.type()).isEqualTo(CommentFilterFailureType.UNAUTHORIZED);
+                        assertThat(exception.httpStatus()).isEqualTo(status.value());
+                    });
+        }
     }
 
     @Test

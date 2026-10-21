@@ -184,6 +184,24 @@ class CommentFilterWorkerTest {
     }
 
     @Test
+    void 필터가_인증_권한을_거부하면_실패로_기록하고_요청_형식이_아니라_서명_권한_확인으로_error를_남긴다(CapturedOutput output) {
+        RuntimeException cause = new IllegalStateException("403 Forbidden: [{\"Message\":\"Forbidden. " + CONTENT + "\"}]");
+        givenTarget(CONTENT);
+        given(client.moderate(COMMENT_ID, CONTENT))
+                .willThrow(new CommentFilterAuthorizationException("필터 서비스가 인증·권한을 거부했습니다. status=403", 403, cause));
+
+        worker.process(COMMENT_ID);
+
+        verify(resultService).saveFailure(COMMENT_ID, CONTENT);
+        assertThat(output.getAll())
+                .contains("서명 설정과 호출 권한을 확인하세요")
+                .contains("httpStatus=403", "failureKind=UNAUTHORIZED", "latencyMs=")
+                .doesNotContain("요청 형식을 확인하세요")
+                .doesNotContain(CONTENT)
+                .doesNotContain("IllegalStateException");
+    }
+
+    @Test
     void 필터_장애는_실패로_기록하고_판정_로그는_남기지_않는다(CapturedOutput output) {
         givenTarget(CONTENT);
         given(client.moderate(COMMENT_ID, CONTENT)).willThrow(new CommentFilterException("필터 서비스 호출에 실패했습니다.", CommentFilterFailureType.NETWORK));

@@ -8,7 +8,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestClient;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -26,11 +28,24 @@ public class CommentFilterConfiguration {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(positive(properties.getConnectTimeout(), Duration.ofSeconds(2)));
         requestFactory.setReadTimeout(positive(properties.getReadTimeout(), Duration.ofSeconds(5)));
-        RestClient restClient = RestClient.builder()
+        RestClient.Builder builder = RestClient.builder()
                 .baseUrl(properties.getBaseUrl())
-                .requestFactory(requestFactory)
-                .build();
-        return new RestCommentFilterClient(restClient);
+                .requestFactory(requestFactory);
+        if (properties.getAuth() == CommentFilterProperties.Auth.AWS_IAM) {
+            builder.requestInterceptor(sigV4Interceptor(properties));
+        }
+        return new RestCommentFilterClient(builder.build());
+    }
+
+    private static AwsSigV4RequestInterceptor sigV4Interceptor(CommentFilterProperties properties) {
+        if (properties.getBaseUrl() == null || !properties.getBaseUrl().startsWith("https://")) {
+            throw new IllegalArgumentException("IAM 서명으로 부르는 필터 서비스 주소는 https여야 합니다.");
+        }
+        if (properties.getSigningRegion() == null || properties.getSigningRegion().isBlank()) {
+            throw new IllegalArgumentException("IAM 서명 리전이 비어 있습니다.");
+        }
+        return new AwsSigV4RequestInterceptor(
+                DefaultCredentialsProvider.builder().build(), properties.getSigningRegion(), Clock.systemUTC());
     }
 
     /** 다른 비동기 작업과 자원을 나누고, bounded queue와 AbortPolicy로 포화 시 제출을 거절한다. */

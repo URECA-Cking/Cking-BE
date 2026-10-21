@@ -10,6 +10,8 @@ public enum CommentFilterFailureType {
     SERVER_ERROR,
     /** 필터 서비스가 요청을 거절했다(4xx). */
     REJECTED,
+    /** 필터 서비스가 인증·권한을 거부했다(401·403). 서명 설정이나 호출 권한 문제다. */
+    UNAUTHORIZED,
     /** 응답이 비어 있거나 해석할 수 없다. */
     RESPONSE_PARSE
 }

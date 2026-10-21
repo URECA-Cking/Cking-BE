@@ -16,8 +16,16 @@ public class CommentFilterProperties {
     private String baseUrl = "http://localhost:8000";
     private Duration connectTimeout = Duration.ofSeconds(2);
     private Duration readTimeout = Duration.ofSeconds(5);
+    private Auth auth = Auth.NONE;
+    private String signingRegion = "ap-northeast-2";
     private Executor executor = new Executor();
     private Retry retry = new Retry();
+
+    /** 필터 서비스 호출 인증. Lambda 함수 URL(IAM 인증)은 서버 역할 자격 증명으로 서명한 요청만 받는다. */
+    public enum Auth {
+        NONE,
+        AWS_IAM
+    }
 
     /** 필터 호출 전용 Executor. 무제한 queue를 두지 않고, 포화로 거절된 댓글은 PENDING으로 남겨 재필터링이 처리한다. */
     @Getter
