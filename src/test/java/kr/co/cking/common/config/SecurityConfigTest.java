@@ -160,7 +160,7 @@ class SecurityConfigTest {
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }
 
-    /** 상태별 개수는 공개 API라, 이벤트 상세(/api/events/*)의 인증 규칙에 걸리지 않는다. */
+    /** 상태별 개수는 공개 Event GET 매처를 통해 인증 없이 호출할 수 있다. */
     @Test
     void 이벤트_상태별_개수는_인증_없이_호출할_수_있다() throws Exception {
         mockMvc.perform(get("/api/events/counts"))
