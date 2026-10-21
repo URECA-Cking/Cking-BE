@@ -8,6 +8,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -106,9 +110,60 @@ class RestCommentFilterClientTest {
             server.reset();
             server.expect(requestTo("http://filter/moderate")).andRespond(withStatus(status));
             assertThatThrownBy(() -> client.moderate(1L, "본문"))
-                    .isInstanceOf(CommentFilterAuthorizationException.class)
-                    .isNotInstanceOf(CommentFilterRejectedException.class);
+                    .isInstanceOfSatisfying(CommentFilterAuthorizationException.class, exception -> {
+                        assertThat(exception).isNotInstanceOf(CommentFilterRejectedException.class);
+                        assertThat(exception.type()).isEqualTo(CommentFilterFailureType.UNAUTHORIZED);
+                        assertThat(exception.httpStatus()).isEqualTo(status.value());
+                    });
         }
+    }
+
+    @Test
+    void 실패한_종류와_HTTP_상태를_예외에_담는다() {
+        server.expect(requestTo("http://filter/moderate")).andRespond(withStatus(BAD_REQUEST));
+        assertThatThrownBy(() -> client.moderate(1L, "본문"))
+                .isInstanceOfSatisfying(CommentFilterException.class, exception -> {
+                    assertThat(exception.type()).isEqualTo(CommentFilterFailureType.REJECTED);
+                    assertThat(exception.httpStatus()).isEqualTo(400);
+                });
+
+        server.reset();
+        server.expect(requestTo("http://filter/moderate")).andRespond(withStatus(SERVICE_UNAVAILABLE));
+        assertThatThrownBy(() -> client.moderate(1L, "본문"))
+                .isInstanceOfSatisfying(CommentFilterException.class, exception -> {
+                    assertThat(exception.type()).isEqualTo(CommentFilterFailureType.SERVER_ERROR);
+                    assertThat(exception.httpStatus()).isEqualTo(503);
+                });
+    }
+
+    @Test
+    void 타임아웃과_네트워크_실패를_구분하고_상태는_408과_0으로_남긴다() {
+        server.expect(requestTo("http://filter/moderate"))
+                .andRespond(withException(new SocketTimeoutException("Read timed out")));
+        assertThatThrownBy(() -> client.moderate(1L, "본문"))
+                .isInstanceOfSatisfying(CommentFilterException.class, exception -> {
+                    assertThat(exception.type()).isEqualTo(CommentFilterFailureType.TIMEOUT);
+                    assertThat(exception.httpStatus()).isEqualTo(408);
+                });
+
+        server.reset();
+        server.expect(requestTo("http://filter/moderate"))
+                .andRespond(withException(new ConnectException("Connection refused")));
+        assertThatThrownBy(() -> client.moderate(1L, "본문"))
+                .isInstanceOfSatisfying(CommentFilterException.class, exception -> {
+                    assertThat(exception.type()).isEqualTo(CommentFilterFailureType.NETWORK);
+                    assertThat(exception.httpStatus()).isEqualTo(0);
+                });
+    }
+
+    @Test
+    void 해석할_수_없는_응답은_RESPONSE_PARSE이다() {
+        respond("""
+                {"action":"BLOCK","reasons":[],"ruleVersion":"r1","modelVersion":"m1"}""");
+
+        assertThatThrownBy(() -> client.moderate(1L, "본문"))
+                .isInstanceOfSatisfying(CommentFilterException.class,
+                        exception -> assertThat(exception.type()).isEqualTo(CommentFilterFailureType.RESPONSE_PARSE));
     }
 
     private void respond(String json) {
