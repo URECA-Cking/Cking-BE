@@ -160,11 +160,37 @@ class SecurityConfigTest {
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
     }
 
-    /** 상태별 개수는 공개 API라, 이벤트 상세(/api/events/*)의 인증 규칙에 걸리지 않는다. */
+    /** 상태별 개수는 공개 Event GET 매처를 통해 인증 없이 호출할 수 있다. */
     @Test
     void 이벤트_상태별_개수는_인증_없이_호출할_수_있다() throws Exception {
         mockMvc.perform(get("/api/events/counts"))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    /** 이벤트 상세 GET만 익명 호출을 허용하고 같은 경로의 변경 요청은 인증을 유지한다. */
+    @Test
+    void 이벤트_상세_GET만_인증_없이_호출할_수_있다() throws Exception {
+        mockMvc.perform(get("/api/events/1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("public-event"));
+        mockMvc.perform(put("/api/events/1"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /** 이벤트 상세 하위의 응모·내 응모·실시간 현황 경로는 익명 호출을 막는다. */
+    @Test
+    void 이벤트_응모_하위_경로는_인증이_필수다() throws Exception {
+        mockMvc.perform(post("/api/events/1/entries")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/events/1/entries/me")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/events/1/entry-status")).andExpect(status().isUnauthorized());
+    }
+
+    /** 공개 상세라도 만료된 Bearer 토큰이 첨부되면 인증 실패를 401로 반환한다. */
+    @Test
+    void 만료된_Access_JWT로_이벤트_상세를_조회하면_401이다() throws Exception {
+        mockMvc.perform(get("/api/events/1").header(AUTHORIZATION, "Bearer " + expiredAccessToken()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"code\":\"UNAUTHORIZED\"}"));
     }
 
     /** 서명 또는 형식이 잘못된 Bearer JWT는 공통 UNAUTHORIZED 응답으로 거절하는지 검증한다. */
@@ -554,6 +580,10 @@ class SecurityConfigTest {
     /** ADMIN 역할 JWT가 통과한 뒤 테스트에서 사용할 최소 관리자 API 응답을 제공한다. */
     @RestController
     static class AdminSecurityTestController {
+        /** 인증 규칙 검증을 위해 공개 이벤트 상세 응답을 제공한다. */
+        @GetMapping("/api/events/{eventId}")
+        String publicEventDetail() { return "public-event"; }
+
         @PutMapping("/api/internal/content-tags/jobs/claim")
         String contentWrite() { return "content-api"; }
 

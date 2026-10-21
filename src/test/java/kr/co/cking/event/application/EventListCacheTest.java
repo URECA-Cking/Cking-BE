@@ -59,7 +59,7 @@ class EventListCacheTest {
     }
 
     private CachedEvent event(long endAfterSeconds, EventStatus status) {
-        return new CachedEvent(1L, 2L, "여름 이벤트", "설명",
+        return new CachedEvent(1L, 2L, 10L, "여름 이벤트", "설명",
                 now, now.plusSeconds(endAfterSeconds), 3, "WEIGHTED", status);
     }
 

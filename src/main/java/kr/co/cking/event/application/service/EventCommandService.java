@@ -214,7 +214,7 @@ public class EventCommandService {
         if (event.getStatus() == EventStatus.CLOSED) {
             return EventStatus.CLOSED;
         }
-        event.startClosing(cutoffStreamId);
+        event.startClosing(cutoffStreamId, clock.instant());
         eventPublisher.publishEvent(new EventClosingStateChangedEvent(eventId));
         return EventStatus.CLOSING;
     }

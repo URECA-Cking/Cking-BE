@@ -13,6 +13,7 @@ class EventTest {
 
     private static final Instant START = Instant.parse("2026-09-10T00:00:00Z");
     private static final Instant END = Instant.parse("2026-09-20T00:00:00Z");
+    private static final Instant CLOSE_REQUESTED = Instant.parse("2026-09-19T12:00:00Z");
 
     @Test
     void scheduled_이벤트는_시간과_무관하게_UPCOMING이다() {
@@ -90,10 +91,11 @@ class EventTest {
     void open_이벤트는_startClosing으로_CLOSING이_되고_cutoff가_저장된다() {
         Event event = eventOf(EventStatus.OPEN);
 
-        event.startClosing("123-0");
+        event.startClosing("123-0", CLOSE_REQUESTED);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.CLOSING);
         assertThat(event.getCutoffStreamId()).isEqualTo("123-0");
+        assertThat(event.getCloseRequestedAt()).isEqualTo(CLOSE_REQUESTED);
     }
 
     @Test
@@ -103,7 +105,7 @@ class EventTest {
                 EventStatus.CLOSED, EventStatus.DRAW_COMPLETED, EventStatus.PUBLISHED}) {
             Event event = eventOf(status);
 
-            assertThatThrownBy(() -> event.startClosing("123-0"))
+            assertThatThrownBy(() -> event.startClosing("123-0", CLOSE_REQUESTED))
                     .as("status=%s", status)
                     .isInstanceOf(BusinessException.class);
         }

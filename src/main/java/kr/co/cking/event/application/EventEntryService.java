@@ -26,9 +26,16 @@ public class EventEntryService {
     private final EntryAbuseObserver abuseObserver;
     private final Clock clock;
 
+    /** 요청 회원의 프로필과 Event 소유권을 검증한 뒤 응모권 차감을 요청한다. */
     public EntryOutcome apply(Long eventId, EntryCommand command) {
         memberProfileGuard.requireConfigured(command.userId());
         CachedEvent event = eventQueryService.getCachedEvent(eventId);
+        if (event.ownerMemberId() == null) {
+            throw new IllegalStateException("Event 소유 회원 ID가 없는 캐시로 응모를 처리할 수 없습니다.");
+        }
+        if (command.userId().equals(event.ownerMemberId())) {
+            throw new BusinessException(EntryErrorCode.OWN_EVENT_ENTRY_NOT_ALLOWED);
+        }
         Instant requestedAt = clock.instant();
         EntryObservationContext observation = new EntryObservationContext(
                 command.userId(), event.creatorId(), eventId, command.requestId(), command.couponType(), requestedAt);
