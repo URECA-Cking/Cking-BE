@@ -21,15 +21,18 @@ public class SavedTagRecommendationController {
             @RequestParam(required=false) String taxonomyVersion,
             @RequestParam(defaultValue="") List<String> parentCodes,
             @RequestParam(defaultValue="") List<String> topicCodes,
-            @RequestParam(defaultValue="10") int size) {
-        return ApiResponse.success(service.find(memberId,taxonomyVersion,parentCodes,topicCodes,size));
+            @RequestParam(defaultValue="10") String size) {
+        try {
+            return ApiResponse.success(service.find(memberId,taxonomyVersion,parentCodes,topicCodes,Integer.parseInt(size)));
+        } catch (NumberFormatException error) {
+            throw new kr.co.cking.common.exception.BusinessException(
+                kr.co.cking.creator.domain.ContentTagErrorCode.INVALID_CONTENT_TAG);
+        }
     }
     @GetMapping("/api/me/creator-recommendations/tag-catalog")
     @Operation(summary="승인 콘텐츠 태그 추천 카탈로그")
     public ApiResponse<Map<String,Object>> catalog() {
-        var input=service.inputs();
-        return ApiResponse.success(Map.of("taxonomyVersion",input.get("taxonomyVersion"),"taxonomyHash",input.get("taxonomyHash"),
-                "tags",input.get("tags"),"maxParents",3,"maxTopics",9));
+        return ApiResponse.success(service.catalog());
     }
     @GetMapping("/api/internal/content-tags/saved-recommendations/inputs")
     @Operation(summary="확인된 전체 태그 후보 snapshot",description="CONTENT_TAG_BATCH 전용 인증")
