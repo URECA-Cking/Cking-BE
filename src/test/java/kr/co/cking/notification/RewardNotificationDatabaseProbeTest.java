@@ -1,9 +1,5 @@
 package kr.co.cking.notification;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
 import kr.co.cking.ticket.domain.CommonTicketLedger;
 import kr.co.cking.ticket.domain.TicketLedger;
 import kr.co.cking.ticket.domain.TicketLedgerType;
@@ -19,6 +15,8 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import probe.notification.RewardNotificationMarkerProbes.CommonMarkerProbe;
+import probe.notification.RewardNotificationMarkerProbes.CreatorMarkerProbe;
 
 import java.sql.*;
 import java.nio.file.Files;
@@ -381,17 +379,5 @@ class RewardNotificationDatabaseProbeTest {
     @FunctionalInterface private interface SqlAction { void run() throws SQLException; }
     private static void assertSqlError(SqlAction action, int code) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(SQLException.class, e -> assertThat(e.getErrorCode()).isEqualTo(code));
-    }
-    @Entity(name="CreatorMarkerProbe") @Table(name="ticket_ledger")
-    public static class CreatorMarkerProbe {
-        @Id @Column(name="ledger_id") Long id;
-        @Column(name="reward_notification_eligible", nullable=false, insertable=false, updatable=false) boolean eligible;
-        public CreatorMarkerProbe() { }
-    }
-    @Entity(name="CommonMarkerProbe") @Table(name="common_ticket_ledger")
-    public static class CommonMarkerProbe {
-        @Id @Column(name="ledger_id") Long id;
-        @Column(name="reward_notification_eligible", nullable=false, insertable=false, updatable=false) boolean eligible;
-        public CommonMarkerProbe() { }
     }
 }
