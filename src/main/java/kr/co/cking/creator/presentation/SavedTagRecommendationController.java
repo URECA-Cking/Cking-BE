@@ -16,13 +16,19 @@ import org.springframework.web.bind.annotation.*;
 public class SavedTagRecommendationController {
     private final SavedTagRecommendationService service;
     @GetMapping("/api/me/creator-recommendations/by-tags")
-    @Operation(summary="실제 저장 태그 OR 추천",description="빈 선택/부족 후보를 허용합니다. PENDING은 순위 재생성이 필요합니다.")
+    @Operation(summary="실제 저장 태그 OR 추천",description="source=INTEREST는 저장 관심 분야만, FOLLOW는 전체 팔로우의 확인 태그만 사용합니다. 기본 EXPLICIT는 명시 코드 OR입니다. 부족 후보를 보충하지 않습니다.")
     public ApiResponse<Map<String,Object>> find(@CurrentMemberId Long memberId,
             @RequestParam(required=false) String taxonomyVersion,
             @RequestParam(defaultValue="") List<String> parentCodes,
             @RequestParam(defaultValue="") List<String> topicCodes,
+            @RequestParam(defaultValue="EXPLICIT") String source,
             @RequestParam(defaultValue="10") String size) {
         try {
+            if (!"EXPLICIT".equals(source)) {
+                if (taxonomyVersion != null || !parentCodes.isEmpty() || !topicCodes.isEmpty())
+                    throw new kr.co.cking.common.exception.BusinessException(kr.co.cking.creator.domain.ContentTagErrorCode.INVALID_CONTENT_TAG);
+                return ApiResponse.success(service.forMember(memberId, source, Integer.parseInt(size)));
+            }
             return ApiResponse.success(service.find(memberId,taxonomyVersion,parentCodes,topicCodes,Integer.parseInt(size)));
         } catch (NumberFormatException error) {
             throw new kr.co.cking.common.exception.BusinessException(

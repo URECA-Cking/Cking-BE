@@ -44,6 +44,13 @@ public class SavedTagRecommendationRepository {
         return jdbc.query(CONFIRMED + " ORDER BY c.creator_id", (r, n) -> confirmed(r));
     }
 
+    public List<Confirmed> confirmedByIds(List<Long> ids) {
+        if (ids.isEmpty()) return List.of();
+        return new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc).query(
+            CONFIRMED + " WHERE c.creator_id IN (:ids) ORDER BY c.creator_id", java.util.Map.of("ids", ids),
+            (r, n) -> confirmed(r));
+    }
+
     /** Only selected tag rows cross JDBC; public reads never load the global snapshot or score JSON. */
     public List<Candidate> candidates(List<String> parents, List<String> topics, String taxonomy, String config) {
         String sql = "SELECT eligible.*, ranked.score FROM (" + CONFIRMED + """

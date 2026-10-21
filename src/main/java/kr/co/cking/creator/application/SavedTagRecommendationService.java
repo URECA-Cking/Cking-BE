@@ -26,6 +26,7 @@ public class SavedTagRecommendationService {
     private final SavedTagRecommendationRepository repository;
     private final CreatorRepository creators;
     private final CreatorFollowQueryService follows;
+    private final kr.co.cking.interest.application.MemberInterestService memberInterests;
     public record Tag(String type,String code,String name,String description) { }
     public record Score(String type,String code,long creatorId,BigDecimal score) { }
     public record Delivery(long applicationSequence,String snapshotHash,String method,String modelVersion,List<Score> scores) { }
@@ -170,6 +171,61 @@ public class SavedTagRecommendationService {
         if(parentCodes.isEmpty() && topicCodes.isEmpty()) return result("READY",List.of());
         var catalogData = catalogData();
         require(catalogData.version().equals(version));
+        return findSelected(memberId, parentCodes, topicCodes, size, catalogData);
+    }
+
+    /** 기존 화면용: 관심 분야와 팔로우 신호를 섞지 않고, 자격 없는 인기 후보를 보충하지 않는다. */
+    public Map<String,Object> forMember(long memberId, String source, int size) {
+        require(size >= 1 && size <= 20 && ("INTEREST".equals(source) || "FOLLOW".equals(source)));
+        var interestCodes = "INTEREST".equals(source) ? memberInterests.findMine(memberId).interestCodes() : List.<String>of();
+        var followed = "FOLLOW".equals(source) ? follows.findFollowedCreatorIds(memberId) : List.<Long>of();
+        if (interestCodes.isEmpty() && followed.isEmpty()) return memberResult(source, result("READY", List.of()), interestCodes, List.of());
+        Catalog catalog;
+        try {
+            catalog = catalogData();
+        } catch (BusinessException error) {
+            if (error.getErrorCode() != CONTENT_TAXONOMY_UNAVAILABLE) throw error;
+            return memberResult(source, result("PENDING", List.of()), interestCodes, List.of());
+        }
+        var parents = new TreeSet<String>();
+        var topics = new TreeSet<String>();
+        var seeds = new ArrayList<Confirmed>();
+        if ("INTEREST".equals(source)) {
+            // 관심 분야와 콘텐츠 taxonomy는 버전이 다르다. 승인 부모에 존재하는 동일 코드만 연결한다.
+            var allowed = catalog.tags().stream().filter(t -> "PARENT".equals(t.type())).map(Tag::code).toList();
+            interestCodes.stream().filter(allowed::contains).forEach(parents::add);
+        } else {
+            for (var row : repository.confirmedByIds(followed)) {
+                if (!eligible(row, catalog)) continue;
+                seeds.add(row);
+                var saved = node(row.tags());
+                parents.addAll(codes(saved, "parents"));
+                topics.addAll(codes(saved, "topics"));
+            }
+        }
+        var found = parents.isEmpty() && topics.isEmpty() ? result("READY", List.of())
+            : findSelected(memberId, List.copyOf(parents), List.copyOf(topics), size, catalog);
+        return memberResult(source, found, interestCodes, seeds);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> memberResult(String source, Map<String,Object> found, List<String> interests, List<Confirmed> seeds) {
+        found.put("policyVersion", "SAVED_TAG_" + source + "_V1");
+        for (var value : (List<?>) found.get("items")) {
+            var item = (Map<String,Object>) value;
+            var tags = (List<Tag>) item.get("matchedTags");
+            var keys = tags.stream().map(t -> t.type() + ":" + t.code()).collect(java.util.stream.Collectors.toSet());
+            item.put("interestCodes", interests.stream().filter(c -> keys.contains("PARENT:" + c)).toList());
+            item.put("seedCreatorIds", seeds.stream().filter(seed -> {
+                var saved = node(seed.tags());
+                return codes(saved,"parents").stream().anyMatch(c -> keys.contains("PARENT:" + c))
+                    || codes(saved,"topics").stream().anyMatch(c -> keys.contains("TOPIC:" + c));
+            }).map(Confirmed::creatorId).sorted().toList());
+        }
+        return found;
+    }
+
+    private Map<String,Object> findSelected(long memberId, List<String> parentCodes, List<String> topicCodes, int size, Catalog catalogData) {
         var selected = new HashSet<String>();
         parentCodes.forEach(c -> selected.add("PARENT:" + c));
         topicCodes.forEach(c -> selected.add("TOPIC:" + c));
