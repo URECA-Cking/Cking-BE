@@ -27,7 +27,7 @@ public class CommentFilterConfiguration {
     CommentFilterClient commentFilterClient(CommentFilterProperties properties) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(positive(properties.getConnectTimeout(), Duration.ofSeconds(2)));
-        requestFactory.setReadTimeout(positive(properties.getReadTimeout(), Duration.ofSeconds(5)));
+        requestFactory.setReadTimeout(positive(properties.getReadTimeout(), Duration.ofSeconds(30)));
         RestClient.Builder builder = RestClient.builder()
                 .baseUrl(properties.getBaseUrl())
                 .requestFactory(requestFactory);
