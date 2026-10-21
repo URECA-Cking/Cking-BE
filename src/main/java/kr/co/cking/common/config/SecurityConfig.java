@@ -149,6 +149,8 @@ public class SecurityConfig {
                                 "/api/me/follows/post-news",
                                 "/api/me/tickets",
                                 "/api/me/creator-recommendations",
+                                "/api/me/creator-recommendations/by-tags",
+                                "/api/me/creator-recommendations/tag-catalog",
                                 "/api/me/creator-recommendation-events",
                                 "/api/me/interests",
                                 "/api/me/onboarding/complete",

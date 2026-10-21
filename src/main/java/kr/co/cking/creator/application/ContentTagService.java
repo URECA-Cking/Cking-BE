@@ -60,7 +60,7 @@ public class ContentTagService {
         return spaces.findByCreatorIdForUpdate(creatorId).orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
     private ContentTagRepository.Taxonomy taxonomy() { return taxonomy(true); }
-    private ContentTagRepository.Taxonomy taxonomy(boolean locking) {
+    ContentTagRepository.Taxonomy taxonomy(boolean locking) {
         var rows = repo.taxonomies(locking);
         if (rows.size() != 1) throw new BusinessException(CONTENT_TAXONOMY_UNAVAILABLE);
         var tax=rows.getFirst();
