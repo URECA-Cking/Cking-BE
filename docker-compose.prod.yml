@@ -37,7 +37,6 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       COMMENT_FILTER_ENABLED: ${COMMENT_FILTER_ENABLED:-false}
       COMMENT_FILTER_BASE_URL: ${COMMENT_FILTER_BASE_URL:-http://localhost:8000}
-      COMMENT_FILTER_AUTH: ${COMMENT_FILTER_AUTH:-none}
       IMAGE_TAG: ${IMAGE_TAG}
       CKING_CONSUMER_ID: ${CKING_CONSUMER_ID:-}
       # 개발과 같은 크기(t4g.small)에서 부하 테스트로 확인한 값이다. 힙 460MiB, 컨테이너 1000MiB.
