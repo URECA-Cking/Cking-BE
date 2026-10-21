@@ -23,8 +23,11 @@ import kr.co.cking.event.repository.EventRepository;
 /**
  * 진행 중 이벤트 수·상태별 개수 집계(이슈 #639)가 목록 필터({@code EventRepository#search})와
  * 같은 규칙으로 세는지 확인한다.
+ *
+ * <p>시작 시각이 지난 SCHEDULED 이벤트를 넣으므로 스케줄러 자동 실행을 끈다. 켜 두면 개수 조회와 목록 조회 사이에
+ * {@code EventLifecycleScheduler}가 OPEN으로 바꿔 두 값이 어긋난다.
  */
-@SpringBootTest
+@SpringBootTest(properties = "cking.scheduling.enabled=false")
 class EventCountsIntegrationTest {
 
     private static final long OWNER_MEMBER_ID = 90601L;
