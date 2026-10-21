@@ -47,6 +47,7 @@
   되돌아가지 않고 키만 판단하며, 헤더가 없으면 위 ADMIN JWT 규칙과 Application의 ADMIN 재검증을 그대로 따른다.
   상세는 [Creator API](../domains/creator/api.md#put-apiadmincreatorscreatoridsimilar)를 따른다.
 - 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
+- 웰컴 퀘스트 `GET /api/me/welcome-quest`와 `POST /api/me/welcome-quest/{step}/claim`은 Bearer JWT와 `@CurrentMemberId`를 사용한다. 요청에 호출자 `userId`를 받지 않으며 상세 계약은 [웰컴 퀘스트 API](../domains/mission/welcome-quest.md)를 따른다.
 - 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
 
 Controller는 전환 API에서는 인증된 `memberId`, 그 외에는 요청의 호출자 `userId`를 기존
@@ -156,9 +157,10 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 
 - `creator`는 JWT role이 아니라 `creator.member_id` 존재 여부다.
 - JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
-- `name`은 OAuth 제공자 원본 이름이고 본인 조회에서만 반환한다. 공개 응답은 닉네임을 사용한다. `profileConfigured`
-  가 `false`인 회원은 댓글 작성·수정, Creator 신청, 이벤트 응모를 할 수 없다. 상세는
-  [Member API](../domains/member/api.md)를 따른다.
+- `name`은 OAuth 제공자 원본 이름이고 본인 조회에서만 반환한다. 팬 공개 응답은 닉네임·Member 사진을, 승인된 Creator
+  공개 응답은 활동명·Creator Space 사진을 사용한다. `profileConfigured`가 `false`인 팬 회원은 댓글 작성·수정,
+  Creator 신청, 이벤트 응모를 할 수 없다. Creator는 Member 닉네임 대신 활동명이 설정돼야 댓글·게시글·Event 작성과
+  이벤트 응모를 할 수 있다. 상세는 [Member API](../domains/member/api.md)를 따른다.
 
 ### GET /api/creators
 
@@ -168,3 +170,12 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 ### GET /api/creators/{creatorId}
 
 별도 상세 API는 제공하지 않는다. Creator 이름·소개·이미지·slug는 `GET /api/creators/{creatorId}/space`로 조회한다. 계약은 [Creator Space API](../domains/creator/space-api.md#get-apicreatorscreatoridspace)를 따른다.
+
+## 콘텐츠 배치 인증 예외
+
+`/api/internal/content-tags/**`는 별도 opaque Bearer 토큰의 SHA-256 설정
+`cking.content-tags.token-hash`로만 인증한다. ADMIN JWT·추천 적재 키의 권한을 확대하지 않는다.
+내부 체인은 명시적 `Authorization: Bearer` 요청에만 CSRF 예외를 적용한다. Cookie만 있거나
+인증이 없는 쓰기는 자격 증명 필터가 먼저 거부하며, 콘텐츠 토큰은 Cookie에서 읽지 않는다.
+일반 회원 JWT는 `/api/creator/content-tags`와 `/confirmation`에서 본인 식별에 사용한다.
+[콘텐츠 태그 계약](../domains/creator/content-tags.md)에 상세 경로·오류·출처 공개 범위를 정의한다.

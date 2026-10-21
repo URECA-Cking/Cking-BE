@@ -1,11 +1,13 @@
 package kr.co.cking.event.application.service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,7 +17,6 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
-import lombok.RequiredArgsConstructor;
 
 /**
  * Event 상태 전이 전담 서비스. 승인·거절 등은 파트4(Creator·Event 운영, 이슈 #31) 담당,
@@ -26,13 +27,28 @@ import lombok.RequiredArgsConstructor;
  * Drain 대기(awaitDrain)를 짧은 DB 트랜잭션 안에 묶으면 안 되기 때문이다(취합v1.5.4 §6.2).
  */
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class EventCommandService {
 
     private final EventRepository eventRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
+    private final Duration approvalRequestMinimumLeadTime;
+
+    public EventCommandService(
+            EventRepository eventRepository,
+            ApplicationEventPublisher eventPublisher,
+            Clock clock,
+            @Value("${cking.event.approval-request.minimum-lead-time:PT48H}") Duration approvalRequestMinimumLeadTime
+    ) {
+        this.eventRepository = eventRepository;
+        this.eventPublisher = eventPublisher;
+        this.clock = clock;
+        if (approvalRequestMinimumLeadTime.isNegative()) {
+            throw new IllegalArgumentException("승인 요청 최소 사전 시간은 음수일 수 없습니다.");
+        }
+        this.approvalRequestMinimumLeadTime = approvalRequestMinimumLeadTime;
+    }
 
     /** DRAFT Event를 승인 대기 상태로 전이한다. */
     public void requestApproval(Long eventId) {
@@ -41,7 +57,15 @@ public class EventCommandService {
 
     /** 잠금 상태의 DRAFT Event에 승인 요청 이력을 기록한 뒤 승인 대기로 전이한다. */
     public <T> T requestApproval(Long eventId, Function<Event, T> beforeTransition) {
+        return requestApproval(eventId, event -> { }, beforeTransition);
+    }
+
+    /** 잠금 상태에서 권한을 확인한 뒤 승인 가능 시각을 검증하고 승인 요청 이력을 기록한다. */
+    public <T> T requestApproval(
+            Long eventId, Consumer<Event> beforeLeadTimeValidation, Function<Event, T> beforeTransition) {
         return execute(eventId, event -> {
+            beforeLeadTimeValidation.accept(event);
+            event.validateApprovalRequestLeadTime(clock.instant(), approvalRequestMinimumLeadTime);
             T result = beforeTransition.apply(event);
             event.requestApproval();
             return result;
@@ -62,13 +86,18 @@ public class EventCommandService {
         });
     }
 
-    /** 예약된 Event를 응모 가능한 공개 상태로 전이한다. */
+    /** 예약된 Event를 응모 가능한 공개 상태로 전이한다. 이미 OPEN이면 다른 서버가 먼저 연 것으로 보고 그대로 반환한다. */
     public void open(Long eventId) {
-        execute(eventId, event -> {
+        boolean opened = execute(eventId, event -> {
+            if (event.getStatus() == EventStatus.OPEN) {
+                return false;
+            }
             event.open();
-            return null;
+            return true;
         });
-        eventPublisher.publishEvent(new EventOpenedEvent(eventId));
+        if (opened) {
+            eventPublisher.publishEvent(new EventOpenedEvent(eventId));
+        }
     }
 
     /**
@@ -131,6 +160,45 @@ public class EventCommandService {
             event.delete(clock.instant());
             return null;
         });
+    }
+
+    /** 관리자 보관함으로 Event를 옮기되, 응모·추첨·당첨 원본은 변경하지 않는다. */
+    public Event archive(Long eventId, Long adminId) {
+        return archive(eventId, adminId, event -> { });
+    }
+
+    /**
+     * Event 행을 잠근 직후 보관 가능 조건을 확인하고 보관한다.
+     *
+     * <p>보관 가능 조건이 다른 도메인 상태를 읽어야 하면 반드시 이 callback 안에서 확인한다.
+     * 잠금 전 일반 조회는 MySQL REPEATABLE READ에서 뒤늦게 확정된 상태를 놓칠 수 있다.
+     */
+    public Event archive(Long eventId, Long adminId, Consumer<Event> beforeArchive) {
+        Event event = execute(eventId, target -> {
+            beforeArchive.accept(target);
+            target.archive(clock.instant(), adminId);
+            return target;
+        });
+        eventPublisher.publishEvent(new EventVisibilityChangedEvent(eventId));
+        return event;
+    }
+
+    /**
+     * Event와 함께 원자적으로 처리해야 하는 다른 도메인 명령에 Event 행 잠금을 제공한다.
+     * Event 상태를 바꾸는 경우에는 이 메서드 대신 전용 상태 전이 메서드를 사용한다.
+     */
+    public <T> T withEventLock(Long eventId, Function<Event, T> command) {
+        return execute(eventId, command);
+    }
+
+    /** Event 보관을 해제해 기존 PUBLISHED 공개 상태로 되돌린다. */
+    public Event unarchive(Long eventId) {
+        Event event = execute(eventId, target -> {
+            target.unarchive();
+            return target;
+        });
+        eventPublisher.publishEvent(new EventVisibilityChangedEvent(eventId));
+        return event;
     }
 
     /**

@@ -12,6 +12,7 @@ import java.time.Instant;
 
 import kr.co.cking.event.domain.DisplayStatus;
 import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventArchiveStatus;
 import kr.co.cking.event.domain.EventStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -170,6 +171,30 @@ class EventRepositoryTest {
         assertThat(allEvents).extracting(Event::getEventId)
                 .containsExactly(newerOpen.getEventId(), scheduled.getEventId(), olderOpen.getEventId())
                 .doesNotContain(deletedOpen.getEventId());
+    }
+
+    /** 관리자 보관 상태 필터는 JPQL Enum 비교 없이 ACTIVE·ARCHIVED·ALL을 정확히 분리한다. */
+    @Test
+    void 관리자_운영_목록은_보관_상태별_목록과_전체_건수를_정확히_조회한다() {
+        long memberId = insertMember();
+        long creatorId = insertCreator(memberId);
+        Event active = persistEvent(creatorId, memberId, EventStatus.OPEN, END, null);
+        Event archived = persistEvent(creatorId, memberId, EventStatus.PUBLISHED, END, null);
+        archived.archive(Instant.parse("2026-09-16T00:00:00Z"), memberId);
+        entityManager.flush();
+        entityManager.clear();
+
+        var activePage = eventRepository.findManagedEvents(null, EventArchiveStatus.ACTIVE, PageRequest.of(0, 20));
+        var archivedPage = eventRepository.findManagedEvents(null, EventArchiveStatus.ARCHIVED, PageRequest.of(0, 20));
+        var allPage = eventRepository.findManagedEvents(null, EventArchiveStatus.ALL, PageRequest.of(0, 20));
+
+        assertThat(activePage.getContent()).extracting(Event::getEventId).containsExactly(active.getEventId());
+        assertThat(activePage.getTotalElements()).isEqualTo(1);
+        assertThat(archivedPage.getContent()).extracting(Event::getEventId).containsExactly(archived.getEventId());
+        assertThat(archivedPage.getTotalElements()).isEqualTo(1);
+        assertThat(allPage.getContent()).extracting(Event::getEventId)
+                .containsExactlyInAnyOrder(active.getEventId(), archived.getEventId());
+        assertThat(allPage.getTotalElements()).isEqualTo(2);
     }
 
     private Event persistEvent(long creatorId, long memberId, EventStatus status, Instant endAt, Instant deletedAt) {

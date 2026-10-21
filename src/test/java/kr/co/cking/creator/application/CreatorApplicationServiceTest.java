@@ -58,10 +58,38 @@ class CreatorApplicationServiceTest {
                 creatorSpaceService, activityNameService
         );
 
-        var result = service.findAllForAdmin(1L, PageRequest.of(0, 20));
+        var result = service.findAllForAdmin(1L, null, PageRequest.of(0, 20));
 
         assertThat(result.getContent()).extracting(CreatorApplicationService.AdminApplication::applicantName)
                 .containsExactly("신청자");
+    }
+
+    @Test
+    void adminApplicationListFiltersByStatusInRepository() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        CreatorRepository creatorRepository = mock(CreatorRepository.class);
+        CreatorApplicationRepository applicationRepository = mock(CreatorApplicationRepository.class);
+        CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
+        MissionInitializationService missionInitializationService = mock(MissionInitializationService.class);
+        CreatorSpaceService creatorSpaceService = mock(CreatorSpaceService.class);
+        CreatorActivityNameService activityNameService = mock(CreatorActivityNameService.class);
+        Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
+        CreatorApplication application = new CreatorApplication(10L);
+        PageRequest pageable = PageRequest.of(1, 10);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
+        given(applicationRepository.findByStatusOrderByRequestedAtAscIdAsc(CreatorApplicationStatus.PENDING, pageable))
+                .willReturn(new PageImpl<>(List.of(application), pageable, 11));
+        given(memberRepository.findByMemberIdIn(List.of(10L))).willReturn(List.of());
+        CreatorApplicationService service = new CreatorApplicationService(
+                memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
+                creatorSpaceService, activityNameService
+        );
+
+        var result = service.findAllForAdmin(1L, CreatorApplicationStatus.PENDING, pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(11);
+        verify(applicationRepository).findByStatusOrderByRequestedAtAscIdAsc(CreatorApplicationStatus.PENDING, pageable);
+        verify(applicationRepository, org.mockito.Mockito.never()).findAllByOrderByRequestedAtAscIdAsc(any());
     }
 
     @Test

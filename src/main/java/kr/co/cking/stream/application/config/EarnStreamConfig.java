@@ -24,8 +24,6 @@ import kr.co.cking.stream.presentation.EarnStreamListener;
 @Configuration
 public class EarnStreamConfig {
 
-    private static final String CONSUMER_NAME = "earn-consumer-1";
-
     @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}")
     private String streamKey;
 
@@ -36,7 +34,8 @@ public class EarnStreamConfig {
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> earnStreamListenerContainer(
             RedisConnectionFactory connectionFactory,
             StringRedisTemplate redisTemplate,
-            EarnStreamListener earnStreamListener
+            EarnStreamListener earnStreamListener,
+            StreamConsumerNames consumerNames
     ) {
         ensureConsumerGroup(redisTemplate);
 
@@ -51,7 +50,7 @@ public class EarnStreamConfig {
         // PEL 재수신(XCLAIM)·Dead Stream 승격은 EarnStreamPelRecoveryScheduler가 별도로
         // 주기 실행한다(이슈 #43).
         container.register(
-                StreamReadRequests.keepAlive(container, streamKey, consumerGroup, CONSUMER_NAME,
+                StreamReadRequests.keepAlive(container, streamKey, consumerGroup, consumerNames.of("earn"),
                         () -> ensureConsumerGroup(redisTemplate)),
                 earnStreamListener
         );

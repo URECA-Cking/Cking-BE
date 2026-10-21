@@ -30,6 +30,6 @@ public record AdminTicketLedgerPage(
     /** 공용 원장 항목을 Creator 전용 원장과 공통으로 쓰는 응답 항목으로 변환한다. */
     private static TicketLedgerItemResponse toTicketLedgerItem(CommonTicketLedgerItemResponse item) {
         return new TicketLedgerItemResponse(item.ledgerId(), item.deltaAmount(), item.type(), item.missionId(),
-                item.eventId(), item.reason(), item.requestId(), item.createdAt());
+                item.missionName(), item.eventId(), item.eventTitle(), item.reason(), item.requestId(), item.createdAt());
     }
 }

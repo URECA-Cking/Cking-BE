@@ -2,6 +2,7 @@ package kr.co.cking.ticket.application;
 
 import kr.co.cking.ticket.application.dto.EarnCommand;
 import kr.co.cking.ticket.application.dto.CommonEarnCommand;
+import kr.co.cking.ticket.application.dto.CommonOnceEarnCommand;
 import kr.co.cking.ticket.domain.TicketEarnRequest;
 import kr.co.cking.ticket.domain.TicketEarnRequestStatus;
 import kr.co.cking.ticket.repository.TicketEarnRequestRepository;
@@ -31,6 +32,12 @@ public class TicketEarnRequestClaimService {
         return claim(command.requestId().toString(), command.computeFingerprint(), "COMMON");
     }
 
+    /** 공용 평생 1회 요청의 전역 requestId를 다른 적립 용도와 충돌 없이 선점한다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public TicketEarnRequestClaim claim(CommonOnceEarnCommand command) {
+        return createClaim(command.requestId().toString(), command.computeFingerprint(), "COMMON_ONCE");
+    }
+
     @Transactional(readOnly = true)
     public TicketEarnRequestClaim find(EarnCommand command) {
         return find(command.requestId().toString(), command.computeFingerprint(), command.rewardPolicy().name());
@@ -39,6 +46,12 @@ public class TicketEarnRequestClaimService {
     @Transactional(readOnly = true)
     public TicketEarnRequestClaim find(CommonEarnCommand command) {
         return find(command.requestId().toString(), command.computeFingerprint(), "COMMON");
+    }
+
+    /** 공용 평생 1회 요청의 기존 전역 requestId 기록을 읽는다. */
+    @Transactional(readOnly = true)
+    public TicketEarnRequestClaim find(CommonOnceEarnCommand command) {
+        return find(command.requestId().toString(), command.computeFingerprint(), "COMMON_ONCE");
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

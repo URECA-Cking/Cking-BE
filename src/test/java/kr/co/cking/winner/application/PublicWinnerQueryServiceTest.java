@@ -11,6 +11,8 @@ import java.util.Map;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.EventExistenceQueryService;
+import kr.co.cking.creator.application.CreatorPublicProfileQueryService;
+import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.drawing.domain.DrawingType;
@@ -36,11 +38,15 @@ class PublicWinnerQueryServiceTest {
     @Mock
     private MemberQueryService memberQueryService;
 
+    @Mock
+    private CreatorPublicProfileQueryService creatorPublicProfileQueryService;
+
     private PublicWinnerQueryService service;
 
     @BeforeEach
     void setUp() {
-        service = new PublicWinnerQueryService(eventExistenceQueryService, winnerRepository, memberQueryService);
+        service = new PublicWinnerQueryService(
+                eventExistenceQueryService, winnerRepository, memberQueryService, creatorPublicProfileQueryService);
     }
 
     @Test
@@ -53,6 +59,7 @@ class PublicWinnerQueryServiceTest {
                 2L, new MemberInfo(2L, "권혁준", "010-1234-5678", "first@example.com"),
                 3L, new MemberInfo(3L, "김민지", "010-9876-5432", "second@example.com")
         ));
+        when(creatorPublicProfileQueryService.findByMemberIds(List.of(2L, 3L))).thenReturn(Map.of());
 
         PublicWinnerQueryResult result = service.getPublicWinners(EVENT_ID);
 
@@ -87,6 +94,7 @@ class PublicWinnerQueryServiceTest {
     void 공개된_Winner가_없으면_빈_목록을_정상_반환한다() {
         when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID)).thenReturn(List.of());
         when(memberQueryService.findMemberInfosByIds(List.of())).thenReturn(Map.of());
+        when(creatorPublicProfileQueryService.findByMemberIds(List.of())).thenReturn(Map.of());
 
         PublicWinnerQueryResult result = service.getPublicWinners(EVENT_ID);
 
@@ -100,11 +108,27 @@ class PublicWinnerQueryServiceTest {
         PublicWinnerProjection winner = winner(100L, 20L, 0, DrawingType.INITIAL, 2L, 1);
         when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID)).thenReturn(List.of(winner));
         when(memberQueryService.findMemberInfosByIds(List.of(2L))).thenReturn(Map.of());
+        when(creatorPublicProfileQueryService.findByMemberIds(List.of(2L))).thenReturn(Map.of());
 
         assertThatThrownBy(() -> service.getPublicWinners(EVENT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.SYSTEM_ERROR);
+    }
+
+    @Test
+    void Creator_당첨자는_마스킹한_OAuth_이름_대신_활동명을_반환한다() {
+        PublicWinnerProjection winner = winner(100L, 20L, 0, DrawingType.INITIAL, 2L, 1);
+        when(winnerRepository.findAllPublicByEventIdOrderByDrawNoAndRank(EVENT_ID)).thenReturn(List.of(winner));
+        when(memberQueryService.findMemberInfosByIds(List.of(2L)))
+                .thenReturn(Map.of(2L, new MemberInfo(2L, "OAuth 본명", "010-1234-5678", "creator@example.com")));
+        when(creatorPublicProfileQueryService.findByMemberIds(List.of(2L)))
+                .thenReturn(Map.of(2L, new CreatorPublicProfile(3L, "공개활동명", "https://cdn.example.com/space.jpg")));
+
+        PublicWinnerQueryResult result = service.getPublicWinners(EVENT_ID);
+
+        assertThat(result.winners()).extracting(PublicWinnerResult::name).containsExactly("공개활동명");
+        assertThat(result.winners()).extracting(PublicWinnerResult::phone).containsExactly("010-****-5678");
     }
 
     private PublicWinnerProjection winner(

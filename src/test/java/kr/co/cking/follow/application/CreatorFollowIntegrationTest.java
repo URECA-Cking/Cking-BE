@@ -16,6 +16,7 @@ import org.springframework.data.domain.PageRequest;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -116,6 +117,22 @@ class CreatorFollowIntegrationTest {
         assertThat(items).extracting(FollowedCreatorView::creatorName)
                 .containsExactly(second.getName(), first.getName());
         assertThat(items).allSatisfy(item -> assertThat(item.followedAt()).isNotNull());
+    }
+
+    @Test
+    void 여러_크리에이터의_팔로워_수를_일괄_집계하고_팔로워가_없으면_0이다() {
+        Creator popular = creator("popular");
+        Creator quiet = creator("quiet");
+        Member secondFan = member("second-fan");
+        followService.follow(fan.getMemberId(), popular.getCreatorId());
+        followService.follow(secondFan.getMemberId(), popular.getCreatorId());
+
+        Map<Long, Long> counts = followQueryService.countFollowersByCreatorIds(
+                List.of(popular.getCreatorId(), quiet.getCreatorId()));
+
+        assertThat(counts).containsExactlyInAnyOrderEntriesOf(
+                Map.of(popular.getCreatorId(), 2L, quiet.getCreatorId(), 0L));
+        followService.unfollow(secondFan.getMemberId(), popular.getCreatorId());
     }
 
     private long countFollows(Creator creator) {

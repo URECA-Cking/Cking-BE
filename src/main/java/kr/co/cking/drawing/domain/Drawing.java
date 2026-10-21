@@ -80,10 +80,10 @@ public class Drawing {
     @Column(name = "visibility", nullable = false, length = 30)
     private DrawingVisibility visibility;
 
-    @Column(name = "input_payload", columnDefinition = "TEXT")
+    @Column(name = "input_payload", columnDefinition = "MEDIUMTEXT")
     private String inputPayload;
 
-    @Column(name = "output_payload", columnDefinition = "TEXT")
+    @Column(name = "output_payload", columnDefinition = "MEDIUMTEXT")
     private String outputPayload;
 
     @Column(name = "input_hash", length = 64)

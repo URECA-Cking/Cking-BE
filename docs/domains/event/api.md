@@ -5,8 +5,9 @@
 ## 권한과 상태 전이
 
 - Creator는 승인된 `creator` 레코드가 존재해야 하며, 자신의 Event만 관리할 수 있다.
-- 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 Creator도 Event를 생성할 수 있다. 활동명 미설정 Creator의 작성 전
-  설정 강제는 FE 연동 완료 후 별도 릴리스에서 활성화한다.
+- Creator는 공개 활동명 설정을 마친 뒤에만 Event를 생성·수정하거나 승인 요청을 할 수 있다. 기존 이관 Creator가
+  활동명을 설정하지 않았으면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 반환한다. 내 Event 목록 조회와 기존 DRAFT·REJECTED
+  Event 삭제는 활동명 설정 전에도 허용해 기존 데이터를 확인·정리할 수 있다.
 - 관리자 목록·승인·거절은 `member.role == ADMIN`만 가능하다.
 - Event 상태는 Repository로 직접 변경하지 않는다. 아래 전이는 `EventCommandService`를 사용한다.
 
@@ -16,6 +17,10 @@ DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPE
 
 CLOSED --completeDrawing--> DRAW_COMPLETED --publish--> PUBLISHED
 ```
+
+`PUBLISHED` Event는 상태 전이를 바꾸지 않고 관리자 보관함으로 옮길 수 있다. 보관은 `archivedAt`,
+`archivedBy`만 기록하며 응모·추첨·당첨·알림 원본은 삭제하지 않는다. 보관된 Event는 사용자·Creator
+조회와 응모, 사용자 당첨/알림에서 제외되고 보관 해제 시 원래 `PUBLISHED` 상태로 다시 노출된다.
 
 ## 내부 Lifecycle 계약
 
@@ -41,15 +46,28 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 `UPCOMING`, `IN_PROGRESS`, `CLOSED` 중 하나다. `page`는 0부터 시작하고, `size` 기본값은 20,
 허용 범위는 1~100이다.
 
-삭제되지 않은 공개 Event만 `createdAt DESC, eventId DESC`로 반환한다. DB 상태 `SCHEDULED`는
+삭제·보관되지 않은 공개 Event만 `createdAt DESC, eventId DESC`로 반환한다. DB 상태 `SCHEDULED`는
 `UPCOMING`, `OPEN`은 현재 시각이 `endAt` 전이면 `IN_PROGRESS`, 이후와 `CLOSING` 이후 상태는
 `CLOSED`로 표시한다.
+
+## GET /api/events/counts
+
+인증이 필요 없다. 공개 Event 수를 표시 상태별로 한 번의 집계 쿼리로 반환한다. 삭제·비공개 상태
+(`DRAFT`, `PENDING_APPROVAL`, `REJECTED`) 제외와 표시 상태 분류는 `GET /api/events`와 같은 규칙이라, 각 값은
+같은 시점의 `GET /api/events?status=`의 `totalElements`와 같다. `total`은 세 값의 합이다. 상태마다 따로
+호출할 때 생기던 조회 시점 차이로 합이 어긋나는 일이 없다. 보관(archived) Event도 제외한다. 응답은 `GET /api/events`와 같은 정책으로 캐시한다(TTL 5초, 가장 임박한 `OPEN` Event의 `endAt`을 넘기지 않음).
+
+```json
+{ "total": 46, "upcoming": 5, "inProgress": 28, "closed": 13 }
+```
+
+`upcoming`은 `UPCOMING`, `inProgress`는 `IN_PROGRESS`, `closed`는 `CLOSED` 표시 상태의 개수다.
 
 ## GET /api/events/{eventId}
 
 Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 공개 Event 정보와 해당 Event의 Creator 기준 요청 사용자의 보유 응모권 수를
 함께 반환한다. 존재하지 않는 사용자는 공통 `RESOURCE_NOT_FOUND`, 존재하지 않거나 삭제·비공개 상태인
-Event는 Event 전용 `EVENT_NOT_FOUND`다.
+Event는 Event 전용 `EVENT_NOT_FOUND`다. 보관 Event도 사용자에게는 존재하지 않는 Event와 같이 처리한다.
 
 ## POST /api/events/{eventId}/entries
 
@@ -58,7 +76,7 @@ Event는 Event 전용 `EVENT_NOT_FOUND`다.
 ## GET /api/creator/events
 
 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Query `userId`는 받지 않는다.
-Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `deletedAt IS NULL`인 Event만 반환한다.
+Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `deletedAt IS NULL`, `archivedAt IS NULL`인 Event만 반환한다.
 기본 정렬은 `createdAt DESC, eventId DESC`다.
 
 ```json
@@ -139,7 +157,10 @@ DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedA
 ## POST /api/creator/events/{eventId}/approval-request
 
 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body는 없다.
-EventApprovalRequest를 새 차수로 생성한 뒤 `EventCommandService.requestApproval(eventId)`로 DRAFT에서 PENDING_APPROVAL로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "PENDING_APPROVAL" }`다.
+
+운영 환경에서는 서버 `Clock` 기준으로 `startAt >= now + 48시간`인 DRAFT Event만 요청할 수 있다. 정확히 48시간 전은 허용하며, 48시간 미만이면 `APPROVAL_REQUEST_TOO_LATE`(409, `이벤트 시작 최소 48시간 전까지 개설 승인을 요청해야 합니다.`)를 반환한다. 이 경우 Event는 DRAFT로 유지되고 승인 요청 이력도 생성하지 않는다. 생성·일정 수정에는 이 제한을 적용하지 않으며, 이미 접수된 요청을 관리자가 승인할 때도 다시 검사하지 않는다. 개발 서버는 검증·시연 목적으로 `application-dev.yml`의 최소 사전 시간을 `PT0S`로 완화하며, 운영 정책 검증이 필요하면 해당 값을 `PT48H`로 바꾼 뒤 재배포한다.
+
+조건을 충족하면 EventApprovalRequest를 새 차수로 생성한 뒤 `EventCommandService.requestApproval(eventId)`로 DRAFT에서 PENDING_APPROVAL로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "PENDING_APPROVAL" }`다.
 
 ## GET /api/admin/events/pending
 
@@ -174,10 +195,12 @@ Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberI
 Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다.
 Application은 Spring Security의 1차 인가와 별도로 관리자 업무 권한을 다시 검증한다.
 
-Query는 선택 `status`, 기본 `page=0`, `size=20`이다. `size`는 1~100이어야 하며, `status`를 생략하면
+Query는 선택 `status`, 선택 `archiveStatus`, 기본 `page=0`, `size=20`이다. `archiveStatus`는 `ACTIVE`(기본,
+보관되지 않은 Event), `ARCHIVED`(보관함), `ALL` 중 하나다. `size`는 1~100이어야 하며, `status`를 생략하면
 전체 `EventStatus`를 조회한다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`, `SCHEDULED`, `OPEN`, `CLOSING`,
 `CLOSED`, `DRAW_COMPLETED`, `PUBLISHED` 중 하나로 필터링할 수 있다. 삭제 Event는 기존 Event 목록 정책과 같이
-제외하고 `createdAt DESC, eventId DESC`로 정렬한다.
+제외하고 `createdAt DESC, eventId DESC`로 정렬한다. 각 항목의 `archivedAt`, `archivedBy`는 일반 목록에서는
+생략되며 보관함에서 보관 시각·처리자 ID를 반환한다.
 
 ```json
 {
@@ -200,6 +223,77 @@ Query는 선택 `status`, 기본 `page=0`, `size=20`이다. `size`는 1~100이�
 }
 ```
 
+## GET /api/admin/events/{eventId}/operation
+
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 관리자 업무 식별자로 전달한다.
+관리자 운영 상세 화면의 초기 렌더링에 필요한 Event 기본 정보와 현재 운영 단계를 한 번에 조회한다. 삭제된
+Event는 조회할 수 없으며 없는 Event와 동일하게 `RESOURCE_NOT_FOUND`를 반환한다. 보관 Event는 관리자 운영
+대상이므로 조회할 수 있다.
+
+`event`에는 Creator 공개 활동명, 제목·설명, 일정, 상품 설정, 추첨·상품 배정 알고리즘, Event 상태와
+마감·공개·보관 시각을 담는다. `snapshot`과 `initialDrawing`은 아직 생성되지 않았으면 `null`이다.
+Snapshot 후보 전체와 Drawing Winner 전체는 응답에 포함하지 않으며, 필요할 때 기존 Snapshot·Drawing
+상세 API를 호출한다.
+
+```json
+{
+  "event": {
+    "eventId": 1,
+    "creatorId": 5,
+    "creatorName": "IVE",
+    "title": "팬미팅 이벤트",
+    "description": "팬미팅 응모 이벤트입니다.",
+    "startAt": "2026-09-20T09:00:00Z",
+    "endAt": "2026-09-21T09:00:00Z",
+    "winnerCount": 3,
+    "drawMethod": "WEIGHTED",
+    "prizeAlgorithmVersion": "PRIZE_WEIGHTED_V1",
+    "status": "CLOSED",
+    "closedAt": "2026-09-21T09:00:00Z",
+    "publishedAt": null,
+    "archivedAt": null,
+    "archivedBy": null,
+    "createdAt": "2026-09-16T00:20:00Z",
+    "prizes": []
+  },
+  "snapshot": {
+    "snapshotId": 10,
+    "verificationStatus": "VERIFIED",
+    "candidateCount": 100,
+    "totalTicketCount": 340,
+    "winnerCount": 3,
+    "createdAt": "2026-09-21T09:01:00Z"
+  },
+  "initialDrawing": {
+    "drawingId": 20,
+    "drawNo": 0,
+    "drawType": "INITIAL",
+    "status": "COMPLETED",
+    "visibility": "PRIVATE",
+    "winnerCount": 3,
+    "storedWinnerCount": 3,
+    "createdAt": "2026-09-21T09:02:00Z",
+    "completedAt": "2026-09-21T09:02:03Z",
+    "publishedAt": null
+  }
+}
+```
+
+- `storedWinnerCount`는 현재 저장된 Winner 수다. `status`가 `READY`, `RUNNING`, `FAILED`이면 0일 수 있다.
+- Event 상태가 `CLOSING` 또는 `CLOSED`이면 `event.status`와 `closedAt`으로 마감 단계를 판별한다. Stream lag,
+  PEL, cutoff Stream ID 같은 내부 Stream 정보는 반환하지 않는다.
+
+## PATCH /api/admin/events/{eventId}/archive
+
+Bearer Access JWT와 ADMIN 역할이 필수다. `PUBLISHED` Event만 보관할 수 있으며 성공 시 200으로
+`eventId`, `status`, `archivedAt`, `archivedBy`를 반환한다. 운영 기본 설정에서는 `SELECTED` 수령 대기
+Winner가 있으면 `INVALID_STATE`로 거부한다. 개발 프로필은 테스트 데이터 정리를 위해 이를 허용한다.
+
+## PATCH /api/admin/events/{eventId}/unarchive
+
+Bearer Access JWT와 ADMIN 역할이 필수다. 보관된 `PUBLISHED` Event를 다시 노출한다. 성공 시 200이며
+보관 메타데이터 필드는 생략된다. 보관·복원은 삭제 API가 아니며 Event와 연관 원본을 바꾸지 않는다.
+
 ## POST /api/admin/events/{eventId}/approve
 
 Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `EventCommandService.approve(eventId)`로 SCHEDULED로 전이할 수 있다. `endAt <= now`면 `INVALID_STATE`다. 현재 PENDING 승인 요청을 APPROVED로 기록하고 심사자·심사 시각을 저장한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "SCHEDULED" }`다.
@@ -215,7 +309,7 @@ Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `Even
 ## 오류와 검증
 
 - 없는 Member 또는 Event는 `RESOURCE_NOT_FOUND`, 권한·소유권 위반은 `FORBIDDEN`이다.
-- 허용되지 않은 상태의 수정·삭제·심사·승인 요청은 `INVALID_STATE`다.
+- 허용되지 않은 상태의 수정·삭제·심사·승인·보관 요청은 `INVALID_STATE`다.
 - 승인·거절처럼 Event 행 잠금으로 직렬화되는 상충 명령은 `EventCommandService`가 잠금을 획득하며, 선행 명령이 상태를 바꾼 뒤 후행 명령이 `INVALID_STATE`가 된다.
 - Event 상태 변경은 `EventCommandService`만 수행한다. 이 서비스에는 Redis Drain, Snapshot 생성, DrawingEngine 호출을 포함하지 않는다.
 - Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.

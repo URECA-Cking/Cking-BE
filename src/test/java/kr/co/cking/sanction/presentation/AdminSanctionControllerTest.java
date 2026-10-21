@@ -7,6 +7,7 @@ import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.sanction.application.SanctionQueryService;
 import kr.co.cking.sanction.application.SanctionService;
 import kr.co.cking.sanction.application.dto.SanctionView;
+import kr.co.cking.sanction.domain.SanctionErrorCode;
 import kr.co.cking.sanction.domain.SanctionScope;
 import kr.co.cking.sanction.domain.SanctionSource;
 import kr.co.cking.sanction.domain.SanctionType;
@@ -138,6 +139,23 @@ class AdminSanctionControllerTest {
                         .content("{\"memberId\": 999, \"days\": 1, \"reason\": \"사유\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void 관리자나_크리에이터에게_수동_제한을_걸면_400과_오류_코드를_돌려준다() throws Exception {
+        given(commandService.createManual(1L, 2L, 1, "사유"))
+                .willThrow(new BusinessException(SanctionErrorCode.CANNOT_BLOCK_ADMIN));
+        given(commandService.createManual(1L, 30L, 1, "사유"))
+                .willThrow(new BusinessException(SanctionErrorCode.CANNOT_SANCTION_CREATOR));
+
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"memberId\": 2, \"days\": 1, \"reason\": \"사유\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CANNOT_BLOCK_ADMIN"));
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"memberId\": 30, \"days\": 1, \"reason\": \"사유\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CANNOT_SANCTION_CREATOR"));
     }
 
     @Test

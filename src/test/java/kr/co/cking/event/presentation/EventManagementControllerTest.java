@@ -2,11 +2,15 @@ package kr.co.cking.event.presentation;
 
 import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
+import kr.co.cking.event.application.AdminEventOperationQueryService;
+import kr.co.cking.event.application.AdminEventOperationResult;
 import kr.co.cking.common.config.WebMvcConfig;
 import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
 import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
+import kr.co.cking.event.domain.EventErrorCode;
+import kr.co.cking.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -48,6 +53,7 @@ class EventManagementControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private CreatorEventService creatorEventService;
     @MockitoBean private EventReviewService eventReviewService;
+    @MockitoBean private AdminEventOperationQueryService adminEventOperationQueryService;
 
     @BeforeEach
     void authenticatedCreator() {
@@ -243,6 +249,17 @@ class EventManagementControllerTest {
     }
 
     @Test
+    void approvalRequestTooLateReturnsBusinessErrorEnvelope() throws Exception {
+        willThrow(new BusinessException(EventErrorCode.APPROVAL_REQUEST_TOO_LATE))
+                .given(creatorEventService).requestApproval(1L, 7L);
+
+        mockMvc.perform(post("/api/creator/events/{eventId}/approval-request", 7L))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("APPROVAL_REQUEST_TOO_LATE"))
+                .andExpect(jsonPath("$.message").value("이벤트 시작 최소 48시간 전까지 개설 승인을 요청해야 합니다."));
+    }
+
+    @Test
     void Creator_API는_JWT가_없으면_UNAUTHORIZED를_반환한다() throws Exception {
         SecurityContextHolder.clearContext();
 
@@ -277,7 +294,8 @@ class EventManagementControllerTest {
         Event event = event(7L, "운영 팬미팅");
         ReflectionTestUtils.setField(event, "status", kr.co.cking.event.domain.EventStatus.OPEN);
         given(eventReviewService.findManagedEvents(org.mockito.ArgumentMatchers.eq(1L),
-                org.mockito.ArgumentMatchers.eq(kr.co.cking.event.domain.EventStatus.OPEN), any()))
+                org.mockito.ArgumentMatchers.eq(kr.co.cking.event.domain.EventStatus.OPEN),
+                org.mockito.ArgumentMatchers.eq(kr.co.cking.event.domain.EventArchiveStatus.ACTIVE), any()))
                 .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(
                         new EventReviewService.ManagedEvent(event, "크리에이터"))));
 
@@ -293,6 +311,66 @@ class EventManagementControllerTest {
                 .andExpect(jsonPath("$.data.items[0].winnerCount").value(1))
                 .andExpect(jsonPath("$.data.items[0].drawMethod").value("WEIGHTED"))
                 .andExpect(jsonPath("$.data.items[0].status").value("OPEN"));
+    }
+
+    /** 관리자 운영 상세 API가 Event 기본 정보와 선택적 운영 요약을 하나의 응답으로 반환한다. */
+    @Test
+    void operationReturnsEventAndOptionalOperationSummaries() throws Exception {
+        AdminEventOperationResult.EventSummary event = new AdminEventOperationResult.EventSummary(
+                7L, 3L, "크리에이터", "운영 팬미팅", "이벤트 설명",
+                Instant.parse("2026-10-20T01:00:00Z"), Instant.parse("2026-10-21T01:00:00Z"),
+                2, DrawMethod.WEIGHTED, "PRIZE_WEIGHTED_V1",
+                kr.co.cking.event.domain.EventStatus.CLOSED, Instant.parse("2026-10-21T01:00:00Z"), null,
+                null, null, Instant.parse("2026-10-10T01:00:00Z"), java.util.List.of());
+        AdminEventOperationResult.SnapshotSummary snapshot = new AdminEventOperationResult.SnapshotSummary(
+                31L, kr.co.cking.snapshot.domain.SnapshotVerificationStatus.VERIFIED, 10, 55L, 2,
+                Instant.parse("2026-10-21T01:01:00Z"));
+        given(adminEventOperationQueryService.getOperation(1L, 7L))
+                .willReturn(new AdminEventOperationResult(event, snapshot, null));
+
+        mockMvc.perform(get("/api/admin/events/{eventId}/operation", 7L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.event.eventId").value(7))
+                .andExpect(jsonPath("$.data.event.creatorName").value("크리에이터"))
+                .andExpect(jsonPath("$.data.event.description").value("이벤트 설명"))
+                .andExpect(jsonPath("$.data.snapshot.snapshotId").value(31))
+                .andExpect(jsonPath("$.data.initialDrawing").doesNotExist());
+    }
+
+    @Test
+    void operationReturnsNotFoundForDeletedEvent() throws Exception {
+        willThrow(new BusinessException(kr.co.cking.common.exception.CommonErrorCode.RESOURCE_NOT_FOUND))
+                .given(adminEventOperationQueryService).getOperation(1L, 7L);
+
+        mockMvc.perform(get("/api/admin/events/{eventId}/operation", 7L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    /** 관리자 보관·복원 API가 PUBLISHED 상태와 보관 메타데이터를 반환하는지 검증한다. */
+    @Test
+    void archiveAndUnarchiveReturnArchiveResultEnvelope() throws Exception {
+        Event archived = event(7L, "정리할 테스트 이벤트");
+        ReflectionTestUtils.setField(archived, "status", kr.co.cking.event.domain.EventStatus.PUBLISHED);
+        ReflectionTestUtils.setField(archived, "archivedAt", java.time.Instant.parse("2026-10-15T01:00:00Z"));
+        ReflectionTestUtils.setField(archived, "archivedBy", 1L);
+        given(eventReviewService.archive(1L, 7L)).willReturn(archived);
+
+        mockMvc.perform(patch("/api/admin/events/{eventId}/archive", 7L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventId").value(7))
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.archivedBy").value(1));
+
+        ReflectionTestUtils.setField(archived, "archivedAt", null);
+        ReflectionTestUtils.setField(archived, "archivedBy", null);
+        given(eventReviewService.unarchive(1L, 7L)).willReturn(archived);
+
+        mockMvc.perform(patch("/api/admin/events/{eventId}/unarchive", 7L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.archivedAt").doesNotExist())
+                .andExpect(jsonPath("$.data.archivedBy").doesNotExist());
     }
 
     /** 관리자 승인 API가 예약 상태를 공통 응답 봉투로 반환하는지 검증한다. */

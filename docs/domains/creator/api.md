@@ -51,7 +51,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 ## GET /api/admin/creator-applications
 
-Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 `page`, `size`다. 기본 정렬은 `requestedAt ASC, applicationId ASC`다.
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 선택 `status`(`PENDING`, `APPROVED`, `REJECTED`), `page`, `size`다. `status`를 생략하면 모든 상태를, 전달하면 해당 상태만 DB에서 페이지로 조회한다. 기본 정렬은 `requestedAt ASC, applicationId ASC`다.
 
 ```json
 {
@@ -213,7 +213,8 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
     "profileImageUrl": "https://example.com/profile.png",
     "aggregateScore": 0.01626124,
     "interestCodes": ["FOOD"],
-    "seedCreatorIds": [2]
+    "seedCreatorIds": [2],
+    "followerCount": 1280
   }]
 }
 ```
@@ -227,6 +228,9 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 
 - `interestCodes`는 이 후보의 점수에 기여한 관심 분야(ASCII 사전순), `seedCreatorIds`는 기여한 팔로우 seed(숫자 오름차순)이며
   기여하지 않은 쪽은 빈 배열이다.
+- `followerCount`는 이 Creator를 팔로우한 회원 수(0 이상 정수)로 모든 `policyVersion`의 항목에 담긴다. 카드 표시용이며 `aggregateScore`·정렬·추천 선택에는 쓰이지 않는다.
+  `creator_follow`를 요청 시점에 세며, 개인화 경로는 `size` 적용 뒤 선택된 Creator 전체를 그룹 쿼리 한 번으로 센다(Creator마다 조회하지 않는다).
+  `POPULAR_FALLBACK_V1`에서는 정렬에 쓴 팔로워 수가 `aggregateScore`와 같은 값으로 들어간다.
 - `aggregateScore`는 확률이나 절대 관련도가 아니라 해당 `policyVersion` 안에서만 의미 있는 정렬 점수다. 서로 다른
   `policyVersion`의 점수는 비교할 수 없다. M2/M3/M4 raw score가 아니라 rank 기반 RRF 기여도로 만든다.
 - 이미 팔로우한 Creator와 호출자 본인의 Creator, Creator Space가 없는 Creator는 반환하지 않는다.
@@ -244,3 +248,7 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 JWT 회원의 실제 노출/클릭을 최대 50건씩 수집한다. 서버 수신 시각을 사용하고 전체 배치를 원자 처리한다.
 요청 소유권/반환 후보/기본 24시간 유효 기간을 검증하고 eventId와 요청/카드/타입 중복을 차단한다.
 정확한 필드, 응답, 오류 및 FE 지침은 [추천 행동 수집 API 정본](recommendation-events.md)을 따른다.
+
+## 콘텐츠 태그
+
+[AI 콘텐츠 태그 API·상태·배치 계약](content-tags.md)은 자동 분류/본인 확인/공개 조회와 내구성 소개 변경 작업을 정의한다.

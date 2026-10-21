@@ -18,6 +18,7 @@ import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.member.application.MemberProfileUpdateService;
 import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.member.domain.MemberRole;
+import kr.co.cking.member.domain.MemberErrorCode;
 import kr.co.cking.member.presentation.MemberController;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 
 @WebMvcTest(MemberController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -204,5 +206,32 @@ class MemberControllerTest {
 
         verify(memberProfileUpdateService).update(1L,
                 new MemberProfileUpdateService.UpdateFields("새닉네임", null, true));
+    }
+
+    @Test
+    void Creator의_개인_프로필_수정은_Space_편집으로_안내한다() throws Exception {
+        doThrow(new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE))
+                .when(memberProfileUpdateService)
+                .update(eq(1L), any());
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CREATOR_PROFILE_MANAGED_IN_SPACE"));
+    }
+
+    @Test
+    void Creator의_개인_프로필_사진_업로드는_Space_편집으로_안내한다() throws Exception {
+        doAnswer(invocation -> ((Supplier<?>) invocation.getArgument(0)).get())
+                .when(imageProcessingLimiter).admit(any());
+        doThrow(new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE))
+                .when(memberProfileImageUploadService)
+                .upload(eq(1L), any());
+
+        mockMvc.perform(multipart("/api/me/profile-images")
+                        .file(new MockMultipartFile("image", "profile.png", "image/png", new byte[] {1, 2})))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CREATOR_PROFILE_MANAGED_IN_SPACE"));
     }
 }

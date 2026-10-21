@@ -37,15 +37,45 @@ public class CreatorPublicProfileQueryService {
         if (creatorIds.isEmpty()) {
             return Map.of();
         }
-        Map<Long, CreatorSpace> spaces = creatorSpaceRepository.findByCreatorIdIn(creatorIds).stream()
+        return toProfilesByCreatorId(creatorRepository.findByCreatorIdIn(creatorIds));
+    }
+
+    /**
+     * Member ID별 Creator 공개 프로필을 돌려준다. Creator가 아닌 Member는 Map에 없다.
+     * 댓글처럼 작성자가 Creator인지에 따라 공개 이름·사진을 고르는 읽기 경계에서 사용한다.
+     */
+    public Map<Long, CreatorPublicProfile> findByMemberIds(Collection<Long> memberIds) {
+        if (memberIds.isEmpty()) {
+            return Map.of();
+        }
+        return toProfilesByMemberId(creatorRepository.findByMemberIdIn(memberIds));
+    }
+
+    private Map<Long, CreatorPublicProfile> toProfilesByCreatorId(Collection<Creator> creators) {
+        Map<Long, CreatorSpace> spaces = spacesByCreatorId(creators);
+        return creators.stream().collect(Collectors.toMap(Creator::getCreatorId,
+                creator -> profileOf(creator, spaces.get(creator.getCreatorId()))));
+    }
+
+    private Map<Long, CreatorPublicProfile> toProfilesByMemberId(Collection<Creator> creators) {
+        Map<Long, CreatorSpace> spaces = spacesByCreatorId(creators);
+        return creators.stream().collect(Collectors.toMap(Creator::getMemberId,
+                creator -> profileOf(creator, spaces.get(creator.getCreatorId()))));
+    }
+
+    private Map<Long, CreatorSpace> spacesByCreatorId(Collection<Creator> creators) {
+        if (creators.isEmpty()) {
+            return Map.of();
+        }
+        return creatorSpaceRepository.findByCreatorIdIn(creators.stream().map(Creator::getCreatorId).toList())
+                .stream()
                 .collect(Collectors.toMap(CreatorSpace::getCreatorId, Function.identity()));
-        return creatorRepository.findByCreatorIdIn(creatorIds).stream()
-                .collect(Collectors.toMap(Creator::getCreatorId, creator -> {
-                    CreatorSpace space = spaces.get(creator.getCreatorId());
-                    return new CreatorPublicProfile(
-                            creator.getCreatorId(),
-                            creator.publicDisplayName(),
-                            space == null ? null : space.getProfileImageUrl());
-                }));
+    }
+
+    private CreatorPublicProfile profileOf(Creator creator, CreatorSpace space) {
+        return new CreatorPublicProfile(
+                creator.getCreatorId(),
+                creator.publicDisplayName(),
+                space == null ? null : space.getProfileImageUrl());
     }
 }

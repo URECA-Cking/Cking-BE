@@ -93,7 +93,7 @@ class CreatorEventConcurrencyIntegrationTest {
         Member admin = saveMember("동시 심사 관리자", MemberRole.ADMIN);
         Event event = service.create(new CreateEventCommand(creator.getMemberId(),
                 "550e8400-e29b-41d4-a716-446655440014", "심사 경합", null,
-                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)), Instant.now().plus(java.time.Duration.ofDays(4)),
                 1, DrawMethod.WEIGHTED));
         service.requestApproval(creator.getMemberId(), event.getEventId());
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -119,7 +119,7 @@ class CreatorEventConcurrencyIntegrationTest {
         }
     }
 
-    /** 병렬 Scheduler 호출에서도 Event 행 잠금으로 OPEN 전이는 한 번만 성공한다. */
+    /** 병렬 Scheduler 호출에서도 Event 행 잠금으로 OPEN 전이는 한 번만 일어나고, 늦은 호출은 예외 없이 끝난다. */
     @Test
     void concurrentOpenTransitionsScheduledEventExactlyOnce() throws Exception {
         // startAt을 미래로 둬 Scheduler tick이 먼저 OPEN으로 바꾸지 못하게 한다(open()은 시간을 보지 않는다).
@@ -146,7 +146,7 @@ class CreatorEventConcurrencyIntegrationTest {
 
             java.util.List<String> results = java.util.List.of(first.get(), second.get());
 
-            assertThat(results).containsExactlyInAnyOrder("OPEN", "INVALID_STATE");
+            assertThat(results).containsExactly("OPEN", "OPEN");
             assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getStatus())
                     .isEqualTo(EventStatus.OPEN);
         } finally {

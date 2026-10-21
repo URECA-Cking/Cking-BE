@@ -2,6 +2,8 @@ package kr.co.cking.stream.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,11 +15,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.PendingMessages;
+import org.springframework.data.redis.connection.stream.StreamInfo.XInfoConsumer;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import kr.co.cking.event.application.config.EntryRedisKeys;
+import kr.co.cking.event.application.dto.enums.EntrySpendResultCode;
+import kr.co.cking.event.application.service.EntrySpendService;
 import kr.co.cking.event.domain.EventEntry;
 import kr.co.cking.event.repository.EventEntryRepository;
+import kr.co.cking.stream.application.config.StreamConsumerNames;
+import kr.co.cking.ticket.domain.CouponType;
 
 /**
  * 완료조건(이슈 #62): cg:ticket-history 그룹으로 stream:ticket-deducted를 실제로
@@ -44,6 +52,12 @@ class SpendStreamConsumerIntegrationTest {
 
     @Autowired
     private EventEntryRepository eventEntryRepository;
+
+    @Autowired
+    private EntrySpendService entrySpendService;
+
+    @Autowired
+    private StreamConsumerNames consumerNames;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -83,6 +97,8 @@ class SpendStreamConsumerIntegrationTest {
     }
 
     private void cleanUp() {
+        redisTemplate.delete(List.of(EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID), EntryRedisKeys.status(eventId),
+                EntryRedisKeys.endAt(eventId), EntryRedisKeys.entryTotal(eventId), EntryRedisKeys.entrants(eventId)));
         jdbcTemplate.update("DELETE FROM ticket_ledger WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM event_entry WHERE member_id = ?", MEMBER_ID);
         jdbcTemplate.update("DELETE FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?", MEMBER_ID, CREATOR_ID);
@@ -131,6 +147,83 @@ class SpendStreamConsumerIntegrationTest {
         Integer entryCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM event_entry WHERE event_id = ?", Integer.class, eventId);
         assertThat(entryCount).isZero();
+    }
+
+    // #673: idem·guard가 만료된 뒤 같은 requestId로 재시도하면 응모 Lua가 새 메시지로 다시 차감한다.
+    @Test
+    void idem과_guard가_만료된_뒤_같은_requestId로_다시_응모하면_Redis_잔액과_실시간_집계를_되돌린다() {
+        String requestId = UUID.randomUUID().toString();
+        String balanceKey = EntryRedisKeys.balance(CREATOR_ID, MEMBER_ID);
+        redisTemplate.opsForValue().set(EntryRedisKeys.status(eventId), "OPEN");
+        redisTemplate.opsForValue().set(EntryRedisKeys.endAt(eventId),
+                String.valueOf(System.currentTimeMillis() + 3_600_000L));
+        redisTemplate.opsForValue().set(balanceKey, "100");
+        redisTemplate.opsForValue().set(EntryRedisKeys.entryTotal(eventId), "0");
+
+        assertThat(spend(requestId)).isEqualTo(EntrySpendResultCode.SUCCESS);
+        awaitEntry(requestId);
+        redisTemplate.delete(List.of(EntryRedisKeys.idem(requestId), EntryRedisKeys.spendGuard(requestId)));
+        assertThat(spend(requestId)).isEqualTo(EntrySpendResultCode.SUCCESS);
+        awaitValue(balanceKey, "95");
+        awaitPelEmpty();
+
+        Integer entryCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM event_entry WHERE request_id = ?", Integer.class, requestId);
+        Long dbBalance = jdbcTemplate.queryForObject(
+                "SELECT balance FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?",
+                Long.class, MEMBER_ID, CREATOR_ID);
+        assertThat(entryCount).isEqualTo(1);
+        assertThat(dbBalance).isEqualTo(95L);
+        assertThat(redisTemplate.opsForValue().get(EntryRedisKeys.entryTotal(eventId))).isEqualTo("5");
+        assertThat(redisTemplate.opsForHash().get(EntryRedisKeys.entrants(eventId), String.valueOf(MEMBER_ID)))
+                .isEqualTo("5");
+        redisTemplate.delete(List.of(EntryRedisKeys.idem(requestId), EntryRedisKeys.spendGuard(requestId)));
+    }
+
+    private EntrySpendResultCode spend(String requestId) {
+        return entrySpendService.spend(eventId, MEMBER_ID, CREATOR_ID, requestId, 5, CouponType.CREATOR).code();
+    }
+
+    // #672: 서버당 소비자 수(cking.stream.spend.consumer-count, 기본 4)만큼 같은 그룹에서 읽는다.
+    @Test
+    void 서버당_소비자_여러_개가_같은_그룹에서_나눠_읽어도_모두_한_번씩_반영된다() {
+        List<String> expectedConsumers = consumerNames.of("spend", 4);
+        List<String> requestIds = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            String requestId = UUID.randomUUID().toString();
+            requestIds.add(requestId);
+            redisTemplate.opsForStream().add(STREAM_KEY, Map.of(
+                    "eventId", String.valueOf(eventId),
+                    "userId", String.valueOf(MEMBER_ID),
+                    "creatorId", String.valueOf(CREATOR_ID),
+                    "requestId", requestId,
+                    "ticketCount", "1"
+            ));
+        }
+
+        requestIds.forEach(this::awaitEntry);
+        awaitPelEmpty();
+
+        Long dbBalance = jdbcTemplate.queryForObject(
+                "SELECT balance FROM user_ticket_balance WHERE member_id = ? AND creator_id = ?",
+                Long.class, MEMBER_ID, CREATOR_ID);
+        assertThat(dbBalance).isEqualTo(60L);
+        assertThat(redisTemplate.opsForStream().consumers(STREAM_KEY, CONSUMER_GROUP).stream()
+                .map(XInfoConsumer::consumerName).toList()).containsAll(expectedConsumers);
+    }
+
+    private void awaitValue(String key, String expected) {
+        long deadline = System.currentTimeMillis() + AWAIT_TIMEOUT_MILLIS;
+
+        while (System.currentTimeMillis() < deadline) {
+            if (expected.equals(redisTemplate.opsForValue().get(key))) {
+                return;
+            }
+
+            sleep();
+        }
+
+        throw new AssertionError("Redis 값이 제한 시간 내에 바뀌지 않았습니다. key=" + key + ", expected=" + expected);
     }
 
     private EventEntry awaitEntry(String requestId) {

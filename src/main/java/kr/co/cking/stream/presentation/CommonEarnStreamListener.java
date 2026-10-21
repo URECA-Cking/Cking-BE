@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 import kr.co.cking.stream.scheduler.CommonEarnStreamPelRecoveryScheduler;
-import kr.co.cking.ticket.application.CommonMissionEarnLedgerService;
-import kr.co.cking.ticket.application.dto.CommonEarnCommand;
+import kr.co.cking.ticket.application.CommonEarnEventDispatcher;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -21,23 +20,25 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class CommonEarnStreamListener implements StreamListener<String, MapRecord<String, String, String>> {
 
-    private final CommonMissionEarnLedgerService commonMissionEarnLedgerService;
+    private final CommonEarnEventDispatcher commonEarnEventDispatcher;
     private final StringRedisTemplate redisTemplate;
     private final String streamKey;
     private final String consumerGroup;
 
+    /** 공용 EARN 분기와 Stream 소비·ACK 설정을 연결한다. */
     public CommonEarnStreamListener(
-            CommonMissionEarnLedgerService commonMissionEarnLedgerService,
+            CommonEarnEventDispatcher commonEarnEventDispatcher,
             StringRedisTemplate redisTemplate,
             @Value("${cking.ticket.common-earn-stream-key:stream:common-ticket-earned}") String streamKey,
             @Value("${cking.ticket.common-earn-consumer-group:cg:common-ticket-earn}") String consumerGroup
     ) {
-        this.commonMissionEarnLedgerService = commonMissionEarnLedgerService;
+        this.commonEarnEventDispatcher = commonEarnEventDispatcher;
         this.redisTemplate = redisTemplate;
         this.streamKey = streamKey;
         this.consumerGroup = consumerGroup;
     }
 
+    /** 수신한 공용 EARN 메시지를 DB 반영 후 ACK하는 처리 경로로 전달한다. */
     @Override
     public void onMessage(MapRecord<String, String, String> message) {
         process(message);
@@ -53,8 +54,7 @@ public class CommonEarnStreamListener implements StreamListener<String, MapRecor
         Map<String, String> fields = message.getValue();
 
         try {
-            CommonEarnCommand command = CommonEarnCommand.fromStreamFields(fields);
-            commonMissionEarnLedgerService.apply(command);
+            commonEarnEventDispatcher.apply(fields);
             redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, message.getId());
             return true;
         } catch (Exception e) {

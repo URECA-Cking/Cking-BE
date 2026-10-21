@@ -14,7 +14,9 @@ public enum SanctionErrorCode implements ErrorCode {
     /** 크리에이터가 관리자를 차단하려는 요청. */
     CANNOT_BLOCK_ADMIN(HttpStatus.BAD_REQUEST, "관리자는 차단할 수 없습니다."),
     /** 스페이스 주인(Creator) 본인을 자기 스페이스에서 차단하려는 요청. 관리자가 지정한 경우에도 거부한다. */
-    CANNOT_BLOCK_SPACE_OWNER(HttpStatus.BAD_REQUEST, "스페이스 주인은 자기 스페이스에서 차단할 수 없습니다.");
+    CANNOT_BLOCK_SPACE_OWNER(HttpStatus.BAD_REQUEST, "스페이스 주인은 자기 스페이스에서 차단할 수 없습니다."),
+    /** 관리자가 크리에이터에게 모든 스페이스 댓글 작성 제한을 걸려는 요청. 자기 스페이스에서도 쓸 수 없게 되므로 거부한다. */
+    CANNOT_SANCTION_CREATOR(HttpStatus.BAD_REQUEST, "크리에이터에게는 모든 스페이스 댓글 작성 제한을 걸 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

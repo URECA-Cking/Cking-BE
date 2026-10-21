@@ -51,15 +51,17 @@ revision의 검토 상태와 Quiz의 공개 상태는 별개다.
 | `NOT_PUBLISHED` | 없음. 한 번도 게시하지 않음 |
 | `PUBLISHED` | 공개 중인 revision |
 | `UNPUBLISHED` | 없음. 게시 취소 |
+| `CLOSED` | 영구 마감. 게시 중 마감했다면 마지막 게시 revision을 보존하고, 게시 중지 후 마감했다면 없음 |
 
-`ck_quiz_publication`이 "PUBLISHED ⇔ 게시 revision 있음"을 강제하고, `fk_quiz_published_revision`이 게시 revision이 같은 Quiz의 revision인지 확인한다. 게시 revision은 최신 revision과 따로 관리하므로, 새 revision이 승인·게시될 때까지 기존 게시 revision이 공개된다.
+V83의 `ck_quiz_publication`은 PUBLISHED의 게시 revision 존재와 NOT_PUBLISHED/UNPUBLISHED의 null을 강제하고 CLOSED는 기존 포인터를 보존한다. `isPublished()`는 상태만으로 공개 여부를 판별한다. 또한, `fk_quiz_published_revision`이 게시 revision이 같은 Quiz의 revision인지 확인한다. 게시 revision은 최신 revision과 따로 관리하므로, 새 revision이 승인·게시될 때까지 기존 게시 revision이 공개된다.
 
 | 명령 | 허용 조건 | 같은 결과가 이미 있을 때 |
 | --- | --- | --- |
 | 승인 | 결정 없음, 저장 내용이 revision 해시와 같음, 승인 정책 통과 | 이미 승인: 기존 결정 반환. 이미 거절: `QUIZ_REVISION_ALREADY_DECIDED` |
 | 거절 | 결정 없음 | 이미 거절: 기존 결정 반환. 이미 승인: `QUIZ_REVISION_ALREADY_DECIDED` |
 | 게시 | 게시한 적 있으면 고정 revision만(아니면 `QUIZ_CONTENT_LOCKED`), 최신 revision, 승인됨, 저장 내용이 revision 해시와 같음, 승인 정책의 재검증 통과 | 같은 revision 게시 중: 현재 상태 반환 |
-| 게시 취소 | 언제나(Judge 상태와 무관) | 게시 중이 아님: 현재 상태 반환 |
+| 게시 취소 | 마감되지 않음(Judge 상태와 무관) | 미게시·게시 중지: 현재 상태 반환 |
+| 수동 마감 | PUBLISHED 또는 UNPUBLISHED | CLOSED: 최초 마감 시각과 현재 상태 반환 |
 
 게시 취소 후에는 처음 게시해 고정한 revision을, 승인 근거가 여전히 유효하면 재승인 없이 다시 게시할 수 있다. 다른 revision은 게시할 수 없다. 결정은 되돌리지 않는다.
 
@@ -234,3 +236,11 @@ event=ai_provider_call provider=openai operation=quiz_judge model=gpt-6.1-sol st
 [Fan 응시 API](attempt-api.md)는 Member별 Quiz 평생 1회 제출을 저장하고 서버에서 채점한다.
 동일 정규화 요청은 게시 취소·revision 교체 후에도 같은 결과를 반환한다. 전체 풀이·revision hash·snapshot hash를 보존하고 본인 조회에서 검증한다.
 양수 점수에는 고정 rewardRequestId와 NOT_INTEGRATED, 0점에는 UUID 없는 NOT_ELIGIBLE을 기록한다. Ticket 지급·Outbox는 구현하지 않는다.
+
+## Quiz 수동 마감 (이슈 #651)
+
+`POST /api/creator/quizzes/{quizId}/close`는 소유 Creator만 호출한다. CLOSED는 최종 상태이며 게시·게시 취소·승인·거절·신규 편집·신규 Judge 평가를 거절한다. NOT_PUBLISHED는 마감하지 않는다. 기존 구성/Judge UUID replay와 Creator 조회는 유지한다.
+
+V83은 `closed_at DATETIME(6)`과 CLOSED 상태를 추가한다. `closedAt`은 CLOSED에서만 존재하고 CLOSED는 contentLocked를 유지한다. 기존 데이터를 갱신하지 않으며 최초 게시 고정 revision/hash와 마지막 게시 포인터를 지우지 않는다. 목록·상세·게시 상태 DTO에 `closedAt`을 추가하므로 FE는 CLOSED를 읽기 전용으로 표시하고 재게시 UI를 숨겨야 한다(FE 구현은 별도).
+
+마감과 신규 응시는 같은 Quiz 행의 PESSIMISTIC_WRITE 잠금을 사용한다. 기존 UUID replay를 먼저 확인하므로 마감 후에도 기존 응시 결과를 반환한다. 미제출 사용자는 문항을 미리 조회했어도 마감 후 제출할 수 없다. 기존 snapshot·PENDING 보상·Scheduler 재전달은 유지하며 Ticket 처리 로직은 변경하지 않는다.

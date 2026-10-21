@@ -146,6 +146,7 @@ public class QuizJudgeEvaluationStore {
             }
             return new Admission(existing.get(), false);
         }
+        quiz.requireNotClosed();
         QuizRevision revision = revisionRepository.findById(revisionId)
                 .filter(found -> found.getQuizId().equals(quizId))
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_REVISION_NOT_FOUND));

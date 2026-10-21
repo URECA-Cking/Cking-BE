@@ -99,8 +99,8 @@ class EventLifecycleTest {
     void commandServiceRequestsApprovalForDraftEvent() {
         Event event = new Event(
                 1L, "팬미팅", "설명",
-                Instant.now().plus(java.time.Duration.ofDays(1)),
-                Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)),
+                Instant.now().plus(java.time.Duration.ofDays(4)),
                 3, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000"
         );
         EventRepository eventRepository = mock(EventRepository.class);
@@ -183,12 +183,9 @@ class EventLifecycleTest {
         EventCommandService eventCommandService = newEventCommandService(eventRepository, eventPublisher);
 
         eventCommandService.open(1L);
+        eventCommandService.open(1L);
 
         assertThat(event.getStatus()).isEqualTo(EventStatus.OPEN);
-        assertThatThrownBy(() -> eventCommandService.open(1L))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(EventErrorCode.INVALID_STATE);
         verify(eventPublisher).publishEvent(new EventOpenedEvent(1L));
     }
 
@@ -278,8 +275,8 @@ class EventLifecycleTest {
     void commandServiceExecutesSupportedLifecycleTransitions() {
         Event scheduledPathEvent = new Event(
                 1L, "전체 전이", "설명",
-                Instant.now().plus(java.time.Duration.ofDays(1)),
-                Instant.now().plus(java.time.Duration.ofDays(2)),
+                Instant.now().plus(java.time.Duration.ofDays(3)),
+                Instant.now().plus(java.time.Duration.ofDays(4)),
                 3, DrawMethod.WEIGHTED, 1L, "550e8400-e29b-41d4-a716-446655440000"
         );
         Event drawingPathEvent = closedEvent();
@@ -307,7 +304,8 @@ class EventLifecycleTest {
         return new EventCommandService(
                 eventRepository,
                 eventPublisher,
-                java.time.Clock.systemUTC()
+                java.time.Clock.systemUTC(),
+                java.time.Duration.ofHours(48)
         );
     }
 

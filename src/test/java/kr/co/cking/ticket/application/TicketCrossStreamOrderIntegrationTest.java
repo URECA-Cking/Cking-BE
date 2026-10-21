@@ -104,13 +104,13 @@ class TicketCrossStreamOrderIntegrationTest {
     void SPEND가_첫_EARN보다_먼저_소비돼_Balance_행이_없어도_EARN_뒤_재시도로_반영된다() {
         SpendCommand spend = spend(UUID.randomUUID().toString(), 3L);
 
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(spend))
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(spend, null))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(count("event_entry")).isZero();
         assertThat(count("ticket_ledger")).isZero();
 
         ticketEarnLedgerService.apply(earn("2026-09-16", 5L));
-        ticketSpendLedgerService.apply(spend); // PEL 재전달
+        ticketSpendLedgerService.apply(spend, null); // PEL 재전달
 
         assertThat(dbBalance()).isEqualTo(2L);
         assertThat(count("event_entry")).isEqualTo(1);
@@ -122,14 +122,14 @@ class TicketCrossStreamOrderIntegrationTest {
         ticketEarnLedgerService.apply(earn("2026-09-15", 1L));
         SpendCommand spend = spend(UUID.randomUUID().toString(), 3L);
 
-        assertThatThrownBy(() -> ticketSpendLedgerService.apply(spend))
+        assertThatThrownBy(() -> ticketSpendLedgerService.apply(spend, null))
                 .isInstanceOf(RuntimeException.class); // balance >= 0 CHECK 위반
         assertThat(dbBalance()).isEqualTo(1L);
         assertThat(count("event_entry")).isZero();
         assertThat(count("ticket_ledger")).isEqualTo(1); // 첫 EARN만
 
         ticketEarnLedgerService.apply(earn("2026-09-16", 5L));
-        ticketSpendLedgerService.apply(spend); // PEL 재전달
+        ticketSpendLedgerService.apply(spend, null); // PEL 재전달
 
         assertThat(dbBalance()).isEqualTo(3L);
         assertThat(count("event_entry")).isEqualTo(1);

@@ -19,6 +19,10 @@ Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한�
 멱등성·차감·Stream 발행은 `entry-spend.lua`가 원자적으로 처리한다. 자세한 Redis 계약은
 [응모 Lua API](lua-api.md#coupontype-이슈-243)를 따른다.
 
+팬은 Member 닉네임을 설정해야 하며, 승인된 Creator는 Member 닉네임 대신 활동명을 설정해야 응모할 수 있다. 따라서
+닉네임 미설정 팬은 `PROFILE_SETUP_REQUIRED`, 활동명 미설정 Creator는 `ACTIVITY_NAME_SETUP_REQUIRED`(각각 409)를
+반환한다. Creator가 팬으로 응모해도 당첨 공개 목록에는 OAuth 원본 이름이 아닌 Creator 활동명이 표시된다.
+
 같은 `requestId`와 동일한 요청은 기존 성공 결과를 재현한다. 같은 `requestId`에 다른 요청 본문을
 보내면 `IDEMPOTENCY_CONFLICT`다. 성공 응답 `data`는 `requestId`, `eventId`, `accepted: true`를
 포함한다. Lua 결과의 실패 코드는 HTTP 상태와 함께 공통 응답 봉투로 반환한다.

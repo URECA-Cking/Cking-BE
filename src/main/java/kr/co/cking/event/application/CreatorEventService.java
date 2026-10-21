@@ -40,7 +40,7 @@ public class CreatorEventService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Event create(CreateEventCommand command) {
         validateCreate(command);
-        Creator creator = requireCreator(command.userId());
+        Creator creator = requireConfiguredCreator(command.userId());
         return eventRepository.findByRequestId(command.requestId())
                 .map(existing -> returnExistingOrThrow(existing, command))
                 .orElseGet(() -> createOrRecover(command, creator));
@@ -81,14 +81,16 @@ public class CreatorEventService {
 
     /** Creator 소유 Event의 새 승인 요청 차수를 만들고 승인 대기 상태로 전이한다. */
     public EventApprovalRequest requestApproval(Long userId, Long eventId) {
-        Creator creator = requireCreator(userId);
-        return eventCommandService.requestApproval(eventId, event -> {
-            requireOwnership(creator, event);
-            int nextRound = approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(eventId)
-                    .map(request -> request.getApprovalRound() + 1)
-                    .orElse(1);
-            return approvalRequestRepository.save(new EventApprovalRequest(event.getEventId(), nextRound, userId));
-        });
+        Creator creator = requireConfiguredCreator(userId);
+        return eventCommandService.requestApproval(
+                eventId,
+                event -> requireOwnership(creator, event),
+                event -> {
+                    int nextRound = approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(eventId)
+                            .map(request -> request.getApprovalRound() + 1)
+                            .orElse(1);
+                    return approvalRequestRepository.save(new EventApprovalRequest(event.getEventId(), nextRound, userId));
+                });
     }
 
     /** Creator 소유의 초안 Event를 논리 삭제한다. */
@@ -100,7 +102,7 @@ public class CreatorEventService {
     /** Creator 소유 Event를 수정하고 거절 상태면 공통 상태 명령으로 초안에 복귀시킨다. */
     public Event update(UpdateEventCommand command) {
         validateUpdate(command);
-        Creator creator = requireCreator(command.userId());
+        Creator creator = requireConfiguredCreator(command.userId());
         return eventCommandService.update(
                 command.eventId(),
                 event -> requireOwnership(creator, event),
@@ -120,8 +122,16 @@ public class CreatorEventService {
     private Creator requireCreator(Long userId) {
         memberRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return creatorRepository.findByMemberId(userId)
+        Creator creator = creatorRepository.findByMemberId(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        return creator;
+    }
+
+    /** 새 공개 Event를 만들거나 변경하는 Creator는 공개 활동명을 먼저 확정해야 한다. */
+    private Creator requireConfiguredCreator(Long userId) {
+        Creator creator = requireCreator(userId);
+        creator.requireActivityNameConfigured();
+        return creator;
     }
 
     /** 잠금 상태의 Event가 요청 Creator 소유이며 삭제되지 않았는지 검증한다. */

@@ -7,6 +7,8 @@
 - 작성·수정·삭제·신고는 Bearer Access JWT가 필수다(없으면 `UNAUTHORIZED` 401). 호출자는 `@CurrentMemberId`로 식별한다.
 - 목록 조회는 인증이 필요 없다. 로그인했다면 Access JWT를 함께 보내야 팔로워 공개 게시글의 댓글을 볼 수 있다.
 - 경로의 `creatorId`·`postId`·`commentId`가 서로 맞지 않으면(다른 Creator의 게시글, 다른 게시글의 댓글) `RESOURCE_NOT_FOUND`(404)다.
+- 팬은 Member 닉네임, Creator는 활동명을 설정해야 댓글을 작성·수정할 수 있다. 활동명 미설정 Creator는
+  `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 받는다.
 
 ## 댓글 응답
 
@@ -14,8 +16,8 @@
 | --- | --- |
 | `commentId`, `postId` | 댓글·게시글 ID |
 | `authorMemberId` | 작성자 회원 ID |
-| `authorName` | 작성자 공개 이름(닉네임). Creator 본인의 댓글은 활동명이다. **원문이 가려진 댓글(`filtered`)이면 `null`** |
-| `authorProfileImageUrl` | 작성자 프로필 사진의 공개 URL(만료되지 않는 CDN 주소). Creator 본인의 댓글은 **Creator Space 프로필 사진**이다. 사진을 설정하지 않았거나 Space가 없으면 `null`이고, **원문이 가려진 댓글(`filtered`)이면 `null`** |
+| `authorName` | 작성자 공개 이름. 팬은 닉네임, 승인된 Creator는 게시글 소유 여부와 관계없이 활동명이다. **원문이 가려진 댓글(`filtered`)이면 `null`** |
+| `authorProfileImageUrl` | 작성자 프로필 사진의 공개 URL(만료되지 않는 CDN 주소). 팬은 Member 사진, 승인된 Creator는 게시글 소유 여부와 관계없이 **Creator Space 프로필 사진**이다. 사진을 설정하지 않았거나 Space가 없으면 `null`이고, **원문이 가려진 댓글(`filtered`)이면 `null`** |
 | `writtenByCreator` | 게시글을 작성한 Creator 본인이 단 댓글이면 true |
 | `content` | 본문 (1~500자). **필터링된 댓글(`filtered`)이면 `null`** |
 | `filtered` | 필터가 차단(BLOCK)했거나 관리자가 숨겨 원문을 가린 댓글이면 true. **작성자 본인에게는 항상 false**다 |
@@ -101,8 +103,9 @@
 | `VALIDATION_FAILED` | 400 | 본문이 비었거나 500자 초과 |
 | `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
 | `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로워도 작성 Creator 본인도 아님 (전체 공개 게시글 포함) |
-| `COMMENT_RESTRICTED` | 403 | 관리자의 댓글 숨김 경고 누적이나 수동 설정으로 댓글 작성이 제한됨. 메시지에 해제 시각(UTC)이 들어간다 ([Sanction](../sanction/README.md)) |
+| `COMMENT_RESTRICTED` | 403 | 관리자가 직접 건 플랫폼 제한(모든 스페이스)으로 댓글 작성이 제한됨. 메시지에 해제 시각(UTC)이 들어간다. 이슈 #643 이전의 숨김 경고 제한도 이 코드다 ([Sanction](../sanction/README.md)) |
 | `SPACE_COMMENT_BLOCKED` | 403 | 이 스페이스의 크리에이터가 작성자를 차단함. 메시지에 해제 시각(UTC)이 들어가며 다른 스페이스에서는 쓸 수 있다 |
+| `ACTIVITY_NAME_SETUP_REQUIRED` | 409 | 활동명을 아직 설정하지 않은 Creator |
 | `RESOURCE_NOT_FOUND` | 404 | Member·Creator·게시글 없음 |
 
 ## PATCH /api/creators/{creatorId}/posts/{postId}/comments/{commentId}
@@ -117,6 +120,7 @@
 | `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로우를 끊은 작성자 |
 | `COMMENT_RESTRICTED` | 403 | 댓글 작성이 제한된 작성자. 메시지에 해제 시각(UTC)이 들어간다. 삭제는 제한 중에도 할 수 있다 |
 | `SPACE_COMMENT_BLOCKED` | 403 | 이 스페이스의 크리에이터가 작성자를 차단함. 삭제는 차단 중에도 할 수 있다 |
+| `ACTIVITY_NAME_SETUP_REQUIRED` | 409 | 활동명을 아직 설정하지 않은 Creator |
 | `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음 |
 
 ## DELETE /api/creators/{creatorId}/posts/{postId}/comments/{commentId}
@@ -217,7 +221,7 @@
 - 숨김은 필터 판정과 별개로 저장하며(`admin_hidden_at`, `admin_hidden_by`) 되돌리지 않는다. 숨긴 댓글은 사용자 목록에서 가려지고 원문 보기도 허용하지 않는다([필터링](#필터링)).
 - `handledReportCount`는 이번 요청으로 처리한 접수 신고 수다. **이미 숨긴 댓글을 다시 숨기면 아무것도 바꾸지 않고 성공**하며(멱등) 0이다.
 - 신고는 있지만 접수 신고가 모두 이미 반려된 댓글(숨기지도 않음)은 서로 모순되는 조치라 `COMMENT_REPORT_ALREADY_HANDLED`(409)다. 반려 뒤 새 신고가 접수되면(숨기기 전까지는 새 신고를 받는다) 다시 숨길 수 있다.
-- **작성자에게 경고가 쌓인다**(이슈 #569). 처음 숨길 때 작성자에게 경고 1회가 기록되고, 최근 90일 안의 경고 횟수에 따라 댓글 작성이 1일·3일·7일 제한된다. 이미 숨긴 댓글을 다시 숨기면 경고를 새로 쌓지 않는다. 정책은 [Sanction](../sanction/README.md)을 따른다.
+- **작성자에게 경고가 쌓이고 그 스페이스의 작성이 제한된다**(이슈 #569, #643). 처음 숨길 때 작성자에게 경고 1회가 기록되고, 그 스페이스에서 최근 90일 안의 경고 횟수에 따라 **그 스페이스의** 댓글 작성이 1일·3일·7일 제한된다(`SPACE_COMMENT_BLOCKED`). 작성자가 관리자이거나 그 스페이스의 주인이면 경고도 제한도 만들지 않는다. 이미 숨긴 댓글을 다시 숨기면 경고를 새로 쌓지 않는다. 정책은 [Sanction](../sanction/README.md)을 따른다.
 - 잠금 순서는 작성자 행 → 게시글 공유 잠금 → 댓글 쓰기 잠금이고 숨김은 `READ_COMMITTED`로 실행해 잠금 이후 최신 경고를 센다. 같은 작성자의 서로 다른 댓글을 동시에 숨겨도 경고 횟수가 겹쳐 읽히지 않고, 같은 댓글에 동시에 들어오는 신고 접수와도 직렬화된다. 숨김이 끝난 뒤에는 새 신고를 받지 않으므로 숨긴 댓글에 접수 신고가 남지 않는다.
 
 | 오류 코드 | HTTP | 조건 |

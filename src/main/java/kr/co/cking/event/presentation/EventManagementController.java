@@ -3,15 +3,19 @@ package kr.co.cking.event.presentation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
+import kr.co.cking.event.application.AdminEventOperationQueryService;
+import kr.co.cking.event.application.AdminEventOperationResult;
 import kr.co.cking.event.application.dto.CreateEventCommand;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
+import kr.co.cking.event.domain.EventArchiveStatus;
 import kr.co.cking.event.presentation.dto.EventManagementRequest;
 import kr.co.cking.event.presentation.dto.EventManagementResponse;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +45,7 @@ public class EventManagementController {
 
     private final CreatorEventService creatorEventService;
     private final EventReviewService eventReviewService;
+    private final AdminEventOperationQueryService adminEventOperationQueryService;
 
     /** Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 반환한다. */
     @GetMapping("/api/creator/events")
@@ -66,16 +71,46 @@ public class EventManagementController {
         return ApiResponse.success(EventManagementResponse.PageResult.from(requests, items));
     }
 
-    /** 관리자가 삭제되지 않은 전체 Event를 상태별로 페이지 조회한다. */
+    /** 관리자가 삭제되지 않은 전체 Event를 상태·보관 여부별로 페이지 조회한다. */
     @GetMapping("/api/admin/events")
-    @Operation(summary = "관리자 Event 운영 목록", description = "ADMIN 권한의 인증된 관리자가 삭제되지 않은 Event를 상태별로 페이지 조회합니다.")
+    @Operation(summary = "관리자 Event 운영 목록", description = "ADMIN 권한의 인증된 관리자가 삭제되지 않은 Event를 상태·보관 여부별로 페이지 조회합니다. archiveStatus 기본값은 ACTIVE입니다.")
     public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.AdminItem>> findManagedEvents(
             @CurrentMemberId Long memberId, @RequestParam(required = false) EventStatus status,
+            @RequestParam(defaultValue = "ACTIVE") EventArchiveStatus archiveStatus,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        var events = eventReviewService.findManagedEvents(memberId, status, PageRequest.of(page, size));
+        var events = eventReviewService.findManagedEvents(memberId, status, archiveStatus, PageRequest.of(page, size));
         var items = events.stream().map(EventManagementResponse.AdminItem::from).toList();
         return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
+    }
+
+    /** 관리자의 Event 운영 상세 초기 화면에 필요한 기본·운영 요약 정보를 한 번에 반환한다. */
+    @GetMapping("/api/admin/events/{eventId}/operation")
+    @Operation(
+            summary = "관리자 Event 운영 상세 조회",
+            description = "ADMIN 권한의 인증된 관리자가 Event 기본 정보와 마감·Snapshot·INITIAL Drawing 요약을 한 번에 조회합니다. 후보·당첨자 전체 목록은 반환하지 않습니다."
+    )
+    public ApiResponse<AdminEventOperationResult> getOperation(
+            @PathVariable @Positive Long eventId,
+            @CurrentMemberId Long memberId
+    ) {
+        return ApiResponse.success(adminEventOperationQueryService.getOperation(memberId, eventId));
+    }
+
+    /** 결과 공개가 끝난 Event를 사용자 화면에서 숨기고 관리자 보관함으로 옮긴다. */
+    @PatchMapping("/api/admin/events/{eventId}/archive")
+    @Operation(summary = "Event 보관", description = "ADMIN 권한의 인증된 관리자가 PUBLISHED Event를 보관합니다. 보관된 Event는 사용자 조회·응모·당첨·알림에서 제외됩니다.")
+    public ApiResponse<EventManagementResponse.ArchiveResult> archive(
+            @PathVariable Long eventId, @CurrentMemberId Long memberId) {
+        return ApiResponse.success(EventManagementResponse.ArchiveResult.from(eventReviewService.archive(memberId, eventId)));
+    }
+
+    /** 보관 Event를 다시 사용자 화면에 공개한다. */
+    @PatchMapping("/api/admin/events/{eventId}/unarchive")
+    @Operation(summary = "Event 보관 해제", description = "ADMIN 권한의 인증된 관리자가 보관된 PUBLISHED Event를 복원합니다.")
+    public ApiResponse<EventManagementResponse.ArchiveResult> unarchive(
+            @PathVariable Long eventId, @CurrentMemberId Long memberId) {
+        return ApiResponse.success(EventManagementResponse.ArchiveResult.from(eventReviewService.unarchive(memberId, eventId)));
     }
 
     /** Creator 소유 Event의 내용을 수정한다. */
@@ -114,7 +149,7 @@ public class EventManagementController {
 
     /** Creator Event의 새 승인 요청을 생성한다. */
     @PostMapping("/api/creator/events/{eventId}/approval-request")
-    @Operation(summary = "Event 승인 요청", description = "인증된 Creator가 DRAFT Event의 승인 요청을 생성합니다.")
+    @Operation(summary = "Event 승인 요청", description = "인증된 Creator가 시작 시각 최소 48시간 전의 DRAFT Event에 승인 요청을 생성합니다.")
     public ApiResponse<EventManagementResponse.Result> requestApproval(
             @CurrentMemberId Long memberId, @PathVariable Long eventId) {
         creatorEventService.requestApproval(memberId, eventId);

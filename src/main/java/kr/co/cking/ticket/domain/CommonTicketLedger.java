@@ -37,6 +37,9 @@ public class CommonTicketLedger {
     @Column(name = "mission_completion_id")
     private Long missionCompletionId;
 
+    @Column(name = "once_earn_request_id")
+    private Long onceEarnRequestId;
+
     @Column(name = "delta_amount", nullable = false)
     private Long deltaAmount;
 
@@ -66,15 +69,17 @@ public class CommonTicketLedger {
         }
     }
 
+    /** 공용 EARN·SPEND·보정의 append-only 원장 원인을 조합한다. */
     @Builder
     private CommonTicketLedger(Long ledgerId, Long memberId, Long eventEntryId,
-                               Long missionCompletionId, Long deltaAmount, TicketLedgerType type,
+                               Long missionCompletionId, Long onceEarnRequestId, Long deltaAmount, TicketLedgerType type,
                                String reason, String requestId, Long balanceBefore, Long balanceAfter,
                                Instant createdAt) {
         this.ledgerId = ledgerId;
         this.memberId = memberId;
         this.eventEntryId = eventEntryId;
         this.missionCompletionId = missionCompletionId;
+        this.onceEarnRequestId = onceEarnRequestId;
         this.deltaAmount = deltaAmount;
         this.type = type;
         this.reason = reason;

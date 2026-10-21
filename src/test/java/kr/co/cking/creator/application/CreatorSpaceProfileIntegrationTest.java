@@ -2,6 +2,7 @@ package kr.co.cking.creator.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
@@ -70,6 +71,9 @@ class CreatorSpaceProfileIntegrationTest {
     private MemberRepository memberRepository;
 
     @Autowired
+    private ObjectStorage objectStorage;
+
+    @Autowired
     private CreatorRepository creatorRepository;
 
     @Autowired
@@ -96,6 +100,10 @@ class CreatorSpaceProfileIntegrationTest {
                     memberId
             );
             jdbcTemplate.update(
+                    "DELETE FROM creator_space_profile_image WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
+                    memberId
+            );
+            jdbcTemplate.update(
                     "DELETE FROM mission WHERE creator_id IN (SELECT creator_id FROM creator WHERE member_id = ?)",
                     memberId
             );
@@ -105,6 +113,95 @@ class CreatorSpaceProfileIntegrationTest {
         applicationIds.forEach(applicationId -> jdbcTemplate.update(
                 "DELETE FROM creator_application WHERE id = ?", applicationId));
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId));
+    }
+
+
+    @Test
+    void 승인할_때_회원_프로필_사진을_Space용_파일로_복사해_연결한다() {
+        Member admin = createMember("사진승인관리자", MemberRole.ADMIN);
+        Member owner = createMember("사진승계대상", MemberRole.USER);
+        String imageKey = "member-profile-images/" + owner.getMemberId() + "/existing-photo.jpg";
+        byte[] photo = {10, 20, 30, 40};
+        objectStorage.put(imageKey, photo, "image/jpeg");
+        owner.updateProfileImageKey(imageKey);
+        memberRepository.saveAndFlush(owner);
+
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        approve(admin, owner);
+
+        Creator creator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
+        CreatorSpace space = profileService.findByCreatorId(creator.getCreatorId()).space();
+        // Space는 회원 파일이 아니라 자기 파일을 가리키므로 회원이 사진을 바꿔도 깨지지 않는다.
+        assertThat(space.getProfileImageKey())
+                .startsWith("creator-space-profile-images/" + creator.getCreatorId() + "/");
+        assertThat(space.getProfileImageKey()).isNotEqualTo(imageKey);
+        assertThat(objectStorage.get(space.getProfileImageKey())).isEqualTo(photo);
+        // 기본 이미지로 되돌리는 대상은 템플릿 이미지다.
+        assertThat(space.getDefaultProfileImageUrl()).isEqualTo(TEMPLATE_FIELDS.profileImageUrl());
+        assertThat(space.getBannerImageUrl()).isEqualTo(TEMPLATE_FIELDS.bannerImageUrl());
+        objectStorage.delete(imageKey);
+        objectStorage.delete(space.getProfileImageKey());
+    }
+
+    @Test
+    void 회원_사진이_있는_Creator의_첫_저장은_요청한_프로필_이미지_URL을_우선한다() {
+        Member admin = createMember("첫저장사진관리자", MemberRole.ADMIN);
+        Member owner = createMember("첫저장사진크리에이터", MemberRole.USER);
+        String imageKey = "member-profile-images/" + owner.getMemberId() + "/first-save.jpg";
+        objectStorage.put(imageKey, new byte[]{1, 2, 3}, "image/jpeg");
+        owner.updateProfileImageKey(imageKey);
+        memberRepository.saveAndFlush(owner);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "첫저장사진 크리에이터"));
+
+        CreatorSpace space = profileService.updateMine(owner.getMemberId(),
+                new CreatorSpaceProfileFields("첫 소개", "https://img/mine.png", "https://img/banner.png")).space();
+
+        // 요청 값이 복사해 둔 회원 사진보다 우선이고, 복사본 연결은 풀린다.
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/mine.png");
+        assertThat(space.getProfileImageKey()).isNull();
+        assertThat(space.getIntroText()).isEqualTo("첫 소개");
+        objectStorage.delete(imageKey);
+    }
+
+    @Test
+    void Space가_없는_Creator의_동시_첫_저장은_한_행만_생성한다() throws Exception {
+        Member admin = createMember("첫저장관리자", MemberRole.ADMIN);
+        Member owner = createMember("첫저장크리에이터", MemberRole.USER);
+        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
+        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
+        Creator creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "첫저장 크리에이터"));
+
+        CountDownLatch firstUpdated = new CountDownLatch(1);
+        CountDownLatch commitFirst = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                profileService.updateMine(owner.getMemberId(),
+                        new CreatorSpaceProfileFields("첫 번째 소개", "https://img/profile.png", "https://img/banner.png"));
+                firstUpdated.countDown();
+                await(commitFirst);
+            }));
+            assertThat(firstUpdated.await(10, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> second = executor.submit(() -> profileService.updateMine(owner.getMemberId(),
+                    new CreatorSpaceProfileFields("두 번째 소개", "https://img/profile.png", "https://img/banner.png")));
+            Thread.sleep(300);
+            commitFirst.countDown();
+
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM creator_space WHERE creator_id = ?", Long.class, creator.getCreatorId()))
+                    .isEqualTo(1L);
+            assertThat(profileService.findMine(owner.getMemberId()).space().getIntroText())
+                    .isEqualTo("두 번째 소개");
+        } finally {
+            commitFirst.countDown();
+            executor.shutdownNow();
+        }
     }
 
     @Test

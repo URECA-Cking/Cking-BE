@@ -65,6 +65,7 @@ public class QuizAttemptStore {
         var creator = creators.findById(quiz.getCreatorId())
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_NOT_FOUND));
         if (creator.getMemberId().equals(command.memberId())) throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        quiz.requireNotClosed();
         if (!quiz.isPublished()) throw new BusinessException(QuizErrorCode.QUIZ_NOT_FOUND);
         if (!quiz.getPublishedRevisionId().equals(command.revisionId()))
             throw new BusinessException(QuizErrorCode.QUIZ_PUBLISHED_REVISION_CHANGED);

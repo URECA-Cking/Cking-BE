@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Long> {
@@ -36,8 +37,34 @@ public interface CreatorFollowRepository extends JpaRepository<CreatorFollow, Lo
 
     boolean existsByMemberIdAndCreatorId(Long memberId, Long creatorId);
 
+    /** UPDATE 자체의 행 잠금으로 병렬 요청을 직렬화하고 저장 시각을 앞으로만 옮긴다. */
+    @Modifying
+    @Query(value = """
+            UPDATE creator_follow
+            SET last_read_at = GREATEST(COALESCE(last_read_at, created_at), UTC_TIMESTAMP(6))
+            WHERE member_id = :memberId AND creator_id = :creatorId
+            """, nativeQuery = true)
+    int markPostsRead(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
+
+    @Query("select f.lastReadAt from CreatorFollow f where f.memberId = :memberId and f.creatorId = :creatorId")
+    Instant findLastReadAt(@Param("memberId") Long memberId, @Param("creatorId") Long creatorId);
+
     /** 크리에이터의 팔로워 수. idx_creator_follow_creator로 집계한다. */
     long countByCreatorId(Long creatorId);
+
+    /**
+     * 여러 크리에이터의 팔로워 수를 한 번의 그룹 쿼리로 센다. idx_creator_follow_creator를 쓰며, 팔로워가 0명인 크리에이터는 행이 없다.
+     */
+    @Query("""
+            select new kr.co.cking.follow.repository.CreatorFollowerCount(f.creatorId, count(f.followId))
+            from CreatorFollow f
+            where f.creatorId in :creatorIds
+            group by f.creatorId
+            """)
+    List<CreatorFollowerCount> countFollowersByCreatorIds(@Param("creatorIds") Collection<Long> creatorIds);
+
+    /** 회원이 현재 팔로우 중인 Creator 수를 상태 변경 없이 조회한다. */
+    long countByMemberId(Long memberId);
 
     @Query("select f from CreatorFollow f where f.memberId = :memberId order by f.createdAt desc, f.followId desc")
     Page<CreatorFollow> findByMemberIdLatestFirst(@Param("memberId") Long memberId, Pageable pageable);

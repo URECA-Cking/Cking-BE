@@ -30,6 +30,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -59,6 +60,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.times;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.nullValue;
@@ -408,8 +410,13 @@ class QuizGenerationContentReviewIntegrationTest {
         GROUNDER.hold();
         long id = request(creator);
         awaitState(id, "RUNNING", "GROUNDING");
+        // 상태는 Worker A가 점유한 직후 보인다. 그 뒤 Worker A가 spy를 부르는 중에 예외를 지정하면 지정이 엉킨다.
+        for (int attempt = 0; attempt < 100 && GROUNDER.calls() == 0; attempt++) {
+            sleep();
+        }
+        assertThat(GROUNDER.calls()).as("Worker A가 Grounding 호출 중").isEqualTo(1);
 
-        doThrow(new QueryTimeoutException("Lock wait timeout")).when(generationStore).claim(eq(id), any());
+        doThrow(new QueryTimeoutException("Lock wait timeout")).when(targetGenerationStore()).claim(eq(id), any());
         worker.run(id);
         assertThat(state(id)).as("Worker B는 상태를 바꾸지 않는다").isEqualTo("RUNNING:GROUNDING:-");
 
@@ -434,7 +441,7 @@ class QuizGenerationContentReviewIntegrationTest {
             }
             assertThat(GENERATION_INPUTS).as("Worker A가 생성 Provider 호출 중").hasSize(1);
 
-            doThrow(new QueryTimeoutException("Lock wait timeout")).when(generationStore)
+            doThrow(new QueryTimeoutException("Lock wait timeout")).when(targetGenerationStore())
                     .claimGeneration(eq(id), any());
             worker.runGeneration(id);
             assertThat(state(id)).as("Worker B는 상태를 바꾸지 않는다").isEqualTo("RUNNING:GENERATING:-");
@@ -448,6 +455,13 @@ class QuizGenerationContentReviewIntegrationTest {
         assertThat(state(id)).isEqualTo("SUCCEEDED:GENERATING:-");
         assertThat(quizCount(creator)).isEqualTo(1);
         assertThat(GENERATION_INPUTS).hasSize(1);
+    }
+
+    /** Transaction AOP 프록시가 아닌 Mockito Spy 대상에만 예외 동작을 설정한다. */
+    private QuizGenerationStore targetGenerationStore() {
+        QuizGenerationStore target = AopTestUtils.getUltimateTargetObject(generationStore);
+        assertThat(mockingDetails(target).isSpy()).isTrue();
+        return target;
     }
 
     // Creator HTTP API(이슈 #615)

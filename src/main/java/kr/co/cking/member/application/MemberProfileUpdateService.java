@@ -1,6 +1,7 @@
 package kr.co.cking.member.application;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.member.domain.MemberErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -12,12 +13,20 @@ import org.springframework.stereotype.Service;
 public class MemberProfileUpdateService {
 
     private final MemberProfileUpdateTransactionalService transactionalService;
+    private final CreatorQueryService creatorQueryService;
 
     public void update(Long memberId, UpdateFields fields) {
+        requireFanProfile(memberId);
         try {
             transactionalService.update(memberId, fields);
         } catch (DataIntegrityViolationException exception) {
             throw new BusinessException(MemberErrorCode.NICKNAME_ALREADY_TAKEN);
+        }
+    }
+
+    private void requireFanProfile(Long memberId) {
+        if (creatorQueryService.isCreatorMember(memberId)) {
+            throw new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE);
         }
     }
 

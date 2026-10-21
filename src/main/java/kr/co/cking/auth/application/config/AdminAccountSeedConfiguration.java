@@ -7,9 +7,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
-/** 개발·시연 프로필에서만 관리자 초기 계정 생성을 연결한다. */
+/** 개발·시연·운영 프로필에서 관리자 초기 계정 생성을 연결한다. */
 @Configuration
-@Profile({"local", "dev"})
+@Profile({"local", "dev", "prod"})
 @EnableConfigurationProperties(AdminAccountSeedProperties.class)
 public class AdminAccountSeedConfiguration {
 

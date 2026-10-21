@@ -33,7 +33,7 @@ public class PostImageUploadService {
 
     /** @return 게시글 작성·수정 때 전달할 이미지 key */
     public String upload(Long memberId, byte[] imageBytes) {
-        Creator creator = authorLookup.requireCreator(memberId);
+        Creator creator = authorLookup.requireConfiguredCreator(memberId);
         NormalizedImage image = imageProcessor.process(imageBytes);
         String objectKey = objectKey(creator.getCreatorId());
 

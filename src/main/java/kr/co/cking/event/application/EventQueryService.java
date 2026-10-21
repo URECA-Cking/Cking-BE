@@ -4,6 +4,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.event.application.dto.CachedEvent;
 import kr.co.cking.event.application.dto.CachedEventPage;
+import kr.co.cking.event.application.dto.EventCounts;
 import kr.co.cking.event.application.dto.EventDetail;
 import kr.co.cking.event.application.dto.EventSummary;
 import kr.co.cking.event.domain.DisplayStatus;
@@ -24,7 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +43,7 @@ public class EventQueryService {
     private final CommonTicketBalanceQueryService commonTicketBalanceQueryService;
     private final EventCache eventCache;
     private final EventListCache eventListCache;
+    private final EventCountsCache eventCountsCache;
     private final MemberRepository memberRepository;
 
     /**
@@ -85,6 +90,30 @@ public class EventQueryService {
         return new PageImpl<>(summaries, PageRequest.of(page, size, EVENT_LIST_SORT), cached.totalElements());
     }
 
+    /** 공개 이벤트 수를 표시 상태별로 한 번에 센다. total은 세 값의 합이고, 목록과 같은 5초 캐시 정책을 따른다. */
+    public EventCounts getEventCounts() {
+        return eventCountsCache.find().orElseGet(this::loadAndCacheCounts);
+    }
+
+    private EventCounts loadAndCacheCounts() {
+        Instant now = clock.instant();
+        var counts = eventRepository.countByDisplayStatus(now);
+        EventCounts result = new EventCounts(counts.getUpcoming() + counts.getInProgress() + counts.getClosed(),
+                counts.getUpcoming(), counts.getInProgress(), counts.getClosed());
+        eventCountsCache.save(result, eventRepository.findEarliestOpenEndAt(now).orElse(null));
+        return result;
+    }
+
+    /** 크리에이터별 진행 중 이벤트 수를 한 번에 센다. 진행 중이 없는 크리에이터는 키가 없다. */
+    public Map<Long, Long> countInProgressByCreatorIds(Collection<Long> creatorIds) {
+        if (creatorIds.isEmpty()) {
+            return Map.of();
+        }
+        return eventRepository.countInProgressByCreatorIds(creatorIds, clock.instant()).stream()
+                .collect(Collectors.toMap(EventRepository.CreatorEventCount::getCreatorId,
+                        EventRepository.CreatorEventCount::getTotal));
+    }
+
     public EventDetail getEvent(Long eventId, Long userId) {
         if (!memberRepository.existsById(userId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
@@ -112,7 +141,7 @@ public class EventQueryService {
      */
     public Event getEventForOperation(Long eventId) {
         return eventRepository.findById(eventId)
-                .filter(e -> e.getDeletedAt() == null)
+                .filter(e -> e.getDeletedAt() == null && !e.isArchived())
                 .orElseThrow(() -> new BusinessException(EventErrorCode.EVENT_NOT_FOUND));
     }
 
@@ -123,7 +152,7 @@ public class EventQueryService {
 
     private CachedEvent loadAndCache(Long eventId) {
         Event event = eventRepository.findById(eventId)
-                .filter(e -> e.getDeletedAt() == null && e.getStatus().isPubliclyVisible())
+                .filter(e -> e.getDeletedAt() == null && !e.isArchived() && e.getStatus().isPubliclyVisible())
                 .orElseThrow(() -> new BusinessException(EventErrorCode.EVENT_NOT_FOUND));
         CachedEvent cached = CachedEvent.from(event);
         eventCache.save(cached);

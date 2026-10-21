@@ -7,14 +7,17 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.follow.application.dto.FollowedCreatorView;
 import kr.co.cking.follow.domain.CreatorFollow;
 import kr.co.cking.follow.repository.CreatorFollowRepository;
+import kr.co.cking.follow.repository.CreatorFollowerCount;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /** 팔로우 관계를 읽기 전용으로 조회한다. 다른 도메인은 {@link #isFollowing}으로 팔로우 여부를 확인한다. */
@@ -43,6 +46,26 @@ public class CreatorFollowQueryService {
      */
     public long countFollowers(Long creatorId) {
         return creatorId == null ? 0L : followRepository.countByCreatorId(creatorId);
+    }
+
+    /**
+     * 다른 도메인의 일괄 조회용으로 여러 크리에이터의 팔로워 수를 한 번에 센다. 크리에이터마다 조회하지 않으며,
+     * 요청한 모든 ID가 키로 들어 있고 팔로워가 없거나 존재하지 않는 크리에이터는 0이다.
+     */
+    public Map<Long, Long> countFollowersByCreatorIds(Collection<Long> creatorIds) {
+        if (creatorIds == null || creatorIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Long> counts = followRepository.countFollowersByCreatorIds(creatorIds).stream()
+                .collect(Collectors.toMap(CreatorFollowerCount::creatorId, CreatorFollowerCount::followerCount));
+        return creatorIds.stream()
+                .distinct()
+                .collect(Collectors.toMap(Function.identity(), creatorId -> counts.getOrDefault(creatorId, 0L)));
+    }
+
+    /** 웰컴 퀘스트 등의 조건 판정용으로 현재 회원의 팔로우 수를 읽는다. */
+    public long countFollowedCreators(Long memberId) {
+        return memberId == null ? 0L : followRepository.countByMemberId(memberId);
     }
 
     /** API용 팔로우 여부 조회. 존재하지 않는 크리에이터는 404다. */

@@ -1,5 +1,6 @@
 package kr.co.cking.event.application;
 
+import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorActivityName;
 import kr.co.cking.creator.repository.CreatorRepository;
@@ -7,9 +8,11 @@ import kr.co.cking.event.domain.DrawMethod;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
 import kr.co.cking.event.domain.EventApprovalRequestStatus;
+import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.event.repository.EventApprovalRequestRepository;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.event.application.service.EventCommandService;
+import kr.co.cking.winner.repository.WinnerManagementRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -39,6 +42,7 @@ class EventReviewServiceTest {
         EventApprovalRequestRepository approvalRequestRepository = mock(EventApprovalRequestRepository.class);
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         EventCommandService eventCommandService = mock(EventCommandService.class);
+        WinnerManagementRepository winnerManagementRepository = mock(WinnerManagementRepository.class);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         EventApprovalRequest firstRequest = new EventApprovalRequest(10L, 1, 1L);
         EventApprovalRequest secondRequest = new EventApprovalRequest(20L, 1, 1L);
@@ -54,7 +58,7 @@ class EventReviewServiceTest {
         given(creatorRepository.findByCreatorIdIn(org.mockito.ArgumentMatchers.anyCollection()))
                 .willReturn(List.of(firstCreator, secondCreator));
         EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
-                eventCommandService, creatorRepository);
+                eventCommandService, creatorRepository, winnerManagementRepository);
 
         var result = service.findPending(1L, PageRequest.of(0, 20));
 
@@ -75,6 +79,7 @@ class EventReviewServiceTest {
         EventApprovalRequestRepository approvalRequestRepository = mock(EventApprovalRequestRepository.class);
         CreatorRepository creatorRepository = mock(CreatorRepository.class);
         EventCommandService eventCommandService = mock(EventCommandService.class);
+        WinnerManagementRepository winnerManagementRepository = mock(WinnerManagementRepository.class);
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Event openEvent = event(10L, 100L, "운영 이벤트");
         ReflectionTestUtils.setField(openEvent, "status", kr.co.cking.event.domain.EventStatus.OPEN);
@@ -85,7 +90,7 @@ class EventReviewServiceTest {
                 .willReturn(new PageImpl<>(List.of(openEvent), pageable, 1));
         given(creatorRepository.findByCreatorIdIn(List.of(100L))).willReturn(List.of(creator));
         EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
-                eventCommandService, creatorRepository);
+                eventCommandService, creatorRepository, winnerManagementRepository);
 
         var result = service.findManagedEvents(1L, kr.co.cking.event.domain.EventStatus.OPEN, pageable);
 
@@ -93,6 +98,39 @@ class EventReviewServiceTest {
                 .containsExactly("크리에이터");
         verify(eventRepository).findManagedEvents(kr.co.cking.event.domain.EventStatus.OPEN, pageable);
         verify(creatorRepository).findByCreatorIdIn(List.of(100L));
+    }
+
+    @Test
+    void archive는_Event잠금_콜백_안에서_SELECTED_Winner를_확인한다() {
+        MemberRepository memberRepository = mock(MemberRepository.class);
+        EventRepository eventRepository = mock(EventRepository.class);
+        EventApprovalRequestRepository approvalRequestRepository = mock(EventApprovalRequestRepository.class);
+        CreatorRepository creatorRepository = mock(CreatorRepository.class);
+        EventCommandService eventCommandService = mock(EventCommandService.class);
+        WinnerManagementRepository winnerManagementRepository = mock(WinnerManagementRepository.class);
+        Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
+        Event published = event(10L, 100L, "보관 대상");
+        ReflectionTestUtils.setField(published, "status", kr.co.cking.event.domain.EventStatus.PUBLISHED);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
+        given(winnerManagementRepository.findAllByEventIdAndStatusForUpdate(
+                10L, kr.co.cking.winner.domain.WinnerManagementStatus.SELECTED))
+                .willReturn(List.of(mock(kr.co.cking.winner.domain.WinnerManagement.class)));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            java.util.function.Consumer<Event> beforeArchive = invocation.getArgument(2);
+            beforeArchive.accept(published);
+            return published;
+        }).when(eventCommandService).archive(
+                org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.any());
+        EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
+                eventCommandService, creatorRepository, winnerManagementRepository);
+
+        assertThat(org.assertj.core.api.ThrowableAssert.catchThrowable(() -> service.archive(1L, 10L)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", EventErrorCode.INVALID_STATE);
+        verify(winnerManagementRepository).findAllByEventIdAndStatusForUpdate(
+                10L, kr.co.cking.winner.domain.WinnerManagementStatus.SELECTED);
     }
 
     private Event event(Long eventId, Long creatorId, String title) {

@@ -20,11 +20,15 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Entity
@@ -55,6 +59,8 @@ public class Event {
     private Instant closedAt;
     private Instant publishedAt;
     private Instant deletedAt;
+    private Instant archivedAt;
+    private Long archivedBy;
     private Long createdBy;
 
     @Column(updatable = false)
@@ -162,6 +168,17 @@ public class Event {
         status = EventStatus.PENDING_APPROVAL;
     }
 
+    /** 승인 요청은 서버 정책으로 정한 Event 시작 최소 사전 시간 전에만 허용한다. */
+    public void validateApprovalRequestLeadTime(Instant now, Duration minimumLeadTime) {
+        requireStatus(EventStatus.DRAFT);
+        if (minimumLeadTime.isNegative()) {
+            throw new IllegalArgumentException("승인 요청 최소 사전 시간은 음수일 수 없습니다.");
+        }
+        if (startAt.isBefore(now.plus(minimumLeadTime))) {
+            throw new BusinessException(EventErrorCode.APPROVAL_REQUEST_TOO_LATE);
+        }
+    }
+
     public void approve() {
         requireStatus(EventStatus.PENDING_APPROVAL);
         status = EventStatus.SCHEDULED;
@@ -260,7 +277,7 @@ public class Event {
         long totalQuantity = 0;
         long totalWeight = 0;
         for (PrizeConfig config : prizeConfigs) {
-            if (config == null || !prizeKeys.add(config.prizeKey())) {
+            if (config == null || !prizeKeys.add(config.prizeKey().toLowerCase(Locale.ROOT))) {
                 throw new IllegalArgumentException("상품 식별자는 중복될 수 없습니다.");
             }
             totalQuantity = Math.addExact(totalQuantity, config.quantity());
@@ -269,11 +286,19 @@ public class Event {
         if (!prizeConfigs.isEmpty() && totalQuantity < winnerCount) {
             throw new IllegalArgumentException("총 상품 수량은 winnerCount 이상이어야 합니다.");
         }
-        prizes.clear();
-        prizeConfigs.stream()
-                .sorted(java.util.Comparator.comparingInt(PrizeConfig::priority).thenComparing(PrizeConfig::prizeKey))
-                .map(config -> new EventPrize(this, config))
-                .forEach(prizes::add);
+        // V10의 대소문자를 구분하지 않는 유니크 키와 같은 기준으로 기존 상품을 찾는다.
+        Map<String, EventPrize> existing = new HashMap<>();
+        prizes.forEach(prize -> existing.put(prize.getPrizeKey().toLowerCase(Locale.ROOT), prize));
+        prizes.removeIf(prize -> !prizeKeys.contains(prize.getPrizeKey().toLowerCase(Locale.ROOT)));
+        for (PrizeConfig config : prizeConfigs) {
+            EventPrize prize = existing.get(config.prizeKey().toLowerCase(Locale.ROOT));
+            if (prize == null) {
+                prizes.add(new EventPrize(this, config));
+            } else {
+                prize.update(config);
+            }
+        }
+        prizes.sort(java.util.Comparator.comparingInt(EventPrize::getPriority).thenComparing(EventPrize::getPrizeKey));
     }
 
     public void delete(Instant deletedAt) {
@@ -281,6 +306,27 @@ public class Event {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
         this.deletedAt = deletedAt;
+    }
+
+    /** 공개가 끝난 Event의 업무 원본은 보존한 채 사용자 노출만 중단한다. */
+    public void archive(Instant archivedAt, Long archivedBy) {
+        requireStatus(EventStatus.PUBLISHED);
+        if (this.archivedAt != null) {
+            return;
+        }
+        this.archivedAt = archivedAt;
+        this.archivedBy = archivedBy;
+    }
+
+    /** 보관 Event를 기존 공개 상태 그대로 다시 노출한다. */
+    public void unarchive() {
+        requireStatus(EventStatus.PUBLISHED);
+        this.archivedAt = null;
+        this.archivedBy = null;
+    }
+
+    public boolean isArchived() {
+        return archivedAt != null;
     }
 
     public DisplayStatus displayStatus(Instant now) {

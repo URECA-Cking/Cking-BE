@@ -101,3 +101,7 @@ parentRevisionId,hashVersion,approvalPolicyVersion,contentLocked,canEdit를 추�
 V73 → V74 적용이 필요하다. migration 번호는 PR 전 최신 develop·열린 PR과 다시 대조한다.
 로컬 검증은 컴파일·순수 단위 테스트이며 WebMvc/Spring/MySQL 경쟁·rollback 검증은 CI에서 실행한다.
 테스트 skip은 검증 완료가 아니다. 실제 Provider 및 Ticket Worker 활성화는 별도 승인 범위다.
+
+## 마감된 Quiz
+
+마감된 Quiz의 신규 구성 저장과 책임 승인은 `QUIZ_CLOSED`(409)로 거절한다. 동일 requestId/body의 기존 구성 저장 replay와 revision 조회는 유지한다.

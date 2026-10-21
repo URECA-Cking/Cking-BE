@@ -35,6 +35,7 @@ import kr.co.cking.drawing.repository.DrawingRepository;
 import kr.co.cking.drawing.repository.RedrawDrawingQueryRepository;
 import kr.co.cking.drawing.repository.RedrawVacancyPrizeSource;
 import kr.co.cking.event.application.service.EventCommandService;
+import kr.co.cking.event.domain.EventErrorCode;
 import kr.co.cking.redraw.application.RedrawDrawingLifecycleService;
 import kr.co.cking.snapshot.application.SnapshotIntegrityService;
 import kr.co.cking.snapshot.application.VerifiedSnapshot;
@@ -108,7 +109,13 @@ class DrawingRetryExecutionService {
                 () -> generateResultHash(snapshot, inputHash, output, prizeOutput));
 
         stage(DrawingFailureStage.RESULT_PERSISTENCE, () -> {
-            saveWinners(drawing, snapshot, output, prizeOutput);
+            eventCommandService.withEventLock(drawing.getEventId(), event -> {
+                if (event.isArchived()) {
+                    throw new BusinessException(EventErrorCode.INVALID_STATE);
+                }
+                saveWinners(drawing, snapshot, output, prizeOutput);
+                return null;
+            });
             drawing.complete(resultHash.canonicalPayload(), resultHash.value(), clock.instant());
             attempt.succeed(clock.instant());
             drawingRepository.flush();

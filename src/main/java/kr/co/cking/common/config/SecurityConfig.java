@@ -87,9 +87,29 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** 인증 전환 API와 기존 공개 API의 접근 범위를 함께 보장하는 기본 보안 체인을 구성한다. */
+    /** Dedicated content credential never grants access to other admin or owner routes. */
     @Bean
     @Order(2)
+    public SecurityFilterChain contentTagSecurityFilterChain(HttpSecurity http,
+            @Value("${cking.content-tags.token-hash:}") String tokenHash) throws Exception {
+        return http.securityMatcher("/api/internal/content-tags/**")
+                // An opaque Bearer token is explicit, never an automatically attached cookie.
+                // Other requests retain CSRF protection; the early credential filter rejects them.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(request -> {
+                    String header = request.getHeader("Authorization");
+                    return header != null && header.startsWith("Bearer ");
+                }))
+                .sessionManagement(session -> session.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().hasAuthority("CONTENT_TAG_BATCH"))
+                .addFilterBefore(new kr.co.cking.common.security.ContentTagAuthenticationFilter(tokenHash, authenticationEntryPoint),
+                        org.springframework.security.web.csrf.CsrfFilter.class)
+                .exceptionHandling(e -> e.authenticationEntryPoint(authenticationEntryPoint).accessDeniedHandler(accessDeniedHandler))
+                .build();
+    }
+
+    /** 인증 전환 API와 기존 공개 API의 접근 범위를 함께 보장하는 기본 보안 체인을 구성한다. */
+    @Bean
+    @Order(3)
     public SecurityFilterChain applicationSecurityFilterChain(HttpSecurity http) throws Exception {
         configureOAuth2LoginIfRegistered(http);
         return http
@@ -101,6 +121,7 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/events/counts").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/quizzes/*/attempts").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/creators/*/quizzes/*/my-attempt").authenticated()
                         .requestMatchers("/api/winners/*/history").authenticated()
@@ -117,7 +138,9 @@ public class SecurityConfig {
                                 "/api/creators/*/tickets",
                                 "/api/creators/*/tickets/history",
                                 "/api/creators/*/follow",
+                                "/api/creators/*/posts/read",
                                 "/api/me/follows",
+                                "/api/me/follows/post-news",
                                 "/api/me/tickets",
                                 "/api/me/creator-recommendations",
                                 "/api/me/creator-recommendation-events",
@@ -137,6 +160,8 @@ public class SecurityConfig {
                                 "/api/creator/applications",
                                 "/api/creator/applications/me",
                                 "/api/creator/profile",
+                                "/api/creator/content-tags",
+                                "/api/creator/content-tags/confirmation",
                                 "/api/creator/space",
                                 "/api/creator/calendar/**",
                                 "/api/creator/comment-blocks",
@@ -152,7 +177,8 @@ public class SecurityConfig {
                                 "/api/creator/space/banner-images",
                                 "/api/creator/space/banner-image"
                         ).authenticated()
-                        .requestMatchers("/api/me").authenticated()
+                        .requestMatchers("/api/me", "/api/me/welcome-quest", "/api/me/welcome-quest/*/claim")
+                        .authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/posts/*/comments").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/creators/*/posts/*/comments/*").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/creators/*/posts/*/comments/*").authenticated()

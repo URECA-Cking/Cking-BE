@@ -8,6 +8,7 @@ import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.event.application.EventQueryService;
+import kr.co.cking.event.application.dto.EventCounts;
 import kr.co.cking.event.application.dto.EventDetail;
 import kr.co.cking.event.application.dto.EventSummary;
 import kr.co.cking.event.domain.DisplayStatus;
@@ -43,6 +44,15 @@ public class EventController {
         // 목록은 공개 API라 토큰이 없으면 memberId가 null이다 — 이때는 잔액 없이 반환한다.
         PageResponse<EventSummary> events = PageResponse.from(eventQueryService.getEvents(creatorId, status, memberId, page, size));
         return ApiResponse.success(events);
+    }
+
+    @Operation(
+            summary = "이벤트 상태별 개수 조회",
+            description = "공개 이벤트 수를 표시 상태(예정·진행 중·종료)별로 한 번에 반환합니다. 분류 규칙은 이벤트 목록과 같습니다."
+    )
+    @GetMapping("/api/events/counts")
+    public ApiResponse<EventCounts> getEventCounts() {
+        return ApiResponse.success(eventQueryService.getEventCounts());
     }
 
     /** 인증된 사용자의 응모권 정보를 포함해 Event 상세를 조회한다. */

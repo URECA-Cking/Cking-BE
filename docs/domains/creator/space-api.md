@@ -4,11 +4,13 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 
 ## 범위와 권한
 
-- Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 이 API는 만들어진 Space의 조회·수정만 다룬다.
+- Space는 Creator 승인 시 활성 기본 템플릿을 복사해 만들어진다([README.md](README.md#creator-space-자동-생성이슈-270)). 승인 때 회원이 올려 둔 프로필 사진이 있으면 그 파일을 Space용 파일로 복사해 프로필 사진으로 연결한다(회원이 나중에 사진을 바꾸거나 지워도 Space 사진은 유지된다). 기본 이미지로 되돌리면 템플릿 이미지다. 사진이 없거나 복사에 실패하면 템플릿 이미지를 쓴다. 승인을 거치지 않아 Space가 없는 Creator가 `PATCH /api/creator/space`를 처음 호출하면 같은 방식으로 Space를 만든 뒤 요청 값을 그대로 적용한다. 값의 우선순위는 요청에 담은 값 > 회원 프로필 사진 > 템플릿 기본값이다.
 - 공개 조회(`GET /api/creators`, `GET /api/creators/{creatorId}/space`, `GET /api/creator-spaces/{slug}`)는 인증 없이 호출할 수 있다.
 - 본인 API(`/api/creator/space`, `/api/creator/space/slug`, `/api/creator/space/profile-images`, `/api/creator/space/profile-image`, `/api/creator/space/banner-images`, `/api/creator/space/banner-image`, `/api/creator/profile`)는 Bearer Access JWT가 필수다. Controller는 `@CurrentMemberId`로 받은 memberId를 넘기고, Application이 그 memberId의 Creator를 찾는다. 경로에 대상 ID가 없으므로 다른 Creator의 Space는 조회·수정할 수 없다.
 - 공유 URL은 프론트엔드의 `/space/{slug}` 형식이다. slug는 이 공개 조회의 탐색에만 사용하고, 응답의 `creatorId`를 앱 내부 식별과 Creator별 업무 데이터·미션 기록 식별자로 사용한다. slug를 업무 기록에 저장하지 않는다.
 - 수정은 Space에만 반영된다. 템플릿과 다른 Creator의 Space는 바뀌지 않는다.
+- 승인된 Creator의 공개 이름·사진은 활동명과 Space 프로필 사진으로 단일화한다. Member 프로필 수정 API는 Creator의
+  공개 표시를 바꾸지 않으며, Creator는 Space 편집에서만 공개 프로필을 관리한다.
 - 탭(홈·미션·게시물·이벤트) 노출 설정은 없다(이슈 #290). 탭은 항상 노출하며, 내용이 없으면 화면에서 "현재 열려있는 게 없습니다"를 보여준다.
 - slug 형식·예약어·중복 규칙은 [space-slug-policy.md](space-slug-policy.md)를 따른다.
 
@@ -38,7 +40,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 }
 ```
 
-목록(`GET /api/creators`) 항목은 `followerCount` 없이 위 필드만 담는다. 항목마다 집계가 늘어나는 것을 피하기 위해서이며, 목록에 팔로워 수가 필요하면 별도 이슈에서 일괄 집계로 다룬다.
+목록(`GET /api/creators`) 항목은 `followerCount` 없이 위 필드에 `openEventCount`를 더해 담는다. 항목마다 집계가 늘어나는 것을 피하기 위해서이며, 목록에 팔로워 수가 필요하면 별도 이슈에서 일괄 집계로 다룬다.
 
 본인 API 응답(`GET`·`PATCH /api/creator/space`, `PATCH /api/creator/space/slug`)은 공통 프로필 필드(`creatorId`, `creatorName`, `slug`, `introText`, `profileImageUrl`, `bannerImageUrl`)와 `slugChangeableAt`을 담는다. `followerCount`는 담지 않는다.
 
@@ -64,7 +66,7 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
 | `size` | 20 | 1~100 |
 | `keyword` | 없음 | 최대 50자. Creator 이름에 포함된 항목만 반환한다(대소문자 무시). 없거나 공백이면 전체를 반환한다. 앞뒤 공백은 무시하고 `%`·`_`는 문자 그대로 찾는다 |
 
-정렬은 Creator 이름 오름차순이며, 이름이 같으면 `creatorId` 오름차순이다. 항상 같은 순서를 보장하므로 페이지를 순회해도 항목이 누락되거나 중복되지 않는다(순회 중 Creator가 추가·삭제되면 경계 항목이 이동할 수 있다). 응답은 [공통 API 규약](../../common/api.md)의 `PageResponse`이며 각 `items` 항목은 위 공개 조회 응답과 같은 필드다. 결과가 없으면 `items`가 빈 배열이고 `totalElements`가 0이다.
+정렬은 Creator 이름 오름차순이며, 이름이 같으면 `creatorId` 오름차순이다. 항상 같은 순서를 보장하므로 페이지를 순회해도 항목이 누락되거나 중복되지 않는다(순회 중 Creator가 추가·삭제되면 경계 항목이 이동할 수 있다). 응답은 [공통 API 규약](../../common/api.md)의 `PageResponse`이며 각 `items` 항목은 위 공개 조회 응답과 같은 필드에 `openEventCount`를 더한 것이다. `openEventCount`는 해당 Creator의 삭제되지 않은 Event 중 표시 상태가 `IN_PROGRESS`(`OPEN`이면서 `endAt` 전)인 개수(0 이상 정수)로, `GET /api/events?creatorId={id}&status=IN_PROGRESS`의 `totalElements`와 같다. 진행 중 Event가 없으면 필드를 빼지 않고 `0`을 준다. 한 페이지의 Creator 전체를 `GROUP BY creator_id` 한 번으로 집계하므로 쿼리 수가 `size`에 비례하지 않는다. 결과가 없으면 `items`가 빈 배열이고 `totalElements`가 0이다.
 
 ```json
 {
@@ -75,7 +77,8 @@ Creator Space 조회, Creator 본인의 홈·프로필 수정과 커스텀 slug 
       "slug": "iu-official",
       "introText": "크리에이터와 함께하는 공간이에요",
       "profileImageUrl": "https://cdn.cking.co.kr/default/profile.png",
-      "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png"
+      "bannerImageUrl": "https://cdn.cking.co.kr/default/banner.png",
+      "openEventCount": 2
     }
   ],
   "page": 0,
@@ -203,7 +206,7 @@ Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 
 - 목록 조회의 `page`·`size`·`keyword`가 제약을 어기거나 숫자가 아니면 `VALIDATION_FAILED`(400)다.
 - 본인 API에서 JWT가 없거나 유효하지 않으면 `UNAUTHORIZED`(401)다.
 - 본인 API 호출자가 Creator가 아니면 `FORBIDDEN`(403)이다.
-- 본인 API 호출자가 Creator지만 Space가 없으면 `RESOURCE_NOT_FOUND`(404)다. V19 백필이 건너뛰어진 기존 Creator가 해당한다([README.md](README.md#기존-승인-creator-백필v19)).
+- 본인 API 호출자가 Creator지만 Space가 없으면 `GET /api/creator/space`와 `PATCH /api/creator/space/slug`는 `RESOURCE_NOT_FOUND`(404)다. V19 백필이 건너뛰어진 기존 Creator가 해당한다([README.md](README.md#기존-승인-creator-백필v19)). `PATCH /api/creator/space`는 404 대신 Space를 만든 뒤 요청 값을 적용한다. 활성 템플릿이 없으면 이때도 `NO_ACTIVE_SPACE_TEMPLATE`로 실패한다.
 - 요청 필드가 누락되거나 공백·길이 초과·slug 형식 위반이면 `VALIDATION_FAILED`(400)다.
 - 업로드 파일이 이미지 형식·크기·해상도 규칙을 어기거나, 연결하려는 키가 본인의 업로드 완료 이미지가 아니면 `INVALID_SPACE_PROFILE_IMAGE`(400)이다.
 - 배너 업로드 파일이 이미지 형식·크기·해상도 규칙을 어기거나, 연결하려는 키가 본인이 배너로 올린 업로드 완료 이미지가 아니면 `INVALID_SPACE_BANNER_IMAGE`(400)이다.
@@ -215,3 +218,9 @@ Creator 본인의 활동명을 전체 교체한다. 형식·정규화는 Member 
   변경 간격 안이면 `ACTIVITY_NAME_CHANGE_TOO_SOON`(409)이다.
 - 활동명 설정 화면이 배포되기 전 호환 기간에는 기존 이관 Creator도 게시글·Event를 생성할 수 있다. 작성 전 설정 강제는
   FE 연동 완료 후 별도 릴리스에서 활성화한다.
+
+## AI 콘텐츠 태그와 소개 수정
+
+[콘텐츠 태그 계약](content-tags.md)의 content_revision은 정규화한 introText 변경 시에만 증가한다.
+같은 저장 트랜잭션에서 Application outbox가 작업을 남기고, 저장 요청은 모델 처리를 기다리지 않는다.
+변경된 소개의 과거 본인 확인 태그는 이력으로 보존하며 공개 조회에서 제외한다.

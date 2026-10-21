@@ -4,7 +4,7 @@
 
 | No. | 구분 | 도메인 | 역할 | Method | 경로·호출 | 기능 | 멱등성 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 3 | 외부 | Creator Space | PUBLIC | GET | `/api/creators` | 공개 Creator 목록 조회(이름 검색·페이지) | - |
+| 3 | 외부 | Creator Space | PUBLIC | GET | `/api/creators` | 공개 Creator 목록 조회(이름 검색·페이지, 진행 중 이벤트 수 `openEventCount` 포함) | - |
 | 5 | 외부 | Mission | USER | GET | `/api/creators/{creatorId}/missions` | 미션 조회 | - |
 | 6 | 외부 | Mission | USER | POST | `/api/creators/{creatorId}/missions/{missionId}/complete` | 미션 완료 | `requestId` |
 | 7 | 외부 | Ticket | USER | GET | `/api/creators/{creatorId}/tickets` | Balance 조회 | - |
@@ -21,6 +21,7 @@
 | 18 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events/{eventId}/approval-request` | 승인 요청 | 상태 기반 |
 | 19 | 외부 | Admin | ADMIN | GET | `/api/admin/events/pending` | 승인 대기 | - |
 | 134 | 외부 | Admin | ADMIN | GET | `/api/admin/events` | Event 운영 목록 | - |
+| 159 | 외부 | Admin | ADMIN | GET | `/api/admin/events/{eventId}/operation` | Event 단건 운영 상세 요약 조회 | - |
 | 20 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/approve` | Event 승인 | 상태 기반 |
 | 21 | 외부 | Admin | ADMIN | POST | `/api/admin/events/{eventId}/reject` | Event 거절 | 상태 기반 |
 | 22 | 외부 | Close | CREATOR/ADMIN | POST | `/api/events/{eventId}/close` | 수동 마감 요청 | 상태 기반 |
@@ -33,7 +34,7 @@
 | 29 | 외부 | Winner | PUBLIC | GET | `/api/events/{eventId}/winners` | PUBLIC Drawing의 Winner와 배정 상품 조회 | - |
 | 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | Creator 신청 | 기존 PENDING 재사용 |
 | 31 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/me` | 내 신청 조회 | - |
-| 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 신청 목록 | - |
+| 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 상태 선택 신청 목록 | `status`, page, size |
 | 33 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/approve` | 승인 | 상태 기반 |
 | 34 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/reject` | 거절 | 상태 기반 |
 | 35 | 외부 | Drawing | ADMIN | POST | `/api/admin/drawings/{drawingId}/publish` | 완료된 INITIAL·REDRAW Drawing 공개 | 상태 기반 |
@@ -139,7 +140,7 @@
 | 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |
 | 136 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/reports` | 게시글 댓글 신고(게시글을 볼 수 있는 사용자, 본인 댓글 제외) | 신고자+댓글당 1건(재신고는 기존 신고 반환) |
 | 137 | 외부 | Post | ADMIN | GET | `/api/admin/comment-reports` | 신고된 게시글 댓글 목록(댓글별 신고 수·접수 수·사유별 수·처리 상태, 최근 신고 순, `status` 필터) | - |
-| 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`로 신규 가입자 판별(V50, 기존 회원은 전원 true) | 상태 기반 |
+| 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`는 온보딩 여부이며 웰컴 퀘스트 신규 판정과 무관 | 상태 기반 |
 | 139 | 외부 | Drawing | ADMIN | GET | `/api/admin/events/{eventId}/drawings/initial` | Event의 INITIAL Drawing 조회 | - |
 | 140 | 외부 | Creator 추천 | USER | POST | `/api/me/creator-recommendation-events` | 실제 노출·클릭 최대 50건 원자 수집, JWT 소유권/후보/신규 이벤트 24시간 검증, 보존 중 승인 재전송은 만료 후 멱등 성공 | eventId 및 요청+Creator+타입 |
 | 141 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes` | 내 Quiz 목록(최신 revision 제목·검토 상태, 최근 생성 순) | - |
@@ -171,10 +172,10 @@
 | 167 | 외부 | Sanction | ADMIN | GET | `/api/admin/sanctions` | 회원 제재 목록(자동 경고·수동 제한, 시작 최신순, `memberId`·`active` 필터) | - |
 | 168 | 외부 | Sanction | ADMIN | POST | `/api/admin/sanctions` | 회원에게 댓글 작성 제한을 수동으로 설정(경고 횟수에 세지 않음) | 상태 기반 |
 | 169 | 외부 | Sanction | ADMIN | POST | `/api/admin/sanctions/{sanctionId}/release` | 유효한 제한 해제(이미 끝났거나 해제된 제한은 그대로 성공) | 상태 기반 |
-| 170 | 외부 | Sanction | CREATOR | POST | `/api/creator/comment-blocks` | 자기 스페이스에서 회원의 댓글 작성·수정을 1~365일 차단(경고 횟수에 세지 않음). 이미 유효한 차단이 있으면 기존 차단 반환 | 회원+크리에이터당 유효한 차단 1건 |
-| 171 | 외부 | Sanction | CREATOR | GET | `/api/creator/comment-blocks` | 자기 스페이스 차단 목록(시작 최신순, `active` 필터) | - |
-| 172 | 외부 | Sanction | CREATOR | POST | `/api/creator/comment-blocks/{sanctionId}/release` | 자기가 건 차단 해제(이미 끝났거나 해제된 차단은 그대로 성공) | 상태 기반 |
-| 173 | 외부 | Sanction | ADMIN | POST | `/api/admin/comment-blocks` | 크리에이터를 지정해 그 스페이스에서 회원의 댓글 작성·수정을 1~365일 차단. 이미 유효한 차단이 있으면 기존 차단 반환 | 회원+크리에이터당 유효한 차단 1건 |
+| 170 | 외부 | Sanction | CREATOR | POST | `/api/creator/comment-blocks` | 자기 스페이스에서 회원의 댓글 작성·수정을 1~365일 차단(경고 횟수에 세지 않음). 이미 유효한 수동 차단이 있으면 기존 차단 반환 | 회원+크리에이터당 유효한 수동 차단 1건 |
+| 171 | 외부 | Sanction | CREATOR | GET | `/api/creator/comment-blocks` | 자기 스페이스 차단 목록(시작 최신순, `active` 필터). 관리자의 숨김으로 생긴 자동 제한은 제외 | - |
+| 172 | 외부 | Sanction | CREATOR | POST | `/api/creator/comment-blocks/{sanctionId}/release` | 자기가 건 수동 차단 해제(이미 끝났거나 해제된 차단은 그대로 성공, 관리자의 숨김으로 생긴 자동 제한은 404) | 상태 기반 |
+| 173 | 외부 | Sanction | ADMIN | POST | `/api/admin/comment-blocks` | 크리에이터를 지정해 그 스페이스에서 회원의 댓글 작성·수정을 1~365일 차단. 이미 유효한 수동 차단이 있으면 기존 차단 반환 | 회원+크리에이터당 유효한 수동 차단 1건 |
 | 174 | 외부 | Sanction | ADMIN | GET | `/api/admin/comment-blocks` | 모든 스페이스의 차단 목록(시작 최신순, `creatorId`·`memberId`·`active` 필터) | - |
 | 175 | 외부 | Sanction | ADMIN | POST | `/api/admin/comment-blocks/{sanctionId}/release` | 크리에이터나 관리자가 건 스페이스 차단 해제(이미 끝났거나 해제된 차단은 그대로 성공) | 상태 기반 |
 | 176 | 외부 | Post | ADMIN | DELETE | `/api/admin/comments/{commentId}` | 신고 여부와 상관없이 댓글 물리 삭제(204, 신고도 함께 삭제, 경고·알림 없음) | 상태 기반 |
@@ -192,4 +193,15 @@
 | 188 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/generations/{generationId}/cancel` | 원문 검토 대기 작업 취소(진행 중 작업 제한 해제, 기능 꺼짐에도 허용) | 상태 기반 |
 | 189 | 외부 | Mission | USER | GET | `/api/me/welcome-quest` | [웰컴 퀘스트 상태 조회](domains/mission/welcome-quest.md#get-apimewelcome-quest) (공용 미션 목록과 분리) | - |
 | 190 | 외부 | Mission | USER | POST | `/api/me/welcome-quest/{step}/claim` | [웰컴 퀘스트 단계·보너스 지급](domains/mission/welcome-quest.md#post-apimewelcome-queststepclaim) | `requestId`·회원/단계 평생 1회 |
+| 191 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/archive` | PUBLISHED Event 전역 보관(사용자 조회·응모·당첨·알림 제외) | 상태 기반 |
+| 192 | 외부 | Event | ADMIN | PATCH | `/api/admin/events/{eventId}/unarchive` | 보관 PUBLISHED Event 복원 | 상태 기반 |
+| 193 | 외부 | Event | PUBLIC | GET | `/api/events/counts` | [Event 표시 상태별 개수 조회](domains/event/api.md#get-apieventscounts) | - |
+| 194 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/close` | [Quiz 수동 마감](domains/quiz/api.md#post-apicreatorquizzesquizidclose), 재게시 불가·기존 응시/보상 보존 | 상태 기반 |
+| 195 | 외부 | Follow | USER | PUT | `/api/creators/{creatorId}/posts/read` | [팔로우한 Creator의 게시글 읽음 기록](domains/follow/api.md#put-apicreatorscreatoridpostsread) | 회원·Creator별 최대 시각 |
+| 196 | 외부 | Follow | USER | GET | `/api/me/follows/post-news` | [팔로우한 Creator의 읽지 않은 새 글 일괄 조회](domains/follow/api.md#get-apimefollowspost-news) | - |
+
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
+
+## Creator AI 콘텐츠 태그
+
+자동 적재·내구성 변경 작업, 본인 조회·확인, 공개 조회의 경로/인증은 [콘텐츠 태그 API](domains/creator/content-tags.md)를 따른다.

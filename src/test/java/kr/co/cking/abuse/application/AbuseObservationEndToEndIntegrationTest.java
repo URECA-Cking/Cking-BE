@@ -54,7 +54,7 @@ import kr.co.cking.mission.application.MissionCompletionService;
 import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.domain.CommonMissionType;
 import kr.co.cking.mission.domain.MissionType;
-import kr.co.cking.ticket.application.CommonTicketEarnService;
+import kr.co.cking.ticket.application.CommonTicketEarnServiceImpl;
 import kr.co.cking.ticket.application.TicketEarnService;
 import kr.co.cking.ticket.application.TicketOnceEarnService;
 import kr.co.cking.ticket.application.dto.EarnLookupResult;
@@ -117,7 +117,7 @@ class AbuseObservationEndToEndIntegrationTest {
     // 여기서는 그 확정 결과만 통제하고 Abuse 경계부터 실제 Redis·MySQL을 사용한다.
     @MockitoBean private TicketEarnService ticketEarnService;
     @MockitoBean private TicketOnceEarnService ticketOnceEarnService;
-    @MockitoBean private CommonTicketEarnService commonTicketEarnService;
+    @MockitoBean private CommonTicketEarnServiceImpl commonTicketEarnService;
     @MockitoBean private EntrySpendService entrySpendService;
     @MockitoBean private EventQueryService eventQueryService;
 

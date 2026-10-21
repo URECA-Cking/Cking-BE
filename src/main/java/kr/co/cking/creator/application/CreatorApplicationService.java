@@ -64,9 +64,15 @@ public class CreatorApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AdminApplication> findAllForAdmin(Long adminId, Pageable pageable) {
+    public Page<AdminApplication> findAllForAdmin(
+            Long adminId,
+            CreatorApplicationStatus status,
+            Pageable pageable
+    ) {
         requireAdmin(adminId);
-        Page<CreatorApplication> applications = applicationRepository.findAllByOrderByRequestedAtAscIdAsc(pageable);
+        Page<CreatorApplication> applications = status == null
+                ? applicationRepository.findAllByOrderByRequestedAtAscIdAsc(pageable)
+                : applicationRepository.findByStatusOrderByRequestedAtAscIdAsc(status, pageable);
         Map<Long, String> applicantNames = memberRepository.findByMemberIdIn(applications.stream()
                         .map(CreatorApplication::getMemberId).toList())
                 .stream().collect(Collectors.toMap(Member::getMemberId, Member::publicDisplayName));

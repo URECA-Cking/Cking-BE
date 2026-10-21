@@ -2,11 +2,13 @@ package kr.co.cking.stream.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import kr.co.cking.event.repository.EventEntryRepository;
+import kr.co.cking.stream.application.SpendRedeductionRefunder;
 import kr.co.cking.stream.domain.DeadStreamMessage;
 import kr.co.cking.stream.domain.DeadStreamType;
 import kr.co.cking.stream.presentation.SpendStreamListener;
@@ -180,10 +183,13 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
         );
         assertThat(delivered).hasSize(1);
 
-        ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields));
+        ticketSpendLedgerService.apply(SpendCommand.fromStreamFields(fields), delivered.get(0).getId().getValue());
 
+        SimpleMeterRegistry redeliveryMetrics = new SimpleMeterRegistry();
         SpendStreamListener redeliveryListener = new SpendStreamListener(
-                ticketSpendLedgerService, redisTemplate, REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
+                ticketSpendLedgerService,
+                new SpendRedeductionRefunder(redisTemplate, REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP),
+                redisTemplate, redeliveryMetrics, Clock.systemUTC(), REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP);
         SpendStreamPelRecoveryScheduler redeliveryScheduler = new SpendStreamPelRecoveryScheduler(
                 redisTemplate, redeliveryListener, deadStreamMessageRepository, objectMapper,
                 REDELIVERY_STREAM_KEY, REDELIVERY_CONSUMER_GROUP, 100L, 5L);
@@ -204,6 +210,7 @@ class SpendStreamPelRecoverySchedulerIntegrationTest {
         assertThat(ledgerCount).isEqualTo(1);
         assertThat(balance).isEqualTo(95L);
         assertThat(pending.isEmpty()).isTrue();
+        assertThat(redeliveryMetrics.get("cking.stream.apply.delay").timer().count()).isZero();
     }
 
     @Test

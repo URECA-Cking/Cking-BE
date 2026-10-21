@@ -37,7 +37,7 @@ class EventQueryServiceGetEventTest {
     private final EventCache eventCache = mock(EventCache.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final EventQueryService service =
-            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), memberRepository);
+            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), mock(EventCountsCache.class), memberRepository);
 
     @BeforeEach
     void setUp() {
@@ -103,6 +103,26 @@ class EventQueryServiceGetEventTest {
 
         assertThatThrownBy(() -> service.getEvent(1L, 100L))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void 보관된_공개_이벤트는_상세_조회에서_제외된다() {
+        Event archived = Event.builder()
+                .creatorId(7L)
+                .title("보관 이벤트")
+                .startAt(Instant.parse("2026-09-01T00:00:00Z"))
+                .endAt(Instant.parse("2026-09-30T00:00:00Z"))
+                .winnerCount(3)
+                .status(EventStatus.PUBLISHED)
+                .build();
+        org.springframework.test.util.ReflectionTestUtils.setField(archived, "archivedAt", now);
+        when(eventCache.find(1L)).thenReturn(Optional.empty());
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(archived));
+
+        assertThatThrownBy(() -> service.getEvent(1L, 100L))
+                .isInstanceOf(BusinessException.class);
+
+        verify(eventCache, never()).save(any());
     }
 
     @Test

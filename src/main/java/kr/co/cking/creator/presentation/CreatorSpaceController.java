@@ -22,6 +22,7 @@ import kr.co.cking.creator.presentation.dto.CreatorSpaceResponse;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceProfileImageResponse;
 import kr.co.cking.creator.presentation.dto.CreatorSpaceProfileImageRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +31,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -63,9 +66,11 @@ public class CreatorSpaceController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return ApiResponse.success(PageResponse.from(
-                profileService.findPublicSpaces(keyword, PageRequest.of(page, size))
-                        .map(CreatorSpaceResponse.Detail::from)));
+        Page<CreatorSpaceView> spaces = profileService.findPublicSpaces(keyword, PageRequest.of(page, size));
+        Map<Long, Long> openEventCounts = profileService.countOpenEvents(
+                spaces.map(view -> view.space().getCreatorId()).toList());
+        return ApiResponse.success(PageResponse.from(spaces.map(view -> CreatorSpaceResponse.Detail.from(
+                view, openEventCounts.getOrDefault(view.space().getCreatorId(), 0L)))));
     }
 
     /** Creator ID로 공개 Creator Space를 조회한다. */

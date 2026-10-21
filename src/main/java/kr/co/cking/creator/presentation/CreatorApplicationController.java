@@ -9,6 +9,7 @@ import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.creator.application.CreatorApplicationService;
 import kr.co.cking.creator.domain.CreatorApplication;
+import kr.co.cking.creator.domain.CreatorApplicationStatus;
 import kr.co.cking.creator.presentation.dto.CreatorApplicationRequest;
 import kr.co.cking.creator.presentation.dto.CreatorApplicationResponse;
 import lombok.RequiredArgsConstructor;
@@ -65,14 +66,15 @@ public class CreatorApplicationController {
 
     /** 인증된 관리자가 Creator 신청 목록을 심사 순서대로 조회한다. */
     @GetMapping("/api/admin/creator-applications")
-    @Operation(summary = "Creator 신청 관리자 목록", description = "ADMIN 권한의 인증된 관리자가 심사 대기와 이력 신청을 페이지로 조회합니다.")
+    @Operation(summary = "Creator 신청 관리자 목록", description = "ADMIN 권한의 인증된 관리자가 선택 상태의 신청 또는 전체 신청 이력을 페이지로 조회합니다.")
     public ApiResponse<CreatorApplicationResponse.PageResult<CreatorApplicationResponse.Admin>> findAllForAdmin(
             @CurrentMemberId Long memberId,
+            @RequestParam(required = false) CreatorApplicationStatus status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         Page<CreatorApplicationService.AdminApplication> applications = creatorApplicationService.findAllForAdmin(
-                memberId, PageRequest.of(page, size));
+                memberId, status, PageRequest.of(page, size));
         List<CreatorApplicationResponse.Admin> items = applications.stream()
                 .map(application -> CreatorApplicationResponse.Admin.from(
                         application.application(), application.applicantName()))

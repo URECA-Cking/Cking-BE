@@ -7,6 +7,7 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventApprovalRequest;
 import kr.co.cking.event.domain.EventApprovalRequestStatus;
 import kr.co.cking.event.domain.EventErrorCode;
+import kr.co.cking.event.domain.EventArchiveStatus;
 import kr.co.cking.event.repository.EventApprovalRequestRepository;
 import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.domain.Member;
@@ -14,8 +15,11 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.winner.domain.WinnerManagementStatus;
+import kr.co.cking.winner.repository.WinnerManagementRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -37,6 +41,10 @@ public class EventReviewService {
     private final EventApprovalRequestRepository approvalRequestRepository;
     private final EventCommandService eventCommandService;
     private final CreatorRepository creatorRepository;
+    private final WinnerManagementRepository winnerManagementRepository;
+
+    @Value("${cking.event.archive.allow-pending-winners:false}")
+    private boolean allowArchiveWithPendingWinners;
 
     /** 만료되지 않은 승인 대기 Event와 현재 요청을 승인 처리한다. */
     public EventApprovalRequest approve(Long adminId, Long eventId) {
@@ -74,9 +82,11 @@ public class EventReviewService {
     /** 관리자가 운영할 삭제되지 않은 Event를 선택 상태와 페이지 조건으로 조회한다. */
     @Transactional(readOnly = true)
     public Page<ManagedEvent> findManagedEvents(Long adminId, kr.co.cking.event.domain.EventStatus status,
-                                                  Pageable pageable) {
+                                                  EventArchiveStatus archiveStatus, Pageable pageable) {
         requireAdmin(adminId);
-        Page<Event> events = eventRepository.findManagedEvents(status, pageable);
+        Page<Event> events = archiveStatus == EventArchiveStatus.ACTIVE
+                ? eventRepository.findManagedEvents(status, pageable)
+                : eventRepository.findManagedEvents(status, archiveStatus, pageable);
         if (events.isEmpty()) {
             return new org.springframework.data.domain.PageImpl<>(List.of(), pageable, events.getTotalElements());
         }
@@ -86,6 +96,31 @@ public class EventReviewService {
         List<ManagedEvent> items = events.stream()
                 .map(event -> toManagedEvent(event, creatorsById)).toList();
         return new org.springframework.data.domain.PageImpl<>(items, pageable, events.getTotalElements());
+    }
+
+    /** 기존 운영 목록 호출은 일반 Event(ACTIVE)만 조회한다. */
+    @Transactional(readOnly = true)
+    public Page<ManagedEvent> findManagedEvents(Long adminId, kr.co.cking.event.domain.EventStatus status,
+                                                  Pageable pageable) {
+        return findManagedEvents(adminId, status, EventArchiveStatus.ACTIVE, pageable);
+    }
+
+    /** PUBLISHED Event를 관리자 보관함으로 옮긴다. 운영 환경에서는 수령 대기 당첨이 있으면 막는다. */
+    public Event archive(Long adminId, Long eventId) {
+        requireAdmin(adminId);
+        return eventCommandService.archive(eventId, adminId, event -> {
+            if (!allowArchiveWithPendingWinners && !winnerManagementRepository
+                    .findAllByEventIdAndStatusForUpdate(event.getEventId(), WinnerManagementStatus.SELECTED)
+                    .isEmpty()) {
+                throw new BusinessException(EventErrorCode.INVALID_STATE);
+            }
+        });
+    }
+
+    /** 보관 Event를 다시 일반 운영 목록과 사용자 화면에 노출한다. */
+    public Event unarchive(Long adminId, Long eventId) {
+        requireAdmin(adminId);
+        return eventCommandService.unarchive(eventId);
     }
 
     /** 승인 요청과 연결된 Event·Creator 정보를 관리자 목록 항목으로 결합한다. */

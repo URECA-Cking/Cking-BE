@@ -13,6 +13,9 @@ import java.util.Optional;
 
 public interface CreatorPostRepository extends JpaRepository<CreatorPost, Long> {
 
+    /** 로컬 더미 글을 재시딩할 때 같은 Creator의 동일한 시연 글을 중복 생성하지 않는다. */
+    boolean existsByCreatorIdAndContent(Long creatorId, String content);
+
     /** 같은 게시글의 수정·삭제가 동시에 이미지 연결을 바꾸지 않도록 게시글 행을 잠근다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from CreatorPost p where p.postId = :postId")

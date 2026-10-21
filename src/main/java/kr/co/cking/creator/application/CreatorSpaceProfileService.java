@@ -10,6 +10,7 @@ import kr.co.cking.creator.domain.CreatorSpace;
 import kr.co.cking.creator.domain.CreatorSpaceCustomSlug;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
+import kr.co.cking.event.application.EventQueryService;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,8 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -39,12 +42,20 @@ public class CreatorSpaceProfileService {
     private final CreatorSpaceProfileImageManager profileImageManager;
     private final Clock clock;
     private final CreatorFollowQueryService followQueryService;
+    private final EventQueryService eventQueryService;
     private final CreatorSpaceTemplateImagePinner imagePinner;
+    private final CreatorContentOutbox contentOutbox;
+    private final CreatorSpaceService spaceService;
 
     /** Creator ID로 공개 Creator Space와 Creator 이름을 조회한다. */
     public CreatorSpaceView findByCreatorId(Long creatorId) {
         Creator creator = requireCreatorById(creatorId);
         return new CreatorSpaceView(requireSpace(creatorId), creator.publicDisplayName());
+    }
+
+    /** 목록 응답에 담는 크리에이터별 진행 중 이벤트 수. 진행 중이 없는 크리에이터는 키가 없다. */
+    public Map<Long, Long> countOpenEvents(Collection<Long> creatorIds) {
+        return eventQueryService.countInProgressByCreatorIds(creatorIds);
     }
 
     /** 공개 조회 응답에 담는 팔로워 수. Space 존재 확인은 호출 전 단건 조회가 끝낸 뒤라는 전제로 집계만 한다. */
@@ -104,18 +115,31 @@ public class CreatorSpaceProfileService {
     @Transactional
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
-        CreatorSpace space = requireSpaceForUpdate(creator.getCreatorId());
+        // Space가 없는 행을 먼저 FOR UPDATE로 조회하면 MySQL 갭 락을 잡을 수 있다.
+        // 모든 첫 저장 요청이 Creator 행을 먼저 잠근 뒤 Space를 조회하도록 락 순서를 통일한다.
+        creatorRepository.findByIdForUpdate(creator.getCreatorId())
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        Optional<CreatorSpace> existing = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId());
+        CreatorSpace space = existing.orElseGet(() -> spaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId()));
+        if (existing.isEmpty()) {
+            releaseCarriedImageForRequestedUrl(creator, space, fields);
+        }
         // URL 입력이 실제로 새로 적용되는 경우만 템플릿 이미지를 고정한다. 클라이언트는 현재 URL을 그대로 다시 보내므로,
         // 바뀌지 않는 URL까지 고정하면 이미 정리된 이미지를 가진 Space는 소개글만 고쳐도 계속 거절된다.
         imagePinner.pin(
                 changedUrl(space.getProfileImageKey(), space.getProfileImageUrl(), fields.profileImageUrl()),
                 changedUrl(space.getBannerImageKey(), space.getBannerImageUrl(), fields.bannerImageUrl()));
+        long previousRevision = space.getContentRevision();
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
         // profileImageKey가 명시되면(특히 null로 기본 이미지 복귀를 요청하면) 일반 URL 수정 뒤에
         // 연결 상태를 적용해야 삭제 대상인 기존 CDN URL이 다시 저장되지 않는다.
         profileImageManager.apply(creator, space, fields.profileImageKey(), fields.profileImageKeyProvided());
         // 배너도 같다. bannerImageKey가 명시되면 일반 URL 수정 뒤에 연결 상태를 적용한다(이슈 #590).
         profileImageManager.applyBanner(creator, space, fields.bannerImageKey(), fields.bannerImageKeyProvided());
+        if (space.getContentRevision() != previousRevision) {
+            spaceRepository.flush();
+            contentOutbox.enqueue(space);
+        }
         return new CreatorSpaceView(space, creator.publicDisplayName());
     }
 
@@ -191,6 +215,18 @@ public class CreatorSpaceProfileService {
     private CreatorSpace requireSpace(Long creatorId) {
         return spaceRepository.findByCreatorId(creatorId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    /**
+     * 방금 만든 Space에 회원 사진을 복사해 연결했는데 이번 요청이 다른 프로필 이미지 URL을 보냈다면, 요청 값이 우선이므로 복사본 연결을 풀고
+     * (이전 파일은 삭제 대기) 이어지는 URL 적용이 그대로 반영되게 한다. 현재 URL을 그대로 보냈거나 키를 명시한 요청은 건드리지 않는다.
+     */
+    private void releaseCarriedImageForRequestedUrl(Creator creator, CreatorSpace space, CreatorSpaceProfileFields fields) {
+        if (space.getProfileImageKey() != null
+                && !fields.profileImageKeyProvided()
+                && !Objects.equals(fields.profileImageUrl(), space.getProfileImageUrl())) {
+            profileImageManager.apply(creator, space, null, true);
+        }
     }
 
     /** 수정·slug 변경에 사용할 Creator Space를 비관적 잠금으로 조회한다. */

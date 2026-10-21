@@ -461,10 +461,22 @@ class CreatorSpaceControllerTest {
                 .andExpect(jsonPath("$.data.items[0].bannerImageUrl").value("https://img/banner.png"))
                 .andExpect(jsonPath("$.data.items[0].slugChangeableAt").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].followerCount").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].openEventCount").value(0))
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.size").value(20))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void publicCreatorListIncludesOpenEventCount() throws Exception {
+        given(profileService.findPublicSpaces(null, PageRequest.of(0, 20)))
+                .willReturn(new PageImpl<>(List.of(view()), PageRequest.of(0, 20), 1));
+        given(profileService.countOpenEvents(List.of(42L))).willReturn(java.util.Map.of(42L, 3L));
+
+        mockMvc.perform(get("/api/creators"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].openEventCount").value(3));
     }
 
     @Test

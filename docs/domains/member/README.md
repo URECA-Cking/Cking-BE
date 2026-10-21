@@ -1,8 +1,12 @@
 # Member 공개 닉네임 정책
 
-`member.name`은 OAuth Provider가 전달한 원본 이름으로, 계정 연결·관리용 정보다. `member.nickname`은 새 공개
-활동명이다. 기존 회원은 OAuth 이름을 자동 이관하지 않으며, `nickname`이 `null`이면 아직 공개 프로필을 설정하지
-않은 상태다.
+`member.name`은 OAuth Provider가 전달한 원본 이름으로, 계정 연결·관리용 정보다. `member.nickname`과 Member
+프로필 사진은 팬 계정의 공개 프로필이다. 기존 회원은 OAuth 이름을 자동 이관하지 않으며, `nickname`이 `null`이면
+아직 팬 공개 프로필을 설정하지 않은 상태다.
+
+승인된 Creator의 공개 이름·사진은 Member 프로필이 아니라 Creator 활동명·Creator Space 프로필 사진이다. Creator는
+`/api/me/profile`과 `/api/me/profile-images`로 Member 공개 프로필을 수정할 수 없으며, Space 편집 API에서만 공개
+프로필을 관리한다. Member·Creator의 인증, 응모권, 팔로우 데이터는 같은 Member 계정에 유지한다.
 
 ## 형식과 중복
 
@@ -27,10 +31,12 @@
 
 ## 배포 순서와 트랜잭션
 
-- 댓글·당첨자·Creator 신청 운영 목록처럼 Member 이름을 외부에 표시하는 응답은 `publicDisplayName()`을 사용한다.
-  기존 회원은 OAuth 이름을 자동 이관하지 않으므로 닉네임을 설정하기 전에는 `닉네임 미설정`으로 표시한다.
-- `PROFILE_SETUP_REQUIRED`는 댓글 작성·수정, Creator 신청, 이벤트 응모를 막는다. 팔로우와 기존 미션 참여는 계속
-  허용한다.
+- 팬 공개 이름을 표시하는 응답은 `publicDisplayName()`을 사용한다. 기존 팬 회원은 OAuth 이름을 자동 이관하지 않으므로
+  닉네임을 설정하기 전에는 `닉네임 미설정`으로 표시한다. Creator 공개 응답은 Creator 공개 프로필 조회 경계를 사용한다.
+- `PROFILE_SETUP_REQUIRED`는 팬의 댓글 작성·수정, Creator 신청, 이벤트 응모를 막는다. 승인된 Creator는 Member 닉네임
+  대신 활동명·Space 사진으로 공개되므로 Member 닉네임 설정 여부와 무관하다. 다만 활동명 미설정 Creator는
+  `ACTIVITY_NAME_SETUP_REQUIRED`로 댓글·게시글·Event 작성과 이벤트 응모를 할 수 없다. 팔로우와 기존 미션 참여는
+  계속 허용한다.
 - `MemberNicknameTransactionalService`는 기본 전파(`REQUIRED`)로 호출자 트랜잭션에 참여한다. 프로필 사진과
   닉네임을 함께 수정하는 API는 이 서비스를 같은 DB 트랜잭션에서 호출한다. 독립 명령 진입점은 고유성 충돌을
   `NICKNAME_ALREADY_TAKEN`으로 변환한다.

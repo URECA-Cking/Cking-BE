@@ -10,6 +10,7 @@ import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventEntry;
 import kr.co.cking.event.repository.EventEntryRepository;
 import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.ticket.application.dto.SpendApplyResult;
 import kr.co.cking.ticket.application.dto.SpendCommand;
 import kr.co.cking.ticket.domain.CommonTicketLedger;
 import kr.co.cking.ticket.domain.CouponType;
@@ -46,8 +47,12 @@ public class TicketSpendLedgerService {
     private final CommonTicketLedgerRepository commonTicketLedgerRepository;
     private final UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
 
+    /**
+     * {@code sourceStreamId}는 이 요청을 실어 온 Stream 메시지 ID다. 새로 반영하면 함께 저장하고, 이미 반영된
+     * requestId가 다른 메시지로 오면 응모 Lua가 다시 차감한 것이므로 {@link SpendApplyResult#REDEDUCTED}를 돌려준다.
+     */
     @Transactional
-    public void apply(SpendCommand command) {
+    public SpendApplyResult apply(SpendCommand command, String sourceStreamId) {
         String requestId = command.requestId();
 
         // 교차 정합성(CLAUDE.md §11): SPEND Ledger.creator_id는 Event.creator_id와
@@ -71,8 +76,14 @@ public class TicketSpendLedgerService {
         Optional<EventEntry> existing = eventEntryRepository.findByRequestId(requestId);
         if (existing.isPresent()) {
             verifySameRequest(existing.get(), command);
+            String appliedStreamId = existing.get().getSourceStreamId();
+            if (appliedStreamId != null && sourceStreamId != null && !appliedStreamId.equals(sourceStreamId)) {
+                log.warn("이미 반영된 SPEND 요청이 새 메시지로 와서 Redis 차감을 되돌립니다. requestId={}, appliedStreamId={}, streamId={}",
+                        requestId, appliedStreamId, sourceStreamId);
+                return SpendApplyResult.REDEDUCTED;
+            }
             log.info("이미 반영된 SPEND 요청이라 재차감하지 않습니다. requestId={}", requestId);
-            return;
+            return SpendApplyResult.ALREADY_APPLIED;
         }
 
         Instant now = Instant.now();
@@ -87,6 +98,7 @@ public class TicketSpendLedgerService {
                         .requestId(requestId)
                         .usedTicketCount(command.ticketCount())
                         .appliedAt(now)
+                        .sourceStreamId(sourceStreamId)
                         .build()
         );
 
@@ -95,6 +107,7 @@ public class TicketSpendLedgerService {
         } else {
             applyCreator(command, entry, now);
         }
+        return SpendApplyResult.APPLIED;
     }
 
     private void applyCreator(SpendCommand command, EventEntry entry, Instant now) {
