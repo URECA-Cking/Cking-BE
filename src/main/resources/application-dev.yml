@@ -78,6 +78,10 @@ cking:
   comment-filter:
     enabled: ${COMMENT_FILTER_ENABLED:true}
     auth: aws-iam
+  # 응모권 지급 완료 알림(이슈 #728). 같은 dev 프로필을 쓰는 부하 테스트는 deploy.sh가 끈다.
+  notification:
+    ticket-reward:
+      enabled: ${TICKET_REWARD_NOTIFICATION_ENABLED:true}
 
 info:
   image:
