@@ -2,6 +2,8 @@ package kr.co.cking.notification.domain;
 
 /** 알림의 발생 유형을 구분한다. */
 public enum NotificationType {
+    COMMON_TICKET_REWARDED,
+    CREATOR_TICKET_REWARDED,
     /** 최초 추첨 당첨. */
     INITIAL_WINNER,
     /** 재추첨 당첨. */

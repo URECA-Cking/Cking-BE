@@ -15,6 +15,10 @@ import org.springframework.data.repository.query.Param;
 /** Notification 영속화와 사용자별 조회·읽음 처리용 잠금 조회를 제공한다. */
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
+    Optional<Notification> findByTicketLedgerId(Long ledgerId);
+
+    Optional<Notification> findByCommonTicketLedgerId(Long ledgerId);
+
     /** 특정 Member가 소유한 Notification 중 숨기지 않았고 보관 Event에 속하지 않은 항목만 조회한다. */
     @Query("""
             select notification from Notification notification

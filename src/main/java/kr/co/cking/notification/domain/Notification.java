@@ -45,6 +45,12 @@ public class Notification {
     @Column(name = "sanction_id", updatable = false)
     private Long sanctionId;
 
+    @Column(name = "ticket_ledger_id", updatable = false)
+    private Long ticketLedgerId;
+
+    @Column(name = "common_ticket_ledger_id", updatable = false)
+    private Long commonTicketLedgerId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, updatable = false, length = 30)
     private NotificationType type;
@@ -93,6 +99,17 @@ public class Notification {
         notification.type = type;
         notification.title = title;
         notification.body = body;
+        return notification;
+    }
+
+    public static Notification forTicketReward(Long memberId, boolean common, Long ledgerId, String body) {
+        Notification notification = new Notification();
+        notification.memberId = memberId;
+        notification.type = common ? NotificationType.COMMON_TICKET_REWARDED : NotificationType.CREATOR_TICKET_REWARDED;
+        notification.title = "응모권 지급 완료";
+        notification.body = body;
+        notification.commonTicketLedgerId = common ? ledgerId : null;
+        notification.ticketLedgerId = common ? null : ledgerId;
         return notification;
     }
 
