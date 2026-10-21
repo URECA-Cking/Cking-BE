@@ -58,6 +58,21 @@ Lua 결과코드 10종 + `BALANCE_MAINTENANCE`(issue #172) 중 실패 9종은 `E
 `event_entry`와 `event`, `creator`를 `member_id`·`creator_id`로 연결해 읽기 전용으로 확인하고,
 발견 시 추첨·당첨 처리 방침을 별도 작업에서 결정한다.
 
+### 성공 응답 전 복제 확인 (#674, 기본 꺼짐)
+
+Redis 복제는 비동기라, 응모 Lua가 성공한 직후 주 노드가 장애로 바뀌면 복제되지 않은 응모가 사라진다. `cking.entry.replication-wait.enabled=true`이면 Lua 결과가 `SUCCESS`일 때 같은 전용 연결에서 `WAIT`로 복제 노드 반영을 확인한 뒤 응답한다.
+
+| 설정 | 값 |
+| --- | --- |
+| `enabled` | 기본 `false`. 복제 노드가 없는 개발·로컬은 끈다 |
+| `replicas` | 기본 1 |
+| `timeout-ms` | 켤 때 필수, 1 이상. 0은 `WAIT`의 무한 대기라 거부한다. 운영 복제 지연을 잰 뒤 정한다 |
+
+- `WAIT`는 같은 연결이 보낸 쓰기만 확인하고 그동안 연결을 막는다. 공유 연결을 쓰지 않는 연결 팩토리를 따로 두어 Lua와 `WAIT`를 한 연결로 보낸다
+- 제한 시간 안에 확인하지 못해도 `SUCCESS`로 응답한다. 복제 노드 장애 때 응모 전체가 막히지 않게 한다. 이때는 `eventId`·`userId`·`requestId`를 WARN 로그로 남겨, 장애 뒤 DB와 대조해 사라진 응모를 찾는다
+- `SUCCESS`가 아닌 결과(`DUPLICATE_REPLAY` 포함)는 기다리지 않는다
+- 지표: `cking.entry.replication.wait`(Timer), 태그 `result=confirmed|unconfirmed|error`
+
 ## GET /api/events/{eventId}/entries/me
 
 USER가 자신의 Event 응모 내역을 조회한다. Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. Query는 선택 `cursor`, `size`를 사용한다.
