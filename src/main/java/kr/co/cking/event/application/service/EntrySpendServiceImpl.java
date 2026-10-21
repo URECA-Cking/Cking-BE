@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
@@ -33,15 +34,19 @@ public class EntrySpendServiceImpl implements EntrySpendService {
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> entrySpendLuaScript;
     private final TicketBalanceKeyLoader balanceKeyLoader;
+    // 설정으로 켰을 때만 있다(#674). 없으면 공유 연결로 Lua만 실행한다.
+    private final EntryReplicationWait replicationWait;
 
     public EntrySpendServiceImpl(
             StringRedisTemplate redisTemplate,
             @Qualifier("entrySpendLuaScript") DefaultRedisScript<List> entrySpendLuaScript,
-            TicketBalanceKeyLoader balanceKeyLoader
+            TicketBalanceKeyLoader balanceKeyLoader,
+            ObjectProvider<EntryReplicationWait> replicationWaitProvider
     ) {
         this.redisTemplate = redisTemplate;
         this.entrySpendLuaScript = entrySpendLuaScript;
         this.balanceKeyLoader = balanceKeyLoader;
+        this.replicationWait = replicationWaitProvider.getIfAvailable();
     }
 
     // FR-P2-034 / 취합v1.5.4 §5.3 확정값. 실제 운영 키는 기본값 그대로 쓰고,
@@ -86,30 +91,33 @@ public class EntrySpendServiceImpl implements EntrySpendService {
                 : EntryRedisKeys.maintenance(creatorId, userId);
         List<?> luaResult;
 
+        List<String> keys = List.of(
+                EntryRedisKeys.status(eventId),
+                EntryRedisKeys.endAt(eventId),
+                balanceKey,
+                EntryRedisKeys.idem(requestId),
+                EntryRedisKeys.spendGuard(requestId),
+                maintenanceKey,
+                EntryRedisKeys.entryTotal(eventId),
+                EntryRedisKeys.entrants(eventId)
+        );
+        Object[] args = {
+                String.valueOf(ticketCount),
+                fingerprint,
+                streamKey,
+                String.valueOf(IDEM_TTL_SECONDS),
+                String.valueOf(eventId),
+                String.valueOf(userId),
+                String.valueOf(creatorId),
+                requestId,
+                couponType.name(),
+                String.valueOf(GUARD_TTL_SECONDS)
+        };
+
         try {
-            luaResult = redisTemplate.execute(
-                    entrySpendLuaScript,
-                    List.of(
-                            EntryRedisKeys.status(eventId),
-                            EntryRedisKeys.endAt(eventId),
-                            balanceKey,
-                            EntryRedisKeys.idem(requestId),
-                            EntryRedisKeys.spendGuard(requestId),
-                            maintenanceKey,
-                            EntryRedisKeys.entryTotal(eventId),
-                            EntryRedisKeys.entrants(eventId)
-                    ),
-                    String.valueOf(ticketCount),
-                    fingerprint,
-                    streamKey,
-                    String.valueOf(IDEM_TTL_SECONDS),
-                    String.valueOf(eventId),
-                    String.valueOf(userId),
-                    String.valueOf(creatorId),
-                    requestId,
-                    couponType.name(),
-                    String.valueOf(GUARD_TTL_SECONDS)
-            );
+            luaResult = replicationWait == null
+                    ? redisTemplate.execute(entrySpendLuaScript, keys, args)
+                    : replicationWait.execute(entrySpendLuaScript, keys, args, eventId, userId, requestId);
         } catch (DataAccessException e) {
             // Lua는 DECRBY/XADD 실패 시 잔액과 guard를 정리한 뒤 오류를 반환한다.
             // 타임아웃도 SYSTEM_ERROR다. Lua가 이미 차감했을 수 있어 클라이언트는 동일 requestId로 재시도한다.
