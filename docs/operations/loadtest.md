@@ -1,6 +1,6 @@
 # 부하 테스트 실행
 
-`loadtest/` 스크립트로 응모 → DB 반영 → 마감 → 추첨의 기준선을 잰다. 환경은 Cking-Infra `envs/loadtest`(테스트 앱 서버, RDS, k6 서버)이며 개발 서버에는 실행하지 않는다(`lib/api.js`가 `BASE_URL`을 부하 테스트 주소로 제한한다).
+`loadtest/` 스크립트로 응모 → DB 반영 → 마감 → 추첨의 기준선을 잰다. 환경은 Cking-Infra `envs/loadtest`(테스트 앱 서버, RDS, k6 서버)와 운영이며 개발 서버에는 실행하지 않는다(`lib/api.js`가 `BASE_URL`을 부하 테스트 주소와 확인한 운영 주소로 제한한다). 운영에서 달라지는 점은 [운영에서 실행](#운영에서-실행)에 있다.
 
 서버 이름: **테스트 앱 서버**(`loadtest-cking-app`, 앱·Redis), **k6 서버**(`loadtest-cking-k6`), **테스트 RDS**(`loadtest-cking-mysql`). 개발 서버(`dev-cking-app`)와는 별개다.
 
@@ -57,14 +57,15 @@ cd Cking-BE-<커밋>/loadtest
 
 ### 2. 시딩 (테스트 앱 서버)
 
-앱이 기동해 Flyway 마이그레이션을 마친 뒤 실행한다. `seed.sql`은 막 만든 DB인지(회원은 앱이 dev 프로필로 기동하며 만든 관리자 초기 계정 하나뿐, 크리에이터·이벤트·잔액·원장 0건) 먼저 확인하고, 아니면 `seed_target_is_fresh_loadtest_db` 위반으로 멈춘다. 확인을 통과하면 회원 ID가 겹치는 관리자 초기 계정을 한 트랜잭션으로 지운다. 비밀번호는 환경변수로만 넘긴다.
+앱이 기동해 Flyway 마이그레이션을 마친 뒤 실행한다. `seed.sql`은 막 만든 DB인지(회원은 앱이 dev·prod 프로필로 기동하며 만든 관리자 초기 계정 하나뿐, 크리에이터·이벤트·잔액·원장 0건) 먼저 확인하고, 아니면 `seed_target_is_fresh_loadtest_db` 위반으로 멈춘다. 확인을 통과하면 회원 ID가 겹치는 관리자 초기 계정을 한 트랜잭션으로 지운다. 비밀번호는 환경변수로만 넘긴다.
 
 ```bash
-P=/cking/loadtest; R=ap-northeast-2
+P=/cking/loadtest; R=ap-northeast-2   # 운영은 P=/cking/prod
 DB_HOST=$(aws ssm get-parameter --region $R --name $P/DB_HOST --query Parameter.Value --output text)
+DB_USER=$(aws ssm get-parameter --region $R --name $P/DB_USERNAME --with-decryption --query Parameter.Value --output text)
 MYSQL_PWD=$(aws ssm get-parameter --region $R --name $P/DB_PASSWORD --with-decryption --query Parameter.Value --output text); export MYSQL_PWD
 docker run --rm -i -e MYSQL_PWD --network host -v "$PWD:/lt:ro" mysql:8.4 \
-  mysql -h "$DB_HOST" -u admin cking -e "SET @creators = 5, @members = 10000, @start_balance = 100, @entry_hours = 24, @race_members = 40, @race_balance = 11; source /lt/seed.sql"
+  mysql -h "$DB_HOST" -u "$DB_USER" cking -e "SET @creators = 5, @members = 10000, @start_balance = 100, @entry_hours = 24, @race_members = 40, @race_balance = 11; source /lt/seed.sql"
 ```
 
 출력의 `admin_member_id`는 추첨에, `race_first_member_id`는 동시 요청에 쓴다. 이벤트 게이트는 앱 스케줄러가 10초 안에 Redis에 올린다.
@@ -73,9 +74,10 @@ docker run --rm -i -e MYSQL_PWD --network host -v "$PWD:/lt:ro" mysql:8.4 \
 
 ```bash
 source /etc/profile.d/k6.sh
-export BASE_URL=https://loadtest-api.cking.co.kr CREATORS=5 MEMBERS=10000
+P=/cking/loadtest   # 운영은 P=/cking/prod
+export BASE_URL=https://loadtest-api.cking.co.kr CREATORS=5 MEMBERS=10000   # 운영은 BASE_URL=https://api.cking.co.kr CONFIRM_PROD=api.cking.co.kr
 export K6_PROMETHEUS_RW_TREND_STATS="p(50),p(95),p(99),max"
-JWT_SECRET="$(aws ssm get-parameter --region ap-northeast-2 --name /cking/loadtest/JWT_SECRET --with-decryption --query Parameter.Value --output text)"
+JWT_SECRET="$(aws ssm get-parameter --region ap-northeast-2 --name $P/JWT_SECRET --with-decryption --query Parameter.Value --output text)"
 export JWT_SECRET
 mkdir -p results
 ```
@@ -154,4 +156,21 @@ DB 쪽은 `verify.sh`의 6번이 같은 요청 라운드 회원(앞쪽 절반)�
 
 - 같은 시나리오를 3번 돌려 중앙값을 쓴다. 추첨은 실행마다 1번이라 백분위수를 낼 수 없으므로 3회 측정값과 최대를 그대로 적는다. 실행 사이에는 데이터를 처음 상태로 되돌린다: 앱 정지 → Redis `FLUSHALL` → DB `DROP DATABASE cking; CREATE DATABASE cking;` → 앱 배포(Flyway) → 2번 시딩
 - 기록: 이 저장소 커밋, Infra 커밋, 시딩·시나리오 변수, k6 요약, 해당 시간대 대시보드, `verify.sh` 출력, 인스턴스 사용 시간
-- 끝나면 Cking-Infra `envs/loadtest`에서 `terraform destroy`, Parameter Store 비밀값 삭제
+- 끝나면 Cking-Infra `envs/loadtest`에서 `terraform destroy`, Parameter Store 비밀값 삭제. 운영은 `envs/prod`에서 `k6_enabled = false`로 k6 서버만 지운다
+
+## 운영에서 실행
+
+시딩·응모가 운영 데이터에 그대로 남는다. 실행 사이 되돌리기와 테스트 뒤 데이터 초기화는 운영 초기화 절차로 한다.
+
+| 항목 | 부하 테스트 환경 | 운영 |
+| --- | --- | --- |
+| 시딩·검증 위치 | 테스트 앱 서버 | 운영 앱 서버 한 대(`prod-cking-app-<인스턴스 ID>`) |
+| k6 서버 | `loadtest-cking-k6` | `prod-cking-k6`(Cking-Infra `envs/prod`에서 `k6_enabled = true`로 만든다) |
+| 비밀값 경로 `P` | `/cking/loadtest` | `/cking/prod` |
+| DB 계정(`$P/DB_USERNAME`) | RDS 마스터 | 앱 계정 `cking_app` |
+| Redis | 앱 서버의 Redis 컨테이너 | ElastiCache(TLS, 앱 사용자 `$P/REDIS_USERNAME`). `verify.sh`가 `valkey-cli`로 접속한다 |
+| k6 대상 | `BASE_URL=https://loadtest-api.cking.co.kr` | `BASE_URL=https://api.cking.co.kr CONFIRM_PROD=api.cking.co.kr` |
+| 검증 | `bash verify.sh <마감 이벤트 ID>` | `PARAM_PATH=/cking/prod bash verify.sh <마감 이벤트 ID>` |
+
+- k6 서버는 운영 프라이빗 앱 서브넷에 있어 요청이 NAT IP로 나간다. 운영 WAF는 NAT IP를 허용 목록으로 두므로 k6 요청은 IP당 요청 제한과 관리형 규칙을 건너뛰고, 측정값에 WAF 판정 시간이 들어가지 않는다
+- 테스트가 끝나면 데이터 초기화와 함께 `/cking/prod/JWT_SECRET`을 새 값으로 바꾼다. k6 서버가 이 값으로 어느 회원의 Access Token이든 서명할 수 있었다

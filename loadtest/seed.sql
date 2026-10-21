@@ -17,7 +17,7 @@ SELECT (SELECT COUNT(*) FROM admin_account) <= 1
    AND NOT EXISTS (SELECT 1 FROM ticket_ledger);
 DROP TEMPORARY TABLE seed_guard;
 
--- 관리자 초기 계정은 회원 ID가 겹치므로 지운다(AdminAccountSeedConfiguration, dev 프로필). 부하 테스트는 관리자 토큰을 직접 서명한다.
+-- 관리자 초기 계정은 회원 ID가 겹치므로 지운다(AdminAccountSeedConfiguration, dev·prod 프로필). 부하 테스트는 관리자 토큰을 직접 서명한다.
 -- 한 트랜잭션이라 회원 삭제가 실패하면 커밋 전에 멈춰 관리자 계정 삭제도 되돌려진다.
 START TRANSACTION;
 SET @seeded_admin = (SELECT member_id FROM admin_account);

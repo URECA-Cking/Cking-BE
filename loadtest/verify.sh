@@ -1,19 +1,47 @@
 #!/usr/bin/env bash
-# 부하 테스트 뒤 정합성 검증. 테스트 앱 서버(loadtest-cking-app)에서 root로 실행하며 읽기만 한다.
+# 부하 테스트 뒤 정합성 검증. 테스트 앱 서버(loadtest-cking-app)나 운영 앱 서버 한 대에서 root로 실행하며 읽기만 한다.
 # 동시 요청(race.js)까지 모든 시나리오가 끝난 뒤 실행한다.
-# 사용법: verify.sh [마감 측정 이벤트 ID]
+# 사용법: verify.sh [마감 측정 이벤트 ID]                      (부하 테스트 환경)
+#         PARAM_PATH=/cking/prod verify.sh [마감 측정 이벤트 ID]  (운영)
 # k6 쪽 대조(성공 건수, 마감 뒤 성공 0건)는 docs/operations/loadtest.md의 명령으로 k6 서버에서 한다.
 set -euo pipefail
 
 CLOSING_EVENT_ID="${1:-}"
 REGION="ap-northeast-2"
-PARAM_PATH="/cking/loadtest"
+PARAM_PATH="${PARAM_PATH:-/cking/loadtest}"
+PARAM_PATH="${PARAM_PATH%/}"
 MYSQL_IMAGE="mysql:8.4"
+VALKEY_IMAGE="valkey/valkey:7.2"
 
 param() {
   aws ssm get-parameter --region "$REGION" --name "$PARAM_PATH/$1" --with-decryption \
     --query 'Parameter.Value' --output text
 }
+
+# 부하 테스트 환경은 앱 서버의 Redis 컨테이너, 운영은 ElastiCache(TLS, 앱 사용자 인증)다.
+case "$PARAM_PATH" in
+  /cking/loadtest)
+    redis() {
+      docker exec -i cking-redis redis-cli "$@"
+    }
+    ;;
+  /cking/prod)
+    REDIS_HOST=$(param REDIS_HOST)
+    REDIS_USER=$(param REDIS_USERNAME)
+    # 비밀번호는 환경변수로만 valkey-cli에 넘긴다. 명령줄·출력에 남기지 않는다.
+    REDISCLI_AUTH=$(param REDIS_PASSWORD)
+    export REDISCLI_AUTH
+    redis() {
+      docker run --rm -i -e REDISCLI_AUTH -v /etc/ssl/certs/ca-certificates.crt:/ca.crt:ro "$VALKEY_IMAGE" \
+        valkey-cli --tls --cacert /ca.crt -h "$REDIS_HOST" --user "$REDIS_USER" "$@"
+    }
+    ;;
+  *)
+    echo "PARAM_PATH는 /cking/loadtest 또는 /cking/prod여야 합니다: $PARAM_PATH" >&2
+    exit 2
+    ;;
+esac
+
 DB_HOST=$(param DB_HOST)
 DB_USER=$(param DB_USERNAME)
 # 비밀번호는 환경변수로만 mysql에 넘긴다. 명령줄·출력에 남기지 않는다.
@@ -23,9 +51,6 @@ export MYSQL_PWD
 sql() {
   docker run --rm -i -e MYSQL_PWD --network host "$MYSQL_IMAGE" \
     mysql -h "$DB_HOST" -u "$DB_USER" -N -B cking -e "SET time_zone = '+00:00'; $1"
-}
-redis() {
-  docker exec -i cking-redis redis-cli "$@"
 }
 
 failures=0
@@ -82,7 +107,11 @@ if [[ -n "$CLOSING_EVENT_ID" ]]; then
        FROM event WHERE event_id = $CLOSING_EVENT_ID")
   awk -F'\t' '{printf "      status=%s end_at=%s cutoff=%s closed_at=%s 마감시작→CLOSED=%sms\n", $1, $2, $3, $4, $5}' <<< "$event_row"
   event_status=$(cut -f1 <<< "$event_row")
-  [[ "$event_status" == "CLOSED" ]] && status=PASS || status=FAIL
+  # 추첨(draw.js) 뒤에 실행하면 CLOSED에서 다음 상태로 넘어가 있다.
+  case "$event_status" in
+    CLOSED | DRAW_COMPLETED | PUBLISHED) status=PASS ;;
+    *) status=FAIL ;;
+  esac
   result "마감 상태" "$status" "status=${event_status:-이벤트 없음}"
   snapshot=$(sql "SELECT s.candidate_count, s.total_ticket_count, e.members, e.tickets,
          TIMESTAMPDIFF(MICROSECOND, ev.closed_at, s.created_at) / 1000
