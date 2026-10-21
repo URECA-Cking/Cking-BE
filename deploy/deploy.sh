@@ -34,8 +34,14 @@ case "$PARAM_PATH" in
               JWT_SECRET OAUTH_GOOGLE_CLIENT_ID OAUTH_GOOGLE_CLIENT_SECRET
               OAUTH_KAKAO_CLIENT_ID OAUTH_KAKAO_CLIENT_SECRET
               SUBSCRIPTION_GEMINI_API_KEY ADMIN_ACCOUNT_LOGIN_ID ADMIN_ACCOUNT_PASSWORD
-              GEMINI_API_KEY OPENAI_API_KEY COMMENT_FILTER_BASE_URL)
+              GEMINI_API_KEY OPENAI_API_KEY)
     OPTIONAL=()
+    # 필터 Lambda는 개발에만 있다. 같은 이미지·compose·dev 프로필을 쓰는 부하 테스트는 필터를 끈다.
+    if [ "$PARAM_PATH" = /cking/dev/ ]; then
+      REQUIRED+=(COMMENT_FILTER_BASE_URL)
+    else
+      export COMMENT_FILTER_ENABLED=false
+    fi
     ;;
 esac
 
