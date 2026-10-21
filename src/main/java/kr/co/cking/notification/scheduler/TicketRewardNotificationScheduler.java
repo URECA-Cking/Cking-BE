@@ -23,7 +23,8 @@ public class TicketRewardNotificationScheduler {
         this.batchSize = Math.clamp(batchSize, 1, 100);
     }
 
-    @Scheduled(fixedDelayString = "${cking.notification.ticket-reward.interval-ms:30000}",
+    @Scheduled(scheduler = "ticketRewardNotificationTaskScheduler",
+            fixedDelayString = "${cking.notification.ticket-reward.interval-ms:30000}",
             initialDelayString = "${cking.notification.ticket-reward.interval-ms:30000}")
     public void deliver() {
         for (boolean common : new boolean[]{false, true}) {
