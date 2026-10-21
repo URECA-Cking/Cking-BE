@@ -154,13 +154,13 @@ DB 쪽은 `verify.sh`의 6번이 같은 요청 라운드 회원(앞쪽 절반)�
 
 ### 6. 반복과 정리
 
-- 같은 시나리오를 3번 돌려 중앙값을 쓴다. 추첨은 실행마다 1번이라 백분위수를 낼 수 없으므로 3회 측정값과 최대를 그대로 적는다. 실행 사이에는 데이터를 처음 상태로 되돌린다: 앱 정지 → Redis `FLUSHALL` → DB `DROP DATABASE cking; CREATE DATABASE cking;` → 앱 배포(Flyway) → 2번 시딩
+- 같은 시나리오를 3번 돌려 중앙값을 쓴다. 추첨은 실행마다 1번이라 백분위수를 낼 수 없으므로 3회 측정값과 최대를 그대로 적는다. 실행 사이에는 데이터를 처음 상태로 되돌린다: 앱 정지 → Redis `FLUSHALL` → DB `DROP DATABASE cking; CREATE DATABASE cking;` → 앱 배포(Flyway) → 2번 시딩. 운영은 [운영 데이터 되돌리기](#운영-데이터-되돌리기)
 - 기록: 이 저장소 커밋, Infra 커밋, 시딩·시나리오 변수, k6 요약, 해당 시간대 대시보드, `verify.sh` 출력, 인스턴스 사용 시간
 - 끝나면 Cking-Infra `envs/loadtest`에서 `terraform destroy`, Parameter Store 비밀값 삭제. 운영은 `envs/prod`에서 `k6_enabled = false`로 k6 서버만 지운다
 
 ## 운영에서 실행
 
-시딩·응모가 운영 데이터에 그대로 남는다. 실행 사이 되돌리기와 테스트 뒤 데이터 초기화는 운영 초기화 절차로 한다.
+시딩·응모가 운영 데이터에 그대로 남는다. 실행 사이와 테스트가 끝난 뒤에는 [운영 데이터 되돌리기](#운영-데이터-되돌리기)로 처음 상태로 돌린다.
 
 | 항목 | 부하 테스트 환경 | 운영 |
 | --- | --- | --- |
@@ -173,4 +173,56 @@ DB 쪽은 `verify.sh`의 6번이 같은 요청 라운드 회원(앞쪽 절반)�
 | 검증 | `bash verify.sh <마감 이벤트 ID>` | `PARAM_PATH=/cking/prod bash verify.sh <마감 이벤트 ID>` |
 
 - k6 서버는 운영 프라이빗 앱 서브넷에 있어 요청이 NAT IP로 나간다. 운영 WAF는 NAT IP를 허용 목록으로 두므로 k6 요청은 IP당 요청 제한과 관리형 규칙을 건너뛰고, 측정값에 WAF 판정 시간이 들어가지 않는다
-- 테스트가 끝나면 데이터 초기화와 함께 `/cking/prod/JWT_SECRET`을 새 값으로 바꾼다. k6 서버가 이 값으로 어느 회원의 Access Token이든 서명할 수 있었다
+
+### 운영 데이터 되돌리기
+
+Redis와 DB를 비운 뒤 앱 서버를 모두 교체한다. 새 서버가 Flyway로 스키마를 만들고 관리자 초기 계정을 만든다. 테스트가 끝난 뒤에는 `JWT_SECRET`도 바꾼다. k6 서버가 이 값으로 어느 회원의 Access Token이든 서명할 수 있었고, 앱은 기동할 때 값을 읽으므로 값만 바꾸면 실행 중인 서버는 이전 키로 계속 검증한다.
+
+1. (테스트 뒤에만) k6 서버, "3. k6 실행 준비"의 셸(`JWT_SECRET`이 이전 키)에서 확인용 토큰을 만든다. 토큰은 셸 변수에만 둔다:
+
+   ```bash
+   cat > token-check.js <<'EOF'
+   import { tokenFactory } from './lib/token.js';
+   export default function () { console.log(tokenFactory(__ENV.JWT_SECRET, 3600)(1)); }
+   EOF
+   OLD_TOKEN=$(k6 run -q --log-format raw token-check.js 2>&1 | grep '^ey')
+   ```
+
+2. (테스트 뒤에만) Mac, 새 키를 넣는다. 값은 화면에 나오지 않는다:
+
+   ```bash
+   aws ssm put-parameter --region ap-northeast-2 --name /cking/prod/JWT_SECRET --type SecureString --overwrite \
+     --value "$(openssl rand -base64 48)"
+   ```
+
+3. 운영 앱 서버 한 대(root), Redis와 DB를 비운다:
+
+   ```bash
+   P=/cking/prod; R=ap-northeast-2
+   param() { aws ssm get-parameter --region $R --name "$P/$1" --with-decryption --query Parameter.Value --output text; }
+   DB_HOST=$(param DB_HOST); DB_USER=$(param DB_USERNAME); MYSQL_PWD=$(param DB_PASSWORD); export MYSQL_PWD
+   REDIS_HOST=$(param REDIS_HOST); REDIS_USER=$(param REDIS_USERNAME); REDISCLI_AUTH=$(param REDIS_PASSWORD); export REDISCLI_AUTH
+   docker run --rm -e REDISCLI_AUTH -v /etc/ssl/certs/ca-certificates.crt:/ca.crt:ro valkey/valkey:7.2 \
+     valkey-cli --tls --cacert /ca.crt -h "$REDIS_HOST" --user "$REDIS_USER" FLUSHALL
+   docker run --rm -e MYSQL_PWD --network host mysql:8.4 \
+     mysql -h "$DB_HOST" -u "$DB_USER" -e "DROP DATABASE cking; CREATE DATABASE cking;"
+   unset MYSQL_PWD REDISCLI_AUTH
+   ```
+
+4. Mac, 지금 배포된 태그로 `Deploy to prod`를 실행해 앱 서버를 모두 교체하고, 실행이 끝날 때까지 기다린다. 교체가 끝나기 전까지 옛 서버는 테이블과 Stream 그룹이 없어 오류 로그를 남긴다:
+
+   ```bash
+   TAG=$(aws ssm get-parameter --region ap-northeast-2 --name /cking/prod/RELEASE_TAG --query Parameter.Value --output text)
+   gh workflow run deploy-prod.yml --repo URECA-Cking/Cking-BE --ref main -f image_tag="$TAG"
+   ```
+
+5. 확인. 운영 앱 서버 한 대에서 3번처럼 DB 변수를 읽고 `SELECT (SELECT COUNT(*) FROM member), (SELECT COUNT(*) FROM admin_account), (SELECT COUNT(*) FROM creator), (SELECT COUNT(*) FROM event)`가 `1 1 0 0`인지 본다(`seed.sql`의 새 DB 조건). 테스트 뒤에는 k6 서버에서 이전 키 토큰은 401, 새 키 토큰은 401이 아닌지 본다. 새 키 토큰은 401이 키 때문인지 가르는 대조군이다:
+
+   ```bash
+   curl -s -o /dev/null -w '이전 키 %{http_code}\n' -H "Authorization: Bearer $OLD_TOKEN" https://api.cking.co.kr/api/me
+   JWT_SECRET="$(aws ssm get-parameter --region ap-northeast-2 --name /cking/prod/JWT_SECRET --with-decryption --query Parameter.Value --output text)"
+   export JWT_SECRET
+   NEW_TOKEN=$(k6 run -q --log-format raw token-check.js 2>&1 | grep '^ey')
+   curl -s -o /dev/null -w '새 키 %{http_code}\n' -H "Authorization: Bearer $NEW_TOKEN" https://api.cking.co.kr/api/me
+   unset OLD_TOKEN NEW_TOKEN; rm token-check.js
+   ```
