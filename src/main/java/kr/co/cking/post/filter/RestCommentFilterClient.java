@@ -6,7 +6,10 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 별도 서비스로 띄운 필터에 {@code POST /moderate}로 판정을 요청한다.
@@ -39,20 +42,35 @@ public class RestCommentFilterClient implements CommentFilterClient {
         } catch (RestClientResponseException exception) {
             int status = exception.getStatusCode().value();
             if (exception.getStatusCode().is4xxClientError()) {
-                throw new CommentFilterRejectedException("필터 서비스가 요청을 거절했습니다. status=" + status, exception);
+                throw new CommentFilterRejectedException("필터 서비스가 요청을 거절했습니다. status=" + status, status, exception);
             }
-            throw new CommentFilterException("필터 서비스가 오류를 응답했습니다. status=" + status, exception);
+            throw new CommentFilterException("필터 서비스가 오류를 응답했습니다. status=" + status,
+                    CommentFilterFailureType.SERVER_ERROR, status, exception);
         } catch (RestClientException exception) {
-            throw new CommentFilterException("필터 서비스 호출에 실패했습니다.", exception);
+            boolean timeout = isTimeout(exception);
+            throw new CommentFilterException(
+                    timeout ? "필터 서비스 응답 시간이 초과되었습니다." : "필터 서비스 호출에 실패했습니다.",
+                    timeout ? CommentFilterFailureType.TIMEOUT : CommentFilterFailureType.NETWORK,
+                    timeout ? 408 : 0, exception);
         }
         if (response == null) {
-            throw new CommentFilterException("필터 서비스 응답 본문이 비어 있습니다.");
+            throw new CommentFilterException("필터 서비스 응답 본문이 비어 있습니다.", CommentFilterFailureType.RESPONSE_PARSE);
         }
         try {
             return response.toResult();
         } catch (RuntimeException exception) {
-            throw new CommentFilterException("필터 서비스 응답을 해석할 수 없습니다.", exception);
+            throw new CommentFilterException("필터 서비스 응답을 해석할 수 없습니다.",
+                    CommentFilterFailureType.RESPONSE_PARSE, 200, exception);
         }
+    }
+
+    private static boolean isTimeout(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+            if (cause instanceof TimeoutException || cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private record Request(Long commentId, String content) {
