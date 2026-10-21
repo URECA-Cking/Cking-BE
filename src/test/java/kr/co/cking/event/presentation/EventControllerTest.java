@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -19,6 +20,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -133,5 +135,21 @@ class EventControllerTest {
 
         mockMvc.perform(get("/api/events"))
                 .andExpect(jsonPath("$.data.items[0].closeRequestedAt").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    /** 인증 없이 상세를 조회하면 사용자 식별자 없이 서비스에 전달하고 잔액 0을 응답한다. */
+    @Test
+    @WithAnonymousUser
+    void 비로그인_이벤트_상세조회는_잔액_0을_반환한다() throws Exception {
+        EventDetail detail = new EventDetail(1L, 2L, "여름 이벤트", "설명",
+                Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-30T00:00:00Z"),
+                EventStatus.OPEN, DisplayStatus.IN_PROGRESS, 3, "WEIGHTED", 0L, 0L);
+        when(eventQueryService.getEvent(1L, null)).thenReturn(detail);
+
+        mockMvc.perform(get("/api/events/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.myTicketBalance").value(0))
+                .andExpect(jsonPath("$.data.myCommonTicketBalance").value(0));
+        verify(eventQueryService).getEvent(1L, null);
     }
 }

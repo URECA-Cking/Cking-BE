@@ -114,11 +114,15 @@ public class EventQueryService {
                         EventRepository.CreatorEventCount::getTotal));
     }
 
+    /** 공개 Event를 조회하고, 로그인한 호출자에게만 개인 응모권 잔액을 붙인다. */
     public EventDetail getEvent(Long eventId, Long userId) {
-        if (!memberRepository.existsById(userId)) {
+        if (userId != null && !memberRepository.existsById(userId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
         }
         CachedEvent event = getCachedEvent(eventId);
+        if (userId == null) {
+            return EventDetail.of(event, clock.instant(), 0L, 0L);
+        }
         long myTicketBalance = ticketBalanceQueryService.getBalance(event.creatorId(), userId);
         long myCommonTicketBalance = commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
         return EventDetail.of(event, clock.instant(), myTicketBalance, myCommonTicketBalance);

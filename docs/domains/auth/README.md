@@ -262,7 +262,8 @@ Application/Service의 actor 파라미터로 전달한다. Application/Domain에
 | Notification·내 Winner·포기 | body 또는 query parameter | Notification/Winner 소유자와 이력 작성자 |
 | Creator 신청·내 신청 조회 | body 또는 query parameter | 신청자 `memberId`, `reviewedBy` 등 |
 
-Bearer Token 누락·만료·변조는 공통 `UNAUTHORIZED`(401)로 처리한다. 인증된 사용자의 소유권과 상태
+Event 상세 GET은 공개 전환하여 토큰이 없으면 개인 잔액을 0으로 반환한다. 토큰을 보냈다면 유효성을 검증한다.
+그 외 인증 필수 경로의 Bearer Token 누락·만료·변조는 공통 `UNAUTHORIZED`(401)로 처리한다. 인증된 사용자의 소유권과 상태
 검증은 기존 Application/Domain이 계속 담당한다.
 
 ### AUTH-10 ADMIN API 전환
