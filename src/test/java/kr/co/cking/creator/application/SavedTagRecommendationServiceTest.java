@@ -17,7 +17,8 @@ class SavedTagRecommendationServiceTest {
     final SavedTagRecommendationRepository repo=mock(SavedTagRecommendationRepository.class);
     final CreatorRepository creators=mock(CreatorRepository.class);
     final CreatorFollowQueryService follows=mock(CreatorFollowQueryService.class);
-    final SavedTagRecommendationService service=new SavedTagRecommendationService(content,repo,creators,follows);
+    final kr.co.cking.interest.application.MemberInterestService interests=mock(kr.co.cking.interest.application.MemberInterestService.class);
+    final SavedTagRecommendationService service=new SavedTagRecommendationService(content,repo,creators,follows,interests);
     final String taxHash="a".repeat(64), config="b".repeat(64);
     SavedTagRecommendationServiceTest() {
         var snapshot=Map.of("parents",List.of("FOOD","GAME"),"subtopics",List.of(
@@ -30,6 +31,7 @@ class SavedTagRecommendationServiceTest {
             repo.confirmed().stream().map(r -> new SavedTagRecommendationRepository.Candidate(r, null)).toList());
         when(creators.findByMemberId(7L)).thenReturn(Optional.empty());
         when(follows.findFollowedCreatorIds(7L)).thenReturn(List.of());
+        when(interests.findMine(7L)).thenReturn(new kr.co.cking.interest.application.dto.MemberInterests("interest-v2",List.of()));
     }
     SavedTagRecommendationRepository.Confirmed row(long id,String intro,long confirmedRevision,String taxonomy) {
         return new SavedTagRecommendationRepository.Confirmed(id,intro,1,"크리에이터","image","slug",id,1,
@@ -163,5 +165,53 @@ class SavedTagRecommendationServiceTest {
     @Test void snapshotHashMatchesPythonGoldenVector() {
         when(repo.confirmed()).thenReturn(List.of(row(21, "빵\r\n소개 e\u0301", 1, taxHash)));
         assertThat(service.inputs().get("snapshotHash")).isEqualTo("b3543714ded21a34f8f28972379229c7bed9d543fbd77c2bd7076d0e37d1b333");
+    }
+
+    @Test void memberInterestUsesSavedParentOnlyAndNeverFallsBackToFollowOrPopularity() {
+        when(interests.findMine(7L)).thenReturn(new kr.co.cking.interest.application.dto.MemberInterests("interest-v2",List.of("FOOD")));
+        when(follows.findFollowedCreatorIds(7L)).thenReturn(List.of(90L));
+        when(repo.confirmed()).thenReturn(List.of(row(21,"빵 소개",1,taxHash),tagged(22,"GAME",null),row(23," ",1,taxHash)));
+        ready(List.of(new Score("PARENT","FOOD",21,new BigDecimal("0.2")),new Score("PARENT","GAME",22,BigDecimal.ONE)));
+        var result=node(service.forMember(7,"INTEREST",20));
+        assertThat(result.path("policyVersion").asText()).isEqualTo("SAVED_TAG_INTEREST_V1");
+        assertThat(result.path("items")).hasSize(1);
+        assertThat(result.path("items").get(0).path("interestCodes").get(0).asText()).isEqualTo("FOOD");
+        assertThat(result.path("items").get(0).path("seedCreatorIds")).isEmpty();
+        when(interests.findMine(7L)).thenReturn(new kr.co.cking.interest.application.dto.MemberInterests("interest-v2",List.of("UNKNOWN")));
+        assertThat(node(service.forMember(7,"INTEREST",20)).path("items")).isEmpty();
+        when(interests.findMine(7L)).thenReturn(new kr.co.cking.interest.application.dto.MemberInterests("interest-v2",List.of()));
+        assertThat(node(service.forMember(7,"INTEREST",20)).path("items")).isEmpty();
+    }
+
+    SavedTagRecommendationRepository.Confirmed tagged(long id,String parent,String topic) {
+        var r=row(id,"관련 소개",1,taxHash);
+        return new SavedTagRecommendationRepository.Confirmed(r.creatorId(),r.introduction(),r.revision(),r.name(),r.image(),r.slug(),
+            r.confirmationId(),r.automaticInputRevision(),r.inputHash(),r.configHash(),r.confirmedInputRevision(),r.confirmedInputHash(),r.taxonomyHash(),
+            encode(Map.of("parents",List.of(parent),"topics",topic==null?List.of():List.of(topic))));
+    }
+
+    @Test void followUsesAllCurrentConfirmedSeedsAndSameParentAllowsSiblingTopics() {
+        var seed1=row(1,"빵 소개",1,taxHash);
+        var seed2=tagged(2,"GAME",null);
+        when(follows.findFollowedCreatorIds(7L)).thenReturn(List.of(1L,2L,3L));
+        when(repo.confirmedByIds(List.of(1L,2L,3L))).thenReturn(List.of(seed1,seed2,row(3," ",1,taxHash)));
+        when(repo.confirmed()).thenReturn(List.of(seed1,seed2,tagged(21,"FOOD","FOOD_EATING"),tagged(22,"GAME",null)));
+        ready(List.of(new Score("PARENT","FOOD",1,BigDecimal.ONE),new Score("PARENT","GAME",2,BigDecimal.ONE),
+            new Score("PARENT","FOOD",21,new BigDecimal("0.2")),new Score("PARENT","GAME",22,new BigDecimal("0.9"))));
+        var result=node(service.forMember(7,"FOLLOW",20));
+        assertThat(result.path("items")).hasSize(2);
+        assertThat(result.path("items").get(0).path("creatorId").asLong()).isEqualTo(22);
+        assertThat(result.path("items").get(0).path("seedCreatorIds").get(0).asLong()).isEqualTo(2);
+        assertThat(result.path("items").get(1).path("seedCreatorIds").get(0).asLong()).isEqualTo(1);
+        assertThat(result.path("items").get(1).path("matchedTags").toString()).doesNotContain("FOOD_BAKING");
+        assertThat(node(service.forMember(7,"FOLLOW",1)).path("items")).hasSize(1);
+    }
+
+    @Test void missingStaleSeedsAndMissingInterestHaveNoAlternativeSource() {
+        when(follows.findFollowedCreatorIds(7L)).thenReturn(List.of(1L));
+        when(repo.confirmedByIds(List.of(1L))).thenReturn(List.of(row(1,"intro",2,taxHash)));
+        assertThat(node(service.forMember(7,"FOLLOW",20)).path("items")).isEmpty();
+        assertThat(node(service.forMember(7,"INTEREST",20)).path("items")).isEmpty();
+        assertThatThrownBy(()->service.forMember(7,"POPULAR",20)).isInstanceOf(BusinessException.class);
     }
 }

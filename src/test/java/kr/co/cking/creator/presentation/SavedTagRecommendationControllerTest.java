@@ -51,6 +51,17 @@ class SavedTagRecommendationControllerTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
         verify(service).find(7,null,List.of(),List.of(),10);
     }
+    @Test void memberSourcesAreSeparateAndExplicitCodesCannotOverrideThem() throws Exception {
+        for (String source : List.of("INTEREST","FOLLOW")) {
+            when(service.forMember(7,source,20)).thenReturn(Map.of("items",List.of()));
+            mvc.perform(get("/api/me/creator-recommendations/by-tags").header("Authorization",token())
+                .param("source",source).param("size","20")).andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+            verify(service).forMember(7,source,20);
+        }
+        mvc.perform(get("/api/me/creator-recommendations/by-tags").header("Authorization",token())
+            .param("source","INTEREST").param("parentCodes","FOOD"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_CONTENT_TAG"));
+    }
     @Test void exactCodesArePassedWithoutSavingMemberInterests() throws Exception {
         when(service.find(7,"v1",List.of("FOOD"),List.of("FOOD_BAKING"),20)).thenReturn(Map.of("items",List.of()));
         mvc.perform(get("/api/me/creator-recommendations/by-tags").header("Authorization",token()).param("taxonomyVersion","v1")
