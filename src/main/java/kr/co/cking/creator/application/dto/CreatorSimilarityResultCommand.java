@@ -10,8 +10,10 @@ public record CreatorSimilarityResultCommand(
         String method,
         String modelVersion,
         String inputHash,
-        List<Candidate> candidates
+        List<Candidate> candidates,
+        tools.jackson.databind.JsonNode eligibility
 ) {
+    public CreatorSimilarityResultCommand(Long applicationSequence, Long creatorId, String method, String modelVersion, String inputHash, List<Candidate> candidates) { this(applicationSequence,creatorId,method,modelVersion,inputHash,candidates,null); }
     public record Candidate(
             Long creatorId,
             Long similarCreatorId,

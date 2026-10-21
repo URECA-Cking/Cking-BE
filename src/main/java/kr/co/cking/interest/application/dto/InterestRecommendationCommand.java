@@ -12,8 +12,10 @@ public record InterestRecommendationCommand(
         String method,
         String modelVersion,
         String inputHash,
-        List<Candidate> candidates
+        List<Candidate> candidates,
+        tools.jackson.databind.JsonNode eligibility
 ) {
+    public InterestRecommendationCommand(Long applicationSequence, String taxonomyVersion, String taxonomyHash, String interestCode, String method, String modelVersion, String inputHash, List<Candidate> candidates) { this(applicationSequence,taxonomyVersion,taxonomyHash,interestCode,method,modelVersion,inputHash,candidates,null); }
 
     public record Candidate(
             String interestCode,

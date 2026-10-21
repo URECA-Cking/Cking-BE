@@ -29,6 +29,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Transactional
 public class CreatorSimilarityResultService {
+    private final kr.co.cking.creator.application.RecommendationEligibilityService eligibility;
+
 
     private static final BigDecimal MIN_SCORE = new BigDecimal("-1.0");
     private static final BigDecimal MAX_SCORE = new BigDecimal("2.0");
@@ -57,7 +59,7 @@ public class CreatorSimilarityResultService {
         requireExistingCandidates(bundle.candidates());
         if (existing != null) {
             if (state != null && Objects.equals(state.getCurrentGenerationId(), existing.getGenerationId())) {
-                if (!samePayload(existing, bundle)) {
+                if (!samePayload(existing, bundle) || (command.eligibility()!=null ? !eligibility.same("SIMILAR",existing.getGenerationId(),command.eligibility()) : eligibility.exists("SIMILAR",existing.getGenerationId()))) {
                     throw new BusinessException(CreatorErrorCode.RECOMMENDATION_INPUT_CONFLICT);
                 }
                 return StoreResult.idempotent(existing, bundle.candidates().size());
@@ -68,6 +70,7 @@ public class CreatorSimilarityResultService {
         CreatorSimilarityGeneration generation = generationRepository.saveAndFlush(
                 new CreatorSimilarityGeneration(
                         command.applicationSequence(), creatorId, bundle.method(), bundle.modelVersion(), bundle.inputHash(), Instant.now()));
+        if (command.eligibility()!=null) eligibility.save("SIMILAR",generation.getGenerationId(),command.eligibility(),creatorId,bundle.candidates().stream().map(NormalizedCandidate::similarCreatorId).collect(java.util.stream.Collectors.toSet()),null);
         candidateRepository.saveAll(bundle.candidates().stream()
                 .map(candidate -> new CreatorSimilarityCandidate(
                         generation.getGenerationId(), candidate.similarCreatorId(), candidate.score(), candidate.rank()))

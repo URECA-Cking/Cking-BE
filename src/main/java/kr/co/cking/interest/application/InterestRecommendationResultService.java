@@ -34,6 +34,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class InterestRecommendationResultService {
+    private final kr.co.cking.creator.application.RecommendationEligibilityService eligibility;
+
 
     private final InterestTaxonomyRepository taxonomyRepository;
     private final InterestCategoryRepository categoryRepository;
@@ -69,7 +71,7 @@ public class InterestRecommendationResultService {
         requireExistingCreators(bundle.candidates());
         if (existing != null) {
             if (state != null && state.getCurrentGenerationId().equals(existing.getGenerationId())) {
-                if (!samePayload(existing, bundle)) {
+                if (!samePayload(existing, bundle) || (command.eligibility()!=null ? !eligibility.same("INTEREST",existing.getGenerationId(),command.eligibility()) : eligibility.exists("INTEREST",existing.getGenerationId()))) {
                     throw new BusinessException(InterestErrorCode.RECOMMENDATION_INPUT_CONFLICT);
                 }
                 return StoreResult.of(existing, bundle.candidates().size(), false);
@@ -81,6 +83,10 @@ public class InterestRecommendationResultService {
                 new InterestRecommendationGeneration(
                         command.applicationSequence(), bundle.taxonomyVersion(), bundle.interestCode(), bundle.method(),
                         bundle.modelVersion(), bundle.inputHash(), Instant.now()));
+        if (command.eligibility()!=null && (!command.taxonomyVersion().equals(command.eligibility().path("taxonomyVersion").asText())
+                || !command.taxonomyHash().equals(command.eligibility().path("taxonomyHash").asText())))
+            throw new BusinessException(InterestErrorCode.INVALID_RECOMMENDATION_RESULT);
+        if (command.eligibility()!=null) eligibility.save("INTEREST",generation.getGenerationId(),command.eligibility(),null,bundle.candidates().stream().map(InterestRecommendationBundleValidator.Candidate::creatorId).collect(java.util.stream.Collectors.toSet()),bundle.interestCode());
         candidateRepository.saveAll(bundle.candidates().stream()
                 .map(candidate -> new InterestRecommendationCandidate(
                         generation.getGenerationId(), candidate.creatorId(), candidate.score(), candidate.rank()))

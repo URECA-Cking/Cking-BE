@@ -26,12 +26,14 @@ public final class CreatorSimilarityRequest {
             @Size(max = 20) String method,
             @Size(max = 255) String modelVersion,
             @Pattern(regexp = "[0-9a-f]{64}") String inputHash,
-            @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates
+            @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates,
+            tools.jackson.databind.JsonNode eligibility
     ) {
+        public Replace(Long applicationSequence, Long creatorId, String method, String modelVersion, String inputHash, List<Candidate> candidates) { this(applicationSequence,creatorId,method,modelVersion,inputHash,candidates,null); }
         public CreatorSimilarityResultCommand toCommand() {
             return new CreatorSimilarityResultCommand(applicationSequence,
                     creatorId, method, modelVersion, inputHash,
-                    candidates.stream().map(Candidate::toCommand).toList());
+                    candidates.stream().map(Candidate::toCommand).toList(),eligibility);
         }
     }
 

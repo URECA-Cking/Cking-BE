@@ -28,12 +28,14 @@ public final class InterestRecommendationRequest {
             @NotBlank @Size(max = 20) String method,
             @NotBlank @Size(max = 255) String modelVersion,
             @NotBlank @Pattern(regexp = "[0-9a-f]{64}") String inputHash,
-            @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates
+            @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates,
+            tools.jackson.databind.JsonNode eligibility
     ) {
+        public Replace(Long applicationSequence, String taxonomyVersion, String taxonomyHash, String interestCode, String method, String modelVersion, String inputHash, List<Candidate> candidates) { this(applicationSequence,taxonomyVersion,taxonomyHash,interestCode,method,modelVersion,inputHash,candidates,null); }
         public InterestRecommendationCommand toCommand() {
             return new InterestRecommendationCommand(applicationSequence,
                     taxonomyVersion, taxonomyHash, interestCode, method, modelVersion, inputHash,
-                    candidates.stream().map(Candidate::toCommand).toList());
+                    candidates.stream().map(Candidate::toCommand).toList(),eligibility);
         }
     }
 
