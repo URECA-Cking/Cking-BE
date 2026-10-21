@@ -29,6 +29,10 @@ public class CommentFilterWorker {
             CommentFilterResult result;
             try {
                 result = client.moderate(commentId, judgedContent);
+            } catch (CommentFilterAuthorizationException exception) {
+                log.error("필터 서비스가 인증·권한을 거부했습니다. 서명 설정과 호출 권한을 확인하세요. commentId={}", commentId, exception);
+                recordFailure(commentId, judgedContent);
+                return;
             } catch (CommentFilterRejectedException exception) {
                 log.error("필터 서비스가 요청을 거절했습니다. 요청 형식을 확인하세요. commentId={}", commentId, exception);
                 recordFailure(commentId, judgedContent);

@@ -38,6 +38,9 @@ public class RestCommentFilterClient implements CommentFilterClient {
                     .body(Response.class);
         } catch (RestClientResponseException exception) {
             int status = exception.getStatusCode().value();
+            if (status == 401 || status == 403) {
+                throw new CommentFilterAuthorizationException("필터 서비스가 인증·권한을 거부했습니다. status=" + status, exception);
+            }
             if (exception.getStatusCode().is4xxClientError()) {
                 throw new CommentFilterRejectedException("필터 서비스가 요청을 거절했습니다. status=" + status, exception);
             }
