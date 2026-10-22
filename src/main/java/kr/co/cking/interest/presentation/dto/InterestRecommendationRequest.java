@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
 import kr.co.cking.interest.application.dto.InterestRecommendationCommand;
+import tools.jackson.databind.JsonNode;
 
 public final class InterestRecommendationRequest {
 
@@ -28,12 +29,22 @@ public final class InterestRecommendationRequest {
             @NotBlank @Size(max = 20) String method,
             @NotBlank @Size(max = 255) String modelVersion,
             @NotBlank @Pattern(regexp = "[0-9a-f]{64}") String inputHash,
-            @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates
+            @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates,
+            JsonNode eligibility
     ) {
+
+        /** 자격 근거 없이 적재하는 구 호출용이다. 근거 없는 세대는 조회에서 제외된다. */
+        public Replace(
+                Long applicationSequence, String taxonomyVersion, String taxonomyHash, String interestCode,
+                String method, String modelVersion, String inputHash, List<Candidate> candidates) {
+            this(applicationSequence, taxonomyVersion, taxonomyHash, interestCode, method, modelVersion, inputHash,
+                    candidates, null);
+        }
+
         public InterestRecommendationCommand toCommand() {
             return new InterestRecommendationCommand(applicationSequence,
                     taxonomyVersion, taxonomyHash, interestCode, method, modelVersion, inputHash,
-                    candidates.stream().map(Candidate::toCommand).toList());
+                    candidates.stream().map(Candidate::toCommand).toList(), eligibility);
         }
     }
 

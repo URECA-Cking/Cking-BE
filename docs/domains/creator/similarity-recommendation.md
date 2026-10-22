@@ -66,7 +66,7 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호�
 
 모든 정책의 응답 항목에 해당 Creator의 팔로워 수를 담는다. 점수·정렬·유효 source 판정과 무관한 표시 값이라 집계식과 `policyVersion`은 바뀌지 않는다.
 개인화 경로는 집계·정렬·`size` 적용 뒤 선택된 Creator ID를 `CreatorFollowQueryService#countFollowersByCreatorIds`로 한 번에 센다(그룹 쿼리 1회, 팔로워가 없는 Creator는 0).
-인기순 대체는 정렬에 쓴 집계값을 그대로 쓰므로 추가 조회가 없다. 집계 컬럼·캐시는 아직 없다.
+집계 컬럼·캐시는 아직 없다. 인기순 보충은 #738에서 제거했다.
 
 ## 요구사항 추적
 
@@ -113,18 +113,17 @@ DB 정본은 `V40__add_creator_similarity_recommendation.sql`과 실행 번호�
 | 있음 | 있음 | `HYBRID_PERSONALIZED_V1` |
 | 있음 | 없음 | `INTEREST_PERSONALIZED_V1` |
 | 없음 | 있음 | `FOLLOW_PERSONALIZED_V2` |
-| 없음 | 없음 | 개인화 결과가 없어 인기순 대체(`POPULAR_FALLBACK_V1`) |
+| 없음 | 없음 | `FOLLOW_PERSONALIZED_V2`, 빈 목록 |
 
-개인화 정책이 만든 `items`가 비어 있을 때만 인기순으로 대체한다. 개인화 결과가 하나라도 있으면 인기순을 섞지 않는다.
+자격 검사 후 후보가 없으면 `items: []`다. 인기순·전체 목록으로 보충하지 않는다.
 
 정책 상수(60, 8자리, HALF_UP, 가중치 0.5/0.5)나 정렬 조건을 바꾸면 새 `policyVersion`과 fixture를 정의한다.
 
-### 인기순 fallback
+### 후보 자격과 무보충 (#738)
 
-개인화 결과가 비면 **팔로워 수 내림차순, 같으면 `creatorId` 오름차순**으로 Creator Space가 있는 Creator를 반환한다(`POPULAR_FALLBACK_V1`).
-팔로워가 0명인 Creator도 포함한다. 본인과 이미 팔로우한 Creator는 제외하며, 제외 대상은 조회 뒤에 걸러내므로 그만큼 더 읽어 `size`를 채운다.
-`aggregateScore`에는 팔로워 수가 들어가고 `interestCodes`·`seedCreatorIds`는 빈 배열이다. 팔로워 수는 `creator_follow`를 요청 시점에 집계하며
-집계 컬럼·캐시는 아직 없다(데이터가 늘면 별도 도입).
+[후보 자격 계약](recommendation-eligibility.md)의 분류 근거·현재 소개 지문을 집계 전에 확인한다.
+선택 관심 분야가 있으면 팔로우 후보도 그 분야 중 하나에 속해야 한다. 공개 유사 추천도 공통 분류 태그가 필요하다.
+모델과 RRF 수식은 유지하며, 구 `POPULAR_FALLBACK_V1` 경로는 제거했다. 구 세대는 근거를 재생성해 적재해야 공개된다.
 
 ### 팔로우 단독 정책 변경(#410 → #442)
 

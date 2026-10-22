@@ -44,6 +44,7 @@ class PersonalizedRecommendationInterestIntegrationTest {
 
     private static final String METHOD = "INTEREST_M3_V1";
 
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired CreatorRecommendationQueryService recommendationService;
     @Autowired InterestRecommendationResultService interestResultService;
     @Autowired CreatorSimilarityResultService similarityResultService;
@@ -126,25 +127,21 @@ class PersonalizedRecommendationInterestIntegrationTest {
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
-        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
-        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
-        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
-            assertThat(item.interestCodes()).isEmpty();
-            assertThat(item.seedCreatorIds()).isEmpty();
-        });
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
+        assertThat(result.items()).isEmpty();
     }
 
     @Test
     void 본인_기팔로우_Space_없는_Creator는_제외하고_남은_후보가_없으면_분야는_유효하지_않다() {
         Creator own = creatorWithSpace(fan, "own");
         Creator followed = creatorWithSpace("followed");
-        Creator noSpace = creator("no-space");
+        Creator noSpace = creatorWithSpace("no-space");
         followService.follow(fan.getMemberId(), followed.getCreatorId());
         select(version, "FOOD", "FITNESS");
         ingest(version, taxonomyHash, "FOOD",
                 candidate("FOOD", own, "0.9", 1), candidate("FOOD", followed, "0.8", 2), candidate("FOOD", noSpace, "0.7", 3));
         ingest(version, taxonomyHash, "FITNESS", candidate("FITNESS", first, "0.9", 1));
+        jdbc.update("DELETE FROM creator_space WHERE creator_id=?",noSpace.getCreatorId());
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
@@ -166,13 +163,8 @@ class PersonalizedRecommendationInterestIntegrationTest {
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
-        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
-        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
-        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
-            assertThat(item.interestCodes()).isEmpty();
-            assertThat(item.seedCreatorIds()).isEmpty();
-        });
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
+        assertThat(result.items()).isEmpty();
     }
 
     @Test
@@ -184,26 +176,16 @@ class PersonalizedRecommendationInterestIntegrationTest {
 
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
-        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
-        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
-        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
-            assertThat(item.interestCodes()).isEmpty();
-            assertThat(item.seedCreatorIds()).isEmpty();
-        });
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
+        assertThat(result.items()).isEmpty();
     }
 
     @Test
     void 팔로우도_관심_분야도_없으면_인기순으로_대체된다() {
         PersonalizedCreatorRecommendationView result = recommendationService.findForMember(fan.getMemberId(), 10);
 
-        // 개인화 결과가 없으면 인기순으로 대체된다. 공용 DB의 다른 Creator가 섞일 수 있어 목록 전체 대신 개인화 근거가 없음을 확인한다.
-        assertThat(result.policyVersion()).isEqualTo("POPULAR_FALLBACK_V1");
-        // Space가 있는 Creator를 만들어 두었으므로 인기순 대체는 비어 있을 수 없다.
-        assertThat(result.items()).isNotEmpty().allSatisfy(item -> {
-            assertThat(item.interestCodes()).isEmpty();
-            assertThat(item.seedCreatorIds()).isEmpty();
-        });
+        assertThat(result.policyVersion()).isEqualTo("FOLLOW_PERSONALIZED_V2");
+        assertThat(result.items()).isEmpty();
     }
 
     private void select(String taxonomyVersion, String... codes) {
@@ -220,7 +202,7 @@ class PersonalizedRecommendationInterestIntegrationTest {
                         c.interestCode(), c.creatorId(), c.score(), c.rank(), METHOD, "model-v1", inputHash))
                 .toList();
         interestResultService.replace(code, new InterestRecommendationCommand(1L,
-                taxonomyVersion, hashOfTaxonomy, code, METHOD, "model-v1", inputHash, withHash));
+                taxonomyVersion, hashOfTaxonomy, code, METHOD, "model-v1", inputHash, withHash, EligibilityTestFixture.proof(jdbc,taxonomyVersion,withHash.stream().map(InterestRecommendationCommand.Candidate::creatorId).toList(),code)));
     }
 
     private InterestRecommendationCommand.Candidate candidate(String code, Creator creator, String score, int rank) {
@@ -240,14 +222,16 @@ class PersonalizedRecommendationInterestIntegrationTest {
                 secondRank, "M4", "model-v1", inputHash));
         candidates.sort(java.util.Comparator.comparing(CreatorSimilarityResultCommand.Candidate::rank));
         similarityResultService.replace(seed.getCreatorId(),
-                new CreatorSimilarityResultCommand(1L, seed.getCreatorId(), "M4", "model-v1", inputHash, candidates));
+                new CreatorSimilarityResultCommand(1L, seed.getCreatorId(), "M4", "model-v1", inputHash, candidates, EligibilityTestFixture.proof(jdbc,version,List.of(seed.getCreatorId(),firstCandidate.getCreatorId(),secondCandidate.getCreatorId()),"FOOD")));
     }
 
     /** 버전마다 해시가 UNIQUE라 서로 다른 분류체계는 분류 기준문을 다르게 한다. */
     private String registerTaxonomy(String taxonomyVersion, String description) {
         List<Row> rows = List.of(new Row("FOOD", "요리", description), new Row("FITNESS", "운동", description));
         String hash = InterestTaxonomyHash.compute(rows);
-        taxonomyRepository.saveAndFlush(new InterestTaxonomy(taxonomyVersion, hash, false, Instant.now()));
+        // 추천 근거 검증은 활성 분류체계만 허용하고 활성은 하나뿐이라, 시드된 활성 분류체계를 내리고 이 분류체계를 활성으로 둔다.
+        jdbc.update("UPDATE interest_taxonomy SET active=FALSE WHERE active=TRUE");
+        taxonomyRepository.saveAndFlush(new InterestTaxonomy(taxonomyVersion, hash, true, Instant.now()));
         categoryRepository.saveAndFlush(new InterestCategory(taxonomyVersion, "FOOD", "요리", description, 1, true));
         categoryRepository.saveAndFlush(new InterestCategory(taxonomyVersion, "FITNESS", "운동", description, 2, true));
         return hash;

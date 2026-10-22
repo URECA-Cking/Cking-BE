@@ -1,0 +1,63 @@
+# 추천 후보 자격 계약 (BE #738 / LLM #85)
+
+기존 M2/M3/M4 모델과 개인화 RRF 점수·정렬은 유지한다. 후보 자격을 먼저 검사하고 `size`를 적용한다.
+관련 후보만 0~N개 반환하며 빈 결과를 인기순·전체 목록·다른 분야로 보충하지 않는다.
+
+## 적재 근거
+
+두 추천 적재 API의 최상위에 `eligibility`를 추가한다. 기존 인증·경로·실행 번호 계약은 같다.
+
+```json
+{
+  "policyVersion": "RELATED_V1",
+  "taxonomyVersion": "v0.2",
+  "taxonomyHash": "<등록된 분류체계의 lowercase SHA-256>",
+  "profiles": [
+    {"creatorId": 20, "introductionHash": "<소개글 SHA-256>", "tags": ["FOOD"]}
+  ]
+}
+```
+
+- `profiles`는 후보 전체이며 유사 추천은 seed도 포함한다. 빈 분야 세대는 `[]`, 빈 유사 세대는 seed 한 건이다.
+- ID는 양의 정수이며 오름차순·중복 없음, 각 `tags`는 등록된 활성 분야 코드의 사전순·중복 없는 **0~3개**다. 3개를 채우지 않는다.
+- 분류체계는 등록된 활성 버전·해시여야 한다. 분야 적재는 요청의 버전·해시와도 일치해야 한다.
+- 소개 지문은 CRLF/CR을 LF로 바꾸고 Python `str.strip()` 범위의 양끝 Unicode 공백을 제거한 UTF-8 SHA-256이다.
+  NFC 변환은 하지 않는다. Java는 `isWhitespace || isSpaceChar || U+0085`로 같은 범위를 처리한다(전체 코드 포인트에서 같은 29자).
+  경계 문자(CRLF, NBSP·U+3000·U+2028·U+0085, U+001C~U+001F, U+200B, NFC/NFD, 공백만) 기대값은 `IntroductionHashTest`에 있으며 배치의 `CreatorProfile.text`·`text_hash`로 계산했다.
+- 분야 후보는 해당 `interestCode`를 실제 분류 태그에 포함해야 한다. 유사 후보는 seed와 공통 분류 태그가 있어야 한다.
+- 세대 생성 전에 근거 완전성·태그 교집합·입력 소개 지문 형식을 검사한다. 무관 태그·빈 소개 지문은 400 `INVALID_RECOMMENDATION_RESULT`다.
+- 계산 후 소개 변경·Space 삭제는 전체 묶음을 롤백하지 않는다. 적재된 근거와 현재 소개가 다른 개별 후보만 조회 시 제외한다.
+- 근거는 `V91`의 `recommendation_eligibility(source_kind, generation_id, proof)`에 세대와 같은 트랜잭션으로 보존한다.
+  소개 원문은 추가 저장하지 않는다. 같은 실행의 근거 변경·삭제도 409 충돌이다. 동일 재전송은 멱등이다.
+
+분류 태그는 **배치가 판단한 자격 근거**다. 사용자 관심 분야·추천 이유를 Creator의 확정 태그로 저장하지 않는다.
+BE는 모델을 재호출하거나 사람이 태그를 확인하도록 강제하지 않는다. 의미 분류의 정확도 자체는 모델 평가 대상이다.
+
+## 조회·전환
+
+- 조회마다 현재 소개의 지문을 확인한다. 소개 수정·공백화·Space 삭제 시 이전 근거의 후보를 즉시 제외한다.
+- 조회는 근거에 적힌 분류체계 버전·해시가 등록돼 있으면 활성 여부와 무관하게 그 버전의 분야로 판정한다. 분류체계를 교체하거나 분야를 비활성해도 새 배치가 적재될 때까지 기존 추천이 남는다.
+- 관심 분야는 선택한 분야의 유효 후보만 사용한다. 선택 관심 분야가 있으면 팔로우 후보도 그중 하나의 태그와 일치해야 한다.
+  선택 관심 분야는 현재 활성 분류체계의 활성 분야로 한정한다. 더는 고를 수 없는 과거 선택만 남은 회원은 선택이 없는 것으로 본다.
+- 공통 태그가 있는 유사 후보만 공개하며, 자격 검사 후 요청 수를 적용한다. 인기순 보충은 없다.
+- 자격 검사 뒤 기존 유효 source 평균·반올림·동점 처리를 적용한다. 양쪽 모두 무효면 `FOLLOW_PERSONALIZED_V2`, `items: []`다.
+- 조회에서 세대의 근거 전체를 버리면 `RECOMMENDATION_PROOF_REJECTED`(reason `MALFORMED` JSON 아님, `HEADER` 정책·분류체계 필드 형식, `TAXONOMY` 등록되지 않은 버전·해시, `PROFILES` 후보 행 형식·분야 코드) WARN을 남긴다.
+  적재 때 현재 소개와 지문이 다른 후보가 있으면 `RECOMMENDATION_PROOF_STALE` WARN에 그 수와 전체 수를 남긴다. 원문은 남기지 않는다.
+- 구 payload의 저장·멱등 계약은 호환한다. 단, `eligibility` 없는 구 세대는 공개하지 않으며 적재 때 `RECOMMENDATION_PROOF_MISSING` WARN과 세대 ID·후보 수를 남긴다. 원문은 로그에 남기지 않는다.
+- 배포는 **BE → 새 정책으로 배치 재생성·적재 → FE** 순서다. 재적재 전에는 추천이 비어 있을 수 있다.
+  운영 데이터 외부 전송·유료 모델 실행은 별도 승인 범위이며, 이 PR 테스트는 합성 모델만 사용한다.
+
+검증: `RecommendationEligibilityIntegrationTest`, 기존 추천·적재·HTTP 회귀 테스트와 LLM 저장소의 `--suite small-pool` 실제 HTTP/DB E2E.
+
+## 저장·조회와 정리 정책
+
+근거 정책은 recommendation 모듈에 두고 다른 모듈을 직접 참조하지 않는다. 분류체계 코드(`TaxonomyCodes`)는 interest가,
+현재 소개 원문(`CreatorIntroductions`)은 creator가 포트를 구현해 제공하므로 모듈 사이에 순환 참조가 없다.
+근거 형식 오류는 recommendation 전용 코드 `INVALID_RECOMMENDATION_RESULT`(400)로 응답하며 코드 문자열은 이전과 같다.
+조회에서 파싱한 근거는 세대·종류별로 최대 5분, 5,000세대까지 보관한다. 세대와 근거는 저장 뒤 바뀌지 않으며 소개 지문은 매 요청 현재 값과 비교한다.
+근거를 직접 고친 운영 보정은 `clearCache()`로 보관분을 비운다. 버려진 근거의 `RECOMMENDATION_PROOF_REJECTED` 경고는 보관이 유지되는 동안 세대마다 한 번만 남는다.
+조회 시 현재 소개 조회 대상은 요청 refs의 seed/candidate로 제한한다.
+유사 후보는 저장 상한 100개를 한 번 읽어 검증한 뒤 size로 자른다. 앞 순위가 오래된 경우에도 뒤의 정상 후보를 반환하기 위한 bounded 조회다.
+현재 세대 hard-delete 경로는 없다. 과거 세대와 proof는 함께 보존한다. 향후 세대 정리를 도입할 때는
+활성 포인터·참조를 먼저 확인하고 같은 트랜잭션에서 해당 source_kind/generation_id의 proof를 먼저 삭제한 뒤 세대를 삭제해야 한다.
+다형 참조이므로 세대 테이블만 직접 삭제하는 운영 SQL은 허용하지 않는다.

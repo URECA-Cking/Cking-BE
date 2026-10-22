@@ -43,6 +43,11 @@ public class MemberInterestService {
     private final InterestSubtopicRepository subtopicRepository;
     private final MemberInterestSubtopicRepository memberSubtopicRepository;
 
+    /** 추천 조건용이다. 분류체계 교체·분야 비활성으로 더는 고를 수 없는 과거 선택은 뺀다. */
+    public Set<String> findSelectableCodes(Long memberId) {
+        return Set.copyOf(memberInterestRepository.findSelectableInterestCodes(memberId));
+    }
+
     /** 선택이 없으면 활성 분류체계·세부 세트 버전과 빈 목록을 반환한다. */
     public MemberInterests findMine(Long memberId) {
         List<MemberInterest> selected = memberInterestRepository.findByMemberIdOrderByDisplayOrder(memberId);

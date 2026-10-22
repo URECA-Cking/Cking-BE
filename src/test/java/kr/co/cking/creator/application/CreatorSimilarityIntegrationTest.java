@@ -41,6 +41,7 @@ class CreatorSimilarityIntegrationTest {
     @Autowired CreatorRepository creatorRepository;
     @Autowired MemberRepository memberRepository;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired kr.co.cking.creator.repository.CreatorSpaceRepository spaces;
 
     private final List<Member> members = new ArrayList<>();
     private final List<Creator> creators = new ArrayList<>();
@@ -58,6 +59,7 @@ class CreatorSimilarityIntegrationTest {
     @AfterEach
     void cleanUp() {
         new SimilarityTestCleaner(jdbcTemplate).delete(members, creators);
+        for(var c:creators) jdbcTemplate.update("DELETE FROM creator_space WHERE creator_id=?",c.getCreatorId());
         creatorRepository.deleteAll(creators);
         memberRepository.deleteAll(members);
     }
@@ -162,7 +164,7 @@ class CreatorSimilarityIntegrationTest {
         resultService.replace(source.getCreatorId(), a);
         resultService.replace(source.getCreatorId(), b);
         var revert = new CreatorSimilarityResultCommand(4L, a.creatorId(), a.method(), a.modelVersion(),
-                a.inputHash(), a.candidates());
+                a.inputHash(), a.candidates(), a.eligibility());
         var applied = resultService.replace(source.getCreatorId(), revert);
         assertThat(applied.applied()).isTrue();
         assertThat(resultService.replace(source.getCreatorId(), revert).applied()).isFalse();
@@ -190,7 +192,7 @@ class CreatorSimilarityIntegrationTest {
         return new CreatorSimilarityResultCommand(FIRST_HASH.equals(hash) ? 1L : 2L, source.getCreatorId(), null, null, null, List.of(
                 new CreatorSimilarityResultCommand.Candidate(
                         source.getCreatorId(), candidate.getCreatorId(), new BigDecimal(score), 1,
-                        "M4", "model-v1", hash)));
+                        "M4", "model-v1", hash)), EligibilityTestFixture.proof(jdbcTemplate,"v0.2",List.of(source.getCreatorId(),candidate.getCreatorId()),"FOOD"));
     }
 
     private Member member(String prefix, MemberRole role) {
@@ -204,6 +206,8 @@ class CreatorSimilarityIntegrationTest {
         Member owner = member("owner-" + prefix, MemberRole.USER);
         Creator creator = creatorRepository.saveAndFlush(
                 new Creator(owner.getMemberId(), prefix + "-" + suffix()));
+        spaces.saveAndFlush(kr.co.cking.creator.domain.CreatorSpace.fromTemplate(creator.getCreatorId(),
+                new kr.co.cking.creator.domain.CreatorSpaceTemplate(owner.getMemberId(),"요리 소개","p","b","creator-{creatorId}"),"fixture-"+suffix()));
         creators.add(creator);
         return creator;
     }

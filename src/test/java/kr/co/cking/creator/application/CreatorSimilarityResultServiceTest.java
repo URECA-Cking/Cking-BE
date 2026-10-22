@@ -1,5 +1,7 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
+
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSimilarityResultCommand;
@@ -43,10 +45,12 @@ class CreatorSimilarityResultServiceTest {
     @Mock CreatorSimilarityCandidateRepository candidateRepository;
     @Mock CreatorSimilarityStateRepository stateRepository;
 
+    @Mock RecommendationEligibilityService eligibility;
     @InjectMocks CreatorSimilarityResultService service;
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(eligibility.same(any(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.isNull())).thenReturn(true);
         org.mockito.Mockito.lenient().when(generationRepository.findById(any())).thenAnswer(invocation -> {
             Long id = invocation.getArgument(0);
             CreatorSimilarityGeneration value = generation(id, FIRST_HASH);

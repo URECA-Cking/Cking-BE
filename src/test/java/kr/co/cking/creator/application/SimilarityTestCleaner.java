@@ -32,6 +32,7 @@ final class SimilarityTestCleaner {
                        OR generation_id IN (SELECT generation_id FROM creator_similarity_generation
                                             WHERE creator_id IN (:creatorIds))
                     """, ids);
+            jdbc.update("DELETE FROM recommendation_eligibility WHERE source_kind='SIMILAR' AND generation_id IN (SELECT generation_id FROM creator_similarity_generation WHERE creator_id IN (:creatorIds))",ids);
             jdbc.update("DELETE FROM creator_similarity_generation WHERE creator_id IN (:creatorIds)", ids);
         }
         if (!memberIds.isEmpty()) {

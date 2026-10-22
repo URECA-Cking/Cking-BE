@@ -40,6 +40,7 @@ class RecommendationTrackingHttpIntegrationTest {
     @Autowired CreatorRepository creators;
     @Autowired CreatorSpaceRepository spaces;
     @Autowired JdbcTemplate jdbc;
+    @Autowired kr.co.cking.interest.application.InterestRecommendationResultService interestResults;
     @Autowired ObjectMapper json;
     @Autowired @Qualifier("recommendationTrackingExecutor") ThreadPoolTaskExecutor executor;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -51,9 +52,14 @@ class RecommendationTrackingHttpIntegrationTest {
     void cleanUp() throws Exception {
         executor.submit(() -> { }).get(15, TimeUnit.SECONDS);
         for (Member member : fixture) {
+            jdbc.update("DELETE FROM member_interest WHERE member_id = ?", member.getMemberId());
             jdbc.update("DELETE FROM creator_follow WHERE member_id = ?", member.getMemberId());
             jdbc.update("DELETE FROM creator_recommendation_request WHERE member_id = ?", member.getMemberId());
         }
+        jdbc.update("DELETE FROM recommendation_eligibility WHERE source_kind='INTEREST' AND generation_id IN (SELECT generation_id FROM interest_recommendation_generation WHERE model_version='http-fixture')");
+        jdbc.update("DELETE FROM interest_recommendation_state WHERE current_generation_id IN (SELECT generation_id FROM interest_recommendation_generation WHERE model_version='http-fixture')");
+        jdbc.update("DELETE FROM interest_recommendation_candidate WHERE generation_id IN (SELECT generation_id FROM interest_recommendation_generation WHERE model_version='http-fixture')");
+        jdbc.update("DELETE FROM interest_recommendation_generation WHERE model_version='http-fixture'");
         if (space != null) spaces.delete(space);
         if (creator != null) creators.delete(creator);
         members.deleteAll(fixture);
@@ -66,6 +72,12 @@ class RecommendationTrackingHttpIntegrationTest {
         creator = creators.saveAndFlush(new Creator(member(), "http500-" + UUID.randomUUID()));
         var template = new CreatorSpaceTemplate(fan, "intro", "profile", "banner", "creator-{creatorId}");
         space = spaces.saveAndFlush(CreatorSpace.fromTemplate(creator.getCreatorId(), template, "http500-" + UUID.randomUUID()));
+        String version = "v0.2";
+        jdbc.update("INSERT INTO member_interest(member_id,taxonomy_version,interest_code,selected_at) VALUES(?,?,'FOOD',CURRENT_TIMESTAMP(6))",fan,version);
+        var generation = jdbc.queryForObject("SELECT GREATEST(COALESCE(MAX(application_sequence),0),0)+1 FROM interest_recommendation_generation",Long.class);
+        var hash = jdbc.queryForObject("SELECT taxonomy_hash FROM interest_taxonomy WHERE taxonomy_version=?",String.class,version);
+        var c = new kr.co.cking.interest.application.dto.InterestRecommendationCommand.Candidate("FOOD",creator.getCreatorId(),java.math.BigDecimal.ONE,1,"INTEREST_M3_V1","http-fixture","f".repeat(64));
+        interestResults.replace("FOOD",new kr.co.cking.interest.application.dto.InterestRecommendationCommand(generation,version,hash,"FOOD","INTEREST_M3_V1","http-fixture","f".repeat(64),List.of(c),EligibilityTestFixture.proof(jdbc,version,List.of(creator.getCreatorId()),"FOOD")));
         String token = tokens.issue(fan, MemberRole.USER).accessToken();
         String other = tokens.issue(stranger, MemberRole.USER).accessToken();
         assertThat(call("GET", "/api/me/creator-recommendations", null, null).statusCode()).isEqualTo(401);
@@ -74,7 +86,7 @@ class RecommendationTrackingHttpIntegrationTest {
         var data = json.readTree(response.body()).get("data");
         String requestId = data.get("recommendationRequestId").asText();
         assertThat(UUID.fromString(requestId)).isNotNull();
-        assertThat(data.get("policyVersion").asText()).isEqualTo("POPULAR_FALLBACK_V1");
+        assertThat(data.get("policyVersion").asText()).isEqualTo("INTEREST_PERSONALIZED_V1");
         long returnedCreator = data.get("items").get(0).get("creatorId").asLong();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM creator_recommendation_interaction WHERE member_id = ?", Long.class, fan)).isZero();
 

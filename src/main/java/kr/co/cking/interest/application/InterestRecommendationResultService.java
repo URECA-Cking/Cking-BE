@@ -22,6 +22,7 @@ import kr.co.cking.interest.repository.InterestRecommendationCandidateRepository
 import kr.co.cking.interest.repository.InterestRecommendationGenerationRepository;
 import kr.co.cking.interest.repository.InterestRecommendationStateRepository;
 import kr.co.cking.interest.repository.InterestTaxonomyRepository;
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class InterestRecommendationResultService {
+    private final RecommendationEligibilityService eligibility;
 
     private final InterestTaxonomyRepository taxonomyRepository;
     private final InterestCategoryRepository categoryRepository;
@@ -69,7 +71,7 @@ public class InterestRecommendationResultService {
         requireExistingCreators(bundle.candidates());
         if (existing != null) {
             if (state != null && state.getCurrentGenerationId().equals(existing.getGenerationId())) {
-                if (!samePayload(existing, bundle)) {
+                if (!samePayload(existing, bundle) || !eligibility.same("INTEREST", existing.getGenerationId(), command.eligibility())) {
                     throw new BusinessException(InterestErrorCode.RECOMMENDATION_INPUT_CONFLICT);
                 }
                 return StoreResult.of(existing, bundle.candidates().size(), false);
@@ -77,10 +79,18 @@ public class InterestRecommendationResultService {
             throw new BusinessException(InterestErrorCode.STALE_RECOMMENDATION_INPUT);
         }
 
+        Set<Long> candidateCreatorIds = bundle.candidates().stream()
+                .map(InterestRecommendationBundleValidator.Candidate::creatorId)
+                .collect(Collectors.toSet());
+        requireProofTaxonomyMatches(command);
+        eligibility.validateForStorage(command.eligibility(), null, candidateCreatorIds, bundle.interestCode());
+
         InterestRecommendationGeneration generation = generationRepository.saveAndFlush(
                 new InterestRecommendationGeneration(
                         command.applicationSequence(), bundle.taxonomyVersion(), bundle.interestCode(), bundle.method(),
                         bundle.modelVersion(), bundle.inputHash(), Instant.now()));
+        eligibility.save("INTEREST", generation.getGenerationId(), command.eligibility(), null,
+                candidateCreatorIds, bundle.interestCode());
         candidateRepository.saveAll(bundle.candidates().stream()
                 .map(candidate -> new InterestRecommendationCandidate(
                         generation.getGenerationId(), candidate.creatorId(), candidate.score(), candidate.rank()))
@@ -93,6 +103,17 @@ public class InterestRecommendationResultService {
             state.activate(generation.getGenerationId());
         }
         return StoreResult.of(generation, bundle.candidates().size(), true);
+    }
+
+    /** 근거가 있으면 요청이 선언한 분류체계 버전·해시와 근거에 적힌 것이 같아야 한다. */
+    private void requireProofTaxonomyMatches(InterestRecommendationCommand command) {
+        if (command.eligibility() == null) {
+            return;
+        }
+        if (!command.taxonomyVersion().equals(command.eligibility().path("taxonomyVersion").asText())
+                || !command.taxonomyHash().equals(command.eligibility().path("taxonomyHash").asText())) {
+            throw new BusinessException(InterestErrorCode.INVALID_RECOMMENDATION_RESULT);
+        }
     }
 
     /** 등록된 분류체계 버전이고 요청의 해시가 등록된 해시와 같아야 한다(활성 여부는 묻지 않는다). */
