@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataAccessException;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.core.RedisCallback;
@@ -32,7 +31,7 @@ public class CommonEarnStreamConfig {
 
     @Bean(initMethod = "start", destroyMethod = "stop")
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> commonEarnStreamListenerContainer(
-            RedisConnectionFactory connectionFactory,
+            StreamReadConnectionFactory streamReadConnectionFactory,
             StringRedisTemplate redisTemplate,
             CommonEarnStreamListener commonEarnStreamListener,
             StreamConsumerNames consumerNames
@@ -45,7 +44,7 @@ public class CommonEarnStreamConfig {
                         .build();
 
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> container =
-                StreamMessageListenerContainer.create(connectionFactory, options);
+                StreamMessageListenerContainer.create(streamReadConnectionFactory.get(), options);
 
         container.register(
                 StreamReadRequests.keepAlive(container, streamKey, consumerGroup, consumerNames.of("common-earn"),

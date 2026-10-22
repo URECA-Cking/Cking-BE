@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataAccessException;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.core.RedisCallback;
@@ -40,7 +39,7 @@ public class SpendStreamConfig {
 
     @Bean(initMethod = "start", destroyMethod = "stop")
     public StreamMessageListenerContainer<String, MapRecord<String, String, String>> spendStreamListenerContainer(
-            RedisConnectionFactory connectionFactory,
+            StreamReadConnectionFactory streamReadConnectionFactory,
             StringRedisTemplate redisTemplate,
             SpendStreamListener spendStreamListener,
             StreamConsumerNames consumerNames
@@ -58,7 +57,7 @@ public class SpendStreamConfig {
                         .build();
 
         StreamMessageListenerContainer<String, MapRecord<String, String, String>> container =
-                StreamMessageListenerContainer.create(connectionFactory, options);
+                StreamMessageListenerContainer.create(streamReadConnectionFactory.get(), options);
 
         // PEL 재수신(XCLAIM)·Dead Stream 승격은 SpendStreamPelRecoveryScheduler가
         // 별도로 주기 실행한다(EARN 쪽 EarnStreamPelRecoveryScheduler·이슈 #43과 동일 패턴).

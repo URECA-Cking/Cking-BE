@@ -22,9 +22,14 @@ spring:
 
   data:
     redis:
+      # 명령 제한 시간(#743). 기본값(Lettuce 60초)이면 Redis가 멈출 때 요청 스레드가 60초씩 묶인다.
+      # 부하 테스트에서 BLOCK 읽기를 뺀 명령의 최악값이 388ms(1차)·78ms(2차)라 1초로 둔다. 응모 복제 확인 대기(timeout-ms)도
+      # 이 안에서 끝나야 한다. Stream BLOCK 읽기는 이보다 길게 기다리므로 전용 연결(cking.stream.read-command-timeout)을 쓴다.
+      timeout: 1s
       lettuce:
         # 풀이 없으면 Stream 소비자의 XREADGROUP BLOCK이 읽을 때마다 연결을 새로 연다(#698). 일반 명령은 공유 연결을 쓰고,
-        # 풀은 BLOCK 읽기와 파이프라인만 쓴다. 동시에 잡는 연결은 최대 7(응모 소비자 4 + 적립 1 + 공용 적립 1 + 파이프라인 1)이고
+        # 풀은 BLOCK 읽기와 파이프라인만 쓴다. Stream 읽기 전용 연결도 같은 풀 설정으로 자기 풀을 따로 둔다(#743).
+        # 동시에 잡는 연결은 Stream 쪽 최대 6(응모 소비자 4 + 적립 1 + 공용 적립 1), 공용 쪽은 파이프라인 1이고
         # 풀은 필요한 만큼만 만들므로 상한을 16으로 둔다. BLOCK 읽기는 2초 안에 연결을 돌려주므로 3초를 기다려도 못 받으면 오류로 낸다.
         pool:
           max-active: 16
@@ -271,6 +276,9 @@ cking:
   stream:
     # 서버별 Stream 소비자 이름. 배포 스크립트가 EC2 인스턴스 ID를 넘기고, 없으면 호스트 이름을 쓴다.
     consumer-id: ${CKING_CONSUMER_ID:}
+    # Stream BLOCK 읽기(2초 대기) 전용 연결의 명령 제한 시간(#743). 부하 테스트 1차에서 BLOCK 읽기가 최대 3.94초 걸려 여유를 둔다.
+    # 백그라운드 소비자만 쓰므로 길어도 요청 스레드를 잡지 않는다.
+    read-command-timeout: 6s
     consumer-cleanup:
       # 대기 메시지가 없고 이 시간 이상 읽기 시도가 없는 소비자를 지운다. 살아 있는 소비자는 2초마다 읽는다.
       idle: PT1H
