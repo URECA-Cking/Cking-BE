@@ -23,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
 
@@ -56,7 +57,7 @@ class CreatorRecommendationQueryServiceTest {
                 candidateRepository,
                 spaceRepository,
                 new PersonalizedCreatorRecommendationPolicy(), eligibility, memberInterests);
-        given(memberInterests.findMine(any())).willReturn(new kr.co.cking.interest.application.dto.MemberInterests("v0.2", List.of()));
+        given(memberInterests.findSelectableCodes(any())).willReturn(Set.of());
         org.mockito.Mockito.lenient().when(eligibility.valid(any(), any())).thenAnswer(i -> new java.util.HashSet<>(i.<List<RecommendationEligibilityService.Ref>>getArgument(1)));
     }
 

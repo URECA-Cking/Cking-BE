@@ -61,7 +61,7 @@ public class CreatorRecommendationQueryService {
         List<ActiveCreatorRecommendationCandidate> followRows = followedCreatorIds.isEmpty() ? List.of()
                 : candidateRepository.findActiveCandidatesBySeedCreatorIds(followedCreatorIds);
         List<ActiveInterestRecommendationCandidate> interestRows = interestQueryService.findActiveCandidates(memberId);
-        var selectedInterests = Set.copyOf(memberInterests.findMine(memberId).interestCodes());
+        var selectedInterests = memberInterests.findSelectableCodes(memberId);
         var followEntries = followRows.stream().map(row -> java.util.Map.entry(row,
                 new RecommendationEligibilityService.Ref(row.generationId(), row.seedCreatorId(),
                         row.candidateCreatorId(), selectedInterests))).toList();
