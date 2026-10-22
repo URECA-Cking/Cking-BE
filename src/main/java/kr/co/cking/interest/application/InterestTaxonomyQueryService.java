@@ -23,4 +23,13 @@ public class InterestTaxonomyQueryService {
                         .map(c -> c.getInterestCode()).collect(Collectors.toSet()))
                 .orElse(Set.of());
     }
+
+    /** 조회용이다. 활성 여부와 무관하게 등록된 버전·해시의 모든 분야 코드를 돌려준다. */
+    public Set<String> registeredCodes(String version, String hash) {
+        return taxonomyRepository.findById(version)
+                .filter(t -> t.getTaxonomyHash().equals(hash))
+                .map(t -> categoryRepository.findAllByTaxonomyVersion(version).stream()
+                        .map(c -> c.getInterestCode()).collect(Collectors.toSet()))
+                .orElse(Set.of());
+    }
 }

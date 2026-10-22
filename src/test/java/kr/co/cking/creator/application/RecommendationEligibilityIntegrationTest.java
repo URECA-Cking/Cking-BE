@@ -14,14 +14,18 @@ import kr.co.cking.interest.application.dto.InterestRecommendationCommand;
 import kr.co.cking.member.domain.*;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 실제 MySQL/Flyway와 적재·조회 서비스를 연결한다. 원문은 합성 fixture다. */
 @SpringBootTest
 @Transactional
+@ExtendWith(OutputCaptureExtension.class)
 class RecommendationEligibilityIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired MemberRepository members;
@@ -119,5 +123,45 @@ class RecommendationEligibilityIntegrationTest {
         var command = interest(100002, "FOOD", candidate);
         jdbc.update("UPDATE interest_taxonomy SET active=FALSE WHERE taxonomy_version='v0.2'");
         assertThatThrownBy(() -> interests.replace("FOOD", command)).isInstanceOf(BusinessException.class);
+    }
+
+    @Test void 분류체계를_교체하거나_분야를_비활성해도_새_배치_전까지_기존_추천이_남는다() {
+        var fan=member(); var a=creator("요리");
+        interests.replace("FOOD",interest(100000,"FOOD",a));
+        select(fan,"FOOD");
+        jdbc.update("UPDATE interest_category SET active=FALSE WHERE taxonomy_version='v0.2' AND interest_code='FOOD'");
+        jdbc.update("UPDATE interest_taxonomy SET active=FALSE WHERE taxonomy_version='v0.2'");
+        assertThat(query.findForMember(fan.getMemberId(),20).items()).extracting(i->i.creatorId()).containsExactly(a.getCreatorId());
+    }
+
+    @Test void 더는_고를_수_없는_관심_분야만_남은_회원은_팔로우_추천을_분야로_거르지_않는다() {
+        var seed=creator("요리"); var candidate=creator("베이킹"); var fan=member();
+        follow.follow(fan.getMemberId(),seed.getCreatorId());
+        var rows=List.of(new CreatorSimilarityResultCommand.Candidate(seed.getCreatorId(),candidate.getCreatorId(),BigDecimal.ONE,1,"M4","fixture","a".repeat(64)));
+        var proof=EligibilityTestFixture.proof(jdbc,"v0.2",List.of(seed.getCreatorId(),candidate.getCreatorId()),"FOOD");
+        similarity.replace(seed.getCreatorId(),new CreatorSimilarityResultCommand(1L,seed.getCreatorId(),"M4","fixture","a".repeat(64),rows,proof));
+        select(fan,"FITNESS");
+        assertThat(query.findForMember(fan.getMemberId(),20).items()).isEmpty();
+        jdbc.update("UPDATE interest_category SET active=FALSE WHERE taxonomy_version='v0.2' AND interest_code='FITNESS'");
+        assertThat(query.findForMember(fan.getMemberId(),20).items()).extracting(i->i.creatorId()).containsExactly(candidate.getCreatorId());
+    }
+
+    @Test void 조회에서_근거를_버리면_이유를_남긴다(CapturedOutput output) {
+        var fan=member(); var a=creator("요리");
+        interests.replace("FOOD",interest(100000,"FOOD",a));
+        select(fan,"FOOD");
+        assertThat(query.findForMember(fan.getMemberId(),20).items()).extracting(i->i.creatorId()).containsExactly(a.getCreatorId());
+        long generation=jdbc.queryForObject("SELECT current_generation_id FROM interest_recommendation_state WHERE taxonomy_version='v0.2' AND interest_code='FOOD'",Long.class);
+        jdbc.update("UPDATE recommendation_eligibility SET proof=JSON_SET(proof,'$.taxonomyHash',?) WHERE source_kind='INTEREST' AND generation_id=?","f".repeat(64),generation);
+        assertThat(query.findForMember(fan.getMemberId(),20).items()).isEmpty();
+        assertThat(output).contains("RECOMMENDATION_PROOF_REJECTED sourceKind=INTEREST generationId="+generation+" reason=TAXONOMY");
+    }
+
+    @Test void 적재_때_현재_소개와_지문이_다르면_그_수를_남긴다(CapturedOutput output) {
+        var a=creator("요리"); var b=creator("베이킹");
+        var batch=interest(100000,"FOOD",a,b);
+        jdbc.update("UPDATE creator_space SET intro_text='운동으로 변경' WHERE creator_id=?",a.getCreatorId());
+        assertThat(interests.replace("FOOD",batch).applied()).isTrue();
+        assertThat(output).contains("RECOMMENDATION_PROOF_STALE sourceKind=INTEREST").contains("staleProfiles=1 profiles=2");
     }
 }

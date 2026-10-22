@@ -38,19 +38,23 @@ public class RecommendationEligibilityService {
         try { return JSON.readTree(raw); } catch(Exception e) { throw invalid(); }
     }
     private Set<String> taxonomy(JsonNode proof) {
-        return taxonomy(proof, new HashMap<>());
+        return taxonomy(proof, true, new HashMap<>());
     }
-    private Set<String> taxonomy(JsonNode proof, Map<String, Set<String>> cache) {
-        if (proof==null || !proof.isObject() || proof.size()!=4 || !"RELATED_V1".equals(proof.path("policyVersion").asText())
-                || !proof.path("taxonomyVersion").isTextual() || !proof.path("taxonomyHash").asText().matches("[0-9a-f]{64}")
-                || !proof.path("profiles").isArray() || proof.path("profiles").size()>101) throw invalid();
+    /** 적재는 활성 분류체계만 받고, 조회는 근거에 적힌 등록 버전으로 판정해 분류체계 교체·분야 비활성 뒤에도 기존 추천을 유지한다. */
+    private Set<String> taxonomy(JsonNode proof, boolean active, Map<String, Set<String>> cache) {
+        requireHeader(proof);
         String version=proof.path("taxonomyVersion").asText(), hash=proof.path("taxonomyHash").asText();
         String key = version + ":" + hash;
         if (cache.containsKey(key)) return cache.get(key);
-        var allowed = taxonomyQueryService.activeCodes(version, hash);
+        var allowed = active ? taxonomyQueryService.activeCodes(version, hash) : taxonomyQueryService.registeredCodes(version, hash);
         if (allowed.isEmpty()) throw invalid();
         cache.put(key, allowed);
         return allowed;
+    }
+    private static void requireHeader(JsonNode proof) {
+        if (proof==null || !proof.isObject() || proof.size()!=4 || !"RELATED_V1".equals(proof.path("policyVersion").asText())
+                || !proof.path("taxonomyVersion").isTextual() || !proof.path("taxonomyHash").asText().matches("[0-9a-f]{64}")
+                || !proof.path("profiles").isArray() || proof.path("profiles").size()>101) throw invalid();
     }
     private Map<Long,JsonNode> profiles(JsonNode proof, Set<String> allowed) {
         var result=new TreeMap<Long,JsonNode>(); long previous=0;
@@ -97,6 +101,15 @@ public class RecommendationEligibilityService {
         }
         validateForStorage(proof, seed, candidates, interest);
         jdbc.update("INSERT INTO recommendation_eligibility(source_kind,generation_id,proof) VALUES(?,?,?)",kind,generation,proof.toString());
+        warnIfStale(kind, generation, proof);
+    }
+    /** 소개 지문은 배치가 계산한 값이라 계산 뒤 소개가 바뀌었거나 지문이 틀리면 조회에서 조용히 제외된다. 적재 때 그 수를 남긴다. */
+    private void warnIfStale(String kind,long generation,JsonNode proof) {
+        var hashes=new HashMap<Long,String>();
+        proof.path("profiles").forEach(row -> hashes.put(row.path("creatorId").asLong(), row.path("introductionHash").asText()));
+        var inputs=current(hashes.keySet(),false);
+        long stale=hashes.entrySet().stream().filter(e -> !e.getValue().equals(inputs.get(e.getKey()))).count();
+        if(stale>0) log.warn("RECOMMENDATION_PROOF_STALE sourceKind={} generationId={} staleProfiles={} profiles={}", kind, generation, stale, hashes.size());
     }
     public void validateForStorage(JsonNode proof,Long seed,Set<Long> candidates,String interest) {
         if (proof == null) return; // 구 클라이언트 호환. save에서 반드시 관측 가능한 경고를 남긴다.
@@ -123,8 +136,16 @@ public class RecommendationEligibilityService {
         new NamedParameterJdbcTemplate(jdbc).query("SELECT generation_id,CAST(proof AS CHAR) FROM recommendation_eligibility WHERE source_kind=:kind AND generation_id IN (:ids)",
             Map.of("kind",kind,"ids",refs.stream().map(Ref::generation).distinct().toList()),
             (org.springframework.jdbc.core.RowCallbackHandler) r -> {
-                try { var p=parse(r.getString(2)); payloads.put(r.getLong(1),profiles(p,taxonomy(p,taxonomies))); }
-                catch(BusinessException e) { /* 잘못되거나 등록되지 않은 분류체계의 과거 근거는 공개하지 않는다. */ }
+                long generation=r.getLong(1);
+                String reason="MALFORMED";
+                try {
+                    var p=parse(r.getString(2));
+                    reason="HEADER"; requireHeader(p);
+                    reason="TAXONOMY"; var allowed=taxonomy(p,false,taxonomies);
+                    reason="PROFILES"; payloads.put(generation,profiles(p,allowed));
+                } catch(BusinessException e) {
+                    log.warn("RECOMMENDATION_PROOF_REJECTED sourceKind={} generationId={} reason={} visible=false", kind, generation, reason);
+                }
             });
         var ids=new HashSet<Long>();
         refs.forEach(ref -> { ids.add(ref.candidate()); if (ref.seed()!=null) ids.add(ref.seed()); });
