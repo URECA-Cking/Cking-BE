@@ -1,5 +1,7 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
+
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.JsonNode;

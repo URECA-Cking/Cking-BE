@@ -1,5 +1,7 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
+
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;

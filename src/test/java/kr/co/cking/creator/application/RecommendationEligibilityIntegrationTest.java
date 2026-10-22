@@ -81,7 +81,8 @@ class RecommendationEligibilityIntegrationTest {
         assertThat(interests.replace("FOOD",batch).applied()).isFalse();
         var stale=new InterestRecommendationCommand(100001L,batch.taxonomyVersion(),batch.taxonomyHash(),batch.interestCode(),
                 batch.method(),batch.modelVersion(),batch.inputHash(),batch.candidates(),batch.eligibility());
-        assertThatThrownBy(()->interests.replace("FOOD",stale)).isInstanceOf(BusinessException.class);
+        assertThat(interests.replace("FOOD",stale).applied()).isTrue();
+        assertThat(query.findForMember(fan.getMemberId(),20).items()).isEmpty();
     }
 
     @Test void 요청_분야와_다른_태그나_빈_소개는_적재할_수_없다() {
@@ -112,5 +113,11 @@ class RecommendationEligibilityIntegrationTest {
         var rows=List.of(new CreatorSimilarityResultCommand.Candidate(seed.getCreatorId(),candidate.getCreatorId(),BigDecimal.ONE,1,"M4","fixture","a".repeat(64)));
         similarity.replace(seed.getCreatorId(),new CreatorSimilarityResultCommand(1L,seed.getCreatorId(),"M4","fixture","a".repeat(64),rows));
         assertThat(similarQuery.findSimilar(seed.getCreatorId(),20).candidates()).isEmpty();
+    }
+    @Test void 비활성_taxonomy_근거는_새_세대로_적재하지_않는다() {
+        var candidate = creator("요리 소개");
+        var command = interest(100002, "FOOD", candidate);
+        jdbc.update("UPDATE interest_taxonomy SET active=FALSE WHERE taxonomy_version='v0.2'");
+        assertThatThrownBy(() -> interests.replace("FOOD", command)).isInstanceOf(BusinessException.class);
     }
 }
