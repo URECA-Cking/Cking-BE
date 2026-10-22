@@ -82,8 +82,9 @@ cking:
     replication-wait:
       # 응모 성공 응답 전에 같은 전용 연결에서 WAIT로 복제 노드 반영을 확인한다(#674). 복제 노드가 없는 개발·로컬은 끈다.
       # 켤 때는 timeout-ms를 반드시 지정한다(운영 복제 지연을 잰 뒤). 제한 시간을 넘겨도 성공으로 응답하고 로그·지표로 남긴다.
-      enabled: false
+      enabled: ${ENTRY_REPLICATION_WAIT_ENABLED:false}
       replicas: 1
+      timeout-ms: ${ENTRY_REPLICATION_WAIT_TIMEOUT_MS:0}
   event:
     approval-request:
       # 운영 정책. 개발 환경은 application-dev.yml에서만 명시적으로 완화한다.
