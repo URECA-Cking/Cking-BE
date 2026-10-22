@@ -18,8 +18,18 @@ public record UpdateEventCommand(
         int winnerCount,
         DrawMethod drawMethod,
         PrizeAllocationAlgorithmVersion prizeAlgorithmVersion,
-        List<PrizeConfig> prizes
+        List<PrizeConfig> prizes,
+        /** 업로드한 배너 키(이슈 #748). {@code bannerImageKeyProvided}가 false면 현재 배너를 유지하고, true에 null이면 배너를 뗀다. */
+        String bannerImageKey,
+        boolean bannerImageKeyProvided
 ) {
+    public UpdateEventCommand(Long userId, Long eventId, String title, String description, Instant startAt,
+                              Instant endAt, int winnerCount, DrawMethod drawMethod,
+                              PrizeAllocationAlgorithmVersion prizeAlgorithmVersion, List<PrizeConfig> prizes) {
+        this(userId, eventId, title, description, startAt, endAt, winnerCount, drawMethod, prizeAlgorithmVersion,
+                prizes, null, false);
+    }
+
     public UpdateEventCommand(Long userId, Long eventId, String title, String description, Instant startAt,
                               Instant endAt, int winnerCount, DrawMethod drawMethod, List<PrizeConfig> prizes) {
         this(userId, eventId, title, description, startAt, endAt, winnerCount, drawMethod,

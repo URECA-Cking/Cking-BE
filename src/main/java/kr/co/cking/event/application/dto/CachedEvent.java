@@ -21,13 +21,22 @@ public record CachedEvent(
         String prizeAlgorithmVersion,
         EventStatus status,
         List<PrizeConfig> prizes,
-        Instant closeRequestedAt
+        Instant closeRequestedAt,
+        /** 배포 전 직렬화된 캐시 항목에는 없어 null로 읽힌다(record 직렬화는 없는 필드를 기본값으로 채운다). TTL이 짧아 곧 교체된다. */
+        String bannerImageUrl
 ) implements Serializable {
 
     public CachedEvent(Long eventId, Long creatorId, Long ownerMemberId, String title, String description, Instant startAt, Instant endAt,
                        Integer winnerCount, String drawMethod, EventStatus status) {
         this(eventId, creatorId, ownerMemberId, title, description, startAt, endAt, winnerCount, drawMethod,
-                "PRIZE_WEIGHTED_V1", status, List.of(), null);
+                "PRIZE_WEIGHTED_V1", status, List.of(), null, null);
+    }
+
+    public CachedEvent(Long eventId, Long creatorId, Long ownerMemberId, String title, String description, Instant startAt,
+                       Instant endAt, Integer winnerCount, String drawMethod, String prizeAlgorithmVersion,
+                       EventStatus status, List<PrizeConfig> prizes, Instant closeRequestedAt) {
+        this(eventId, creatorId, ownerMemberId, title, description, startAt, endAt, winnerCount, drawMethod,
+                prizeAlgorithmVersion, status, prizes, closeRequestedAt, null);
     }
 
     public CachedEvent {
@@ -55,7 +64,8 @@ public record CachedEvent(
                 event.getPrizeAlgorithmVersion(),
                 event.getStatus(),
                 event.getPrizeConfigs(),
-                event.getCloseRequestedAt()
+                event.getCloseRequestedAt(),
+                event.getBannerImageUrl()
         );
     }
 }

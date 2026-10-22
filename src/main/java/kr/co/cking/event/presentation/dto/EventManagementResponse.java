@@ -21,17 +21,23 @@ public final class EventManagementResponse {
         }
     }
 
-    /** Creator Event 목록의 한 항목을 반환한다. */
+    /** 배너 업로드 결과로, Event 생성·수정의 bannerImageKey에 넣을 키를 반환한다(이슈 #748). */
+    public record BannerImage(String imageKey) {
+    }
+
+    /** Creator Event 목록의 한 항목을 반환한다. bannerImageKey는 수정 화면이 현재 배너를 유지·비교할 때 쓴다. */
     public record Item(Long eventId, String title, String description, String rejectReason, java.time.Instant startAt, java.time.Instant endAt, int winnerCount,
                        kr.co.cking.event.domain.DrawMethod drawMethod, String prizeAlgorithmVersion,
                        EventStatus status, java.time.Instant createdAt,
-                       List<kr.co.cking.event.application.dto.PrizeResult> prizes) {
+                       List<kr.co.cking.event.application.dto.PrizeResult> prizes,
+                       String bannerImageKey, String bannerImageUrl) {
         /** Event 엔티티를 목록 항목으로 변환한다. */
         public static Item from(Event event, String rejectReason) {
             return new Item(event.getEventId(), event.getTitle(), event.getDescription(), rejectReason, event.getStartAt(),
                     event.getEndAt(), event.getWinnerCount(), kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()),
                     event.getPrizeAlgorithmVersion(), event.getStatus(), event.getCreatedAt(), event.getPrizeConfigs().stream()
-                            .map(kr.co.cking.event.application.dto.PrizeResult::from).toList());
+                            .map(kr.co.cking.event.application.dto.PrizeResult::from).toList(),
+                    event.getBannerImageKey(), event.getBannerImageUrl());
         }
     }
 
@@ -40,7 +46,8 @@ public final class EventManagementResponse {
                                java.time.Instant endAt, int winnerCount, kr.co.cking.event.domain.DrawMethod drawMethod,
                                String prizeAlgorithmVersion, EventStatus status, int approvalRound,
                                java.time.Instant requestedAt,
-                               List<kr.co.cking.event.application.dto.PrizeResult> prizes) {
+                               List<kr.co.cking.event.application.dto.PrizeResult> prizes,
+                               String bannerImageUrl) {
         /** 승인 요청 엔티티를 관리자 목록 항목으로 변환한다. */
         public static ApprovalItem from(kr.co.cking.event.application.EventReviewService.PendingEvent pending) {
             Event event = pending.event(); EventApprovalRequest request = pending.request();
@@ -49,21 +56,22 @@ public final class EventManagementResponse {
                     event.getWinnerCount(), kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()),
                     event.getPrizeAlgorithmVersion(), event.getStatus(), request.getApprovalRound(),
                     request.getRequestedAt().toInstant(java.time.ZoneOffset.UTC), event.getPrizeConfigs().stream()
-                            .map(kr.co.cking.event.application.dto.PrizeResult::from).toList());
+                            .map(kr.co.cking.event.application.dto.PrizeResult::from).toList(),
+                    event.getBannerImageUrl());
         }
     }
 
     /** 관리자 운영 목록의 Event 항목을 반환한다. */
     public record AdminItem(Long eventId, Long creatorId, String creatorName, String title, java.time.Instant startAt,
                             java.time.Instant endAt, int winnerCount, kr.co.cking.event.domain.DrawMethod drawMethod,
-                            EventStatus status, java.time.Instant archivedAt, Long archivedBy) {
+                            EventStatus status, java.time.Instant archivedAt, Long archivedBy, String bannerImageUrl) {
         /** Event와 Creator 정보를 관리자 운영 목록 응답으로 변환한다. */
         public static AdminItem from(kr.co.cking.event.application.EventReviewService.ManagedEvent managedEvent) {
             Event event = managedEvent.event();
             return new AdminItem(event.getEventId(), event.getCreatorId(), managedEvent.creatorName(), event.getTitle(),
                     event.getStartAt(), event.getEndAt(), event.getWinnerCount(),
                     kr.co.cking.event.domain.DrawMethod.valueOf(event.getDrawMethod()), event.getStatus(),
-                    event.getArchivedAt(), event.getArchivedBy());
+                    event.getArchivedAt(), event.getArchivedBy(), event.getBannerImageUrl());
         }
     }
 

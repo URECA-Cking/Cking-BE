@@ -18,8 +18,17 @@ public record CreateEventCommand(
         int winnerCount,
         DrawMethod drawMethod,
         PrizeAllocationAlgorithmVersion prizeAlgorithmVersion,
-        List<PrizeConfig> prizes
+        List<PrizeConfig> prizes,
+        /** 업로드한 배너 키(이슈 #748). null이면 배너 없이 만든다. 같은 requestId 재시도의 본문 비교에 포함된다. */
+        String bannerImageKey
 ) {
+    public CreateEventCommand(Long userId, String requestId, String title, String description, Instant startAt,
+                              Instant endAt, int winnerCount, DrawMethod drawMethod,
+                              PrizeAllocationAlgorithmVersion prizeAlgorithmVersion, List<PrizeConfig> prizes) {
+        this(userId, requestId, title, description, startAt, endAt, winnerCount, drawMethod, prizeAlgorithmVersion,
+                prizes, null);
+    }
+
     public CreateEventCommand(Long userId, String requestId, String title, String description, Instant startAt,
                               Instant endAt, int winnerCount, DrawMethod drawMethod, List<PrizeConfig> prizes) {
         this(userId, requestId, title, description, startAt, endAt, winnerCount, drawMethod,

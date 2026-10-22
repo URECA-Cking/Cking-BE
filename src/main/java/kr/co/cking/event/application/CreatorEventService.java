@@ -35,6 +35,7 @@ public class CreatorEventService {
     private final EventApprovalRequestRepository approvalRequestRepository;
     private final EventCommandService eventCommandService;
     private final EventCreationPersistenceService eventCreationPersistenceService;
+    private final EventBannerImageManager bannerImageManager;
 
     /** 요청 식별자 기준으로 Event를 멱등 생성하거나 동일 요청의 기존 Event를 반환한다. */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -93,21 +94,31 @@ public class CreatorEventService {
                 });
     }
 
-    /** Creator 소유의 초안 Event를 논리 삭제한다. */
+    /** Creator 소유의 초안 Event를 논리 삭제한다. 연결된 배너는 같은 트랜잭션에서 삭제 대기로 돌려 정리 작업이 회수한다. */
     public void delete(Long userId, Long eventId) {
         Creator creator = requireCreator(userId);
-        eventCommandService.delete(eventId, event -> requireOwnership(creator, event));
+        String[] bannerImageKey = new String[1];
+        eventCommandService.delete(eventId, event -> {
+            requireOwnership(creator, event);
+            bannerImageKey[0] = event.getBannerImageKey();
+        });
+        bannerImageManager.release(creator.getCreatorId(), bannerImageKey[0]);
     }
 
-    /** Creator 소유 Event를 수정하고 거절 상태면 공통 상태 명령으로 초안에 복귀시킨다. */
+    /** Creator 소유 Event를 수정하고 거절 상태면 공통 상태 명령으로 초안에 복귀시킨다. 배너 키를 보냈을 때만 배너를 바꾼다. */
     public Event update(UpdateEventCommand command) {
         validateUpdate(command);
         Creator creator = requireConfiguredCreator(command.userId());
         return eventCommandService.update(
                 command.eventId(),
                 event -> requireOwnership(creator, event),
-                event -> event.update(command.title().trim(), command.description(), command.startAt(), command.endAt(),
-                        command.winnerCount(), command.drawMethod(), command.prizes(), command.prizeAlgorithmVersion())
+                event -> {
+                    event.update(command.title().trim(), command.description(), command.startAt(), command.endAt(),
+                            command.winnerCount(), command.drawMethod(), command.prizes(), command.prizeAlgorithmVersion());
+                    if (command.bannerImageKeyProvided()) {
+                        bannerImageManager.apply(event, command.bannerImageKey());
+                    }
+                }
         );
     }
 
@@ -213,6 +224,7 @@ public class CreatorEventService {
                 && event.getWinnerCount() == command.winnerCount()
                 && event.getDrawMethod().equals(command.drawMethod().name())
                 && event.getPrizeAlgorithmVersion().equals(command.prizeAlgorithmVersion().name())
+                && java.util.Objects.equals(event.getBannerImageKey(), command.bannerImageKey())
                 && event.getPrizeConfigs().equals(command.prizes().stream()
                         .sorted(java.util.Comparator.comparingInt(kr.co.cking.event.domain.PrizeConfig::priority)
                                 .thenComparing(kr.co.cking.event.domain.PrizeConfig::prizeKey))
