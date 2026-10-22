@@ -134,9 +134,20 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
     "method": "M4",
     "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
     "inputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  }]
+  }],
+  "eligibility": {
+    "policyVersion": "RELATED_V1",
+    "taxonomyVersion": "v0.2",
+    "taxonomyHash": "<등록된 분류체계의 lowercase SHA-256>",
+    "profiles": [
+      {"creatorId": 10, "introductionHash": "<seed 소개글 SHA-256>", "tags": ["FOOD"]},
+      {"creatorId": 20, "introductionHash": "<후보 소개글 SHA-256>", "tags": ["FOOD"]}
+    ]
+  }
 }
 ```
+
+`eligibility`가 없는 요청도 200으로 저장되지만 근거 없는 세대는 조회에서 모두 제외된다. 형식·`profiles` 구성은 [후보 자격 계약](recommendation-eligibility.md#적재-근거)을 따른다.
 
 - 후보는 0~100건이다. 원본·후보 Creator가 모두 존재해야 하고 자기 자신과 중복 후보는 허용하지 않는다.
 - `score`는 `-1.0~2.0`, 소수점 8자리 이하다.
@@ -155,7 +166,15 @@ Cking-LLM이 오프라인으로 생성한 후보 묶음 적재와 공개 조회 
   "method": "M4",
   "modelVersion": "BAAI/bge-m3@deepinfra-v1+gpt-5.4-nano-2026-03-17@creator-category-v1",
   "inputHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "candidates": []
+  "candidates": [],
+  "eligibility": {
+    "policyVersion": "RELATED_V1",
+    "taxonomyVersion": "v0.2",
+    "taxonomyHash": "<등록된 분류체계의 lowercase SHA-256>",
+    "profiles": [
+      {"creatorId": 10, "introductionHash": "<seed 소개글 SHA-256>", "tags": ["FOOD"]}
+    ]
+  }
 }
 ```
 

@@ -136,9 +136,20 @@ Cking-LLM 배치가 한 관심 분야의 완결된 후보 묶음을 적재한다
       "modelVersion": "BAAI/bge-m3@deepinfra-v1",
       "inputHash": "<최상위와 동일>"
     }
-  ]
+  ],
+  "eligibility": {
+    "policyVersion": "RELATED_V1",
+    "taxonomyVersion": "v0.2",
+    "taxonomyHash": "<taxonomyHash와 동일>",
+    "profiles": [
+      {"creatorId": 20, "introductionHash": "<후보 소개글 SHA-256>", "tags": ["SPORTS"]}
+    ]
+  }
 }
 ```
+
+`eligibility`가 없는 요청도 200으로 저장되지만 근거 없는 세대는 조회에서 모두 제외된다. 요청의 `taxonomyVersion`·`taxonomyHash`는 `eligibility`의 값과 같아야 하고,
+형식·`profiles` 구성은 [후보 자격 계약](../creator/recommendation-eligibility.md#적재-근거)을 따른다.
 
 - Path·최상위·후보별 `interestCode`, `method`(최대 20자), `modelVersion`(최대 255자), `inputHash`는 모두 같아야 한다.
 - 후보는 0~100건이다. `rank`는 1부터 끊김 없이 이어지고 점수 내림차순, 동점은 `creatorId` 오름차순이다. `score`는 `-1.0~2.0`이며 소수점 8자리 이하이고, 한 묶음에서 `creatorId`는 중복될 수 없다.
