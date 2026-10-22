@@ -68,6 +68,8 @@ Redis 복제는 비동기라, 응모 Lua가 성공한 직후 주 노드가 장�
 | `replicas` | 기본 1 |
 | `timeout-ms` | 켤 때 필수, 1 이상. 0은 `WAIT`의 무한 대기라 거부한다. 운영 복제 지연을 잰 뒤 정한다 |
 
+운영은 Parameter Store `/cking/prod/ENTRY_REPLICATION_WAIT_ENABLED`·`ENTRY_REPLICATION_WAIT_TIMEOUT_MS`로 켠다. 앱은 기동할 때 읽으므로 값을 바꾼 뒤 서버마다 `deploy.sh`로 다시 띄운다. 켜기 값만 있고 제한 시간이 없으면 0으로 들어가 기동하지 않는다.
+
 - `WAIT`는 같은 연결이 보낸 쓰기만 확인하고 그동안 연결을 막는다. 공유 연결을 쓰지 않는 연결 팩토리를 따로 두어 Lua와 `WAIT`를 한 연결로 보낸다
 - 제한 시간 안에 확인하지 못해도 `SUCCESS`로 응답한다. 복제 노드 장애 때 응모 전체가 막히지 않게 한다. 이때는 `eventId`·`userId`·`requestId`를 WARN 로그로 남겨, 장애 뒤 DB와 대조해 사라진 응모를 찾는다
 - `SUCCESS`가 아닌 결과(`DUPLICATE_REPLAY` 포함)는 기다리지 않는다

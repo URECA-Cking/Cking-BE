@@ -60,7 +60,7 @@ cking:
   ticket:
     quiz-reward:
       worker-enabled: true
-  # AI 기능은 운영 전용 키와 제공자 사용 한도를 갖춘 뒤 Parameter Store 값으로 켠다.
+  # AI 기능은 기본으로 끄고, 제공자 지출 한도를 건 뒤 Parameter Store 값으로 켠다.
   verification:
     youtube-subscription:
       submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:false}
