@@ -31,6 +31,7 @@ Lua(원자) ─XADD→ Stream ─Listener→ LedgerService.apply(Tx) ─commit �
   - 주기 근거: `~`는 한 번에 최대 10,000건(기본 LIMIT)을 지워 초당 약 333건까지 따라간다. DB 반영 처리량(부하 테스트 1차 초당 100~110)보다 크다.
 - 그룹은 기동 시 `XGROUP CREATE ... MKSTREAM`(시작 오프셋 0)으로 만들고, 이미 있으면(`BUSYGROUP`) 무시한다. Listener는 `lastConsumed`(신규 메시지)만 읽는다.
 - Listener는 `XREADGROUP BLOCK`(2초)으로 기다리며 읽는다. BLOCK 명령은 공유 연결을 막지 않도록 전용 연결을 쓰므로, Lettuce 연결 풀(`spring.data.redis.lettuce.pool`, #698)에서 빌려 다시 쓴다. 풀이 없으면 읽을 때마다 연결을 새로 연다(측정: 소비자 7개가 쉬는 20초 동안 새 연결 74개 → 풀 적용 후 4개, 1,000건 처리 중 93개 → 0개).
+- BLOCK 읽기는 Stream 읽기 전용 연결(`StreamReadConnectionFactory`, #743)로 한다. 공용 연결의 명령 제한 시간(`spring.data.redis.timeout`, 1초)은 BLOCK 대기(2초)보다 짧아 그 연결로 읽으면 메시지가 없을 때 1초에 `QueryTimeoutException`으로 끝난다(로컬 Redis 7.2 확인). 전용 연결은 접속·TLS·인증·풀 설정을 공용 연결에서 가져오고 명령 제한 시간만 `cking.stream.read-command-timeout`(6초, 부하 테스트 1차 BLOCK 읽기 최대 3.94초)으로 둔다. 풀도 같은 설정으로 따로 가진다.
 - Listener의 `process()`가 "DB 반영 → XACK"의 유일한 경로이며 회수 스케줄러도 이 메서드를 재사용한다.
 - 키·그룹명·재시도 값은 `cking.ticket.*`(EARN·공용 EARN), `cking.entry.*`(SPEND) 프로퍼티로 바꿀 수 있다.
 
