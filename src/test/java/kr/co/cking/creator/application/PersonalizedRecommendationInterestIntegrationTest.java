@@ -229,7 +229,9 @@ class PersonalizedRecommendationInterestIntegrationTest {
     private String registerTaxonomy(String taxonomyVersion, String description) {
         List<Row> rows = List.of(new Row("FOOD", "요리", description), new Row("FITNESS", "운동", description));
         String hash = InterestTaxonomyHash.compute(rows);
-        taxonomyRepository.saveAndFlush(new InterestTaxonomy(taxonomyVersion, hash, false, Instant.now()));
+        // 추천 근거 검증은 활성 분류체계만 허용하고 활성은 하나뿐이라, 시드된 활성 분류체계를 내리고 이 분류체계를 활성으로 둔다.
+        jdbc.update("UPDATE interest_taxonomy SET active=FALSE WHERE active=TRUE");
+        taxonomyRepository.saveAndFlush(new InterestTaxonomy(taxonomyVersion, hash, true, Instant.now()));
         categoryRepository.saveAndFlush(new InterestCategory(taxonomyVersion, "FOOD", "요리", description, 1, true));
         categoryRepository.saveAndFlush(new InterestCategory(taxonomyVersion, "FITNESS", "운동", description, 2, true));
         return hash;
