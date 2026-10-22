@@ -51,7 +51,11 @@ BE는 모델을 재호출하거나 사람이 태그를 확인하도록 강제하
 
 ## 저장·조회와 정리 정책
 
-근거 정책은 recommendation.application에 두고 분류체계는 interest의 조회 서비스를 통해 읽는다.
+근거 정책은 recommendation 모듈에 두고 다른 모듈을 직접 참조하지 않는다. 분류체계 코드(`TaxonomyCodes`)는 interest가,
+현재 소개 원문(`CreatorIntroductions`)은 creator가 포트를 구현해 제공하므로 모듈 사이에 순환 참조가 없다.
+근거 형식 오류는 recommendation 전용 코드 `INVALID_RECOMMENDATION_RESULT`(400)로 응답하며 코드 문자열은 이전과 같다.
+조회에서 파싱한 근거는 세대·종류별로 최대 5분, 5,000세대까지 보관한다. 세대와 근거는 저장 뒤 바뀌지 않으며 소개 지문은 매 요청 현재 값과 비교한다.
+근거를 직접 고친 운영 보정은 `clearCache()`로 보관분을 비운다. 버려진 근거의 `RECOMMENDATION_PROOF_REJECTED` 경고는 보관이 유지되는 동안 세대마다 한 번만 남는다.
 조회 시 현재 소개 조회 대상은 요청 refs의 seed/candidate로 제한한다.
 유사 후보는 저장 상한 100개를 한 번 읽어 검증한 뒤 size로 자른다. 앞 순위가 오래된 경우에도 뒤의 정상 후보를 반환하기 위한 bounded 조회다.
 현재 세대 hard-delete 경로는 없다. 과거 세대와 proof는 함께 보존한다. 향후 세대 정리를 도입할 때는

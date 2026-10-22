@@ -1,7 +1,5 @@
 package kr.co.cking.creator.application;
 
-import kr.co.cking.recommendation.application.RecommendationEligibilityService;
-
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSimilarityResultCommand;
@@ -13,6 +11,7 @@ import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityStateRepository;
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,14 +24,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /** 검증을 마친 LLM 후보 묶음을 새 세대로 저장하고 현재 공개 포인터를 원자적으로 교체한다. */
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class CreatorSimilarityResultService {
-    private final kr.co.cking.recommendation.application.RecommendationEligibilityService eligibility;
-
+    private final RecommendationEligibilityService eligibility;
 
     private static final BigDecimal MIN_SCORE = new BigDecimal("-1.0");
     private static final BigDecimal MAX_SCORE = new BigDecimal("2.0");
@@ -69,12 +68,16 @@ public class CreatorSimilarityResultService {
             throw new BusinessException(CreatorErrorCode.STALE_RECOMMENDATION_INPUT);
         }
 
-        eligibility.validateForStorage(command.eligibility(), creatorId, bundle.candidates().stream().map(NormalizedCandidate::similarCreatorId).collect(java.util.stream.Collectors.toSet()), null);
+        Set<Long> candidateCreatorIds = bundle.candidates().stream()
+                .map(NormalizedCandidate::similarCreatorId)
+                .collect(Collectors.toSet());
+        eligibility.validateForStorage(command.eligibility(), creatorId, candidateCreatorIds, null);
 
         CreatorSimilarityGeneration generation = generationRepository.saveAndFlush(
                 new CreatorSimilarityGeneration(
                         command.applicationSequence(), creatorId, bundle.method(), bundle.modelVersion(), bundle.inputHash(), Instant.now()));
-        eligibility.save("SIMILAR",generation.getGenerationId(),command.eligibility(),creatorId,bundle.candidates().stream().map(NormalizedCandidate::similarCreatorId).collect(java.util.stream.Collectors.toSet()),null);
+        eligibility.save("SIMILAR", generation.getGenerationId(), command.eligibility(), creatorId,
+                candidateCreatorIds, null);
         candidateRepository.saveAll(bundle.candidates().stream()
                 .map(candidate -> new CreatorSimilarityCandidate(
                         generation.getGenerationId(), candidate.similarCreatorId(), candidate.score(), candidate.rank()))

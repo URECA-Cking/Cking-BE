@@ -1,7 +1,5 @@
 package kr.co.cking.creator.application;
 
-import kr.co.cking.recommendation.application.RecommendationEligibilityService;
-
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
@@ -15,6 +13,8 @@ import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.follow.application.CreatorFollowQueryService;
 import kr.co.cking.interest.application.InterestRecommendationQueryService;
+import kr.co.cking.interest.application.MemberInterestService;
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import kr.co.cking.creator.domain.RecommendationSourceType;
 
 /**
@@ -45,7 +46,7 @@ public class CreatorRecommendationQueryService {
     private final CreatorSpaceRepository spaceRepository;
     private final PersonalizedCreatorRecommendationPolicy policy;
     private final RecommendationEligibilityService eligibility;
-    private final kr.co.cking.interest.application.MemberInterestService memberInterests;
+    private final MemberInterestService memberInterests;
 
     /**
      * 회원의 개인화 추천을 만든다. 팔로우·관심 분야 저장 후보를 합쳐 정렬하고 {@code size}를 적용한 뒤, 선택된 Creator의
@@ -61,24 +62,13 @@ public class CreatorRecommendationQueryService {
         List<ActiveCreatorRecommendationCandidate> followRows = followedCreatorIds.isEmpty() ? List.of()
                 : candidateRepository.findActiveCandidatesBySeedCreatorIds(followedCreatorIds);
         List<ActiveInterestRecommendationCandidate> interestRows = interestQueryService.findActiveCandidates(memberId);
-        var selectedInterests = memberInterests.findSelectableCodes(memberId);
-        var followEntries = followRows.stream().map(row -> java.util.Map.entry(row,
-                new RecommendationEligibilityService.Ref(row.generationId(), row.seedCreatorId(),
-                        row.candidateCreatorId(), selectedInterests))).toList();
-        var interestEntries = interestRows.stream().map(row -> java.util.Map.entry(row,
-                new RecommendationEligibilityService.Ref(row.generationId(), null,
-                        row.creatorId(), Set.of(row.interestCode())))).toList();
-        var validFollow = eligibility.valid("SIMILAR", followEntries.stream().map(java.util.Map.Entry::getValue).toList());
-        var validInterest = eligibility.valid("INTEREST", interestEntries.stream().map(java.util.Map.Entry::getValue).toList());
-        followRows = followEntries.stream().filter(entry -> validFollow.contains(entry.getValue()))
-                .map(java.util.Map.Entry::getKey).toList();
-        interestRows = interestEntries.stream().filter(entry -> validInterest.contains(entry.getValue()))
-                .map(java.util.Map.Entry::getKey).toList();
+        followRows = eligibleFollowRows(followRows, memberInterests.findSelectableCodes(memberId));
+        interestRows = eligibleInterestRows(interestRows);
         PersonalizedCreatorRecommendationPolicy.Recommendation recommendation =
                 policy.recommend(followRows, interestRows, excludedCreatorIds);
 
         if (recommendation.items().isEmpty()) {
-            return new PersonalizedCreatorRecommendationView(recommendation.policyVersion(),List.of());
+            return new PersonalizedCreatorRecommendationView(recommendation.policyVersion(), List.of());
         }
 
         List<PersonalizedCreatorRecommendationPolicy.Item> ranked = recommendation.items().stream()
@@ -116,6 +106,35 @@ public class CreatorRecommendationQueryService {
                                 sourcesByCreator.getOrDefault(candidate.creatorId(), List.of()),
                                 followerCounts.getOrDefault(candidate.creatorId(), 0L)))
                         .toList());
+    }
+
+    /** 회원이 고른 관심 분야가 있으면 그 분야에 속하고 seed와 공통 태그가 있는, 현재 소개가 유효한 팔로우 후보만 남긴다. */
+    private List<ActiveCreatorRecommendationCandidate> eligibleFollowRows(
+            List<ActiveCreatorRecommendationCandidate> rows, Set<String> selectedInterests) {
+        List<RecommendationEligibilityService.Ref> refs = rows.stream()
+                .map(row -> new RecommendationEligibilityService.Ref(
+                        row.generationId(), row.seedCreatorId(), row.candidateCreatorId(), selectedInterests))
+                .toList();
+        return filterEligible(rows, refs, eligibility.valid("SIMILAR", refs));
+    }
+
+    /** 후보의 분야 태그에 해당 분야가 있고 현재 소개가 유효한 관심 분야 후보만 남긴다. */
+    private List<ActiveInterestRecommendationCandidate> eligibleInterestRows(
+            List<ActiveInterestRecommendationCandidate> rows) {
+        List<RecommendationEligibilityService.Ref> refs = rows.stream()
+                .map(row -> new RecommendationEligibilityService.Ref(
+                        row.generationId(), null, row.creatorId(), Set.of(row.interestCode())))
+                .toList();
+        return filterEligible(rows, refs, eligibility.valid("INTEREST", refs));
+    }
+
+    /** {@code refs}는 {@code rows}와 같은 순서이며, 자격을 통과한 ref에 해당하는 행만 순서를 지켜 남긴다. */
+    private static <T> List<T> filterEligible(
+            List<T> rows, List<RecommendationEligibilityService.Ref> refs, Set<RecommendationEligibilityService.Ref> eligible) {
+        return IntStream.range(0, rows.size())
+                .filter(index -> eligible.contains(refs.get(index)))
+                .mapToObj(rows::get)
+                .toList();
     }
 
     /** 정렬된 후보 한 건에 Creator·Space 프로필, 추천 근거 출처, 팔로워 수를 붙여 응답용 카드로 만든다. */

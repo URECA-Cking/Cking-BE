@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import kr.co.cking.creator.application.dto.CreatorSimilarityResultCommand;
+import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -27,13 +28,20 @@ public final class CreatorSimilarityRequest {
             @Size(max = 255) String modelVersion,
             @Pattern(regexp = "[0-9a-f]{64}") String inputHash,
             @NotNull @Size(max = 100) List<@NotNull @Valid Candidate> candidates,
-            tools.jackson.databind.JsonNode eligibility
+            JsonNode eligibility
     ) {
-        public Replace(Long applicationSequence, Long creatorId, String method, String modelVersion, String inputHash, List<Candidate> candidates) { this(applicationSequence,creatorId,method,modelVersion,inputHash,candidates,null); }
+
+        /** 자격 근거 없이 적재하는 구 호출용이다. 근거 없는 세대는 조회에서 제외된다. */
+        public Replace(
+                Long applicationSequence, Long creatorId, String method, String modelVersion, String inputHash,
+                List<Candidate> candidates) {
+            this(applicationSequence, creatorId, method, modelVersion, inputHash, candidates, null);
+        }
+
         public CreatorSimilarityResultCommand toCommand() {
             return new CreatorSimilarityResultCommand(applicationSequence,
                     creatorId, method, modelVersion, inputHash,
-                    candidates.stream().map(Candidate::toCommand).toList(),eligibility);
+                    candidates.stream().map(Candidate::toCommand).toList(), eligibility);
         }
     }
 

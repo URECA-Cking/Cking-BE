@@ -35,6 +35,7 @@ class RecommendationEligibilityIntegrationTest {
     @Autowired CreatorSimilarityQueryService similarQuery;
     @Autowired InterestRecommendationResultService interests;
     @Autowired CreatorRecommendationQueryService query;
+    @Autowired kr.co.cking.recommendation.application.RecommendationEligibilityService eligibility;
     @Autowired CreatorFollowService follow;
 
     private Member member() {
@@ -153,8 +154,12 @@ class RecommendationEligibilityIntegrationTest {
         assertThat(query.findForMember(fan.getMemberId(),20).items()).extracting(i->i.creatorId()).containsExactly(a.getCreatorId());
         long generation=jdbc.queryForObject("SELECT current_generation_id FROM interest_recommendation_state WHERE taxonomy_version='v0.2' AND interest_code='FOOD'",Long.class);
         jdbc.update("UPDATE recommendation_eligibility SET proof=JSON_SET(proof,'$.taxonomyHash',?) WHERE source_kind='INTEREST' AND generation_id=?","f".repeat(64),generation);
+        eligibility.clearCache();
         assertThat(query.findForMember(fan.getMemberId(),20).items()).isEmpty();
         assertThat(output).contains("RECOMMENDATION_PROOF_REJECTED sourceKind=INTEREST generationId="+generation+" reason=TAXONOMY");
+        assertThat(query.findForMember(fan.getMemberId(),20).items()).isEmpty();
+        String marker="RECOMMENDATION_PROOF_REJECTED sourceKind=INTEREST generationId="+generation+" reason=TAXONOMY";
+        assertThat(output.getAll().split(java.util.regex.Pattern.quote(marker),-1).length-1).as("같은 세대의 폐기 로그는 한 번만").isEqualTo(1);
     }
 
     @Test void 적재_때_현재_소개와_지문이_다르면_그_수를_남긴다(CapturedOutput output) {

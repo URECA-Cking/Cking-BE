@@ -1,22 +1,24 @@
 package kr.co.cking.creator.application;
 
-import kr.co.cking.recommendation.application.RecommendationEligibilityService;
-
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSimilarityView;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorSimilarityCandidate;
 import kr.co.cking.creator.domain.CreatorSimilarityGeneration;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityStateRepository;
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -46,11 +48,16 @@ public class CreatorSimilarityQueryService {
     private CreatorSimilarityView findActive(Long creatorId, Long generationId, int size) {
         CreatorSimilarityGeneration generation = generationRepository.findById(generationId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.SYSTEM_ERROR));
-        var candidates = candidateRepository.findByGenerationIdOrderByRankAsc(
+        List<CreatorSimilarityCandidate> stored = candidateRepository.findByGenerationIdOrderByRankAsc(
                 generationId, PageRequest.of(0, MAX_STORED_CANDIDATES));
-        var refs=candidates.stream().map(c -> new RecommendationEligibilityService.Ref(generationId,creatorId,c.getSimilarCreatorId(),java.util.Set.of())).toList();
-        var valid=eligibility.valid("SIMILAR",refs);
-        candidates=candidates.stream().filter(c -> valid.contains(new RecommendationEligibilityService.Ref(generationId,creatorId,c.getSimilarCreatorId(),java.util.Set.of()))).limit(size).toList();
+        var refs = stored.stream()
+                .map(candidate -> toRef(generationId, creatorId, candidate))
+                .toList();
+        Set<RecommendationEligibilityService.Ref> eligible = eligibility.valid("SIMILAR", refs);
+        List<CreatorSimilarityCandidate> candidates = stored.stream()
+                .filter(candidate -> eligible.contains(toRef(generationId, creatorId, candidate)))
+                .limit(size)
+                .toList();
         Map<Long, Creator> creators = creatorRepository.findByCreatorIdIn(candidates.stream()
                         .map(candidate -> candidate.getSimilarCreatorId())
                         .toList()).stream()
@@ -71,5 +78,10 @@ public class CreatorSimilarityQueryService {
                                 candidate.getScore(),
                                 candidate.getRank()))
                         .toList());
+    }
+
+    private static RecommendationEligibilityService.Ref toRef(
+            Long generationId, Long creatorId, CreatorSimilarityCandidate candidate) {
+        return new RecommendationEligibilityService.Ref(generationId, creatorId, candidate.getSimilarCreatorId(), Set.of());
     }
 }

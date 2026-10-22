@@ -19,6 +19,10 @@ public interface CreatorSpaceRepository extends JpaRepository<CreatorSpace, Long
 
     List<CreatorSpace> findByCreatorIdIn(Collection<Long> creatorIds);
 
+    @Query("select new kr.co.cking.creator.repository.CreatorIntroText(s.creatorId, s.introText) "
+            + "from CreatorSpace s where s.creatorId in :creatorIds")
+    List<CreatorIntroText> findIntroTextsByCreatorIdIn(@Param("creatorIds") Collection<Long> creatorIds);
+
     /** 공유 URL의 slug로 Creator Space를 조회한다. */
     Optional<CreatorSpace> findBySlug(String slug);
 
