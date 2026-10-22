@@ -10,13 +10,13 @@
 | 7 | 외부 | Ticket | USER | GET | `/api/creators/{creatorId}/tickets` | Balance 조회 | - |
 | 8 | 외부 | Ticket | USER | GET | `/api/creators/{creatorId}/tickets/history` | Ledger 조회 | - |
 | 9 | 내부 | EARN | INTERNAL | CALL | `TicketEarnService.earn()` | EARN | `requestId` |
-| 10 | 외부 | Event | USER | GET | `/api/events` | Event 목록(마감 요청 시각 `closeRequestedAt` 포함) | - |
-| 11 | 외부 | Event | PUBLIC | GET | `/api/events/{eventId}` | Event 상세(마감 요청 시각 `closeRequestedAt` 포함) | - |
+| 10 | 외부 | Event | USER | GET | `/api/events` | Event 목록(마감 요청 시각 `closeRequestedAt`, 배너 `bannerImageUrl` 포함) | - |
+| 11 | 외부 | Event | PUBLIC | GET | `/api/events/{eventId}` | Event 상세(마감 요청 시각 `closeRequestedAt`, 배너 `bannerImageUrl` 포함) | - |
 | 12 | 외부 | Entry | USER | POST | `/api/events/{eventId}/entries` | 응모 | `requestId` |
 | 13 | 외부 | Entry | USER | GET | `/api/events/{eventId}/entries/me` | 내 응모 조회 | - |
 | 14 | 외부 | Creator 운영 | CREATOR | GET | `/api/creator/events` | 내 이벤트 목록(`description`, REJECTED면 최근 반려 사유 `rejectReason` 포함) | - |
-| 15 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events` | Event 생성 | `requestId` |
-| 16 | 외부 | Creator 운영 | CREATOR | PATCH | `/api/creator/events/{eventId}` | Event 수정 | 상태 기반 |
+| 15 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events` | Event 생성(선택 `bannerImageKey`로 배너 연결) | `requestId` |
+| 16 | 외부 | Creator 운영 | CREATOR | PATCH | `/api/creator/events/{eventId}` | Event 수정(`bannerImageKey` 생략 시 배너 유지, `null`이면 제거) | 상태 기반 |
 | 17 | 외부 | Creator 운영 | CREATOR | DELETE | `/api/creator/events/{eventId}` | Event 삭제 | 상태 기반 |
 | 18 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events/{eventId}/approval-request` | 승인 요청 | 상태 기반 |
 | 19 | 외부 | Admin | ADMIN | GET | `/api/admin/events/pending` | 승인 대기 | - |
@@ -199,6 +199,7 @@
 | 194 | 외부 | AI Quiz | CREATOR | POST | `/api/creator/quizzes/{quizId}/close` | [Quiz 수동 마감](domains/quiz/api.md#post-apicreatorquizzesquizidclose), 재게시 불가·기존 응시/보상 보존 | 상태 기반 |
 | 195 | 외부 | Follow | USER | PUT | `/api/creators/{creatorId}/posts/read` | [팔로우한 Creator의 게시글 읽음 기록](domains/follow/api.md#put-apicreatorscreatoridpostsread) | 회원·Creator별 최대 시각 |
 | 196 | 외부 | Follow | USER | GET | `/api/me/follows/post-news` | [팔로우한 Creator의 읽지 않은 새 글 일괄 조회](domains/follow/api.md#get-apimefollowspost-news) | - |
+| 197 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events/banner-images` | [Event 배너 이미지 업로드](domains/event/banner-api.md#post-apicreatoreventsbanner-images)(JPEG/PNG 5MB 이하, 최소 600×200px, 생성·수정의 `bannerImageKey`로 연결) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
 

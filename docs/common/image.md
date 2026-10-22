@@ -25,6 +25,7 @@
 | --- | --- | --- | --- |
 | YouTube 구독 인증 | 480×480 | 2048px | `INVALID_VERIFICATION_IMAGE` |
 | Creator 게시글 | 200×200 | 2048px | `INVALID_POST_IMAGE` |
+| Event 배너 | 600×200 | 2048px | `INVALID_EVENT_BANNER_IMAGE` |
 
 ## 오류
 
