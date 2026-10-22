@@ -1,0 +1,101 @@
+package kr.co.cking.ticket.application;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.RedisSystemException;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+
+import kr.co.cking.ticket.application.config.TicketRedisKeys;
+import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnLookupStatus;
+import kr.co.cking.ticket.application.dto.EarnResult;
+import kr.co.cking.ticket.application.dto.EarnResultCode;
+import tools.jackson.databind.ObjectMapper;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * Redis 접근 예외를 EarnResultCode로 매핑하는 분기만 검증한다 - 실제 Redis 없이
+ * StringRedisTemplate을 mock으로 대체해 타임아웃과 그 외 오류를 구분하는지 확인한다
+ * (통합 API 명세 v2.5 §4.5: 명확한 오류=EARN_PROCESSING_FAILED, 타임아웃=EARN_STATUS_UNKNOWN).
+ */
+class TicketEarnServiceImplErrorMappingTest {
+
+    private static EarnCommand command() {
+        return new EarnCommand(
+                UUID.randomUUID(), 1L, 900001L, "ATTENDANCE", 10L, "2026-09-16", "attendance:creator:2026-09-16", 1L);
+    }
+
+    @Test
+    void 타임아웃이면_EARN_STATUS_UNKNOWN을_반환한다() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
+                .thenThrow(new QueryTimeoutException("Redis 응답 타임아웃"));
+        TicketEarnServiceImpl service =
+                new TicketEarnServiceImpl(redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper());
+
+        EarnResult result = service.earn(command());
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.EARN_STATUS_UNKNOWN);
+    }
+
+    @Test
+    void 타임아웃이_아닌_Redis_오류는_EARN_PROCESSING_FAILED를_반환한다() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
+                .thenThrow(new RedisSystemException("Redis 연결 실패", new RuntimeException("connection refused")));
+        TicketEarnServiceImpl service =
+                new TicketEarnServiceImpl(redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper());
+
+        EarnResult result = service.earn(command());
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
+    }
+
+    @Test
+    void 다른_정책에서_이미_사용한_requestId는_Redis_실행_전에_차단한다() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        TicketEarnRequestClaimService claimService = mock(TicketEarnRequestClaimService.class);
+        when(claimService.claim(any(EarnCommand.class))).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
+        TicketEarnServiceImpl service = new TicketEarnServiceImpl(
+                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService);
+
+        EarnResult result = service.earn(command());
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.REQUEST_ID_CONFLICT);
+        verify(redisTemplate, never()).execute(any(DefaultRedisScript.class), anyList(), any(Object[].class));
+    }
+
+    @Test
+    void PROCESSING_Guard로_복구하면_전역_request를_ACCEPTED로_확정한다() {
+        EarnCommand command = command();
+        String fingerprint = command.computeFingerprint();
+        String guardKey = TicketRedisKeys.earnGuard(1L, "ATTENDANCE", 900001L, "20260916");
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        ValueOperations<String, String> values = mock(ValueOperations.class);
+        TicketEarnRequestClaimService claimService = mock(TicketEarnRequestClaimService.class);
+        when(redisTemplate.opsForValue()).thenReturn(values);
+        when(claimService.find(command)).thenReturn(TicketEarnRequestClaim.PENDING);
+        when(values.get(TicketRedisKeys.idemMission(command.requestId().toString())))
+                .thenReturn("{\"fingerprint\":\"" + fingerprint + "\",\"status\":\"PROCESSING\"}");
+        when(values.get(guardKey)).thenReturn(command.requestId() + ":" + fingerprint);
+        TicketEarnServiceImpl service = new TicketEarnServiceImpl(
+                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService);
+
+        var result = service.findExisting(command);
+
+        assertThat(result.status()).isEqualTo(EarnLookupStatus.ALREADY_PROCESSED);
+        verify(claimService).accept(command.requestId().toString());
+    }
+}

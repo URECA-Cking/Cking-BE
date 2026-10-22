@@ -1,0 +1,175 @@
+package kr.co.cking.subscriptionverification.application;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
+import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.storage.ObjectStorage;
+import kr.co.cking.subscriptionverification.application.image.ProcessedSubscriptionImage;
+import kr.co.cking.subscriptionverification.application.image.SubscriptionImageProcessor;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerification;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+
+/** 이미지 처리·Object 저장과 짧은 DB 저장 Transaction을 연결하는 제출 오케스트레이터다. */
+@Service
+@Slf4j
+public class SubscriptionVerificationSubmissionService {
+
+    private final SubscriptionImageProcessor imageProcessor;
+    private final ObjectStorage objectStorage;
+    private final SubscriptionVerificationAvailability availability;
+    private final SubscriptionVerificationSubmissionValidator validator;
+    private final SubscriptionVerificationPersistenceService persistenceService;
+    private final SubscriptionVerificationAbuseObserver abuseObserver;
+    private final Clock clock;
+
+    public SubscriptionVerificationSubmissionService(
+            SubscriptionImageProcessor imageProcessor,
+            ObjectStorage objectStorage,
+            SubscriptionVerificationAvailability availability,
+            SubscriptionVerificationSubmissionValidator validator,
+            SubscriptionVerificationPersistenceService persistenceService,
+            SubscriptionVerificationAbuseObserver abuseObserver,
+            Clock clock
+    ) {
+        this.imageProcessor = imageProcessor;
+        this.objectStorage = objectStorage;
+        this.availability = availability;
+        this.validator = validator;
+        this.persistenceService = persistenceService;
+        this.abuseObserver = abuseObserver;
+        this.clock = clock;
+    }
+
+    /** 정규화·업로드 뒤 PENDING 저장과 이미지 재사용 탐지 기록을 요청한다. */
+    public SubscriptionVerificationSubmissionResult submit(
+            SubscriptionVerificationSubmissionCommand command
+    ) {
+        availability.requireSubmissionEnabled();
+
+        Instant submittedAt = clock.instant();
+        validator.validateSource(
+                command.memberId(), command.creatorId(), command.missionId(), submittedAt);
+
+        ProcessedSubscriptionImage image = imageProcessor.process(command.imageBytes());
+        String requestId = command.requestId().toString();
+        String fingerprint = SubscriptionVerificationFingerprint.calculate(
+                command.memberId(),
+                command.creatorId(),
+                command.missionId(),
+                image.normalizedImageSha256());
+
+        Optional<SubscriptionVerification> existing;
+        try {
+            existing = validator.validateRequest(
+                    command.memberId(), command.creatorId(), command.missionId(), requestId, fingerprint, submittedAt);
+        } catch (BusinessException exception) {
+            abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), exception.getErrorCode().code(), submittedAt);
+            throw exception;
+        }
+        if (existing.isPresent()) {
+            abuseObserver.observeReplay(existing.get());
+            return new SubscriptionVerificationSubmissionResult(existing.get(), false);
+        }
+
+        String objectKey = objectKey(submittedAt);
+        objectStorage.put(objectKey, image.normalizedImageBytes(), "image/jpeg");
+        SubscriptionVerificationSubmissionResult result;
+        try {
+            result = createWithImageReuseRetry(new SubscriptionVerificationPersistenceCommand(
+                    command.memberId(),
+                    command.creatorId(),
+                    command.missionId(),
+                    requestId,
+                    fingerprint,
+                    objectKey,
+                    image.normalizedImageSha256(),
+                    image.normalizationVersion(),
+                    UUID.randomUUID().toString()));
+        } catch (DataIntegrityViolationException exception) {
+            deleteQuietly(objectKey);
+            try {
+                Optional<SubscriptionVerification> concurrentExisting = validator.validateRequest(
+                        command.memberId(),
+                        command.creatorId(),
+                        command.missionId(),
+                        requestId,
+                        fingerprint,
+                        submittedAt);
+                if (concurrentExisting.isPresent()) {
+                    abuseObserver.observeReplay(concurrentExisting.get());
+                    return new SubscriptionVerificationSubmissionResult(concurrentExisting.get(), false);
+                }
+            } catch (BusinessException revalidationFailure) {
+                abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                        command.requestId(), revalidationFailure.getErrorCode().code(), submittedAt);
+                throw revalidationFailure;
+            } catch (RuntimeException revalidationFailure) {
+                abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                        command.requestId(), submittedAt);
+                throw revalidationFailure;
+            }
+            abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), submittedAt);
+            throw exception;
+        } catch (BusinessException exception) {
+            deleteQuietly(objectKey);
+            abuseObserver.observeBusinessFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), exception.getErrorCode().code(), submittedAt);
+            throw exception;
+        } catch (RuntimeException exception) {
+            deleteQuietly(objectKey);
+            abuseObserver.observeSystemFailure(command.memberId(), command.creatorId(), command.missionId(),
+                    command.requestId(), submittedAt);
+            throw exception;
+        }
+
+        if (!result.created()) {
+            deleteQuietly(objectKey);
+            abuseObserver.observeReplay(result.verification());
+        } else {
+            abuseObserver.observeCreated(result.verification());
+            abuseObserver.observeImageReuse(result.verification(), result.imageReuseType());
+        }
+        return result;
+    }
+
+    /** 같은 이미지 hash 잠금의 일시 교착만 제한적으로 재시도해 업로드한 Object를 재사용한다. */
+    private SubscriptionVerificationSubmissionResult createWithImageReuseRetry(
+            SubscriptionVerificationPersistenceCommand command
+    ) {
+        CannotAcquireLockException lastFailure = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                return persistenceService.create(command);
+            } catch (CannotAcquireLockException exception) {
+                lastFailure = exception;
+                Thread.yield();
+            }
+        }
+        throw lastFailure;
+    }
+
+    /** 제출 시각의 UTC 연·월과 UUID로 Private Object key를 생성한다. */
+    private String objectKey(Instant submittedAt) {
+        var utc = submittedAt.atZone(ZoneOffset.UTC);
+        return "subscription-verifications/%04d/%02d/%s/image.jpg"
+                .formatted(utc.getYear(), utc.getMonthValue(), UUID.randomUUID());
+    }
+
+    /** DB 저장 실패 뒤 이번 요청이 업로드한 Object를 보상 삭제하고 실패는 로그에만 남긴다. */
+    private void deleteQuietly(String objectKey) {
+        try {
+            objectStorage.delete(objectKey);
+        } catch (RuntimeException cleanupFailure) {
+            log.warn("구독 인증 Object 보상 삭제에 실패했습니다. objectKey={}", objectKey, cleanupFailure);
+        }
+    }
+}

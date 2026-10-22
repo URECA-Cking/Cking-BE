@@ -1,0 +1,239 @@
+package kr.co.cking.event.application;
+
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
+import kr.co.cking.event.application.dto.CreateEventCommand;
+import kr.co.cking.event.application.dto.UpdateEventCommand;
+import kr.co.cking.event.domain.DrawMethod;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventApprovalRequest;
+import kr.co.cking.event.domain.EventErrorCode;
+import kr.co.cking.event.application.service.EventCommandService;
+import kr.co.cking.event.repository.EventApprovalRequestRepository;
+import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.member.repository.MemberRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+/** Creator가 소유한 Event의 생성과 운영 명령을 처리한다. */
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class CreatorEventService {
+
+    private final CreatorRepository creatorRepository;
+    private final MemberRepository memberRepository;
+    private final EventRepository eventRepository;
+    private final EventApprovalRequestRepository approvalRequestRepository;
+    private final EventCommandService eventCommandService;
+    private final EventCreationPersistenceService eventCreationPersistenceService;
+    private final EventBannerImageManager bannerImageManager;
+
+    /** 요청 식별자 기준으로 Event를 멱등 생성하거나 동일 요청의 기존 Event를 반환한다. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public Event create(CreateEventCommand command) {
+        validateCreate(command);
+        Creator creator = requireConfiguredCreator(command.userId());
+        return eventRepository.findByRequestId(command.requestId())
+                .map(existing -> returnExistingOrThrow(existing, command))
+                .orElseGet(() -> createOrRecover(command, creator));
+    }
+
+    /** 멱등 키 잠금 보유 중 생성 요청을 검증하고 기존 Event를 재사용한다. */
+    private Event createOrRecover(CreateEventCommand command, Creator creator) {
+        try {
+            return eventCreationPersistenceService.create(command, creator.getCreatorId());
+        } catch (DataIntegrityViolationException exception) {
+            return eventRepository.findByRequestId(command.requestId())
+                    .map(existing -> returnExistingOrThrow(existing, command))
+                    .orElseThrow(() -> new BusinessException(EventErrorCode.CONCURRENT_COMMAND));
+        }
+    }
+
+    /** 요청 Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 조회한다. */
+    @Transactional(readOnly = true)
+    public Page<Event> findMine(Long userId, Pageable pageable) {
+        Creator creator = requireCreator(userId);
+        return eventRepository.findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(creator.getCreatorId(), pageable);
+    }
+
+    /** REJECTED 상태 Event의 최근 반려 사유를 eventId별로 조회한다. 사유가 없으면 키가 없다. */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.Map<Long, String> findRejectReasons(java.util.Collection<Event> events) {
+        var rejectedIds = events.stream()
+                .filter(event -> event.getStatus() == kr.co.cking.event.domain.EventStatus.REJECTED)
+                .map(Event::getEventId).toList();
+        if (rejectedIds.isEmpty()) {
+            return java.util.Map.of();
+        }
+        return approvalRequestRepository.findLatestRejected(rejectedIds).stream()
+                .filter(request -> request.getRejectReason() != null)
+                .collect(java.util.stream.Collectors.toMap(EventApprovalRequest::getEventId,
+                        EventApprovalRequest::getRejectReason));
+    }
+
+    /** Creator 소유 Event의 새 승인 요청 차수를 만들고 승인 대기 상태로 전이한다. */
+    public EventApprovalRequest requestApproval(Long userId, Long eventId) {
+        Creator creator = requireConfiguredCreator(userId);
+        return eventCommandService.requestApproval(
+                eventId,
+                event -> requireOwnership(creator, event),
+                event -> {
+                    int nextRound = approvalRequestRepository.findTopByEventIdOrderByApprovalRoundDesc(eventId)
+                            .map(request -> request.getApprovalRound() + 1)
+                            .orElse(1);
+                    return approvalRequestRepository.save(new EventApprovalRequest(event.getEventId(), nextRound, userId));
+                });
+    }
+
+    /** Creator 소유의 초안 Event를 논리 삭제한다. 연결된 배너는 같은 트랜잭션에서 삭제 대기로 돌려 정리 작업이 회수한다. */
+    public void delete(Long userId, Long eventId) {
+        Creator creator = requireCreator(userId);
+        String[] bannerImageKey = new String[1];
+        eventCommandService.delete(eventId, event -> {
+            requireOwnership(creator, event);
+            bannerImageKey[0] = event.getBannerImageKey();
+        });
+        bannerImageManager.release(creator.getCreatorId(), bannerImageKey[0]);
+    }
+
+    /** Creator 소유 Event를 수정하고 거절 상태면 공통 상태 명령으로 초안에 복귀시킨다. 배너 키를 보냈을 때만 배너를 바꾼다. */
+    public Event update(UpdateEventCommand command) {
+        validateUpdate(command);
+        Creator creator = requireConfiguredCreator(command.userId());
+        return eventCommandService.update(
+                command.eventId(),
+                event -> requireOwnership(creator, event),
+                event -> {
+                    event.update(command.title().trim(), command.description(), command.startAt(), command.endAt(),
+                            command.winnerCount(), command.drawMethod(), command.prizes(), command.prizeAlgorithmVersion());
+                    if (command.bannerImageKeyProvided()) {
+                        bannerImageManager.apply(event, command.bannerImageKey());
+                    }
+                }
+        );
+    }
+
+    /** 기존 Event가 동일 본문이면 재사용하고 다르면 멱등성 충돌을 발생시킨다. */
+    private Event returnExistingOrThrow(Event existing, CreateEventCommand command) {
+        if (!sameBody(existing, command)) {
+            throw new BusinessException(EventErrorCode.IDEMPOTENCY_CONFLICT);
+        }
+        return existing;
+    }
+
+    private Creator requireCreator(Long userId) {
+        memberRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        Creator creator = creatorRepository.findByMemberId(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        return creator;
+    }
+
+    /** 새 공개 Event를 만들거나 변경하는 Creator는 공개 활동명을 먼저 확정해야 한다. */
+    private Creator requireConfiguredCreator(Long userId) {
+        Creator creator = requireCreator(userId);
+        creator.requireActivityNameConfigured();
+        return creator;
+    }
+
+    /** 잠금 상태의 Event가 요청 Creator 소유이며 삭제되지 않았는지 검증한다. */
+    private void requireOwnership(Creator creator, Event event) {
+        if (!creator.getCreatorId().equals(event.getCreatorId()) || event.getDeletedAt() != null) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        }
+    }
+
+    /** Event 생성 요청의 필수값과 업무 제약을 검증한다. */
+    private void validateCreate(CreateEventCommand command) {
+        if (command.userId() == null || command.requestId() == null || command.requestId().isBlank()
+                || !isCanonicalUuid(command.requestId())
+                || command.title() == null || command.title().isBlank() || command.startAt() == null
+                || command.endAt() == null || command.winnerCount() < 1 || command.drawMethod() == null
+                || command.prizeAlgorithmVersion() == null
+                || !command.startAt().isBefore(command.endAt())) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());
+    }
+
+    /** requestId가 UUID의 표준 문자열 형식인지 검증한다. */
+    private boolean isCanonicalUuid(String requestId) {
+        try {
+            return java.util.UUID.fromString(requestId).toString().equalsIgnoreCase(requestId);
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
+    /** Event 수정 요청의 필수값과 업무 제약을 검증한다. */
+    private void validateUpdate(UpdateEventCommand command) {
+        if (command.userId() == null || command.eventId() == null || command.title() == null || command.title().isBlank()
+                || command.startAt() == null || command.endAt() == null || command.winnerCount() < 1
+                || command.drawMethod() == null || command.prizeAlgorithmVersion() == null
+                || !command.startAt().isBefore(command.endAt())) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());
+    }
+
+    private void validatePrizes(
+            java.util.List<kr.co.cking.event.domain.PrizeConfig> prizes,
+            int winnerCount,
+            PrizeAllocationAlgorithmVersion algorithmVersion
+    ) {
+        if (prizes == null) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        java.util.HashSet<String> keys = new java.util.HashSet<>();
+        long quantity = 0;
+        long weight = 0;
+        try {
+            for (var prize : prizes) {
+                if (prize == null || !keys.add(prize.prizeKey())) {
+                    throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+                }
+                quantity = Math.addExact(quantity, prize.quantity());
+                if (algorithmVersion == PrizeAllocationAlgorithmVersion.PRIZE_WEIGHTED_V1) {
+                    weight = Math.addExact(weight, prize.weight());
+                }
+            }
+        } catch (ArithmeticException exception) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        if (!prizes.isEmpty() && quantity < winnerCount) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+    }
+
+    /** 저장된 Event와 재시도 요청의 의미 있는 생성 본문이 같은지 비교한다. */
+    private boolean sameBody(Event event, CreateEventCommand command) {
+        return event.getCreatedBy().equals(command.userId())
+                && event.getTitle().equals(command.title().trim())
+                && java.util.Objects.equals(event.getDescription(), command.description())
+                && normalizeToMicros(event.getStartAt()).equals(normalizeToMicros(command.startAt()))
+                && normalizeToMicros(event.getEndAt()).equals(normalizeToMicros(command.endAt()))
+                && event.getWinnerCount() == command.winnerCount()
+                && event.getDrawMethod().equals(command.drawMethod().name())
+                && event.getPrizeAlgorithmVersion().equals(command.prizeAlgorithmVersion().name())
+                && java.util.Objects.equals(event.getBannerImageKey(), command.bannerImageKey())
+                && event.getPrizeConfigs().equals(command.prizes().stream()
+                        .sorted(java.util.Comparator.comparingInt(kr.co.cking.event.domain.PrizeConfig::priority)
+                                .thenComparing(kr.co.cking.event.domain.PrizeConfig::prizeKey))
+                        .toList());
+    }
+
+    /** MySQL DATETIME(6) 저장 정밀도에 맞춰 멱등성 비교 시각을 마이크로초로 정규화한다. */
+    private java.time.Instant normalizeToMicros(java.time.Instant value) {
+        return value.truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+                .plusNanos(value.getNano() % 1_000 >= 500 ? 1_000 : 0);
+    }
+}

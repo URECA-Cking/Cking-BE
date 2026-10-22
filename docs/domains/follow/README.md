@@ -1,0 +1,27 @@
+# Follow
+
+사용자(Member)가 크리에이터(Creator)를 팔로우한 관계를 저장한다. 외부 API 계약은 [Follow API](api.md)를 따른다.
+
+## 책임
+
+- 팔로우·언팔로우와 팔로우 여부·내 팔로우 목록 조회를 제공한다.
+- 현재 팔로우의 회원·Creator별 게시글 마지막 읽음 시각과 새 글 일괄 조회를 제공한다. 읽음 기록이 없으면 현재 팔로우 시작 시각을 기준으로 한다.
+- 다른 도메인은 `CreatorFollowQueryService.isFollowing(memberId, creatorId)`로 팔로우 여부를 확인한다. Creator Space 게시글의 팔로워 공개(FOLLOWERS) 권한 확인(#318)이 첫 사용처다.
+- 개인화 추천은 `findFollowedCreatorIds(memberId)`로 전체 seed Creator ID를 한 번에 읽는다. 추천 집계와 유사 후보 조회는 Creator 도메인이 담당한다.
+- 추천 카드의 팔로워 수는 `countFollowersByCreatorIds(creatorIds)`로 여러 Creator를 그룹 쿼리 한 번에 센다. 요청한 모든 ID가 키로 반환되며 팔로워가 없으면 0이다.
+- 신규 팔로우는 커밋 후 `CreatorFollowCreated`를 통해 Creator 추천 분석에 전달한다. 별도 `member_activity_lock` 행으로 팔로우/언팔로우 전환을 직렬화하며 반복 PUT은 이벤트를 발행하지 않는다.
+- 실제 신규 관계와 공통 ID 이벤트(`common.event.CreatorFollowCreated`)의 영속 원본을 같은 트랜잭션에 저장한다. 원본 저장 실패는 팔로우도 롤백한다. 원본은 언팔로우 후에도 남으며 분석 실패는 주기적 재처리로 복구한다. 시각은 DB UTC를 쓴다.
+- 원본 저장소는 `follow.repository`, 상태 변경 경계는 `CreatorFollowEventService`가 소유한다. 복구 잡은 새 이벤트를 기본 2분 유예하며 실패 횟수를 저장하고 60초부터 최대 1시간까지 지수 백오프한다. 커밋 후 비동기 처리는 즉시 실행한다.
+- Creator 정보는 읽기만 한다. 팔로우 대상 존재 확인과 목록의 크리에이터 이름은 `CreatorRepository` 조회로 얻는다.
+
+## 소유 데이터
+
+`creator_follow` (V33, V87): `member_id`, `creator_id`, `created_at`, `last_read_at`(nullable). 같은 사용자·크리에이터 쌍은 `uk_creator_follow_member_creator`로 하나만 존재한다. V87은 읽음 시각을 추가한다.
+
+## 불변조건
+
+- Creator는 관리자 승인 시에만 생성되므로, 존재하는 Creator는 팔로우할 수 있다.
+- 본인 Creator(Creator의 `member_id`가 호출자)는 팔로우할 수 없다.
+- 팔로우는 unique 제약에 기대어 멱등하게 추가한다. `INSERT … ON DUPLICATE KEY UPDATE`로 중복 키만 무시하므로, 동시에 같은 요청이 들어와도 관계는 하나다. FK 위반 같은 다른 오류는 무시하지 않는다.
+- 언팔로우는 행을 하드 삭제하며 이력을 남기지 않는다. 팔로우하지 않은 상태의 언팔로우도 성공한다.
+- `isFollowing`은 비로그인(`memberId == null`)을 팔로우하지 않은 것으로 보며, Creator 존재 여부는 검증하지 않는다.

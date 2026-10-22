@@ -1,0 +1,201 @@
+# 비정상 행동 탐지 v1
+
+Mission 완료와 Event 응모의 여러 요청에 걸친 패턴을 탐지해 근거를 남긴다. 개별 요청의 허용 여부는 기존 Mission·Entry 책임이며, v1은 자동 차단·Rate Limit·점수제·IP/Device/인증 실패·Creator Farming을 하지 않는다.
+
+## 범위와 경계
+
+관찰 대상은 인증된 사용자의 Mission 완료·Event 응모와 별도 계약의 [YouTube 구독 인증](youtube-subscription.md)이다.
+
+| actionType | API | resource 확인 |
+| --- | --- | --- |
+| `MISSION_COMPLETE` | `POST /api/creators/{creatorId}/missions/{missionId}/complete` | Member·Creator Mission |
+| `MISSION_COMPLETE` | `POST /api/creators/{creatorId}/missions/share/complete` | Member·Creator·SHARE Mission |
+| `MISSION_COMPLETE` | `POST /api/missions/{missionId}/complete` | Member·Common Mission |
+| `EVENT_ENTRY` | `POST /api/events/{eventId}/entries` | Event |
+| `YOUTUBE_SUBSCRIPTION` | `POST /api/creators/{creatorId}/subscription-verifications` 및 비동기 판정 | [별도 계약](youtube-subscription.md) |
+
+관찰은 인증·Controller validation·대상 resource 확인이 모두 성공한 뒤 시작한다. 따라서 인증/인가 실패, 형식·범위 validation 실패, Member·Mission·Event 미존재는 Observation을 만들지 않는다.
+
+각 Use Case는 resource 확인 직후 `requestedAt`을 기록하고, 비즈니스 결과가 확정된 직후 `observedAt`을 기록한다. 두 값은 서버 UTC `Instant`다. Mission/Entry는 context와 최종 결과만 Abuse 모듈에 넘긴다. Redis 조작, rule 판정, cooldown, DB 저장은 이 모듈의 책임이며 HTTP Filter로 모든 요청을 가로채지 않는다.
+
+`AbuseObservationEvent`는 다음 필드를 가진다. `observationId`는 요청 시도마다 서버가 새로 만든 UUID이며 ZSET member로 사용한다. 같은 `requestId`의 재전송도 서로 다른 Observation이다.
+
+```text
+observationId, userId, actionType, requestId, resultCode, resultClass,
+creatorId?, eventId?, missionId?, periodKey?, balanceScope,
+businessKey?, requestedAt, observedAt
+```
+
+`balanceScope`는 요청의 `couponType` 또는 Mission 보상 경로에서 도출한다. 표현은 `CREATOR:{creatorId}` 또는 `COMMON`이며, `userId + balanceScope`가 하나의 잔액 풀이다. `COMMON`은 creatorId를 갖지 않고 `CREATOR`는 양수 creatorId를 필수로 갖는다.
+
+## 결과 분류
+
+| class | 코드 | 처리 |
+| --- | --- | --- |
+| `NEW_SUCCESS` | `EARN_ACCEPTED`, `SUCCESS` | request/성공 sequence와 EARN-SPEND에 사용 |
+| `REPLAY` | `ALREADY_PROCESSED`, `DUPLICATE_REPLAY` | 모든 request burst, failure, EARN-SPEND 집계에서 제외 |
+| `BUSINESS_FAILURE` | `DUPLICATE_MISSION`, `REQUEST_ID_CONFLICT`, `MISSION_INACTIVE`, `INSUFFICIENT_BALANCE`, `EVENT_NOT_OPEN`, `EVENT_CLOSED`, `IDEMPOTENCY_CONFLICT` | 해당 rule의 feature에만 사용 |
+| `SYSTEM_FAILURE` | `GATE_NOT_LOADED`, `BALANCE_NOT_LOADED`, `BALANCE_MAINTENANCE`, `SYSTEM_ERROR`, `EARN_PROCESSING_FAILED`, `EARN_STATUS_UNKNOWN` | 사용자 탐지에서 완전히 제외 |
+
+`MISSION_NOT_FOUND`, `MISSION_REQUIRES_VERIFICATION`, `RESOURCE_NOT_FOUND`, `VALIDATION_FAILED`, `INVALID_TICKET_COUNT`는 v1 business failure가 아니다.
+
+## Business Key와 Signal
+
+Mission만 다음 business key를 생성한다. 신규 Mission Type은 reward policy와 key를 이 문서에 추가하기 전까지 `REQUEST_ID_ROTATION` 대상이 아니다.
+
+| Mission | key |
+| --- | --- |
+| Creator LIKE DAILY | `MISSION:CREATOR:DAILY:{userId}:{creatorId}:{missionId}:{yyyy-MM-dd}` |
+| Creator SHARE ONCE | `MISSION:CREATOR:ONCE:{userId}:{creatorId}:{missionId}` |
+| Common ATTENDANCE DAILY | `MISSION:COMMON:DAILY:{userId}:{missionId}:{yyyy-MM-dd}` |
+
+`REQUEST_ID_ROTATION`은 이 key별 **rotation sliding window** 안의 distinct `requestId`가 threshold 이상인 **Signal**이다. 단독 Detection row를 만들지 않으며 Entry에는 적용하지 않는다. business key는 Redis key에 넣지 않고 SHA-256 hex hash만 쓴다. Evidence에는 userId가 포함된 원문 key 문자열을 중복 저장하지 않고 creatorId·missionId·periodKey 등 구조화된 Scope만 기록한다. `periodKey`는 DAILY Mission의 audit context이며 Business Key에도 포함된다. SHARE ONCE는 `periodKey=null`이고 Business Key에도 날짜를 포함하지 않는다.
+
+`MissionBusinessKeyFactory`의 `periodAt`에는 해당 Mission이 EARN `periodKey`를 확정할 때 사용한 시각을 전달한다. 요청 시작 시각과 EARN 시각이 UTC 자정을 사이에 두고 달라도 DAILY 키가 실제 보상 기간과 일치해야 한다. SHARE가 Ticket EARN에 전달하는 날짜는 이 Abuse ONCE 키·Observation `periodKey`에 사용하지 않는다. Event 응모의 `BalanceScope`는 요청에서 확정한 `couponType`으로 선택하며, CREATOR일 때만 Event 소유 Creator의 잔액을 사용한다.
+
+## Detection과 Feature
+
+| abuse type | scope | feature / 판정 |
+| --- | --- | --- |
+| `MISSION_REQUEST_BURST` | user | `MISSION_COMPLETE` 중 replay/system이 아닌 요청의 sliding count ≥ N |
+| `DUPLICATE_MISSION_BURST` | business key | `DUPLICATE_MISSION` sliding count ≥ N |
+| `ENTRY_REQUEST_BURST` | user + event | `EVENT_ENTRY` 중 replay/system이 아닌 요청의 sliding count ≥ N |
+| `INSUFFICIENT_BALANCE_BURST` | user + balance scope | 부족 잔액 sliding count ≥ N 또는 연속 count ≥ N |
+| `REQUEST_ID_ROTATION` | mission business key | rotation window 안의 distinct requestId ≥ N; Signal only |
+| `RAPID_EARN_AND_SPEND` | user + balance scope | 같은 scope의 `EARN_ACCEPTED` 뒤 `SUCCESS`가 D 이내인 pair sliding count ≥ N |
+| `FAILURE_BURST` | user | business failure sliding count ≥ N 또는 연속 count ≥ N |
+
+같은 Balance Scope의 새 EARN 또는 Entry 성공은 insufficient 연속 실패를 끊는다. 새 성공은 전체 failure 연속 상태를 끊고, replay/system failure는 연속 상태를 늘리거나 끊지 않는다. rapid pair는 하나의 최근 EARN을 한 번의 SPEND에만 연결한 후 EARN 상태를 지운다. 단일 pair는 Detection하지 않는다.
+
+빠른 EARN-SPEND의 Feature Snapshot은 같은 사용자·Balance Scope에서 현재 성공한 Entry가 `maxDelay` 이내의 미사용 `EARN_ACCEPTED`와 새 pair를 만들었는지 `rapidEarnSpendPairCreated`(0 또는 1)로 전달한다. `rapidEarnSpendPairCount`는 해당 scope의 sliding window 내 pair 수다. Rule은 현재 Entry의 pairCreated가 1이고 count가 설정 threshold와 최소 2에 모두 도달했을 때만 후보를 만든다. 이전 pair 수가 높아도 현재 요청이 pair를 만들지 않았다면 탐지하지 않는다. Evidence는 `USER_BALANCE_SCOPE`, pair count, 현재 pair 생성 여부, window, maxDelay 및 설정 threshold를 보존한다. 이 계산과 최근 EARN의 1회 소비는 Feature Store 책임이며 Rule은 전달된 Snapshot만 판정한다.
+
+Composite rule은 별도 row가 아니라 기존 Detection Evidence를 강화한다: `RULE-01` duplicate+rotation, `RULE-02` mission burst+rotation, `RULE-03` entry burst+(insufficient 또는 failure), `RULE-04` rapid pair+(mission 또는 entry burst), `RULE-05` failure burst+distinct failure type ≥ M. 동시에 충족한 모든 rule을 기록한다.
+
+`CompositeRuleEvaluator`는 **같은 Observation**에서 계산된 기본 Detection 후보·Rotation Signal과 Feature Snapshot만 조합한다. `RULE-01/02`는 현재 Mission Business Key의 Rotation만 사용하며 Signal 단독으로 row를 만들지 않는다. `RULE-03`은 현재 Entry의 burst와 부족 잔액/업무 실패 후보를 양쪽 Detection에 기록한다. `RULE-04`는 현재 Entry의 rapid pair 후보가 필수이며, 현재 Entry burst 또는 같은 사용자의 이전 Mission burst 측정값이 threshold 이상일 때만 기록한다. 후자의 측정값은 Feature Store가 Entry 시점에 `MISSION_REQUEST_COUNT`를 **읽기 전용으로 조회**해 Snapshot에 제공해야 한다. 값이 없거나 임계치 미만이면 이전 Mission burst를 추측하지 않고, 이 조합만을 위해 새 Mission Detection row도 만들지 않는다. `RULE-05`는 현재 업무 실패의 `FAILURE_BURST` 후보와 distinct failure type 측정값으로 판정한다.
+
+Composite를 충족한 Detection의 primary Evidence(`scope`, `window`, `features`, `thresholds`)는 그대로 두고, 서로 다른 범위·기간의 근거는 `supportingEvidence`에 Rule별 배열로 보관한다. 예를 들어 Mission burst의 `RULE-02`에는 Rotation의 `BUSINESS_KEY` scope와 rotation window가 별도로 저장된다. Entry의 `RULE-04`에서 이전 Mission burst를 사용하면 그 USER scope, Mission window, 조회 시점 count·threshold를 보조 근거로 저장한다. `matchedRules`에는 동시에 충족한 Rule을 모두 기록한다. 과거 저장 JSON에 `supportingEvidence`가 없으면 빈 Map으로 읽는다.
+
+## Redis와 Lua
+
+Redis는 실시간 feature와 cooldown만 보관하고 Observation이나 최종 Detection을 영속화하지 않는다. 모든 key prefix는 `abuse:v1:`이다.
+
+| key | type | TTL |
+| --- | --- | --- |
+| `mission-request:{userId}`, `duplicate-mission:{businessKeyHash}`, `entry-request:{userId}:{eventId}`, `insufficient:{userId}:{balanceScope}`, `rapid-earn-spend:{userId}:{balanceScope}`, `failure:{userId}` | ZSET, score=Redis Lua 실행 timestamp ms/member=observationId | 각 Window + 60초 |
+| `request-id:{businessKeyHash}` | ZSET, score=Redis Lua 실행 epoch ms/member=requestId | rotation window + 60초 |
+| `last-earn:{userId}:{balanceScope}` | STRING, Redis Lua 실행 epoch ms | rapid maxDelay |
+| `failure-type:{userId}` | HASH, field=실패 코드·value=해당 코드의 count | failure window + 60초 |
+| `failure-sequence:{userId}` | HASH, fields=`count`, `lastObservedAtEpochMs`; 전체 업무 실패 연속 상태 | failure window + 60초 |
+| `insufficient-sequence:{userId}:{balanceScope}` | HASH, fields=`count`, `lastObservedAtEpochMs`; 해당 잔액 범위의 부족 잔액 연속 상태 | insufficient window + 60초 |
+| `cooldown:{abuseType}:{scopeHash}` | STRING | primary Window × 2 |
+
+`scripts/abuse-sliding-window-count.lua`는 `KEYS[1]` ZSET과 `member`, `window ms`, `window + 60초` TTL 초를 받아 Redis `TIME`으로 실행 시각을 만든 뒤 `ZADD → ZREMRANGEBYSCORE → ZCARD → EXPIRE`를 원자 수행해 count를 반환한다. `RedisAbuseFeatureStore`도 `abuse-feature-store-record.lua` 한 번에서 같은 Redis 실행 시각으로 Window·연속 상태·최근 EARN·실패 유형을 갱신하고 직후 값을 Snapshot으로 반환한다. Entry Snapshot은 현재 Entry를 Mission 요청으로 기록하지 않고, 같은 사용자 Mission window를 Redis 실행 시각 기준으로 정리·조회한 count를 함께 반환한다. Rapid EARN-SPEND는 pair 누적 count와 이번 Entry가 pair를 새로 만들었는지(`0` 또는 `1`)를 별도 metric으로 반환한다. Sliding Window의 score와 cutoff는 업무 `observedAt`이 아니라 실제 Redis Lua 실행 시각이 기준이므로, 관찰 시각의 순서와 실행 순서가 역전돼도 반환 count는 실행 순서 기준으로 일관된다. 일반 window 호출자는 `observationId`, rotation 호출자는 `requestId`를 member로 전달한다. rotation은 같은 requestId를 member로 쓰므로 재시도는 distinct count를 늘리지 않고, 새 requestId는 해당 window에서만 집계된다. 연속 상태는 각각 `failure-sequence`와 `insufficient-sequence`에 분리해 갱신한다. 두 HASH의 `count`는 현재 연속 횟수이고 `lastObservedAtEpochMs`는 마지막 집계 시각이다. `failure-type` HASH는 각 실패 코드의 마지막 Redis 실행 epoch ms를 보관하고 failure window 밖 field를 제거해 distinct type count를 계산한다. 해당 Rule의 관찰·성공으로 상태가 갱신될 때마다 각 Rule의 TTL을 다시 설정하며, 전체 성공은 `failure-sequence`를, 같은 Balance Scope의 EARN 또는 Entry 성공은 해당 `insufficient-sequence`만 제거한다. `REPLAY`와 `SYSTEM_FAILURE`는 Feature Store가 어떤 Redis key도 갱신하지 않는다. `RedisAbuseCooldownStore`는 UUID Token을 `SET NX EX`로 기록해 한 요청만 Lease를 얻도록 하고, release Lua는 현재 값이 같은 Token일 때만 `DEL`한다. 획득한 요청만 DB를 insert하며 insert 실패 시 key를 best-effort 삭제한다.
+
+### Scope Hash 공통 계약
+
+Redis Key에는 Business Key와 Cooldown Scope의 원문을 넣지 않는다. 각 canonical value를 UTF-8 바이트로 인코딩한 뒤 SHA-256 digest의 lowercase hex(64자)로 변환한다. `AbuseScopeHash.fromCanonicalValue()`가 이 변환과 null·blank 차단의 단일 구현이며, Mission Business Key Hash와 DetectionResult의 Cooldown Scope Hash는 모두 이 계약을 사용한다. 같은 canonical value는 항상 같은 hash를, 서로 다른 canonical value는 서로 다른 hash를 사용한다.
+
+`DetectionResult.cooldownScopeHash`의 canonical 입력은 `MISSION_REQUEST_BURST`·`FAILURE_BURST`에 `USER:{userId}`, `DUPLICATE_MISSION_BURST`에 `BUSINESS_KEY:{businessKey}`, `ENTRY_REQUEST_BURST`에 `USER_EVENT:{userId}:{eventId}`, `INSUFFICIENT_BALANCE_BURST`·`RAPID_EARN_AND_SPEND`에 `USER_BALANCE_SCOPE:{userId}:{balanceScope}`를 사용한다. `balanceScope`는 `COMMON` 또는 `CREATOR:{creatorId}`다. Cooldown Redis key는 이 hash에 `AbuseType`을 별도 포함하므로 사용자 범위가 같아도 서로 다른 탐지 유형은 별개다. 원문 Business Key는 Redis key·로그에 남기지 않는다.
+
+`ticket-earn.lua`, `common-ticket-earn.lua`, `entry-spend.lua`는 수정하지 않는다. 이들은 멱등성·잔액·Stream의 기존 책임만 가지며 Abuse는 별도 script와 key 공간을 사용한다.
+
+## 공통 Domain과 Port 계약
+
+공통 코드는 `abuse.domain`, `abuse.application.model`, `abuse.application.port`에 둔다. Detection row를 만드는 유형은 `AbuseType`, 단독 row를 만들지 않는 보조 신호는 `AbuseSignal`로 분리한다. `AbuseObservationEvent`는 원 업무가 확정한 scalar context만 전달하고, `AbuseFeatureSnapshot`은 Feature Store의 원자 갱신 직후 값을 불변 Map으로 전달한다.
+
+`AbuseFeatureStore.record(observation, windowPolicy)`는 Feature를 갱신하고 Snapshot을 반환할 뿐 Threshold 비교나 Detection 생성을 하지 않는다. `AbuseCooldownStore`는 UUID 소유 Token이 포함된 `CooldownLease`를 반환하며, 해제는 저장된 Token이 일치할 때만 성공해야 한다. `AbuseDetectionRepository.reviewIfDetected()`는 `DETECTED` 조건부 UPDATE의 영향 행 수를 반환한다. Port 구현체는 장애를 정상 결과로 숨기지 않으며 최종 Fail Open은 Observation 호출 경계가 담당한다.
+
+기본 요청 Rule은 `AbuseFeatureSnapshot`과 활성 정책 임계치를 비교해 `AbuseRuleMatch` 후보를 반환한다. 후보에는 탐지 유형과 구조화된 Evidence를 담되 Cooldown scope hash와 DB 저장은 후속 Evaluator/Processor가 맡는다. `REQUEST_ID_ROTATION`은 Mission에서만 별도 `signalEvidence`로 반환하며 단독 Detection 후보를 만들지 않는다. Rotation Evidence는 자신의 Business Key scope, rotation window, distinct requestId 측정값·임계치를 보존한다. Burst Evidence의 primary window·scope에 Rotation 값을 합치지 않으며, 후속 Composite Rule이 별도 Signal 근거를 전달받아 처리한다.
+
+`FailureBurstRuleEvaluator`는 현재 결과가 `BUSINESS_FAILURE`일 때만 판정한다. `INSUFFICIENT_BALANCE_BURST`는 Event Entry의 `INSUFFICIENT_BALANCE`에만 적용하며 `USER_BALANCE_SCOPE`별 count·연속 count를 비교한다. `FAILURE_BURST`는 Mission·Entry의 모든 업무 실패를 `USER` 범위에서 비교한다. 각 Evidence에는 충족 여부와 관계없이 두 count의 측정값·설정 임계치를 함께 보존하고, Failure Evidence에는 후속 `RULE-05`가 사용할 distinct failure type 측정값·임계치도 남긴다. Replay·시스템 실패·정상 성공은 이전 집계값이 높더라도 이 두 Rule의 새 후보를 만들지 않는다.
+
+`AbuseRuleEvaluator`는 활성 설정일 때 한 Observation에 `AbuseFeatureStore.record()`를 한 번 호출하고, 같은 Snapshot으로 요청 Burst → 업무 실패 Burst → 빠른 EARN-SPEND → Composite를 평가한다. Rotation은 Composite의 보조 Signal로만 사용한다. 각 기본 후보를 동일 `AbuseType` 중복 없이 `DetectionResult`로 변환하며 `detectedAt`은 Observation의 `observedAt`이다. `memberId`는 Observation 호출 경계가 별도로 전달한다. `enabled=false`이면 Feature Store를 호출하지 않는다. Feature Store·Rule 오류를 빈 결과로 바꾸지 않으며, Cooldown·DB 저장과 원 업무 결과를 보호하는 Fail Open은 별도 호출 경계가 담당한다.
+
+`AbuseObservationExecutor.observe()`는 원 업무의 성공 결과 또는 `BusinessException`이 결정된 뒤 호출하는 공통 경계다. 비활성 상태에서는 평가·저장을 호출하지 않고, 활성 상태에서는 Rule 결과를 `AbuseDetectionRecorder` Port에 전달한다. 평가 오류는 해당 Observation의 저장을 중단하지만, 개별 Detection 저장 오류는 다른 결과의 저장을 막지 않는다. 오류는 Observation 경계에서만 격리하고 stage·오류 종류·observationId·actionType 및 저장 오류의 abuseType만 로그로 남긴다. 저장 Port는 각 Detection의 독립 Transaction commit까지 완료하거나 실패를 전파해야 한다. 저장 구현은 Detection 저장 Service 작업이 제공하고, Executor 조립은 `AbuseConfiguration`이 담당한다.
+
+세 Mission 완료 경로는 `MissionAbuseObserver`를 통해 LIKE·SHARE·공용 ATTENDANCE의 성공·replay·관찰 대상 업무 실패·시스템 실패를 전달한다. Resource 확인 전 오류와 기존 Creator ATTENDANCE replay는 제외한다. `AbuseConfiguration`은 비활성 상태에서 저장 Port 없이 Executor를 조립하고, 활성 상태에서는 `DefaultAbuseDetectionRecorder`를 사용한다. Mission Observation은 Ticket EARN 로직을 변경하지 않는다.
+
+Event 응모는 `EntryAbuseObserver`를 통해 공개 Event 조회 이후의 성공·replay·업무 실패·시스템 실패를 전달한다. Observation의 Event 소유 `creatorId`는 공용 응모권 사용 시에도 유지하고, `BalanceScope`만 요청의 `couponType`에 따라 `COMMON` 또는 `CREATOR`로 정한다. Event 조회 전 오류와 형식·범위 검증 실패는 제외하며, 관찰 중 오류는 기존 SPEND 결과를 바꾸지 않는다. 같은 `requestId` 재시도에도 각 시도별 `observationId`를 새로 생성한다.
+
+`AbuseDetection`은 Adapter에 독립적인 순수 Aggregate다. 신규 객체의 상태는 `DETECTED`이고, 단일 객체의 검토 전이는 `AbuseReviewDecision.CONFIRMED` 또는 `FALSE_POSITIVE`로 한 번만 가능하다. Repository Port도 상태 enum 대신 `AbuseReviewDecision`만 받아 `DETECTED → DETECTED`와 검토 정보 기록을 타입 수준에서 차단한다. 실제 관리자 동시 전이의 최종 방어선은 Repository의 조건부 UPDATE다.
+
+Evidence Scope의 필수 구성은 타입별로 고정한다. `USER`는 추가 업무 식별자를 갖지 않고, `BUSINESS_KEY`는 `missionId`와 `balanceScope`, `USER_EVENT`는 `eventId`, `USER_BALANCE_SCOPE`는 `balanceScope`가 필수다. Creator 전용 Balance Scope는 creatorId가 일치해야 한다. Event는 Creator 소유이면서 공용 응모권을 사용할 수 있으므로 `USER_EVENT`의 creatorId와 `COMMON` Balance Scope 조합은 허용한다. Feature 측정값은 0 이상, 실제 적용한 Threshold는 양수만 허용한다.
+
+## Detection 저장과 운영
+
+최종 Detection은 MySQL `abuse_detection`에만 저장한다.
+
+```text
+id BIGINT PK; member_id BIGINT NOT NULL; abuse_type VARCHAR(64) NOT NULL;
+status VARCHAR(32) NOT NULL; detected_at DATETIME(6) NOT NULL;
+reviewed_at DATETIME(6) NULL; reviewed_by BIGINT NULL; evidence JSON NOT NULL
+```
+
+FK는 `member_id → member`, `reviewed_by → member`다. index는 `(member_id, detected_at)`, `(status, detected_at)`, `(abuse_type, detected_at)`다. status는 `DETECTED`, `CONFIRMED`, `FALSE_POSITIVE`만 허용한다. `REQUEST_ID_ROTATION`은 row가 없다.
+
+Evidence는 request body, token, authorization header, 개인정보를 담지 않는다. 아래 필수 필드와 해당 rule에 필요한 ID·집계값만 보관한다.
+
+```json
+{
+  "policyVersion":"ABUSE_V1",
+  "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","balanceScope":{"type":"CREATOR","creatorId":10}},
+  "window":{"windowMs":10000},
+  "features":{"duplicateMissionFailureCount":8},
+  "thresholds":{"duplicateMissionFailureCount":5},
+  "signals":["REQUEST_ID_ROTATION"],
+  "matchedRules":["RULE-01"],
+  "supportingEvidence":{
+    "RULE-01":[{
+      "signal":"REQUEST_ID_ROTATION",
+      "scope":{"type":"BUSINESS_KEY","creatorId":10,"missionId":3,"periodKey":"2026-10-01","balanceScope":{"type":"CREATOR","creatorId":10}},
+      "window":{"windowMs":30000},
+      "features":{"distinctRequestIdCountPerBusinessKey":6},
+      "thresholds":{"distinctRequestIdCountPerBusinessKey":3}
+    }]
+  }
+}
+```
+
+Composite 보조 근거가 있는 경우에만 `supportingEvidence`를 추가한다. key는 `RULE-01`~`RULE-05`, 배열의 각 원소는 `abuseType` 또는 `signal` 하나와 독립적인 `scope`, `window`, `features`, `thresholds`를 가진다. primary Evidence와 다른 window의 값을 primary `features`에 합치지 않는다.
+
+`AbuseDetectionRecorder.record(memberId, DetectionResult)`는 `AbuseObservationExecutor`가 호출하는 저장 경계다. `memberId`는 Observation의 `userId`이고, `DetectionResult`는 `abuseType`, `cooldownScopeHash`, `detectedAt`, 확정된 Evidence를 가진다. Recorder는 Evidence를 새로 만들거나 수정하지 않는다. Recorder는 `AbuseProperties.cooldownTtl(abuseType)`으로 Lease 획득에 성공한 경우에만 `AbuseDetection`을 만들고 저장한다. 같은 Scope의 Lease가 있으면 INSERT를 생략하며, DB 저장 시작·flush·commit 실패 시에는 소유 Token 조건의 Cooldown 해제를 best-effort로 시도한다. 저장 성공 시 Lease는 TTL까지 유지한다.
+
+Detection insert 때만 `[ABUSE_DETECTED]` 로그(detectionId, userId, abuseType, matchedRules, detectedAt)를 남긴다. Observation은 원 업무의 성공 결과 또는 `BusinessException`을 확정한 뒤 실행하고 scalar context만 전달한다. Detection 저장은 원 업무 Transaction을 suspend하는 독립 Transaction(`REQUIRES_NEW` 또는 동등한 `TransactionTemplate`)에서 수행한다. Recorder는 독립 Transaction의 시작·flush·commit 오류에서 소유 Token 조건의 Cooldown 해제를 best-effort로 시도한 뒤 예외를 전파한다. `AbuseObservationExecutor`는 이를 catch해 `[ABUSE_OBSERVATION_FAILED]` WARN 로그로 격리하고, 다른 Detection 저장을 계속 시도한다. 따라서 Redis·Detection DB 장애는 성공·업무 실패 어느 경로에서도 원 응답을 바꾸지 않는 Fail Open이다.
+
+### Mission·Entry 통합 검증 (#428)
+
+`AbuseObservationEndToEndIntegrationTest`는 실제 Mission/Entry 서비스 → Observer → Redis Feature/Rule/Cooldown → MySQL Detection을 연결한다. Ticket EARN·Entry SPEND는 기존 별도 통합 테스트가 검증하므로 이 테스트에서는 확정 결과만 Mock으로 주입한다. `cking.abuse.enabled=true`와 테스트 전용 Window/Threshold를 사용하며, 이 값은 운영 Calibration 결과가 아니다. 스케줄러는 비활성화하고 테스트별 Member·Detection·해당 Redis key를 정리한다.
+
+검증 범위는 LIKE·SHARE·공용 ATTENDANCE, Event 응모의 부족 잔액·정상 SPEND, replay·시스템 실패 제외, EARN→SPEND, Composite Rule의 primary/supporting Evidence(scope·window·측정값·threshold·matchedRules), 순차·동시 Cooldown이다. 실제 저장소에서 복원한 Evidence와 Detection row 수를 확인한다. 로컬은 MySQL·Redis를 실행하고 Flyway가 최신인 **격리된 테스트 스키마**에서 `./gradlew test --tests kr.co.cking.abuse.application.AbuseObservationEndToEndIntegrationTest`로 실행한다. 기존 업무용 `cking` 스키마를 repair·초기화하지 않는다. 2026-10-06에 별도 MySQL 8.4 스키마와 Redis 7.2에서 이 클래스의 9개 테스트가 모두 통과했다. Redis Feature·Detection 저장 장애가 Mission/Entry의 원 업무 결과를 바꾸지 않는 경우도 포함한다. 전체 테스트 스위트는 이 확인에 포함하지 않았다.
+
+## 설정과 Calibration
+
+`cking.abuse.enabled=false`가 기본이다. false이면 하위 설정 없이 기동하고 Observation은 Port를 호출하지 않는 no-op이어야 한다. true이면 모든 rule의 window/threshold, insufficient·failure의 consecutive threshold, rotation의 window/distinct threshold, rapid의 maxDelay/window/threshold, failure distinct-type threshold가 필수다. 누락 값·0 이하 값은 시작 시 validation 실패하며 코드 default를 두지 않는다.
+
+설정 key는 아래 구조로 고정한다. Duration은 ISO-8601 형식이며 실제 숫자는 Calibration 뒤 환경변수로 주입한다.
+
+```text
+cking.abuse.mission-request-burst.{window,threshold}
+cking.abuse.duplicate-mission-burst.{window,threshold}
+cking.abuse.entry-request-burst.{window,threshold}
+cking.abuse.insufficient-balance-burst.{window,threshold,consecutive-threshold}
+cking.abuse.request-id-rotation.{window,distinct-threshold}
+cking.abuse.rapid-earn-and-spend.{max-delay,window,threshold}
+cking.abuse.failure-burst.{window,threshold,consecutive-threshold,distinct-type-threshold}
+```
+
+정책 버전은 `ABUSE_V1`, Feature TTL padding은 60초, Cooldown TTL은 해당 AbuseType primary window의 두 배로 고정하며 Calibration 설정으로 노출하지 않는다.
+
+Initial threshold는 k6로 산출한다. rotation을 포함한 각 count rule에 1/5/10/30/60초 window 후보의 `normalMax`와 `abuseMin`을 기록하고, 처음 `normalMax < abuseMin`인 최소 window와 `N=normalMax+1`을 채택한다. 후보가 모두 겹치면 calibration 실패이며 임의 수치를 설정하지 않는다. 운영 중에는 CONFIRMED/FALSE_POSITIVE/미탐을 근거로 설정만 조정한다.
+
+k6는 `normal-user.js`, `mission-request-burst.js`, `duplicate-mission-burst.js`, `entry-request-burst.js`, `insufficient-balance-burst.js`, `request-id-rotation.js`, `rapid-earn-and-spend.js`, `failure-burst.js`로 분리한다. 정상군은 1회 완료, 2~3회 클릭, 같은 requestId 재시도, 정상 다중 응모, 부족 1~2회와 EARN 뒤 재응모, 즉시 EARN-SPEND, Creator 순차 수행을 포함한다. 비정상군은 각 rule을 넘기는 자동 반복을 만든다.
+
+정상군 실행 전제·fixture·측정 방법은 [normal-k6.md](normal-k6.md)를 따른다. 정상군 k6의 HTTP 시각은 Redis Lua 집계 시각의 근사치이며 실제 수치 결과는 격리 환경 실행 후 기록한다.
+
+비정상군 7개 시나리오의 실행 전제·합성 fixture·HTTP 기준 관찰 결과는 [abnormal-k6.md](abnormal-k6.md)를 따른다. 단회 관찰 최댓값을 `abuseMin`이나 운영 threshold로 확정하지 않으며, 후속 Calibration에서 반복 실행·Redis Feature/Evidence와 비교한다.
+
+반복 측정의 비교·운영 적용 보류 기준과 Fail Open 최종 검증 범위는 [calibration.md](calibration.md)를 따른다.
+
+## v1 완료 기준
+
+7개 행동 모델(그중 rotation은 signal), 4개 API 연결, Redis feature/Lua, 6개 Detection rule·5개 composite rule, scope cooldown, migration/Evidence, 관리자 API, 정상·비정상 k6와 calibration, 그리고 성공·업무 실패 각각에서 Redis/독립 Detection Transaction 장애에도 기존 처리 결과가 유지됨을 자동화 테스트로 검증하면 완료다. 관리자 동시 검토에서 같은 판정은 멱등 반환되고 상반된 판정은 정확히 하나만 성공하는 테스트도 포함한다. 구현 단계에서 위 범위, 분류, scope, key/TTL, Lua 분리, cooldown, 상태, Fail Open 정책은 다시 결정하지 않는다. 숫자 threshold만 Calibration 산출물이다.

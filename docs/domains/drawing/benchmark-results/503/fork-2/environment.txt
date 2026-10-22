@@ -1,0 +1,18 @@
+timestamp=2026-10-08T11:53:03.363722600Z
+revision=800cc24b084d0341ace849ede0ff568d788c0e49
+jdk=21.0.10+8-LTS-217
+vm=Java HotSpot(TM) 64-Bit Server VM
+os=Windows 11/amd64
+cpu=AMD Ryzen 7 5800H with Radeon Graphics
+processors=16
+jvmArgs=[-Dbenchmark.cpu=AMD Ryzen 7 5800H with Radeon Graphics, -Dbenchmark.revision=800cc24b084d0341ace849ede0ff568d788c0e49, -XX:+UseG1GC, -Xms512m, -Xmx512m, -Dfile.encoding=UTF-8, -Duser.country=KR, -Duser.language=ko, -Duser.variant]
+maxHeapBytes=536870912
+warmupsPerCaseAndPhase=5
+iterationsPerCaseAndPhase=20
+seed=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+fixtureShuffleSeed=503
+maxTickets=1000000
+maxTicketBytes=8388608
+threadAllocationSupported=true
+throughput=1e9 / arithmetic mean ns per complete phase operation
+percentile=nearest rank

@@ -1,0 +1,291 @@
+# Auth 도메인
+
+Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수단 발급의 경계를 정한다.
+현재 저장소에는 Spring Security OAuth2 Client·Resource Server, OAuth 로그인 완료의 Login Code
+발급·전달, Access JWT 발급·검증, REST 401/403 응답 처리가 구성되어 있다. 기존 업무 API의 호출자
+`userId` 계약은 [공통 API 규약](../../common/api.md)을 계속 따른다.
+
+## 현재 Security 기반
+
+- Security 필터 체인은 모든 요청을 처리한다. Swagger UI와 OpenAPI JSON은 전용 SecurityFilterChain에서
+  Basic Auth로 보호한다. 문서 계정 설정이 비어 있는 로컬·CI 환경에서는 Basic Auth를 적용하지 않는다.
+- `/readyz`(서비스 포트, readiness: DB·Redis 포함)는 ALB 헬스체크와 배포 스크립트가 쓴다.
+  ALB 헬스체크는 인증 정보를 보낼 수 없어 로그인 없이 응답한다. 인터넷에서 들어오는
+  `/readyz` 요청은 ALB 리스너에서 막는다.
+- actuator(`health`, `info`, `prometheus`)는 관리 포트(8081)에만 있고 호스트에 열지 않는다.
+  같은 서버의 수집기만 닿을 수 있으며, 로그인 없이 응답한다.
+- Resource Server는 Bearer JWT의 서명·만료·Issuer·Claim을 검증한다. Creator Event 관리와 수동 마감,
+  Drawing 계열 관리자 API(Snapshot, Drawing, Drawing Verification, Winner, Redraw), Ticket 관리자 재동기화,
+  Dead Stream 조회·replay, Creator 신청 관리자 심사와 Event 관리자 심사, Winner 상태 이력 조회는
+  `@CurrentMemberId`로 인증된 호출자를 받는다. 모든 `/api/admin/**` 경로는 Spring Security가 `ADMIN`을
+  먼저 인가하고(추천 결과 적재 API는 예외로 추천 적재 API Key도 허용한다. 아래 AUTH-10 참고), USER/ADMIN 공용
+  Winner 상태 이력 경로와 `GET /api/me`는 JWT 인증만 요구한다. 그 밖의
+  기존 업무 API는 호출자 `userId` 전환 전까지 현재 `permitAll` 규칙을 유지한다.
+  업무 권한 검증을 Spring Security로 대체하지 않는다.
+- CSRF는 현재 세션 기반 인증을 사용하지 않는 기존 API 호환을 위해 비활성화한다. 일반 API CORS는
+  `cking.cors.allowed-origins`와 `cking.cors.allow-credentials` 설정을 사용하며, credential 기본값은
+  `false`다. Cookie 기반 인증 경로는 `cking.auth.refresh.user-allowed-origins`와
+  `cking.auth.refresh.admin-allowed-origins`로 사용자·관리자 Web 경계를 별도 검증한다.
+- JWT 인증 실패는 `RestAuthenticationEntryPoint`가 공통 `UNAUTHORIZED`(401)로, 인증 후 인가 실패는
+  `RestAccessDeniedHandler`가 `FORBIDDEN`(403)으로 응답한다.
+
+## 지원 범위와 모델
+
+- Google OAuth2와 Kakao OAuth2를 지원하며, 별도 `AdminAccount`가 연결된 ADMIN Member는 ID/PW 로그인을 지원한다.
+  네이버 OAuth와 일반 사용자의 로컬 ID/PW 회원가입·로그인은 지원하지 않는다.
+- OAuth 최초 로그인 시 Cking `Member`를 자동 생성한다.
+- `Member.role`은 현재처럼 `USER`, `ADMIN`만 사용한다. Creator는 Member Role이 아니다.
+  Creator 여부는 `creator.member_id` 존재로 판단하며, Creator 자격과 Event 소유권은 기존
+  Application/Domain 정책이 판단한다.
+
+### OAuthAccount
+
+`OAuthAccount`는 외부 OAuth Identity와 Cking Member를 연결한다.
+
+```text
+(provider, providerUserId) → memberId
+```
+
+- 현재 프로젝트 스타일에 맞춰 Member와 JPA 연관관계를 강제하지 않고 `Long memberId`를 보관한다.
+- `oauth_account`는 `oauthAccountId`, `memberId`, `provider`, `providerUserId`, `createdAt`을 저장하며,
+  `memberId`는 Member FK다.
+- 이 FK 때문에 정상 DB 상태에서는 OAuthAccount가 존재하지만 연결 Member가 없는 상태를 허용하지 않는다.
+- 외부 identity key는 email이 아니다. Google은 `sub`, Kakao는 `id`를 `providerUserId`로 쓴다.
+- `(provider, providerUserId)`가 외부 Identity의 고유 식별자다. 같은 email이어도 Google과 Kakao
+  계정을 자동 병합하지 않는다.
+- DB는 `UNIQUE(provider, provider_user_id)`로 이 고유성을 최종 보장한다.
+- 최초 로그인은 OAuthAccount를 먼저 조회하고, 없으면 `Member`와 OAuthAccount 생성을 시도한다. 동시
+  최초 로그인으로 OAuthAccount INSERT가 충돌하면 Transaction을 정리한 뒤 기존 OAuthAccount를 재조회해
+  연결된 `memberId`를 반환한다. 단일·다중 인스턴스 모두 DB 제약을 최종 방어선으로 사용한다.
+
+### AdminAccount
+
+`AdminAccount`는 OAuth 계정과 별도로 ID/PW로 인증하는 관리자 Member의 자격 증명을 연결한다.
+
+```text
+Member(role=ADMIN) 1 : 1 AdminAccount(memberId, loginId, passwordHash)
+```
+
+- `admin_account.member_id`와 `login_id`는 각각 UNIQUE이며, `member_id`는 Member FK다.
+- `password_hash`에는 BCrypt 해시만 저장한다. 원문 비밀번호는 Java·Flyway SQL에 두지 않고, 개발·시연
+  환경에서만 환경변수로 받는다.
+- `local`, `dev` 프로필은 기본적으로 시딩을 비활성화하며, `cking.auth.admin-seed.enabled=true`일 때
+  `loginId`가 없는 경우에만 ADMIN Member와 계정을 함께 만든다. `ADMIN_ACCOUNT_LOGIN_ID`의 기본값은
+  `admin`이며, 새 계정을 만들 때만 `ADMIN_ACCOUNT_PASSWORD` 누락 시 시딩을 실패시킨다.
+- 개발 서버는 `docker-compose.dev.yml`에서 시딩을 켜고, 로그인 ID와 비밀번호를 Parameter Store
+  (`/cking/dev/ADMIN_ACCOUNT_LOGIN_ID`, `/cking/dev/ADMIN_ACCOUNT_PASSWORD`)에서 읽는다. 시딩은 로그인
+  ID로 기존 계정을 찾으므로, 같은 로그인 ID에서 비밀번호만 바꾸면 기존 비밀번호가 유지되고, 로그인 ID를
+  바꾸면 기존 계정은 남은 채 새 관리자 계정이 만들어진다.
+- 여러 인스턴스가 동시에 최초 시딩하면 `login_id` UNIQUE 충돌이 날 수 있다. 생성은 별도
+  `REQUIRES_NEW` 트랜잭션에서 Member와 AdminAccount를 함께 저장하므로 충돌 시 둘 다 롤백한다. 바깥
+  초기화 흐름은 충돌 뒤 새 트랜잭션 경계에서 `loginId`를 재조회해 이미 생성됐다면 정상 종료하며, 없으면
+  예상하지 못한 DB 오류로 예외를 다시 전파한다.
+- 이 모델은 후속 관리자 로그인 API의 신원 확인용이다. 기존 OAuth와 `frontend-callback-url` 흐름은 바꾸지 않는다.
+
+### 관리자 ID/PW 인증 설계
+
+`POST /api/auth/admin/login`은 `loginId`로 `AdminAccount`를 조회한 뒤 활성 상태, BCrypt 비밀번호 일치,
+연결 Member 존재, `MemberRole.ADMIN` 순서로 확인한다. 존재하지 않는 ID, 틀린 비밀번호, 비활성 계정,
+연결 Member 부재와 USER Member 연결은 모두 `INVALID_ADMIN_CREDENTIALS`로 통합한다.
+
+존재하지 않는 ID도 고정 더미 BCrypt 해시를 비교하고, 비활성 계정도 저장된 BCrypt 해시를 비교한 뒤 같은
+오류를 반환한다. 이를 통해 계정 상태에 따른 비밀번호 해시 연산 비용 차이로 로그인 ID 존재 여부를 추정하기
+어렵게 한다.
+
+검증에 성공하면 연결된 `memberId`를 기존 `AccessTokenService`와 `RefreshTokenService`에 전달한다.
+별도의 관리자 JWT나 응답 형식은 만들지 않으며, Access JWT는 기존 형식의 `sub=memberId`,
+`role=ADMIN` Claim과 `TokenResponse`를 사용한다. Refresh Cookie는 사용자와 공유하지 않는
+`admin_refresh_token`으로 발급한다. 이 경로도 만료된 Bearer 헤더를 읽지 않아 ID/PW 인증을 독립적으로 처리한다.
+
+### OAuth 프로필 name 정규화
+
+Provider의 `name`은 선택적 프로필 정보이지 외부 Identity가 아니다. Mapper는 Provider 응답을
+`OAuthUserInfo.name`으로 정규화하고, `OAuthLoginService`는 최초 `Member` 생성 전에 다음 규칙을 적용한다.
+
+- null·공백 name은 기본값 `사용자`로 바꾼다.
+- 앞뒤 공백을 제거한 name이 50자를 넘으면 Unicode code point 경계를 깨지 않도록 앞 50자로 제한한다.
+- 정규화 결과를 `Member.name`에 저장한다. 기본값은 고유할 필요가 없으며, email이나
+  `providerUserId`를 name fallback 또는 Identity 판단에 사용하지 않는다.
+
+## 목표 인증 흐름
+
+```text
+Google / Kakao → Spring Security OAuth2 Client → Provider 사용자 정보
+    → OAuthMemberLoginService → OAuthUserInfoResolver (Google Mapper / Kakao Mapper)
+    → OAuthLoginService
+    → OAuthAccount / Member → memberId → OAuth2LoginSuccessHandler
+    → 1회용 Login Code → Redis → Frontend Callback → POST /api/auth/token
+    → Access JWT → Spring Security Resource Server
+    → SecurityContext → @CurrentMemberId → Controller → 기존 Application / Domain
+```
+
+Provider별 응답 형식은 Mapper가 공통 `OAuthUserInfo`(`provider`, `providerUserId`, `email`,
+`name`)로 정규화한다. `OAuthLoginService`는 Google/Kakao별 조건문 없이 이 값을 받아
+OAuthAccount를 조회·연결한다.
+
+### OAuth Client 설정
+
+- OAuth Provider credential은 저장소에 두지 않고 `oauth` 프로필의 환경변수로만 주입한다. 필요한 변수와
+  실행 방법은 [README](../../../README.md#5-애플리케이션-실행)를 따른다.
+- Google은 Spring Security의 기본 Provider 설정과 `OAUTH_GOOGLE_CLIENT_ID`,
+  `OAUTH_GOOGLE_CLIENT_SECRET`, `profile,email` scope를 사용한다.
+- Kakao의 `OAUTH_KAKAO_CLIENT_ID`는 REST API 키이며, `OAUTH_KAKAO_CLIENT_SECRET`은 Kakao Client
+  Secret이다. Authorization·Token·UserInfo URI는 Kakao REST API 기준으로 설정하고
+  `profile_nickname,account_email` scope를 요청한다.
+- Mapper·Resolver는 Provider 응답 정규화와 `memberId` 반환 경계까지만 담당하며, Login Code 발급과
+  Access JWT 교환은 별도 Auth Service가 맡는다.
+
+## 책임 경계
+
+### OAuth 사용자 식별과 Member 연결
+
+OAuth 사용자 정보 정규화, `OAuthUserInfo` 생성, `(provider, providerUserId)` 기준 OAuthAccount
+조회, 최초 로그인 시 `Member(USER)`·OAuthAccount 생성, 기존 사용자의 연결 `memberId` 반환을 담당한다.
+최초 로그인 경쟁 시에는 OAuthAccount의 DB 고유 제약 충돌을 기존 계정 재조회로 복구한다. 최종 결과는
+항상 `memberId`다.
+
+### 로그인 완료와 Cking 인증 수단 발급
+
+입력은 `memberId`다. OAuth 로그인 성공 처리, Login Code 생성·Redis 저장·1회 소비, 관리자 ID/PW 검증,
+Access JWT 발급·검증, 인증된 Member ID의 Controller 제공을 담당한다. Google/Kakao 매핑이나 Member 연결
+정책을 직접 처리하지 않는다.
+
+## 토큰 정책
+
+### Login Code
+
+Login Code는 OAuth 로그인 결과를 Frontend로 안전하게 전달하는 1회용 교환 코드이며 인증 토큰이 아니다.
+
+- TTL은 60초, 한 번만 사용한다.
+- `SecureRandom`으로 생성하고 Redis에는 원문 대신 Hash를 key로 저장한다.
+- OAuth 성공 후 `memberId`를 담아 Frontend로 redirect하고, Frontend는
+  `POST /api/auth/token`으로 교환한다. JWT를 redirect URL query parameter에 넣지 않는다.
+- Redis key는 `auth:login-code:<SHA-256(code)>`, value는 `memberId:<SHA-256(브라우저 값)>`다. Lua가
+  브라우저 값을 비교하고 같을 때만 `DEL`해, 동시 교환도 하나만 성공시킨다.
+- Code를 받은 브라우저에서만 교환할 수 있다(#744). OAuth 성공 때 Code와 함께 만든 브라우저 값을
+  `cking_login_code` Cookie(`HttpOnly`, `SameSite=Lax`, `Path=/api/auth/token`, 60초)로 주고, 교환할 때
+  Cookie 값이 저장한 해시와 같아야 한다. 다른 사람의 callback 주소를 열어 그 사람 계정으로 로그인되는
+  것(로그인 CSRF)을 막는다. Cookie가 없거나 다르면 Code를 소비하지 않고 `INVALID_LOGIN_CODE`로 거절하며,
+  교환에 성공하면 Cookie를 만료한다.
+- Frontend callback 주소는 `cking.auth.frontend-callback-url`로 설정하고, 환경별 값은
+  `application-<profile>.yml`에 둔다.
+
+### Access Token
+
+Access Token은 Cking API 인증용 JWT다.
+
+```text
+TTL: 30분
+iss: cking
+sub: memberId
+role: USER | ADMIN
+iat, exp
+```
+
+Creator 여부는 JWT claim에 넣지 않는다.
+
+### Refresh Token
+
+Refresh Token은 Access JWT를 갱신하기 위한 서버 저장형 인증 수단이다. 사용자 Login Code 교환은
+`USER_WEB` 세션의 `refresh_token`을, 관리자 ID/PW 로그인은 `ADMIN_WEB` 세션의 `admin_refresh_token`을 발급한다.
+각 Cookie의 Refresh·Logout 상세 계약은 [Auth API](api.md)를 따른다.
+
+- Refresh Token은 JWT가 아닌 opaque random token이며 TTL은 14일이다.
+- Redis에는 원문 token을 key나 value로 저장하지 않고 `SHA-256(token)` 기반 key와 `세션유형:memberId` 값으로만 저장·조회·삭제한다.
+- 사용자 Cookie는 `refresh_token`, `Path=/api/auth`이며 관리자 Cookie는 `admin_refresh_token`,
+  `Path=/api/admin/auth`다. 둘 다 `HttpOnly`, `Domain` 미지정(host-only), 운영 환경의 `Secure=true`를 사용한다.
+- Cking은 same-site로 배포하므로 `SameSite=Lax`를 사용한다.
+- Refresh 성공 시 기존 token을 원자적으로 한 번 소비하고 새 token을 저장·발급하는 rotation을 수행한다.
+  소비된 token은 재사용할 수 없다.
+- Logout은 Redis의 대응 Refresh Token을 삭제하고 같은 이름·Path의 Refresh Cookie만 만료시킨다.
+- Login Code 교환·Refresh·Logout은 기존 Access JWT와 독립적인 인증 수단 흐름이다. 세 경로는
+  `Authorization: Bearer`를 읽지 않으므로 만료된 Access JWT가 함께 전송되어도 Login Code 또는
+  Refresh Cookie를 처리한다.
+- Cookie 기반 Refresh·Logout 요청은 세션 유형에 대응하는 허용 Origin과 일치할 때만 통과한다. 일반 API CORS는
+  두 Web Origin을 함께 허용하지만, 사용자 인증 경로는 사용자 Web, 관리자 인증 경로는 관리자 Web만 허용한다.
+  Lua rotation도 요청 유형과 Redis 세션 유형이 다르면 기존 Token을 소비하지 않고 거절한다.
+
+#### Redis rotation 설계
+
+Redis key는 `auth:refresh-token:<SHA-256(token)>`, value는 `USER_WEB:<memberId>` 또는 `ADMIN_WEB:<memberId>`다.
+
+세션 유형이 없는 기존 Redis 값은 보안 경계 검증에 통과하지 않으므로 만료 뒤 재로그인이 필요하다.
+Refresh 요청은 Lua가 세션 유형을 확인한 뒤 기존 key를 읽어 삭제하고 새 hash key를 TTL 14일로 저장하는 단일 원자 연산으로 처리한다. 따라서 동시 refresh에서도
+하나만 성공하며, 나머지는 `INVALID_REFRESH_TOKEN`을 받는다. Logout은 동일한 hash key를 삭제하지만
+이미 만료·폐기된 Cookie도 성공으로 처리해 클라이언트가 Cookie를 항상 정리할 수 있게 한다.
+
+Login Code와 Refresh Token의 만료·소비·폐기 같은 내부 상태는 외부 API에서 세분화하지 않는다.
+
+| 대상 | 외부 오류 코드 | 통합하는 상태 |
+| --- | --- | --- |
+| Login Code | `INVALID_LOGIN_CODE` | 만료, 소비됨, 잘못된 값, Code를 받은 브라우저가 아님 |
+| Refresh Token | `INVALID_REFRESH_TOKEN` | 만료, 폐기, 재사용, rotation 후 사용, 잘못된 값 |
+
+세부 원인은 서버 로그와 모니터링에서만 구분한다. 외부 오류 구분을 위해 Redis에 tombstone 또는 meta
+상태를 별도로 유지하지 않는다.
+
+## 인증과 업무 권한
+
+Spring Security는 인증 여부, JWT 검증, coarse-grained 접근 제어와 ADMIN endpoint의 1차 접근 제어를
+담당한다. Application/Domain은 Member 존재, ADMIN 업무 권한, Creator 여부, Event 소유권,
+상태 전이와 그 밖의 업무 규칙을 검증한다. Security 도입만으로 기존 `validateAdmin()` 같은
+업무 권한 검증을 제거하지 않는다.
+
+OAuth/Security/JWT 기술은 인증 경계에서 끝낸다.
+
+```text
+security / presentation → application → domain
+```
+
+Application/Domain은 `Authentication`, `SecurityContext`, `Jwt`, `OAuth2User`, HTTP
+Request/Response에 직접 의존하지 않는다. Controller가 인증된 `memberId`를 꺼내 기존
+Application/Service에 전달한다.
+
+## 호출자 userId 전환
+
+인증 전환 후 호출자 자신을 뜻하는 외부 Request `userId`는 제거한다.
+
+```text
+현재: Client userId → Controller → Application
+목표: JWT → Spring Security → authenticated memberId → Controller → Application
+```
+
+다만 Entity의 `memberId`/`userId`, Stream payload·Snapshot의 `userId`, Winner·Entry 등의
+사용자 식별자, `requestedBy`·`reviewedBy`·`createdBy`와 기타 도메인 데이터는 유지한다.
+Application/Service 파라미터의 `userId`, `memberId`, `actorId`도 업무 수행 주체를 뜻하면 유지한다.
+
+### AUTH-08 USER API 전환 설계
+
+AUTH-08은 USER API의 외부 호출자 식별만 JWT로 전환한다. Security는 해당 endpoint에
+`authenticated()`를 적용하고, Controller는 `@CurrentMemberId Long memberId`를 받아 기존
+Application/Service의 actor 파라미터로 전달한다. Application/Domain에는 Security·JWT 타입을 추가하지 않는다.
+
+| 범위 | 호출자 `userId` 제거 위치 | 유지하는 업무 데이터 |
+| --- | --- | --- |
+| Mission·Ticket·Event 상세 | query parameter | 완료·잔액·응답의 사용자 식별자 |
+| Event 응모·내 응모 | body 또는 query parameter | EntryCommand와 Redis/Lua의 `userId` |
+| Notification·내 Winner·포기 | body 또는 query parameter | Notification/Winner 소유자와 이력 작성자 |
+| Creator 신청·내 신청 조회 | body 또는 query parameter | 신청자 `memberId`, `reviewedBy` 등 |
+
+Event 상세 GET은 공개 전환하여 토큰이 없으면 개인 잔액을 0으로 반환한다. 토큰을 보냈다면 유효성을 검증한다.
+그 외 인증 필수 경로의 Bearer Token 누락·만료·변조는 공통 `UNAUTHORIZED`(401)로 처리한다. 인증된 사용자의 소유권과 상태
+검증은 기존 Application/Domain이 계속 담당한다.
+
+### AUTH-10 ADMIN API 전환
+
+AUTH-10은 관리자 API의 외부 호출자 `userId`만 Access JWT의 `@CurrentMemberId`로 전환한다. 대상은
+Ticket 재동기화, Dead Stream 조회·replay, Creator 신청 목록·승인·거절, Event 승인 대기 목록·승인·거절이다.
+`/api/admin/**`는 Spring Security가 `hasRole("ADMIN")`으로 먼저 제한하므로 토큰 없음은 `UNAUTHORIZED`(401),
+USER 토큰은 `FORBIDDEN`(403)이다.
+
+**예외 — 추천 결과 적재 API(이슈 #420, #438)**: `PUT /api/admin/creators/{creatorId}/similar`와 `PUT /api/admin/interests/{interestCode}/recommendations`만 `hasAnyAuthority("ROLE_ADMIN",
+"RECOMMENDATION_WRITE")`로 인가한다. 배치는 `X-Cking-Recommendation-Key` 헤더로 인증하며(`RecommendationApiKeyAuthenticationFilter`),
+헤더가 있으면 JWT로 되돌아가지 않고 비었거나 틀린 키는 JWT가 유효해도 401이다. 키 주체는 회원이 아니라 `RECOMMENDATION_WRITE`
+권한만 가지므로 다른 `/api/admin/**`에서는 인정되지 않는다. 헤더가 없으면 위 ADMIN JWT 규칙을 따르고, Application의
+`RecommendationWriteAuthorizer`가 JWT 호출자의 DB ADMIN 역할을 다시 확인한다. 이 Authorizer는 키 주체와 JWT 회원만 허용하고
+익명·알 수 없는 주체는 `UNAUTHORIZED`로 거부해, Security 설정이 잘못돼도 인증 없이 적재되지 않는다.
+
+Controller는 검증된 `memberId`를 기존 Application/Service의 `adminId` 파라미터에 전달한다. Ticket
+재동기화 요청의 대상 `memberId`와 `creatorId`, 거절 요청의 `rejectReason`처럼 업무 데이터는 유지한다.
+Application/Domain의 `validateAdmin(memberId)`·`requireAdmin(memberId)`는 Security 1차 인가와 별도로
+계속 실행한다.

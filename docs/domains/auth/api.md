@@ -1,0 +1,195 @@
+# Auth API
+
+이 문서는 구현된 Auth 외부 API 계약이다. OAuth2 로그인 완료 후 Login Code를 Access JWT로 교환·갱신하고,
+관리자 ID/PW로 로그인하거나 Logout할 수 있으며,
+기존 업무 API의 `userId` 계약과 `/api/**` 공개 규칙은 [공통 API 규약](../../common/api.md)을 그대로 따른다.
+
+모든 구현 완료 후 응답은 공통 `ApiResponse` 봉투를 사용한다. 아래 JSON 예시는 `data` 값이다.
+
+## OAuth 로그인 시작
+
+### `GET /oauth2/authorization/google`
+
+### `GET /oauth2/authorization/kakao`
+
+- 권한: `PUBLIC`
+- Spring Security OAuth2 Client의 기본 authorization endpoint를 사용해 각 Provider 인증 화면으로 redirect한다.
+- Provider callback은 Spring Security OAuth2 Client가 처리한다. 별도 Controller API로 만들지 않는다.
+
+성공하면 서버는 Frontend callback으로 Login Code만 전달한다.
+
+```text
+/oauth/callback?code=...
+```
+
+실패 또는 사용자의 로그인 취소도 같은 callback으로 redirect한다.
+
+```text
+/oauth/callback?error=<oauth-error>
+```
+
+| `error` 값 | 상황 | Frontend 처리 |
+| --- | --- | --- |
+| `access_denied` | 사용자가 Provider 로그인 또는 동의를 취소·거부함 | 취소 안내 후 로그인 화면으로 이동 |
+| `provider_error` | Provider가 인증에 실패했거나 사용자 정보를 정상적으로 반환하지 않음 | 재시도 안내 |
+| `login_processing_failed` | Cking이 OAuth 사용자 정규화·Member 연결을 완료하지 못함 | 재시도 안내; 반복되면 고객 지원 경로 안내 |
+
+Redirect URL에는 성공 시 `code` 또는 실패 시 `error` 중 하나만 넣는다. Access JWT, Provider 원문 오류와
+내부 예외 상세는 redirect URL에 포함하지 않는다.
+
+## Token 교환
+
+### `POST /api/auth/token`
+
+- 권한: `PUBLIC`
+- Request Body의 `code`는 Login Code 원문이다.
+- OAuth 성공 때 받은 `cking_login_code` Cookie가 함께 와야 한다(Frontend는 `credentials: 'include'`).
+  없거나 다르면 Code를 소비하지 않고 `INVALID_LOGIN_CODE`로 거절한다. 교환에 성공하면 이 Cookie를 만료한다.
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  Login Code 교환을 수행한다.
+
+```json
+{ "code": "..." }
+```
+
+Login Code를 검증하고 원자적으로 한 번 소비한 뒤 `memberId`로 30분 유효한 Access JWT를 발급한다. 응답과
+함께 14일 유효한 `refresh_token` Cookie를 발급한다.
+JWT는 `iss=cking`, `sub=memberId`, `role=USER|ADMIN`, `iat`, `exp` Claim을 포함한다.
+
+```json
+{
+  "accessToken": "...",
+  "tokenType": "Bearer",
+  "expiresIn": 1800
+}
+```
+
+## 관리자 로그인
+
+### `POST /api/auth/admin/login`
+
+- 권한: `PUBLIC`
+- Request Body: `loginId`, `password`
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  관리자 ID/PW 인증을 수행한다.
+
+```json
+{
+  "loginId": "admin",
+  "password": "..."
+}
+```
+
+활성 `AdminAccount`의 BCrypt 비밀번호와 연결된 ADMIN Member를 확인한 뒤, 기존 `TokenResponse` 및
+14일 `admin_refresh_token` Cookie를 발급한다. Access JWT는 `sub=ADMIN Member ID`, `role=ADMIN` Claim을
+포함한다. 존재하지 않는 ID, 틀린 비밀번호, 비활성 계정, 연결 Member 부재 및 USER Member 연결은
+구분하지 않고 같은 오류로 응답한다.
+
+```json
+{
+  "accessToken": "...",
+  "tokenType": "Bearer",
+  "expiresIn": 1800
+}
+```
+
+## Access Token 갱신
+
+### `POST /api/auth/refresh`
+
+- 권한: `PUBLIC`
+- Request Body: 없음
+- Request Cookie: `refresh_token` (사용자 Web 세션)
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  Refresh Cookie 흐름을 수행한다.
+
+Cookie의 opaque Refresh Token을 Redis Lua로 원자적으로 한 번 소비하고, 같은 USER_WEB 세션의 새 Access JWT와
+새 Refresh Cookie를 발급한다. 사용자 Web Origin과 일치해야 하며 관리자 세션 Token은 사용할 수 없다.
+
+```json
+{
+  "accessToken": "...",
+  "tokenType": "Bearer",
+  "expiresIn": 1800
+}
+```
+
+## Logout
+
+### `POST /api/auth/logout`
+
+- 권한: `PUBLIC`
+- Request Body: 없음
+- Request Cookie: `refresh_token` (선택, 사용자 Web 세션)
+- `Authorization: Bearer` 헤더는 읽거나 검증하지 않는다. 만료된 Access JWT가 함께 전송되어도
+  Refresh Cookie를 폐기한다.
+
+Cookie가 있으면 대응하는 Redis Refresh Token을 삭제하고, 항상 만료된 `refresh_token` Cookie를 응답한다.
+이미 만료·폐기된 Cookie 또는 Cookie가 없는 Logout도 성공으로 처리한다.
+
+## 관리자 Access Token 갱신
+
+### `POST /api/admin/auth/refresh`
+
+- 권한: `PUBLIC` (관리자 Access JWT 없이 관리자 Refresh Cookie로 인증)
+- Request Cookie: `admin_refresh_token`
+- Request Origin: 관리자 Web 허용 Origin
+
+관리자 전용 opaque Refresh Token을 원자적으로 회전하고, 연결 Member가 현재도 `ADMIN` 역할일 때만 새 ADMIN Access JWT와
+`admin_refresh_token` Cookie를 발급한다. 사용자 세션 Token, 사용자 Web Origin 또는 역할이 변경된 Member는
+`INVALID_REFRESH_TOKEN` 또는 `FORBIDDEN`으로 거절한다.
+
+## 관리자 Logout
+
+### `POST /api/admin/auth/logout`
+
+- 권한: `PUBLIC` (관리자 Access JWT 없이 관리자 Refresh Cookie로 인증)
+- Request Cookie: `admin_refresh_token` (선택)
+- Request Origin: 관리자 Web 허용 Origin
+
+Cookie가 있으면 관리자 Redis Refresh Token을 삭제하고, 항상 만료된 `admin_refresh_token` Cookie를 응답한다.
+
+## 현재 사용자 조회
+
+### `GET /api/me`
+
+- 권한: Access JWT 인증 필요
+- 호출자 식별: Access JWT의 `@CurrentMemberId`; query/body `userId`는 받지 않는다.
+- JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
+- 응답 `data`: `memberId`, `name`, `email`, `role`, `creator`
+- `creator`는 JWT role이 아닌 `creator.member_id` 존재 여부다.
+
+```json
+{
+  "memberId": 1,
+  "name": "홍길동",
+  "email": "hong@example.com",
+  "role": "USER",
+  "creator": false
+}
+```
+
+## Refresh Cookie
+
+사용자 `refresh_token`은 `HttpOnly`, `Path=/api/auth`, host-only Domain, `SameSite=Lax`로 발급한다.
+관리자 `admin_refresh_token`은 같은 속성에 `Path=/api/admin/auth`를 사용한다. 운영 HTTPS 환경에서는 둘 다
+`Secure=true`다. 사용자와 관리자 Refresh·Logout은 서로 다른 Cookie 이름·Path·endpoint·허용 Origin 및 Redis
+세션 유형을 사용하므로 같은 브라우저에서 동시에 로그인해도 서로의 Access JWT를 발급할 수 없다.
+
+## 오류 계약
+
+구현 시 오류 응답은 공통 `ApiResponse`와 `ErrorCode` 규칙을 따른다. `VALIDATION_FAILED`,
+`UNAUTHORIZED`, `FORBIDDEN`, `SYSTEM_ERROR`의 정본은 `CommonErrorCode`다. Auth 전용
+`AuthErrorCode`에는 `INVALID_LOGIN_CODE`, `INVALID_REFRESH_TOKEN`, `INVALID_ADMIN_CREDENTIALS`를 둔다.
+
+| 코드 | HTTP | 상황 | 클라이언트 처리 |
+| --- | --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | Login Code 요청 형식이 올바르지 않음 | 요청을 수정해 다시 시도 |
+| `UNAUTHORIZED` | 401 | Access Token 없음·만료·변조·형식 오류 | OAuth 로그인을 다시 시작 |
+| `INVALID_LOGIN_CODE` | 401 | Login Code 만료·소비·잘못된 값 | OAuth 로그인을 처음부터 다시 시작 |
+| `INVALID_REFRESH_TOKEN` | 401 | Refresh Token 만료·폐기·재사용·세션 유형/역할 불일치·잘못된 값 | 해당 Web 로그인부터 다시 시작 |
+| `INVALID_ADMIN_CREDENTIALS` | 401 | 관리자 ID/PW 불일치, 비활성 계정, 연결 Member 부재 또는 USER Member 연결 | 관리자 로그인 정보를 다시 확인 |
+| `FORBIDDEN` | 403 | 인증되었지만 endpoint 권한이 부족함 | 재인증하지 않고 권한 없음으로 처리 |
+| `SYSTEM_ERROR` | 500 | 예상하지 못한 인증 서버 오류 | 재시도 안내 또는 로그인 화면으로 이동 |
+
+`POST /api/auth/token`의 Login Code 소비는 동시 요청에서도 한 번만 성공하도록 원자적으로 처리한다.

@@ -1,0 +1,327 @@
+spring:
+  application:
+    name: cking-backend
+
+  profiles:
+    default: local
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          # 미설정이면 JVM 기본 타임존을 쓴다. 팀원 로컬은 KST, CI는 UTC라 환경마다 값이 달라진다.
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      # 명령 제한 시간(#743). 기본값(Lettuce 60초)이면 Redis가 멈출 때 요청 스레드가 60초씩 묶인다.
+      # 부하 테스트에서 BLOCK 읽기를 뺀 명령의 최악값이 388ms(1차)·78ms(2차)라 1초로 둔다. 응모 복제 확인 대기(timeout-ms)도
+      # 이 안에서 끝나야 한다. Stream BLOCK 읽기는 이보다 길게 기다리므로 전용 연결(cking.stream.read-command-timeout)을 쓴다.
+      timeout: 1s
+      lettuce:
+        # 풀이 없으면 Stream 소비자의 XREADGROUP BLOCK이 읽을 때마다 연결을 새로 연다(#698). 일반 명령은 공유 연결을 쓰고,
+        # 풀은 BLOCK 읽기와 파이프라인만 쓴다. Stream 읽기 전용 연결도 같은 풀 설정으로 자기 풀을 따로 둔다(#743).
+        # 동시에 잡는 연결은 Stream 쪽 최대 6(응모 소비자 4 + 적립 1 + 공용 적립 1), 공용 쪽은 파이프라인 1이고
+        # 풀은 필요한 만큼만 만들므로 상한을 16으로 둔다. BLOCK 읽기는 2초 안에 연결을 돌려주므로 3초를 기다려도 못 받으면 오류로 낸다.
+        pool:
+          max-active: 16
+          max-idle: 16
+          min-idle: 0
+          max-wait: 3s
+
+  servlet:
+    multipart:
+      # 구독 인증 이미지 계약은 파일 5MB까지 허용한다. 요청 전체에는 multipart overhead 여유를 둔다.
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+server:
+  tomcat:
+    # Tomcat 스레드 지표(tomcat_threads_*)는 MBean 등록이 켜져 있어야 수집된다.
+    mbeanregistry:
+      enabled: true
+
+management:
+  server:
+    # 관리 포트는 호스트에 열지 않는다. 별도 웹 서버라 서비스 포트가 과부하여도 지표가 응답한다.
+    port: 8081
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
+      group:
+        # ALB 헬스체크가 쓰는 /readyz. 앱 상태와 함께 DB·Redis 연결까지 확인한다.
+        readiness:
+          include: readinessState,db,redis
+  info:
+    env:
+      enabled: true
+  metrics:
+    distribution:
+      # 서버끼리 합칠 수 있는 구간별 개수로 p95/p99를 계산한다. 기본 히스토그램은 구간이 수십 개라 경계를 직접 둔다.
+      slo:
+        "[http.server.requests]": 10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s
+        # 응모 승인 → DB 반영. SLO 초안(p95 5초)을 판정하도록 5s 경계를 둔다.
+        "[cking.stream.apply.delay]": 100ms,250ms,500ms,1s,2500ms,5s,10s,30s,60s
+
+cking:
+  notification:
+    ticket-reward:
+      enabled: ${TICKET_REWARD_NOTIFICATION_ENABLED:false}
+  content-tags:
+    token-hash: ${CKING_CONTENT_TAG_TOKEN_HASH:}
+  entry:
+    replication-wait:
+      # 응모 성공 응답 전에 같은 전용 연결에서 WAIT로 복제 노드 반영을 확인한다(#674). 복제 노드가 없는 개발·로컬은 끈다.
+      # 켤 때는 timeout-ms를 반드시 지정한다(운영 복제 지연을 잰 뒤). 제한 시간을 넘겨도 성공으로 응답하고 로그·지표로 남긴다.
+      enabled: ${ENTRY_REPLICATION_WAIT_ENABLED:false}
+      replicas: 1
+      timeout-ms: ${ENTRY_REPLICATION_WAIT_TIMEOUT_MS:0}
+  event:
+    approval-request:
+      # 운영 정책. 개발 환경은 application-dev.yml에서만 명시적으로 완화한다.
+      minimum-lead-time: PT48H
+    archive:
+      # 운영에서는 수령 대기 당첨이 남은 Event를 보관하지 않는다.
+      allow-pending-winners: ${EVENT_ARCHIVE_ALLOW_PENDING_WINNERS:false}
+    banner-image:
+      # 배너는 Creator Space 이미지 접두사(creator-space-profile-images/) 아래에 저장해 같은 CDN으로 읽는다(#748).
+      # 환경별 값을 따로 두지 않고 Space 이미지 주소(local S3Mock, dev·prod는 각 프로필의 CloudFront)를 그대로 따른다.
+      public-base-url: ${cking.creator.space-profile-image.public-base-url}
+  recommendation:
+    tracking:
+      request-ttl: ${RECOMMENDATION_TRACKING_REQUEST_TTL:PT24H}
+      attribution-window: ${RECOMMENDATION_TRACKING_ATTRIBUTION_WINDOW:PT24H}
+      retention: ${RECOMMENDATION_TRACKING_RETENTION:P90D}
+      cleanup-enabled: ${RECOMMENDATION_TRACKING_CLEANUP_ENABLED:true}
+      cleanup-interval-ms: ${RECOMMENDATION_TRACKING_CLEANUP_INTERVAL_MS:60000}
+      recovery-enabled: ${RECOMMENDATION_TRACKING_RECOVERY_ENABLED:true}
+      recovery-interval-ms: ${RECOMMENDATION_TRACKING_RECOVERY_INTERVAL_MS:60000}
+      recovery-initial-delay: ${RECOMMENDATION_TRACKING_RECOVERY_INITIAL_DELAY:PT2M}
+    # 추천 적재 배치 API Key의 SHA-256 hex(쉼표 구분). 키 교체 중에는 새 키·이전 키를 함께 둔다. 비어 있으면 키 인증은 항상 401.
+    api-key-hashes: ${CKING_RECOMMENDATION_API_KEY_HASHES:}
+  abuse:
+    # Calibration이 완료되고 모든 window/threshold를 주입한 환경에서만 활성화한다.
+    enabled: ${CKING_ABUSE_ENABLED:false}
+    youtube-subscription:
+      # 구독 인증은 별도 Calibration 전까지 관측·탐지를 시작하지 않는다.
+      enabled: ${CKING_ABUSE_YOUTUBE_SUBSCRIPTION_ENABLED:false}
+      submission-burst:
+        window: ${CKING_ABUSE_YOUTUBE_SUBMISSION_WINDOW:PT1M}
+        threshold: ${CKING_ABUSE_YOUTUBE_SUBMISSION_THRESHOLD:10}
+      request-id-rotation:
+        window: ${CKING_ABUSE_YOUTUBE_REQUEST_ID_ROTATION_WINDOW:PT5M}
+        distinct-threshold: ${CKING_ABUSE_YOUTUBE_REQUEST_ID_ROTATION_THRESHOLD:5}
+      image-reuse:
+        window: ${CKING_ABUSE_YOUTUBE_IMAGE_REUSE_WINDOW:PT1H}
+        threshold: ${CKING_ABUSE_YOUTUBE_IMAGE_REUSE_THRESHOLD:2}
+      negative-decision-burst:
+        window: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_WINDOW:PT10M}
+        threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_THRESHOLD:5}
+        consecutive-threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_THRESHOLD:3}
+  image-processing:
+    # 20MP 한 장이 heap 약 80MiB를 쓰고, 동시 4장부터 GCLocker로 OutOfMemoryError가 났다(로컬 측정). CPU 2개라 처리량도 2에서 멈춘다.
+    max-concurrent: 2
+    # 처리를 기다리는 요청 수. 원본(최대 5MB)을 heap에 올린 요청을 처리 중 + 대기 중으로 묶는다.
+    max-waiting: 4
+    # 대기 4명 중 맨 뒤는 앞의 두 장씩 두 묶음이 끝나야 시작한다. 개발 서버에서 20MP 두 장 동시 처리가 최대 1.61초라 약 3.2초를 기다리고, 예열·GC 튐을 더해 5초.
+    acquire-timeout: 5s
+  member:
+    profile-guard:
+      # 응모 프로필 검사를 통과한 회원을 기억하는 최대 수(#706). Caffeine에서 회원 1명당 107~132B를 써서 10만 명이면
+      # 약 12.6MiB(힙 460MiB의 2.7%)에서 멈춘다. 넘치면 밀려난 회원만 다음 응모 때 DB로 다시 검사한다.
+      max-size: 100000
+    profile-image:
+      # local 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
+  creator:
+    space-profile-image:
+      # local Creator Space 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      public-base-url: ${CREATOR_SPACE_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
+  verification:
+    youtube-subscription:
+      # VLM Processor와 Recovery가 준비될 때까지 신규 제출은 닫는다.
+      submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:false}
+      processing-executor:
+        # Provider 계정 한도에 맞춘 인스턴스별 동시 호출 수이며 max-pool-size와 같아야 한다.
+        core-pool-size: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_CORE_POOL_SIZE:2}
+        max-pool-size: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_MAX_POOL_SIZE:2}
+        # 무제한 queue를 금지하고, 포화 거절 작업은 PENDING으로 남겨 Recovery가 다시 제출한다.
+        queue-capacity: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_QUEUE_CAPACITY:20}
+        provider-max-concurrent-calls: ${SUBSCRIPTION_VERIFICATION_PROVIDER_MAX_CONCURRENT_CALLS:2}
+        # connect/read timeout과 Provider 내부 재시도·backoff보다 길게 설정한다.
+        processing-lease-duration: ${SUBSCRIPTION_VERIFICATION_PROCESSING_LEASE_DURATION:PT90S}
+        await-termination-seconds: ${SUBSCRIPTION_VERIFICATION_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+      recovery:
+        enabled: ${SUBSCRIPTION_VERIFICATION_RECOVERY_ENABLED:true}
+        interval-ms: ${SUBSCRIPTION_VERIFICATION_RECOVERY_INTERVAL_MS:60000}
+        pending-grace-period: ${SUBSCRIPTION_VERIFICATION_RECOVERY_PENDING_GRACE_PERIOD:PT1M}
+        # 기본 Executor의 max pool 2 + queue 20을 넘지 않도록 제한한다.
+        batch-size: ${SUBSCRIPTION_VERIFICATION_RECOVERY_BATCH_SIZE:20}
+        max-processing-attempts: ${SUBSCRIPTION_VERIFICATION_MAX_PROCESSING_ATTEMPTS:3}
+        reward-backoff-base: ${SUBSCRIPTION_VERIFICATION_REWARD_BACKOFF_BASE:PT1M}
+        reward-backoff-max: ${SUBSCRIPTION_VERIFICATION_REWARD_BACKOFF_MAX:PT1H}
+      gemini:
+        # 퀴즈와 키·quota·호출 설정을 분리해 구독 인증 장애가 다른 AI 기능으로 전파되지 않게 한다.
+        api-key: ${SUBSCRIPTION_GEMINI_API_KEY:}
+        model: ${SUBSCRIPTION_GEMINI_MODEL:gemini-3.5-flash-lite}
+        base-url: ${SUBSCRIPTION_GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+        connect-timeout: ${SUBSCRIPTION_GEMINI_CONNECT_TIMEOUT:PT2S}
+        read-timeout: ${SUBSCRIPTION_GEMINI_READ_TIMEOUT:PT30S}
+        max-attempts: ${SUBSCRIPTION_GEMINI_MAX_ATTEMPTS:2}
+        retry-backoff: ${SUBSCRIPTION_GEMINI_RETRY_BACKOFF:PT1S}
+        max-output-tokens: ${SUBSCRIPTION_GEMINI_MAX_OUTPUT_TOKENS:512}
+  quiz:
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      model: ${GEMINI_MODEL:gemini-3.8-flash}
+      base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+      connect-timeout: ${GEMINI_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${GEMINI_READ_TIMEOUT:PT30S}
+      max-attempts: ${GEMINI_MAX_ATTEMPTS:2}
+    # YouTube 영상 Grounding(Gemini Interactions API). Quiz 생성 설정과 분리하고 API key만 같은 값을 쓴다.
+    # 같은 key라 Quiz 생성과 quota·비용이 합산된다. model·timeout·출력 token은 실제 확인 후 조정한다.
+    grounding:
+      api-key: ${GEMINI_API_KEY:}
+      model: ${QUIZ_GROUNDING_MODEL:gemini-3.8-flash}
+      base-url: ${QUIZ_GROUNDING_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+      connect-timeout: ${QUIZ_GROUNDING_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${QUIZ_GROUNDING_READ_TIMEOUT:PT30S}
+      max-attempts: ${QUIZ_GROUNDING_MAX_ATTEMPTS:3}
+      retry-backoff: ${QUIZ_GROUNDING_RETRY_BACKOFF:PT1S}
+      retry-backoff-max: ${QUIZ_GROUNDING_RETRY_BACKOFF_MAX:PT4S}
+      # 비워 두면 요청에 넣지 않고 Provider 기본값을 따른다.
+      max-output-tokens: ${QUIZ_GROUNDING_MAX_OUTPUT_TOKENS:}
+    # YouTube URL 기반 Quiz 비동기 생성(이슈 #525). 유료·preview Provider를 쓰므로 기본으로 꺼 둔다.
+    # 오래된 작업 기준 시간과 Executor 크기는 운영 확인 전 초기값이다.
+    generation:
+      enabled: ${QUIZ_GENERATION_ENABLED:false}
+      # 켜면 새 작업이 Grounding 뒤 Creator 원문 확정을 기다린다(이슈 #604). 꺼져 있으면 기존처럼 이어서 생성한다.
+      content-review:
+        enabled: ${QUIZ_GENERATION_CONTENT_REVIEW_ENABLED:false}
+      stale-pending: ${QUIZ_GENERATION_STALE_PENDING:PT10M}
+      stale-running: ${QUIZ_GENERATION_STALE_RUNNING:PT15M}
+      executor:
+        pool-size: ${QUIZ_GENERATION_EXECUTOR_POOL_SIZE:2}
+        queue-capacity: ${QUIZ_GENERATION_EXECUTOR_QUEUE_CAPACITY:10}
+        await-termination-seconds: ${QUIZ_GENERATION_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+    # Quiz revision GPT Pointwise Judge(이슈 #529, OpenAI Responses API). 유료 Provider라 기본으로 꺼 둔다.
+    # model·timeout·token 한도는 실제 Provider 검증 전 잠정값이다. 비용 단가는 기본값이 없고 비우면 추정하지 않는다.
+    judge:
+      enabled: ${QUIZ_JUDGE_ENABLED:false}
+      # 오래된 평가 Job 정리 기준. stale-running은 execution-timeout보다 길어야 한다. 운영 확인 전 초기값이다.
+      stale-pending: ${QUIZ_JUDGE_STALE_PENDING:PT15M}
+      stale-running: ${QUIZ_JUDGE_STALE_RUNNING:PT5M}
+      # Quiz 생성과 분리한 Judge 전용 Executor. 운영 확인 전 초기값이다.
+      executor:
+        pool-size: ${QUIZ_JUDGE_EXECUTOR_POOL_SIZE:1}
+        queue-capacity: ${QUIZ_JUDGE_EXECUTOR_QUEUE_CAPACITY:4}
+        await-termination-seconds: ${QUIZ_JUDGE_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${QUIZ_JUDGE_BASE_URL:https://api.openai.com/v1}
+      model: ${QUIZ_JUDGE_MODEL:gpt-6.1-sol}
+      reasoning-effort: ${QUIZ_JUDGE_REASONING_EFFORT:medium}
+      max-output-tokens:
+        three-questions: ${QUIZ_JUDGE_MAX_OUTPUT_TOKENS_3:8192}
+        five-questions: ${QUIZ_JUDGE_MAX_OUTPUT_TOKENS_5:12288}
+      connect-timeout: ${QUIZ_JUDGE_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${QUIZ_JUDGE_READ_TIMEOUT:PT60S}
+      execution-timeout: ${QUIZ_JUDGE_EXECUTION_TIMEOUT:PT150S}
+      http:
+        max-attempts: ${QUIZ_JUDGE_HTTP_MAX_ATTEMPTS:2}
+        retry-backoff: ${QUIZ_JUDGE_RETRY_BACKOFF:PT1S}
+        retry-after-max: ${QUIZ_JUDGE_RETRY_AFTER_MAX:PT5S}
+      # 정책 상한은 200자다. 환경변수로 이를 초과하면 기동 검증에서 거부한다.
+      reason-max-length: ${QUIZ_JUDGE_REASON_MAX_LENGTH:200}
+      pricing:
+        version: ${QUIZ_JUDGE_PRICING_VERSION:}
+        input-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_INPUT:}
+        cached-input-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_CACHED_INPUT:}
+        output-usd-per-million-tokens: ${QUIZ_JUDGE_PRICE_OUTPUT:}
+  comment-filter:
+    # 별도 필터 서비스가 준비될 때까지 꺼 둔다. 꺼져 있으면 댓글은 판정 없이 PENDING으로 남는다.
+    enabled: ${COMMENT_FILTER_ENABLED:false}
+    base-url: ${COMMENT_FILTER_BASE_URL:http://localhost:8000}
+    connect-timeout: ${COMMENT_FILTER_CONNECT_TIMEOUT:PT2S}
+    # 필터 Lambda 콜드 스타트(측정 6~17초)보다 짧으면 첫 판정이 시간 초과되고 1분 뒤 재시도에서야 저장된다. 최악값에 여유를 둔다.
+    read-timeout: ${COMMENT_FILTER_READ_TIMEOUT:PT30S}
+    # Lambda 함수 URL(IAM 인증)을 부를 때 aws-iam. 서버 역할 자격 증명으로 요청에 SigV4 서명을 붙인다.
+    auth: ${COMMENT_FILTER_AUTH:none}
+    signing-region: ${COMMENT_FILTER_SIGNING_REGION:ap-northeast-2}
+    executor:
+      core-pool-size: ${COMMENT_FILTER_EXECUTOR_CORE_POOL_SIZE:2}
+      max-pool-size: ${COMMENT_FILTER_EXECUTOR_MAX_POOL_SIZE:2}
+      # 무제한 queue를 금지하고, 포화로 거절된 댓글은 PENDING으로 남겨 재필터링이 다시 처리한다.
+      queue-capacity: ${COMMENT_FILTER_EXECUTOR_QUEUE_CAPACITY:100}
+      await-termination-seconds: ${COMMENT_FILTER_EXECUTOR_AWAIT_TERMINATION_SECONDS:30}
+    # 판정하지 못한 댓글(PENDING·FAILED)을 다시 제출한다. 필터가 켜져 있을 때만 동작한다.
+    retry:
+      enabled: ${COMMENT_FILTER_RETRY_ENABLED:true}
+      interval-ms: ${COMMENT_FILTER_RETRY_INTERVAL_MS:60000}
+      pending-grace-period: ${COMMENT_FILTER_RETRY_PENDING_GRACE_PERIOD:PT1M}
+      # 기본 Executor 큐(100)의 남은 자리를 넘지 않게 자동으로 제한된다.
+      batch-size: ${COMMENT_FILTER_RETRY_BATCH_SIZE:20}
+      max-attempts: ${COMMENT_FILTER_RETRY_MAX_ATTEMPTS:5}
+      backoff-base: ${COMMENT_FILTER_RETRY_BACKOFF_BASE:PT1M}
+      backoff-max: ${COMMENT_FILTER_RETRY_BACKOFF_MAX:PT1H}
+  stream:
+    # 서버별 Stream 소비자 이름. 배포 스크립트가 EC2 인스턴스 ID를 넘기고, 없으면 호스트 이름을 쓴다.
+    consumer-id: ${CKING_CONSUMER_ID:}
+    # Stream BLOCK 읽기(2초 대기) 전용 연결의 명령 제한 시간(#743). 부하 테스트 1차에서 BLOCK 읽기가 최대 3.94초 걸려 여유를 둔다.
+    # 백그라운드 소비자만 쓰므로 길어도 요청 스레드를 잡지 않는다.
+    read-command-timeout: 6s
+    consumer-cleanup:
+      # 대기 메시지가 없고 이 시간 이상 읽기 시도가 없는 소비자를 지운다. 살아 있는 소비자는 2초마다 읽는다.
+      idle: PT1H
+      interval-ms: 600000
+    trim:
+      # 한 번에 최대 10,000건을 지우므로 초당 약 333건까지 따라간다. DB 반영 처리량보다 커야 한다.
+      interval-ms: 30000
+    spend:
+      # 서버당 응모 반영 소비자 수. 1개는 초당 약 100건이 한계라(부하 테스트 1차) 서버 1대만 남아도 마감 몰림(초당 150)을
+      # 받도록 4개로 둔다. 그 위는 RDS가 한계다. 소비자 4개와 API 사용분이 서버당 DB 연결(Hikari 기본 10) 안에 든다.
+      consumer-count: 4
+      # 소비자 하나가 한 번에 읽는 수. 밀렸을 때 소비자끼리 나눠 갖고, 10건 처리(약 100ms)가 PEL 회수 기준 60초보다 훨씬 짧다.
+      batch-size: 10
+  snapshot:
+    recovery:
+      interval-ms: 60000
+      grace-period: PT1M
+      batch-size: 100
+  cors:
+    # 비우면 교차 출처 요청을 허용하지 않는다. 로컬은 Vite 프록시로 같은 출처 요청이 된다.
+    allowed-origins: ""
+    # Cookie 기반 인증을 사용하는 환경에서는 허용 origin을 명시하고 true로 설정한다.
+    allow-credentials: false
+  docs:
+    # 둘 중 하나라도 비우면 Swagger Basic Auth를 적용하지 않는다.
+    username: ""
+    password: ""
+  auth:
+    # 운영은 FRONTEND_CALLBACK_URL을 반드시 주입한다. 프로필별 기본값은 application-<profile>.yml에 둔다.
+    frontend-callback-url: ${FRONTEND_CALLBACK_URL}
+    jwt:
+      # 개발·운영에서는 저장소 밖의 256비트 이상 Base64 비밀값을 주입한다.
+      secret: ${JWT_SECRET}
+      issuer: cking
+      access-token-ttl: PT30M
+    refresh-token-ttl: P14D
+    refresh:
+      # 비어 있으면 Cookie 기반 사용자·관리자 Refresh/Logout을 각각 허용하지 않는다.
+      user-allowed-origins: ""
+      admin-allowed-origins: ""
+    # 운영 HTTPS 환경은 반드시 REFRESH_COOKIE_SECURE=true를 명시적으로 주입한다.
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE}

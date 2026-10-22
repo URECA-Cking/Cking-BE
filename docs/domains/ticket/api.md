@@ -1,0 +1,232 @@
+# Ticket API
+
+모든 응답은 [공통 API 규약](../../common/api.md)의 봉투를 사용한다. 모든 API는 Bearer Access JWT가
+필수이며, 호출자는 `@CurrentMemberId`로 식별한다. query `userId`는 받지 않는다.
+
+## GET /api/creators/{creatorId}/tickets
+
+Creator별 요청 사용자의 현재 응모권 잔액을 조회한다.
+
+```json
+{
+  "userId": 1,
+  "creatorId": 2,
+  "balance": 5,
+  "updatedAt": "2026-09-18T00:00:00Z"
+}
+```
+
+## GET /api/creators/{creatorId}/tickets/history
+
+Query: 선택 `cursor`, 선택 `size`. `size` 기본값은 20이고 허용 범위는 1~100이다. Ledger는 `createdAt DESC, ledgerId DESC` 순서로 조회하며, 다음 페이지 cursor는 마지막 항목의 `(createdAt, ledgerId)`를 URL-safe Base64로 인코딩한다.
+
+```json
+{
+  "userId": 1,
+  "creatorId": 2,
+  "items": [{
+    "ledgerId": 10,
+    "deltaAmount": -3,
+    "type": "SPEND",
+    "missionId": null,
+    "missionName": null,
+    "eventId": 5,
+    "eventTitle": "가을 팬미팅 응모",
+    "reason": null,
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-09-18T00:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+`eventTitle`은 `eventId`가 있을 때 해당 이벤트 제목, `missionName`은 `missionId`가 있을 때 미션 유형의 표시 이름(`ATTENDANCE` 출석체크 · `LIKE` 좋아요 · `SHARE` 공유 · `YOUTUBE_SUBSCRIPTION` 유튜브 구독)이고, 없으면 둘 다 `null`이다. 이벤트가 소프트 삭제됐거나 미션이 종료돼도 제목·이름은 내려간다(원장은 과거 기록이므로). 같은 SQL의 JOIN으로 읽어 N+1이 없다. 표시 이름 매핑은 `MissionType.displayNameOf`가 유일한 정의다.
+
+cursor 형식이 올바르지 않거나 `size`가 범위를 벗어나면 `VALIDATION_FAILED`다.
+
+## GET /api/admin/tickets/history
+
+- 권한: `ADMIN` Bearer Access JWT 필수. `/api/admin/**`의 Spring Security 1차 인가 뒤에도
+  `TicketAdminService`가 호출자의 ADMIN 역할을 재검증한다. JWT의 `@CurrentMemberId`는 관리자 업무
+  식별자이고, `memberId`는 조회 대상이다.
+- Query: `memberId`(필수, 대상 회원 ID), `couponType`(필수, `CREATOR` 또는 `COMMON`),
+  `creatorId`(`couponType=CREATOR`일 때 필수, `COMMON`일 때 전달 금지), `cursor`(선택),
+  `size`(선택, 기본 20, 1~100).
+- Creator 전용 이력은 `TicketQueryService`, 공용 이력은 `CommonTicketQueryService`의 기존
+  `createdAt DESC, ledgerId DESC` cursor 조회를 그대로 사용한다. `cursor`는 두 종류 모두 기존
+  URL-safe Base64 `(createdAt, ledgerId)` 형식이다.
+- `EARN`, `SPEND`, `COMPENSATE` 항목에 발생 시각, 증감량, 유형, 관련 미션·이벤트, 사유를 포함한다.
+  공용 응모권은 `creatorId`가 `null`이다. 항목은 사용자 원장과 같은 `missionName`·`eventTitle`도 담는다.
+
+```json
+{
+  "memberId": 1,
+  "couponType": "CREATOR",
+  "creatorId": 2,
+  "items": [{
+    "ledgerId": 10,
+    "deltaAmount": -3,
+    "type": "SPEND",
+    "missionId": null,
+    "missionName": null,
+    "eventId": 5,
+    "eventTitle": "가을 팬미팅 응모",
+    "reason": null,
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-09-18T00:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | 필수 query 누락·형식 오류, `CREATOR`의 `creatorId` 누락·0 이하, `COMMON`의 `creatorId` 전달, 잘못된 cursor, size 범위 초과 |
+| `UNAUTHORIZED` | Bearer Access JWT 없음·만료·변조·형식 오류 |
+| `FORBIDDEN` | USER JWT이거나 호출자 Member의 역할이 ADMIN이 아님 |
+| `RESOURCE_NOT_FOUND` | JWT 호출자 Member가 존재하지 않음 |
+
+## GET /api/admin/tickets/balance
+
+- 권한: Bearer Access JWT의 `ADMIN`. Security의 1차 인가 뒤 Service가 호출자 `memberId`의 ADMIN 역할을 재검증한다.
+- 조회 대상은 query의 `memberId`이며 호출자와 다르다. `memberId`와 `couponType`은 필수다. `couponType=CREATOR`이면 양수 `creatorId`가 필수이고, `COMMON`이면 `creatorId`를 보내지 않는다.
+- CREATOR는 `user_ticket_balance`와 `ticket:balance:{creatorId}:{memberId}`, COMMON은 `user_common_ticket_balance`와 `ticket:balance:common:{memberId}`를 읽는다. 잔액을 변경하거나 키를 적재하지 않는다.
+- Redis 키 또는 MySQL 행이 없으면 해당 잔액은 `null`, 존재 여부는 `false`다. 두 값이 모두 있을 때만 `balanceDifference = redisBalance - mysqlBalance`를 계산한다. 0이면 일치, 0 이외면 불일치다.
+- `observedAt`은 두 조회가 끝난 시각(UTC)이다. 두 저장소는 원자적 스냅샷이 아니며, Redis Stream 비동기 반영 지연으로 차이가 날 수 있다. 차이만으로 장애를 확정하거나 자동 보정하지 않는다.
+
+```http
+GET /api/admin/tickets/balance?memberId=1&couponType=CREATOR&creatorId=2
+```
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {
+    "memberId": 1,
+    "creatorId": 2,
+    "couponType": "CREATOR",
+    "redisBalance": 8,
+    "mysqlBalance": 5,
+    "redisKeyExists": true,
+    "mysqlBalanceRowExists": true,
+    "balanceDifference": 3,
+    "observedAt": "2026-10-13T01:00:00Z"
+  },
+  "message": null
+}
+```
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` (400) | 필수값 누락·잘못된 종류·0 이하 ID·`creatorId` 조건 위반 |
+| `UNAUTHORIZED` (401) | Access JWT 없음·무효 |
+| `FORBIDDEN` (403) | 호출자에게 ADMIN 역할이 없음 |
+| `RESOURCE_NOT_FOUND` (404) | 호출자 Member가 없음. 대상 Balance 행 미존재는 정상 응답으로 구분 |
+| `REDIS_BALANCE_QUERY_FAILED` (503) | Redis 통신·명령 오류 또는 잔액 값 파싱 실패. 키 미존재는 정상 응답으로 구분 |
+
+## POST /api/admin/tickets/common/resync
+
+- 권한: `ADMIN`
+- 정합성 배치(`TicketBalanceReconciliationScheduler`)가 공용 응모권의 지속 불일치나 Redis 키 유실을 알렸을 때, 운영자가 대상 사용자의 공용 잔액을 DB 기준으로 수동 재동기화하는 API다(이슈 #256, `TicketAdminController.resyncCommon` → `TicketAdminService.resyncCommon` → `CommonTicketCompensationService.resyncRedisToDb`).
+- 호출자 식별은 Access JWT의 `@CurrentMemberId`이며, Body의 `memberId`는 보정 대상이지 호출자가 아니다. Spring Security의 `ADMIN` 1차 인가 뒤에도 Service에서 호출자의 `member.role == ADMIN`을 재검증한다.
+- `ticket:maint:common:{memberId}` maintenance lock을 획득한 뒤 공용 SPEND·EARN Stream의 PEL·미처리 메시지·미해결 공용 Dead Stream을 확인하고, 없을 때만 `COMPENSATE` Ledger를 append한 뒤 Redis를 DB 값으로 덮어쓴다. lock이 걸린 동안에는 `common-ticket-earn.lua`·`entry-spend.lua`(`couponType=COMMON`)가 신규 공용 EARN·SPEND를 `BALANCE_MAINTENANCE`(HTTP 503)로 거부한다.
+- 크리에이터별 잔액용 `POST /api/admin/tickets/resync`와 계약은 같되 `creatorId`가 없다. 기존 `/resync` 응답 계약을 바꾸지 않으려고 별도 엔드포인트로 분리했다.
+
+```json
+{ "memberId": 1, "reason": "정합성 배치 지속 불일치 확인 후 수동 보정" }
+```
+
+성공 시 재동기화 후 현재 공용 잔액을 반환한다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {
+    "userId": 1,
+    "balance": 10,
+    "updatedAt": "2026-09-28T00:00:00Z"
+  },
+  "message": null
+}
+```
+
+| 코드 | 조건 |
+| --- | --- |
+| `VALIDATION_FAILED` | `memberId`가 누락·0 이하이거나 `reason`이 공백이거나 500자를 초과함 |
+| `RESOURCE_NOT_FOUND` | 호출자 Member가 존재하지 않거나(JWT), 대상 `memberId`의 공용 Balance(`user_common_ticket_balance`) 행이 없음 |
+| `FORBIDDEN` | 호출자의 역할이 ADMIN이 아님 |
+| `CONCURRENT_COMMAND` | 동일 `memberId`의 공용 보정이 이미 진행 중(maintenance lock 충돌) |
+| `INVALID_STATE` | 대상 `memberId`의 공용 SPEND·EARN Stream에 미반영 메시지가 있거나 미해결 공용 Dead Stream이 있어 보정할 수 없음 |
+
+## GET /api/tickets/common
+
+크리에이터 무관 공용 응모권 잔액을 조회한다(이슈 #219).
+
+```json
+{
+  "userId": 1,
+  "balance": 5,
+  "updatedAt": "2026-09-18T00:00:00Z"
+}
+```
+
+## GET /api/tickets/common/history
+
+Query: 선택 `cursor`, 선택 `size`(기본 20, 1~100). 형식은 `GET /api/creators/{creatorId}/tickets/history`와 같되 `creatorId`가 없다. `eventTitle`·`missionName` 규칙도 같다(공용 미션은 현재 출석체크뿐).
+
+```json
+{
+  "userId": 1,
+  "items": [{
+    "ledgerId": 10,
+    "deltaAmount": 1,
+    "type": "EARN",
+    "missionId": 100,
+    "missionName": "출석체크",
+    "eventId": null,
+    "eventTitle": null,
+    "reason": null,
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-09-18T00:00:00Z"
+  }],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+## GET /api/me/tickets
+
+내 응모권 요약을 한 번에 조회한다. 공용 응모권 잔액, 팔로우한 Creator별 잔액, 서버가 계산한 합계를 돌려준다(이슈 #588).
+Query는 없다. `GET /api/tickets/common`과 팔로우한 Creator 수만큼의 `GET /api/creators/{creatorId}/tickets` 호출을 하나로 줄이는 용도다.
+
+```json
+{
+  "common": { "balance": 3, "updatedAt": "2026-10-01T00:00:00Z" },
+  "creators": [
+    {
+      "creatorId": 1,
+      "creatorName": "활동명",
+      "profileImageUrl": "https://example.test/profile.png",
+      "balance": 4,
+      "updatedAt": "2026-10-02T00:00:00Z"
+    }
+  ],
+  "creatorTotal": 4,
+  "total": 7
+}
+```
+
+- `creators`는 호출자가 **팔로우한 Creator만** 담고 `creatorId` 오름차순이다. 팔로우하지 않은 Creator의 잔액은 포함하지 않는다. 팔로우 수 상한은 없어 전부 담는다.
+- 잔액 행이 없는 Creator·공용 잔액은 `balance` 0, `updatedAt` null이다(`GET /api/creators/{creatorId}/tickets`, `GET /api/tickets/common`과 같은 규칙).
+- `creatorName`은 Creator 활동명, `profileImageUrl`은 Creator Space의 프로필 이미지 URL이다. Space가 없는 Creator의 `profileImageUrl`은 null이다.
+- 팔로우 행과 잔액 행은 Creator를 FK로 참조하므로 Creator 행이 없는 경우는 없다. 어긋난 상태가 생기면 응답 전체를 실패시키지 않고 그 Creator만 `creators`와 합계에서 함께 제외한다(`GET /api/creators/{creatorId}/tickets`처럼 404를 주지 않는다. 그 API는 요청한 Creator 하나에 대한 응답이기 때문이다).
+- 팔로우 수 상한은 없다. 팔로우한 Creator가 500명을 넘는 회원이 조회하면 서버가 경고 로그를 남겨 실제 분포를 보고 상한을 정할 근거로 쓴다. 조회는 팔로우 수와 무관하게 잔액·Creator·Space 각 한 번씩이다.
+- `creatorTotal`은 팔로우한 모든 Creator 잔액의 합, `total`은 공용 잔액과 `creatorTotal`의 합이다. `creators`와 같은 값에서 서버가 계산하므로 목록과 항상 일치하며, 목록을 나중에 제한해도 합계는 전체 기준이다.
+- **표시용이다.** 잔액은 `GET /api/creators/{creatorId}/tickets` 등 기존 조회와 같이 MySQL Balance 기준이라, Redis에서 적립·차감이 끝나도 Consumer가 DB에 반영하기 전에는 보이지 않는다. 응모 가능 여부의 근거로 쓰지 않는다(실제 응모 승인은 SPEND Lua가 Redis 잔액으로 판단한다).
+- 락 없는 읽기 전용 조회이며 Redis 키를 적재하거나 복구하지 않는다(키 부재 복구는 응모·적립 경로에서만 일어난다).
+
+| 코드 | 조건 |
+| --- | --- |
+| `UNAUTHORIZED` | Bearer Access JWT 없음·만료·변조·형식 오류 |

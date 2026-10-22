@@ -1,0 +1,208 @@
+package kr.co.cking.event.presentation;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.image.ImageProcessingLimiter;
+import kr.co.cking.common.security.CurrentMemberId;
+import kr.co.cking.common.response.ApiResponse;
+import kr.co.cking.event.application.CreatorEventService;
+import kr.co.cking.event.application.EventBannerImageUploadService;
+import kr.co.cking.event.application.EventReviewService;
+import kr.co.cking.event.application.AdminEventOperationQueryService;
+import kr.co.cking.event.application.AdminEventOperationResult;
+import kr.co.cking.event.application.dto.CreateEventCommand;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventStatus;
+import kr.co.cking.event.domain.EventArchiveStatus;
+import kr.co.cking.event.presentation.dto.EventManagementRequest;
+import kr.co.cking.event.presentation.dto.EventManagementResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.validation.annotation.Validated;
+import java.util.List;
+
+/** Creator Event 관리와 관리자 심사 HTTP 요청을 처리한다. */
+@RestController
+@RequiredArgsConstructor
+@RequestMapping
+@Validated
+@Tag(name = "Event 관리", description = "Creator Event 운영과 관리자 심사 API")
+public class EventManagementController {
+
+    private final CreatorEventService creatorEventService;
+    private final EventReviewService eventReviewService;
+    private final AdminEventOperationQueryService adminEventOperationQueryService;
+    private final EventBannerImageUploadService bannerImageUploadService;
+    private final ImageProcessingLimiter imageProcessingLimiter;
+
+    /** Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 반환한다. */
+    @GetMapping("/api/creator/events")
+    @Operation(summary = "내 Event 목록 조회", description = "인증된 Creator가 소유한 삭제되지 않은 Event를 페이지로 조회합니다.")
+    public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.Item>> findMine(
+            @CurrentMemberId Long memberId, @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        Page<Event> events = creatorEventService.findMine(memberId, PageRequest.of(page, size));
+        var rejectReasons = creatorEventService.findRejectReasons(events.getContent());
+        List<EventManagementResponse.Item> items = events.stream()
+                .map(event -> EventManagementResponse.Item.from(event, rejectReasons.get(event.getEventId()))).toList();
+        return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
+    }
+
+    /** 관리자의 Event 승인 대기 요청 목록을 페이지로 반환한다. */
+    @GetMapping("/api/admin/events/pending")
+    @Operation(summary = "Event 승인 대기 목록", description = "ADMIN 권한의 인증된 관리자가 PENDING_APPROVAL Event를 페이지로 조회합니다.")
+    public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.ApprovalItem>> findPending(
+            @CurrentMemberId Long memberId, @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        var requests = eventReviewService.findPending(memberId, PageRequest.of(page, size));
+        var items = requests.stream().map(EventManagementResponse.ApprovalItem::from).toList();
+        return ApiResponse.success(EventManagementResponse.PageResult.from(requests, items));
+    }
+
+    /** 관리자가 삭제되지 않은 전체 Event를 상태·보관 여부별로 페이지 조회한다. */
+    @GetMapping("/api/admin/events")
+    @Operation(summary = "관리자 Event 운영 목록", description = "ADMIN 권한의 인증된 관리자가 삭제되지 않은 Event를 상태·보관 여부별로 페이지 조회합니다. archiveStatus 기본값은 ACTIVE입니다.")
+    public ApiResponse<EventManagementResponse.PageResult<EventManagementResponse.AdminItem>> findManagedEvents(
+            @CurrentMemberId Long memberId, @RequestParam(required = false) EventStatus status,
+            @RequestParam(defaultValue = "ACTIVE") EventArchiveStatus archiveStatus,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        var events = eventReviewService.findManagedEvents(memberId, status, archiveStatus, PageRequest.of(page, size));
+        var items = events.stream().map(EventManagementResponse.AdminItem::from).toList();
+        return ApiResponse.success(EventManagementResponse.PageResult.from(events, items));
+    }
+
+    /** 관리자의 Event 운영 상세 초기 화면에 필요한 기본·운영 요약 정보를 한 번에 반환한다. */
+    @GetMapping("/api/admin/events/{eventId}/operation")
+    @Operation(
+            summary = "관리자 Event 운영 상세 조회",
+            description = "ADMIN 권한의 인증된 관리자가 Event 기본 정보와 마감·Snapshot·INITIAL Drawing 요약을 한 번에 조회합니다. 후보·당첨자 전체 목록은 반환하지 않습니다."
+    )
+    public ApiResponse<AdminEventOperationResult> getOperation(
+            @PathVariable @Positive Long eventId,
+            @CurrentMemberId Long memberId
+    ) {
+        return ApiResponse.success(adminEventOperationQueryService.getOperation(memberId, eventId));
+    }
+
+    /** 결과 공개가 끝난 Event를 사용자 화면에서 숨기고 관리자 보관함으로 옮긴다. */
+    @PatchMapping("/api/admin/events/{eventId}/archive")
+    @Operation(summary = "Event 보관", description = "ADMIN 권한의 인증된 관리자가 PUBLISHED Event를 보관합니다. 보관된 Event는 사용자 조회·응모·당첨·알림에서 제외됩니다.")
+    public ApiResponse<EventManagementResponse.ArchiveResult> archive(
+            @PathVariable Long eventId, @CurrentMemberId Long memberId) {
+        return ApiResponse.success(EventManagementResponse.ArchiveResult.from(eventReviewService.archive(memberId, eventId)));
+    }
+
+    /** 보관 Event를 다시 사용자 화면에 공개한다. */
+    @PatchMapping("/api/admin/events/{eventId}/unarchive")
+    @Operation(summary = "Event 보관 해제", description = "ADMIN 권한의 인증된 관리자가 보관된 PUBLISHED Event를 복원합니다.")
+    public ApiResponse<EventManagementResponse.ArchiveResult> unarchive(
+            @PathVariable Long eventId, @CurrentMemberId Long memberId) {
+        return ApiResponse.success(EventManagementResponse.ArchiveResult.from(eventReviewService.unarchive(memberId, eventId)));
+    }
+
+    /** Creator 소유 Event의 내용을 수정한다. */
+    @PatchMapping("/api/creator/events/{eventId}")
+    @Operation(summary = "Event 수정", description = "인증된 Creator가 DRAFT 또는 REJECTED Event를 수정합니다.")
+    public ApiResponse<EventManagementResponse.Result> update(@CurrentMemberId Long memberId, @PathVariable Long eventId,
+            @Valid @RequestBody EventManagementRequest.Update request) {
+        Event event = creatorEventService.update(new kr.co.cking.event.application.dto.UpdateEventCommand(
+                memberId, eventId, request.title(), request.description(), request.startAt(), request.endAt(),
+                request.winnerCount(), request.drawMethod(), request.prizeAlgorithmVersion(), request.prizeConfigs(),
+                request.bannerImageKey(), request.bannerImageKeyProvided()));
+        return ApiResponse.success(EventManagementResponse.Result.from(event));
+    }
+
+    /** Event 배너 이미지를 올리고 생성·수정 요청에 쓸 imageKey를 반환한다(이슈 #748). */
+    @PostMapping(value = "/api/creator/events/banner-images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Event 배너 이미지 업로드",
+            description = "인증된 Creator가 배너 이미지를 올리고 Event 생성·수정의 bannerImageKey로 쓸 imageKey를 받습니다. 24시간 안에 연결하지 않으면 정리됩니다."
+    )
+    public ResponseEntity<ApiResponse<EventManagementResponse.BannerImage>> uploadBannerImage(
+            @CurrentMemberId Long memberId, @RequestPart(value = "image", required = false) MultipartFile image) {
+        String key = imageProcessingLimiter.admit(() -> bannerImageUploadService.upload(memberId, readBytes(image)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(new EventManagementResponse.BannerImage(key)));
+    }
+
+    private byte[] readBytes(MultipartFile image) {
+        if (image == null) throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        try { return image.getBytes(); }
+        catch (IOException exception) { throw new BusinessException(CommonErrorCode.SYSTEM_ERROR); }
+    }
+
+    /** Creator 소유 초안 Event를 논리 삭제한다. */
+    @DeleteMapping("/api/creator/events/{eventId}")
+    @Operation(summary = "Event 삭제", description = "인증된 Creator가 DRAFT 또는 REJECTED Event를 논리 삭제합니다.")
+    public ResponseEntity<Void> delete(@CurrentMemberId Long memberId, @PathVariable Long eventId) {
+        creatorEventService.delete(memberId, eventId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Creator의 Event 생성 요청을 멱등 명령으로 전달한다. */
+    @PostMapping("/api/creator/events")
+    @Operation(summary = "Event 생성", description = "인증된 Creator가 requestId를 멱등 키로 Event 초안을 생성합니다.")
+    public ResponseEntity<ApiResponse<EventManagementResponse.Result>> create(
+            @CurrentMemberId Long memberId,
+            @Valid @RequestBody EventManagementRequest.Create request
+    ) {
+        Event event = creatorEventService.create(new CreateEventCommand(
+                memberId, request.requestId(), request.title(), request.description(), request.startAt(),
+                request.endAt(), request.winnerCount(), request.drawMethod(), request.prizeAlgorithmVersion(),
+                request.prizeConfigs(), request.bannerImageKey()));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(EventManagementResponse.Result.from(event)));
+    }
+
+    /** Creator Event의 새 승인 요청을 생성한다. */
+    @PostMapping("/api/creator/events/{eventId}/approval-request")
+    @Operation(summary = "Event 승인 요청", description = "인증된 Creator가 시작 시각 최소 48시간 전의 DRAFT Event에 승인 요청을 생성합니다.")
+    public ApiResponse<EventManagementResponse.Result> requestApproval(
+            @CurrentMemberId Long memberId, @PathVariable Long eventId) {
+        creatorEventService.requestApproval(memberId, eventId);
+        return ApiResponse.success(new EventManagementResponse.Result(eventId,
+                kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL));
+    }
+
+    /** 관리자가 승인 대기 Event를 SCHEDULED 상태로 승인한다. */
+    @PostMapping("/api/admin/events/{eventId}/approve")
+    @Operation(summary = "Event 승인", description = "ADMIN 권한의 인증된 관리자가 PENDING_APPROVAL Event를 SCHEDULED로 전이합니다.")
+    public ApiResponse<EventManagementResponse.Result> approve(@PathVariable Long eventId,
+            @CurrentMemberId Long memberId) {
+        eventReviewService.approve(memberId, eventId);
+        return ApiResponse.success(new EventManagementResponse.Result(eventId,
+                kr.co.cking.event.domain.EventStatus.SCHEDULED));
+    }
+
+    /** 관리자가 승인 대기 Event를 거절하고 사유를 이력에 기록한다. */
+    @PostMapping("/api/admin/events/{eventId}/reject")
+    @Operation(summary = "Event 거절", description = "ADMIN 권한의 인증된 관리자가 거절 사유를 기록하고 Event를 REJECTED로 전이합니다.")
+    public ApiResponse<EventManagementResponse.Result> reject(@PathVariable Long eventId,
+            @CurrentMemberId Long memberId, @Valid @RequestBody EventManagementRequest.Reject request) {
+        eventReviewService.reject(memberId, eventId, request.rejectReason());
+        return ApiResponse.success(new EventManagementResponse.Result(eventId,
+                kr.co.cking.event.domain.EventStatus.REJECTED));
+    }
+}

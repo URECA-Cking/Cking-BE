@@ -1,0 +1,174 @@
+# 운영 배포. BE CI(main 머지)가 부르고, 문제가 생긴 버전을 되돌릴 때는 Actions에서 태그를 넣어 직접 실행한다.
+# 두 경우 모두 같은 단계(배포 태그 갱신 → 앱 서버 교체 → 스모크 테스트)를 거친다.
+# 새 서버는 ALB에 붙기 전에 같은 k6/smoke.js로 자기 자신을 검사하고, 실패하면 버려져 교체가 실패한다(Infra 앱 서버 시작 대기).
+# 실제 차단은 IAM 신뢰 정책(sub = main)이 한다. main이 아닌 브랜치에서 실행하면 역할을 맡지 못해 실패한다.
+name: Deploy to prod
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 되돌릴 이미지 태그 (예전에 운영에 배포한 태그)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  PROD_ROLE_ARN: arn:aws:iam::551372961758:role/prod-cking-be-github-actions-role
+  PROD_DEPLOY_BUCKET: prod-cking-deploy-551372961758-ap-northeast-2-an
+  PROD_ASG: prod-cking-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    # 운영 배포는 한 번에 하나만 들어간다. 서버 교체 도중 취소하지 않는다.
+    concurrency:
+      group: cd-deploy-prod
+      cancel-in-progress: false
+
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ env.PROD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 동시 실행 그룹 안의 순서는 보장되지 않아 옛 main 커밋의 실행이 새 커밋 배포 뒤에 돌 수 있다(#694).
+      # 지금 운영 태그보다 오래된 커밋이면 배포하지 않는다. 되돌리기는 일부러 옛 태그를 올리므로 검사하지 않는다.
+      # 태그가 없으면(첫 배포) 배포하고, 권한·API 오류로 읽지 못하면 검사 없이 배포하지 않도록 멈춘다.
+      - name: 운영 태그보다 오래됐는지 확인
+        id: order
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if DEPLOYED=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG \
+            --query Parameter.Value --output text 2>order-tag.err); then
+            :
+          elif grep -q ParameterNotFound order-tag.err; then
+            DEPLOYED=""
+          else
+            cat order-tag.err >&2
+            exit 1
+          fi
+          RESULT=$(scripts/check-deploy-order.sh "$DEPLOYED" "$GITHUB_SHA")
+          echo "$RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "deploy=$([ "${RESULT%% *}" = deploy ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # main 머지는 이번 태그의 배포 파일을 올린다. 되돌리기는 예전에 올린 파일이 있는지만 확인한다.
+      - name: 배포 파일 S3 업로드
+        if: github.event_name != 'workflow_dispatch' && steps.order.outputs.deploy == 'true'
+        run: |
+          aws s3 cp docker-compose.prod.yml "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/docker-compose.yml"
+          aws s3 cp deploy/deploy.sh        "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh"
+          aws s3 cp k6/smoke.js             "s3://$PROD_DEPLOY_BUCKET/releases/$IMAGE_TAG/smoke.js"
+
+      # 입력은 CI가 만든 태그 형식(배포 시각 14자리-커밋 7자리)만 받는다. 형식이 맞아도 운영에 올린 적 없는 태그면 멈춘다.
+      - name: 되돌릴 태그의 배포 파일 확인
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9]{14}-[0-9a-f]{7}$ ]]; then
+            echo "이미지 태그 형식이 아니다: $IMAGE_TAG" >&2
+            exit 1
+          fi
+          for f in docker-compose.yml deploy.sh smoke.js; do
+            aws s3api head-object --bucket "$PROD_DEPLOY_BUCKET" --key "releases/$IMAGE_TAG/$f" > /dev/null \
+              || { echo "운영에 배포한 적 없는 태그다: $IMAGE_TAG ($f 없음)" >&2; exit 1; }
+          done
+
+      # 운영 배포는 서버 교체다. 새 서버는 부팅하며 이 태그로 앱을 띄운다.
+      # 교체가 실패하면 되돌릴 수 있게 이전 태그를 남긴다. 파라미터가 없을 때(첫 배포)만 이전 태그 없이 진행하고,
+      # 권한·API 오류로 읽지 못하면 되돌릴 태그 없이 배포하지 않도록 여기서 멈춘다.
+      - name: 배포 태그 갱신
+        id: tag
+        if: steps.order.outputs.deploy != 'false'
+        run: |
+          if PREVIOUS=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG \
+            --query Parameter.Value --output text 2>get-tag.err); then
+            :
+          elif grep -q ParameterNotFound get-tag.err; then
+            PREVIOUS=""
+          else
+            cat get-tag.err >&2
+            exit 1
+          fi
+          echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
+          aws ssm put-parameter --name /cking/prod/RELEASE_TAG --type String --value "$IMAGE_TAG" --overwrite
+
+      - name: 앱 서버 교체
+        id: refresh
+        if: steps.order.outputs.deploy != 'false'
+        run: scripts/prod-refresh.sh "$PROD_ASG"
+
+      # 교체가 실패하면 교체를 취소하고 배포 태그를 되돌린다. 취소해도 이미 바뀐 서버는 되돌아가지 않으므로,
+      # 교체 시작 뒤에 뜬 서버가 남아 있으면 이전 태그로 다시 교체해 전체를 맞춘다(scripts/prod-recover.sh).
+      # 교체 단계가 실패했을 때만 한다. 교체가 끝난 뒤의 실패(스모크 테스트)는 아래에서 다시 교체해 되돌린다.
+      - name: 실패 시 이전 버전으로 복구
+        if: failure() && steps.tag.outputs.previous != '' && steps.refresh.outcome == 'failure'
+        env:
+          PREVIOUS: ${{ steps.tag.outputs.previous }}
+          REFRESH_ID: ${{ steps.refresh.outputs.id }}
+          STARTED: ${{ steps.refresh.outputs.started }}
+        run: scripts/prod-recover.sh "$PROD_ASG" "$REFRESH_ID" "$STARTED" "$PREVIOUS"
+
+      - name: k6 설치
+        if: steps.order.outputs.deploy != 'false'
+        env:
+          K6_VERSION: v2.2.0
+          K6_SHA256: b5a8003c86f35f5cd5ceef1490312c48e587696c94d998cefc6d7b3b4cb1597d
+        run: |
+          curl -fsSLo k6.tar.gz "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz"
+          echo "${K6_SHA256}  k6.tar.gz" | sha256sum -c -
+          tar -xzf k6.tar.gz
+          sudo mv "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      # 서버 안 검사가 보지 못하는 ALB·인증서·WAF 경로까지 사용자와 같은 경로로 확인한다.
+      - name: 스모크 테스트
+        id: smoke
+        if: steps.order.outputs.deploy != 'false'
+        env:
+          BASE_URL: https://api.cking.co.kr
+          FRONTEND_ORIGIN: https://cking.co.kr
+          EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DOCS_DISABLED: "1"
+        run: k6 run k6/smoke.js
+
+      # 교체가 끝난 뒤 스모크가 실패하면 새 버전이 모든 요청을 받는 중이다. 이전 버전으로 한 번만 되돌린다.
+      # 수동 되돌리기(workflow_dispatch)에서는 이전 태그가 바로 문제의 버전이라 하지 않는다.
+      - name: 스모크 실패 시 이전 버전으로 되돌리기
+        id: auto_rollback
+        if: >-
+          failure() && steps.smoke.outcome == 'failure' &&
+          steps.tag.outputs.previous != '' && github.event_name != 'workflow_dispatch'
+        env:
+          PREVIOUS: ${{ steps.tag.outputs.previous }}
+        run: |
+          aws ssm put-parameter --name /cking/prod/RELEASE_TAG --type String --value "$PREVIOUS" --overwrite
+          echo "배포 태그를 $PREVIOUS로 되돌리고 앱 서버를 다시 교체한다"
+          scripts/prod-refresh.sh "$PROD_ASG"
+
+      # 이전 버전으로도 실패하면 앱이 아니라 환경(DB·Redis·네트워크) 문제일 가능성이 커서 더 되돌리지 않는다.
+      - name: 되돌린 버전 스모크 테스트
+        if: failure() && steps.auto_rollback.outcome == 'success'
+        env:
+          BASE_URL: https://api.cking.co.kr
+          FRONTEND_ORIGIN: https://cking.co.kr
+          EXPECTED_IMAGE_TAG: ${{ steps.tag.outputs.previous }}
+          DOCS_DISABLED: "1"
+        run: k6 run k6/smoke.js

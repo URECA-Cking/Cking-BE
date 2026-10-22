@@ -1,0 +1,170 @@
+# Mission API
+
+모든 응답은 [공통 API 규약](../../common/api.md)의 봉투를 사용하며, 아래 Response 예시는 `data` 값이다.
+
+## GET /api/creators/{creatorId}/missions
+
+Bearer Access JWT가 필수다. 호출자는 `@CurrentMemberId`로 식별하며 query `userId`를 받지 않는다.
+존재하지 않는 사용자나 Creator는 공통 `RESOURCE_NOT_FOUND`로 응답한다.
+
+해당 Creator의 활성 `LIKE`, `SHARE`, `YOUTUBE_SUBSCRIPTION` 미션을 반환한다. 출석은 Creator와 무관한 공용 미션이므로 `GET /api/missions`에서 조회한다. 활성 구간은 기존 `Mission.isActiveAt(now)` 기준인 `activeFrom <= now < activeTo`이며, 시작 또는 종료 시각이 null이면 그 경계는 제한하지 않는다.
+
+각 항목은 `missionId`, `type`, `rewardAmount`, `activeFrom`, `activeTo`, `completedToday`를 포함한다. `activeFrom`과 `activeTo`는 UTC Instant이며 nullable이다.
+
+`completedToday`는 기존 응답 호환을 위해 필드명을 유지한다. `LIKE`는 요청 사용자·Creator·미션과 서버 UTC 오늘의 `periodKey`(`yyyy-MM-dd`)가 일치하는 MissionCompletion이 있는지를 뜻한다. ONCE 미션인 `SHARE`, `YOUTUBE_SUBSCRIPTION`은 날짜와 무관하게 `completionKey=ONCE`인 평생 완료 이력이 있는지를 뜻한다. 이 API는 완료 기록을 생성하거나 변경하지 않는다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": [
+    {
+      "missionId": 100,
+      "type": "LIKE",
+      "rewardAmount": 1,
+      "activeFrom": null,
+      "activeTo": null,
+      "completedToday": false
+    }
+  ],
+  "message": null
+}
+```
+
+## POST /api/creators/{creatorId}/missions/{missionId}/complete
+
+- 권한: `USER`
+- Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
+- Path Variable `creatorId`: 필수, 양수 Long.
+- Path Variable `missionId`: 필수, 양수 Long.
+- 이 API는 **신규 완료를 지원하는 유형이 없다.** `LIKE` 신규 완료는 게시글 좋아요를 서버가 확인한 경로(아래 "게시글 좋아요 보상")로만 가능하고, 이 API로 새로 요청하면 `MISSION_REQUIRES_POST_LIKE`(409)로 차단한다. 클라이언트는 이 코드를 받으면 게시글 좋아요를 안내한다. 이미 성공한 `requestId`의 replay는 기존 결과(`ALREADY_PROCESSED`)를 돌려준다(이슈 #554).
+- `SHARE`는 Creator Space 공유 완료 처리(Issue #311)에서만 보상한다. 이 API로 요청하면 `MISSION_NOT_FOUND`로 차단한다.
+- 레거시 Creator `ATTENDANCE`는 기존 성공 `requestId` replay만 허용하며, 신규 출석 완료는 공용 API를 사용한다.
+- `YOUTUBE_SUBSCRIPTION`은 이미지 인증이 필요한 유형이므로 이 API에서 완료할 수 없다. 제출·상태 조회 계약은 [YouTube 구독 인증 API](../subscription-verification/api.md)를 따른다.
+
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+- `requestId`: 필수 UUID. 멱등성 키다.
+
+## 응답
+
+성공은 EARN 처리 결과에 따라 HTTP 상태와 `code`가 다르다.
+
+| HTTP | `code` | 의미 |
+| --- | --- | --- |
+| 202 | `EARN_ACCEPTED` | 이번 요청으로 새로 적립됨 |
+| 200 | `ALREADY_PROCESSED` | 동일 `requestId`의 기존 성공 결과(재시도) |
+
+```json
+{
+  "missionId": 100,
+  "rewardAmount": 1,
+  "completedAt": "2026-09-16T10:00:00Z"
+}
+```
+
+`completedAt`은 이 응답을 만든 시각이다 — `ALREADY_PROCESSED` 재시도 응답에서는 최초로 실제 완료된 시각이 아니다(EARN 조회 결과가 원본 완료 시각을 담고 있지 않기 때문).
+
+## 처리 순서
+
+1. `userId`로 Member 존재를 확인한다. 없으면 `RESOURCE_NOT_FOUND`.
+2. `creatorId`+`missionId`로 Mission을 조회한다. 없으면 `MISSION_NOT_FOUND`.
+3. `YOUTUBE_SUBSCRIPTION`이면 `MISSION_REQUIRES_VERIFICATION`으로 차단한다. 이 경우 Ticket EARN 조회나 적립을 호출하지 않는다.
+4. SHARE면 `TicketEarnService` 조회·적립 전에 `MISSION_NOT_FOUND`로 차단한다. Creator별 ATTENDANCE 신규 완료는 공용 API를 사용한다.
+5. `TicketEarnService#findExisting()`으로 동일 `requestId`의 기존 처리 결과를 조회한다(활성 검증보다 먼저 — 아래 "종료 후 동일 requestId 재시도" 참고).
+6. 기존 결과가 없으면 신규 완료를 차단한다(일반 완료 API는 replay 전용). LIKE는 `MISSION_REQUIRES_POST_LIKE`, 그 밖의 유형은 `MISSION_NOT_FOUND`다. 게시글 좋아요 경로는 아래 7~8단계를 이어 수행한다.
+7. `Mission.isActiveAt(now)`로 LIKE 미션의 활성 여부를 검증한다. 비활성이면 `MISSION_INACTIVE`.
+8. `TicketEarnService#earn()`을 호출해 Redis Lua가 멱등성·일일 중복 적립 가드·Balance 증가·Stream 발행을 원자적으로 처리한다. 자세한 Redis 계약은 [EARN Lua API](../ticket/lua-api.md)를 따른다.
+
+## POST /api/creators/{creatorId}/missions/share/complete
+
+Creator Space 공유 완료를 Creator별 SHARE 미션 보상으로 처리한다.
+
+- 권한: `USER`. Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다.
+- Path Variable `creatorId`: 필수, 양수 Long. 공유 대상 Creator다.
+- Body `requestId`: 필수 UUID. 재요청 멱등성 키다.
+- 미션 ID는 클라이언트가 보내지 않는다. 서버가 `creatorId` 기준 SHARE 미션을 조회해, 조회된 `Mission.creatorId == creatorId`를 다시 검증한다.
+
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+실제 외부 SNS 공유 성공 여부는 서버가 검증하지 않는다. 클라이언트가 공유 버튼을 클릭한 뒤 보내는 이 완료 요청을 공유 완료로 간주하는 Mock 방식이며, 공유 취소·실패는 이미 지급된 보상을 회수하지 않는다.
+
+처리 순서는 Member·공유 대상 Creator 검증 → 해당 Creator의 SHARE Mission 조회·소유 검증 → 서버 UTC `periodKey` 생성 → 기존 `requestId` 조회 → 활성 검증 → `TicketOnceEarnService#earn()` 호출이다. `TicketOnceEarnService`는 Redis Lua 전에 `ticket_once_earn_request`의 `userId + creatorId + missionId` durable Business Key를 선점한다. Redis ONCE Guard는 이 claim을 통과한 동시 실행의 1차 방어선이며, Redis Guard 유실 뒤 다른 `requestId`가 와도 durable Business Key가 Redis Balance 증가 전에 차단한다. EARN Stream Consumer가 성공 메시지를 처리하면 `MissionCompletion`과 EARN Ledger·DB Balance를 기록한다.
+
+성공 응답은 위 일반 완료 API와 같다. 신규 적립은 `202 EARN_ACCEPTED`, 동일 `requestId`의 재요청은 `200 ALREADY_PROCESSED`다. `DUPLICATE_MISSION`, `REQUEST_ID_CONFLICT`, EARN 장애 오류도 위 오류 표와 같은 상태·코드를 사용한다.
+
+## 일일 중복 적립 기준
+
+업무일 경계는 서버 UTC 기준이다. `periodKey`는 요청 시각을 UTC로 변환한 `yyyy-MM-dd` 날짜다. LIKE는 `userId + creatorId + missionId + periodKey`로 하루 한 번, Creator Space SHARE는 `userId + creatorId + missionId`로 평생 한 번만 적립한다. Redis EARN Guard가 먼저 중복을 차단하고 `mission_completion.uk_completion_business`가 최종 보장한다. 공용 ATTENDANCE는 공용 EARN 가드와 기존 Creator ATTENDANCE 완료 이력 교차 조회를 통해 사용자당 서비스 전체에서 하루 한 번만 적립한다. LIKE·SHARE 완료 기록은 공용 출석 중복 판정에 포함하지 않는다.
+
+## 종료 후 동일 requestId 재시도
+
+`LIKE` 미션이 종료된 뒤 종료 전에 성공했던 `requestId`가 재전송되면, 활성 검증보다 먼저 수행하는 `findExisting()` 조회가 기존 성공 기록을 찾아 `MISSION_INACTIVE` 대신 원래의 EARN 결과(`ALREADY_PROCESSED`)를 반환한다(Issue #125, FR-P1-018). 레거시 Creator `ATTENDANCE`도 기존 성공 `requestId` replay는 반환하지만 신규 요청은 `MISSION_NOT_FOUND`로 차단한다. `YOUTUBE_SUBSCRIPTION`은 일반 완료 API의 멱등 조회 대상이 아니며 그보다 먼저 `MISSION_REQUIRES_VERIFICATION`으로 차단한다.
+
+## 오류 코드
+
+| 코드 | HTTP | 의미 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | 요청 형식 또는 `creatorId`·`missionId` 범위 오류 |
+| `RESOURCE_NOT_FOUND` | 404 | 존재하지 않는 Member |
+| `MISSION_NOT_FOUND` | 404 | 존재하지 않는 Mission |
+| `MISSION_INACTIVE` | 409 | 활성 기간이 아닌 미션에 대한 신규 요청 |
+| `MISSION_REQUIRES_VERIFICATION` | 409 | 별도 이미지 인증이 필요한 미션을 일반 완료 API로 요청함 |
+| `MISSION_REQUIRES_POST_LIKE` | 409 | 게시글 좋아요로만 완료할 수 있는 LIKE 미션을 일반 완료 API로 새로 요청함. 클라이언트는 게시글 좋아요를 안내한다 |
+| `DUPLICATE_MISSION` | 409 | 같은 `periodKey`에 이미 완료함 |
+| `REQUEST_ID_CONFLICT` | 409 | 동일 `requestId`로 다른 요청 내용이 전달됨 |
+| `EARN_PROCESSING_FAILED` | 503 | 응모권 적립 처리 실패(재시도 필요) |
+| `EARN_STATUS_UNKNOWN` | 504 | 적립 처리 결과 확인 불가(동일 요청으로 재시도 필요) |
+| `BALANCE_MAINTENANCE` | 503 | 수동 보정(`TicketCompensationService.resyncRedisToDb()`) 락이 걸려 있음(잠시 후 동일 요청으로 재시도, issue #172) |
+
+## 공용 미션 API(크리에이터 무관, 이슈 #219)
+
+경로에 `creatorId`가 없는 것만 다르고, 그 외 요청·응답 형식과 처리 순서는 위 크리에이터별 API와 동일하다. 공용 미션은 현재 `ATTENDANCE` 한 유형뿐이며 유형당 하나뿐이다(`uk_common_mission_type`).
+
+### GET /api/missions
+
+Bearer Access JWT가 필수이며 호출자는 `@CurrentMemberId`로 식별한다. 응답 형식은 위 API와 같다(`type`은 `CommonMissionType`).
+
+웰컴 퀘스트는 이 목록에 포함하지 않는다. 상태 조회·보상 지급은 [웰컴 퀘스트 API](welcome-quest.md)의 전용 경로를 따른다.
+
+### 공용 출석과 기존 Creator 출석의 전환 규칙
+
+공용 ATTENDANCE 신규 요청은 공용 requestId replay를 먼저 확인한 뒤, 활성 검증을 통과하면 같은 사용자·같은 UTC `periodKey`의 기존 Creator ATTENDANCE 완료 기록을 조회한다. 기록이 있으면 `DUPLICATE_MISSION`으로 종료하고 `CommonTicketEarnService#earn()`을 호출하지 않는다. 기존 Creator 응모권과 완료 이력은 보존한다.
+
+새 코드가 배포된 뒤에는 Creator ATTENDANCE 신규 요청이 `MissionCompletionService`에서 EARN 전에 차단되므로 안정 상태에서 별도 공유 Redis Guard는 사용하지 않는다. 단, 구버전 인스턴스가 남아 있는 혼합 배포 중에는 기존 EARN의 Redis 성공과 DB Consumer 반영 사이에 교차 중복이 가능하므로, **모든 구버전 인스턴스의 Creator 출석 신규 지급 경로를 차단한 뒤 공용 출석을 활성화해야 한다.**
+
+차단 전에 이미 시작된 구버전 Creator ATTENDANCE 요청이 모두 응답·실패 처리될 때까지 구버전 인스턴스를 quiesce하고, 더 이상 구버전 경로가 새 EARN을 게시할 수 없음을 확인해야 한다. 그 뒤 `stream:ticket-earned` 마지막 ID를 cutover 경계로 기록하고, 경계 이전에 이미 승인된 Creator ATTENDANCE EARN을 전환 전에 정리한다. `cg:ticket-earn`의 last-delivered ID가 경계까지 도달하도록 아직 읽지 않은 메시지와 PEL을 Consumer·PEL 회수 경로로 drain하고, `dead_stream_message`의 경계 이전 미해결 `EARN` 메시지는 관리자 replay로 DB 반영을 완료한 뒤, Creator ATTENDANCE에 해당하는 미해결 PEL·Dead Stream이 없는지 확인한다. 이 확인 없이 공용 출석을 켜면 Redis에서 먼저 승인된 기존 EARN이 아직 `mission_completion`에 반영되지 않아 DB 교차 조회를 통과할 수 있다. 기존 성공 보상·완료 이력은 삭제하거나 회수하지 않는다.
+
+### POST /api/missions/{missionId}/complete
+
+- 권한: `USER`
+- Bearer Access JWT가 필수이며, 호출자는 `@CurrentMemberId`로 식별한다.
+
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+처리 순서는 위와 동일하되 3~5단계가 `CommonTicketEarnService#findExisting()`/`#earn()`을 사용하고, Redis 키에 `creatorId` 축이 없다(`ticket:balance:common:{userId}`, `mission:earn-guard:common:{userId}:{missionType}:{yyyymmdd}`).
+
+공용 응모권 수동 보정 중에는 `BALANCE_MAINTENANCE`(503)를 반환한다([Ticket 도메인](../ticket/README.md#공용-응모권-크리에이터-무관-이슈-219)).
+
+## 게시글 좋아요 보상
+
+LIKE 미션은 게시글 좋아요가 성공해야 완료된다(이슈 #554). 클라이언트가 좋아요 없이 일반 완료 API로 보상을 받을 수 없다.
+
+- **호출 경로**: `POST /api/creators/{creatorId}/posts/{postId}/likes`가 성공한 뒤 Post의 `PostLikeService`가 `MissionCompletionService#completeByPostLike(creatorId, memberId)`를 호출한다. 이 메서드는 Creator의 LIKE 미션을 찾아 위 처리 순서의 7~8단계(활성 검증, EARN)를 수행한다. 클라이언트가 이 경로를 직접 호출하는 외부 API는 없다.
+- **requestId**: 서버가 `post-like:{memberId}:{missionId}:{UTC 날짜}`로 만든 결정적 UUID(name-based)를 쓴다. 같은 날의 반복 호출(재좋아요, 취소 후 재좋아요, 재시도)은 같은 `requestId`라 `ALREADY_PROCESSED`이고, 날짜가 바뀌면 새 `requestId`라 다시 적립될 수 있다. 호출 자체는 Post가 **오늘(UTC) 눌린 좋아요**일 때만 하므로, 이전 날에 눌러 둔 좋아요에 날짜만 바뀐 중복 POST로 그날 보상을 받을 수 없다. `requestId`의 날짜, EARN `periodKey`, 활성 검증, 관찰 시각은 이 서비스의 시계를 다시 읽지 않고 **호출자(Post)가 좋아요 자격을 판정한 시각**(`decidedAt`) 하나로 정한다. 판정과 지급 사이에 UTC 자정을 넘겨도 판정한 날짜의 보상으로 처리되므로, 이전 날 좋아요에 날짜만 바뀐 중복 요청이 다음 날 보상을 받을 수 없다.
+- **지급 규칙**: 기존과 같다. 사용자·Creator·미션·UTC 날짜 기준 하루 1회이며 Redis EARN Guard가 먼저 막고 `mission_completion.uk_completion_business`가 마지막으로 보장한다. 같은 날 미션 버튼 방식으로 이미 받은 보상이 있으면(구 클라이언트) 가드가 막는다.
+- **제외**: 이전 날에 누른 좋아요를 유지한 채 날짜만 바뀐 중복 POST는 보상을 요청하지 않는다(좋아요 행의 생성 날짜(UTC)가 오늘이 아님). 작성 Creator 본인이 자기 게시글에 한 좋아요는 보상을 요청하지 않는다. Creator에 LIKE 미션이 없거나 비활성이면 좋아요만 성공한다.
+- **실패 처리**: 미션 호출의 실패(`MISSION_*`, `EARN_*`, 예기치 못한 예외)는 좋아요를 되돌리지 않는다. 좋아요 응답의 `missionAwarded`는 이번 요청으로 `EARN_ACCEPTED`가 나왔을 때만 true다.
+- **취소**: 좋아요 취소는 미션을 호출하지 않으며 지급된 응모권도 회수하지 않는다(FR-P1-012). 취소 후 같은 날 재좋아요는 같은 `requestId`라 추가 적립되지 않는다(FR-P1-013).
+- **Abuse 관찰**: 기존 LIKE와 같은 `MissionAbuseObserver` 관찰을 그대로 수행한다.

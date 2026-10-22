@@ -1,0 +1,90 @@
+spring:
+  datasource:
+    # 암호에는 기본값을 두지 않는다. 주입되지 않으면 잘못된 값으로 기동하는 대신 실패해야 한다.
+    url: jdbc:mysql://${DB_HOST}:3306/cking?characterEncoding=UTF-8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  data:
+    redis:
+      # compose 안에서는 서비스명이 곧 호스트명이다.
+      host: ${REDIS_HOST:redis}
+      port: 6379
+
+server:
+  # ALB가 HTTPS를 종료하고 앱에는 HTTP로 전달한다. X-Forwarded-* 헤더를 신뢰해야
+  # 앱이 만드는 URL(Swagger 서버 주소, 리다이렉트 등)이 https로 나온다.
+  # 8080은 ALB 보안 그룹에서만 열려 있어 헤더를 위조해 보낼 수 없다.
+  forward-headers-strategy: framework
+
+# 개발 서버 전용 기능값은 이 파일을 수정해 재배포한다.
+cking:
+  event:
+    approval-request:
+      # 퀴즈·시연 Event를 즉시 승인·개설할 수 있게 한다. 운영 정책 검증이 필요하면 PT48H로 바꿔 재배포한다.
+      minimum-lead-time: PT0S
+    archive:
+      # 개발 시연·테스트 데이터는 수령 대기 당첨이 있어도 보관할 수 있다.
+      allow-pending-winners: ${EVENT_ARCHIVE_ALLOW_PENDING_WINNERS:true}
+  cors:
+    # 사용자 Web과 관리자 Web은 같은 Backend API와 Refresh Cookie 흐름을 사용한다.
+    allowed-origins: https://dev.cking.co.kr,https://dev-admin.cking.co.kr
+    allow-credentials: true
+  docs:
+    # 개발 서버는 인터넷에 공개되어 있다. 값이 주입되지 않으면 문서가 무방비로 열리는 대신 기동에 실패한다.
+    username: ${DOCS_USERNAME}
+    password: ${DOCS_PASSWORD}
+  auth:
+    refresh:
+      # 사용자·관리자 Web의 Cookie 기반 세션은 별도 Origin 검증 경계를 사용한다.
+      user-allowed-origins: https://dev.cking.co.kr
+      admin-allowed-origins: https://dev-admin.cking.co.kr
+    frontend-callback-url: https://dev.cking.co.kr/oauth/callback
+    jwt:
+      secret: ${JWT_SECRET}
+    refresh-cookie-secure: true
+    admin-seed:
+      enabled: ${ADMIN_ACCOUNT_SEED_ENABLED:true}
+      login-id: ${ADMIN_ACCOUNT_LOGIN_ID:admin}
+      password: ${ADMIN_ACCOUNT_PASSWORD:}
+  storage:
+    type: s3
+    bucket: dev-cking-uploads-551372961758-ap-northeast-2-an
+    region: ap-northeast-2
+  member:
+    profile-image:
+      # member-profile-images/*만 공개하는 개발 CloudFront 주소다. 비밀값이 아니므로 환경변수 주입 없이 고정한다.
+      public-base-url: https://dev-images.cking.co.kr
+  creator:
+    space-profile-image:
+      # creator-space-profile-images/* 공개 behavior가 연결되는 개발 CloudFront 주소다.
+      public-base-url: https://dev-images.cking.co.kr
+  verification:
+    youtube-subscription:
+      submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:true}
+  ticket:
+    quiz-reward:
+      worker-enabled: true
+  # Quiz는 OpenAI 사용 한도와 모델 접근 권한을 확인한 뒤 켠다.
+  quiz:
+    generation:
+      enabled: ${QUIZ_GENERATION_ENABLED:true}
+      # FE–BE 통합 검증을 위해 dev의 새 생성 작업은 Grounding 뒤 Creator 원문 확정을 기다린다(이슈 #634).
+      content-review:
+        enabled: ${QUIZ_GENERATION_CONTENT_REVIEW_ENABLED:true}
+    judge:
+      enabled: ${QUIZ_JUDGE_ENABLED:true}
+  # 필터 Lambda 함수 URL은 IAM 인증이다. 주소는 Parameter Store 필수 값 COMMENT_FILTER_BASE_URL로 받는다.
+  comment-filter:
+    enabled: ${COMMENT_FILTER_ENABLED:true}
+    auth: aws-iam
+  # 응모권 지급 완료 알림(이슈 #728). 같은 dev 프로필을 쓰는 부하 테스트는 deploy.sh가 끈다.
+  notification:
+    ticket-reward:
+      enabled: ${TICKET_REWARD_NOTIFICATION_ENABLED:true}
+      # 적립 직후 알림을 확인할 수 있도록 dev는 2초마다 생성한다(이슈 #732). 기본값은 30초다.
+      interval-ms: 2000
+
+info:
+  image:
+    tag: ${IMAGE_TAG:unknown}

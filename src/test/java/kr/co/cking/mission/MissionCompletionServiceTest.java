@@ -1,0 +1,580 @@
+package kr.co.cking.mission;
+
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.mission.application.MissionCompletionService;
+import kr.co.cking.mission.application.dto.MissionCompleteCommand;
+import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
+import kr.co.cking.mission.domain.MissionErrorCode;
+import kr.co.cking.mission.domain.MissionType;
+import kr.co.cking.ticket.application.TicketEarnService;
+import kr.co.cking.ticket.application.dto.EarnCommand;
+import kr.co.cking.ticket.application.dto.EarnLookupResult;
+import kr.co.cking.ticket.application.dto.EarnLookupStatus;
+import kr.co.cking.ticket.application.dto.EarnResult;
+import kr.co.cking.ticket.application.dto.EarnResultCode;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import kr.co.cking.abuse.application.MissionAbuseObserver;
+import kr.co.cking.abuse.application.MissionObservationContext;
+
+class MissionCompletionServiceTest {
+
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final MissionRepository missionRepository = mock(MissionRepository.class);
+    private final TicketEarnService ticketEarnService = mock(TicketEarnService.class);
+    private final MissionAbuseObserver abuseObserver = mock(MissionAbuseObserver.class);
+
+    private static final Long USER_ID = 1L;
+    private static final Long CREATOR_ID = 10L;
+    private static final Long MISSION_ID = 100L;
+
+    private MissionCompletionService serviceWith(Clock clock) {
+        return new MissionCompletionService(memberRepository, missionRepository, ticketEarnService, clock, abuseObserver);
+    }
+
+    private Mission attendanceMission() {
+        return new Mission(CREATOR_ID, MissionType.ATTENDANCE, 1, null, null);
+    }
+
+    private Mission likeMission() {
+        return new Mission(CREATOR_ID, MissionType.LIKE, 1, null, null);
+    }
+
+    /** 일반 완료 API에서 거부할 Creator별 공유 미션을 만든다. */
+    private Mission shareMission() {
+        return new Mission(CREATOR_ID, MissionType.SHARE, 1, null, null);
+    }
+
+    private Mission youtubeSubscriptionMission() {
+        return new Mission(CREATOR_ID, MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null);
+    }
+
+    private void stubMemberAndMission(Mission mission) {
+        when(memberRepository.findById(USER_ID)).thenReturn(Optional.of(mock(Member.class)));
+        when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID))
+                .thenReturn(Optional.of(mission));
+    }
+
+    /** 대부분의 테스트는 "기존 요청 없음"을 전제로 하므로 기본값으로 묶어둔다. */
+    private void stubNoExistingReplay() {
+        when(ticketEarnService.findExisting(any())).thenReturn(new EarnLookupResult(EarnLookupStatus.NOT_FOUND));
+    }
+
+    @Test
+    void 좋아요_미션을_최초_완료하면_EARN_ACCEPTED를_반환한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(outcome.rewardAmount()).isEqualTo(1);
+        var observation = org.mockito.ArgumentCaptor.forClass(MissionObservationContext.class);
+        verify(abuseObserver).observeSuccess(observation.capture(), eq(EarnResultCode.EARN_ACCEPTED));
+        assertThat(observation.getValue().creatorType()).isEqualTo(MissionType.LIKE);
+        assertThat(observation.getValue().requestedAt()).isEqualTo(Instant.parse("2026-09-16T01:00:00Z"));
+    }
+
+    @Test
+    void EARN_조회에서_예상치_못한_예외가_나면_원_예외를_유지하고_SYSTEM_FAILURE를_관찰한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        IllegalStateException original = new IllegalStateException("Ticket unavailable");
+        when(ticketEarnService.findExisting(any())).thenThrow(original);
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isSameAs(original);
+        verify(abuseObserver).observeUnexpectedFailure(any());
+    }
+
+    @Test
+    void 공유_미션은_일반_완료_API에서_EARN_조회_전에_차단한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(shareMission());
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
+
+        verify(ticketEarnService, never()).findExisting(any());
+        verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
+    }
+
+    @Test
+    void 유튜브_구독_미션은_일반_완료_API에서_EARN_조회_전에_차단한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(youtubeSubscriptionMission());
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                        CREATOR_ID,
+                        MISSION_ID,
+                        new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_REQUIRES_VERIFICATION);
+
+        verify(ticketEarnService, never()).findExisting(any());
+        verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
+    }
+
+    @Test
+    void 크리에이터별_출석_미션은_공용_미션_경로를_사용하므로_완료할_수_없다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(attendanceMission());
+        stubNoExistingReplay();
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
+
+        verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
+    }
+
+    @Test
+    void 기존_creator_출석_requestId_replay는_기존_성공_결과를_반환한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(attendanceMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
+    }
+
+    @Test
+    void periodKey는_UTC_날짜를_그대로_사용한다() {
+        // now=2026-09-16T23:30:00Z: KST로 환산하면 다음날 08:30(9/17)이지만,
+        // RTM FR-P1-006/FR-P1-021/FR-P2-006(UTC 확정, PR #63 리뷰)에 따라
+        // periodKey는 변환 없이 UTC 날짜인 2026-09-16이어야 한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T23:30:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService).earn(captor.capture());
+        assertThat(captor.getValue().periodKey()).isEqualTo("2026-09-16");
+    }
+
+    @Test
+    void missionKey는_periodKey와_달리_날짜에_독립적이다() {
+        // TicketEarnService의 fingerprint 계산은 periodKey를 명시적으로 제외하지만
+        // missionKey는 포함한다. missionKey에 날짜가 섞여 있으면 자정을 넘겨 동일
+        // requestId를 재시도할 때 fingerprint가 달라져 ALREADY_PROCESSED 대신
+        // REQUEST_ID_CONFLICT가 반환된다 — 그래서 missionKey는 periodKey가 바뀌어도
+        // 항상 같아야 한다.
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        Clock beforeMidnight = Clock.fixed(Instant.parse("2026-09-16T23:59:59Z"), ZoneOffset.UTC);
+        serviceWith(beforeMidnight).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        Clock afterMidnight = Clock.fixed(Instant.parse("2026-09-17T00:00:01Z"), ZoneOffset.UTC);
+        serviceWith(afterMidnight).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(0).periodKey()).isEqualTo("2026-09-16");
+        assertThat(commands.get(1).periodKey()).isEqualTo("2026-09-17");
+        assertThat(commands.get(0).missionKey()).isEqualTo(commands.get(1).missionKey());
+    }
+
+    @Test
+    void 좋아요_미션을_최초_완료하면_EARN_ACCEPTED를_반환하고_missionType이_LIKE로_전달된다() {
+        // Creator별 일반 완료 유형은 현재 LIKE이며, 별도 이미지 인증이 필요한
+        // YOUTUBE_SUBSCRIPTION과 공용 경로로 전환한 ATTENDANCE는 이 EARN 경로에
+        // 신규 요청으로 진입하지 않는다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService).earn(captor.capture());
+        assertThat(captor.getValue().missionType()).isEqualTo("LIKE");
+    }
+
+    @Test
+    void 좋아요_미션도_동일_요청_재시도시_ALREADY_PROCESSED를_반환한다() {
+        // 이슈 2: "취소 후 재좋아요해도 추가 지급 차단"은 별도 취소 API 없이 이 EARN
+        // 재시도 판정(findExisting/earn 가드)만으로 이미 처리된다 — 미션 유형과
+        // 무관하게 동일 메커니즘임을 좋아요로도 확인한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 좋아요_취소_후_같은_날_다시_좋아요하면_다른_requestId여도_DUPLICATE_MISSION이다() {
+        // FR-P1-013: 취소는 서버에 알리지 않으므로(별도 취소 API 없음) "재좋아요"는
+        // 새 버튼 클릭, 즉 새 requestId로 오는 완료 요청과 같다. findExisting()은
+        // 다른 requestId라 NOT_FOUND를 반환하고, earn()의 Redis Guard가 같은 날
+        // 이미 SET된 상태를 보고 DUPLICATE_MISSION을 반환해야 한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.DUPLICATE_MISSION));
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.DUPLICATE_MISSION);
+    }
+
+    @Test
+    void 존재하지_않는_사용자는_RESOURCE_NOT_FOUND다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        when(memberRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+
+        verify(ticketEarnService, never()).findExisting(any());
+        verify(ticketEarnService, never()).earn(any());
+        verifyNoInteractions(abuseObserver);
+    }
+
+    @Test
+    void 존재하지_않는_미션은_MISSION_NOT_FOUND다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        when(memberRepository.findById(USER_ID)).thenReturn(Optional.of(mock(Member.class)));
+        when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_NOT_FOUND);
+        verifyNoInteractions(abuseObserver);
+    }
+
+    @Test
+    void 활성_기간이_지난_미션은_기존_요청이_없으면_MISSION_INACTIVE다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
+                Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
+        stubMemberAndMission(expired);
+        stubNoExistingReplay();
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
+
+        verify(ticketEarnService, never()).earn(any());
+        verify(abuseObserver).observeFailure(any(), eq(MissionErrorCode.MISSION_INACTIVE));
+    }
+
+    @Test
+    void 종료된_미션에_동일_requestId로_재시도하면_ALREADY_PROCESSED를_반환한다() {
+        // Issue #125 재현 시나리오: 활성 상태에서 성공한 requestId를 미션 종료 후
+        // 재전송해도 MISSION_INACTIVE가 아니라 기존 성공 결과를 반환해야 한다(FR-P1-018).
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
+                Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
+        stubMemberAndMission(expired);
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 종료된_미션에_다른_payload로_같은_requestId가_오면_REQUEST_ID_CONFLICT다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
+                Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
+        stubMemberAndMission(expired);
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.REQUEST_ID_CONFLICT));
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.REQUEST_ID_CONFLICT);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 기존_요청_조회가_UNAVAILABLE이면_활성_상태와_무관하게_시스템_오류다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.UNAVAILABLE));
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.EARN_STATUS_UNKNOWN);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 종료된_미션도_UNAVAILABLE이면_MISSION_INACTIVE가_아니라_시스템_오류다() {
+        // "활성 상태와 무관하게"라는 이름값을 실제로 비활성 미션으로도 검증한다 —
+        // 활성 검증이 UNAVAILABLE보다 먼저 오도록 실수로 순서가 바뀌는 회귀를 잡는다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        Mission expired = new Mission(CREATOR_ID, MissionType.LIKE, 1,
+                Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2020-01-31T00:00:00Z"));
+        stubMemberAndMission(expired);
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.UNAVAILABLE));
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.EARN_STATUS_UNKNOWN);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void activeTo와_정확히_같은_시각은_비활성이다() {
+        // 계약: activeFrom <= now < activeTo (Event의 startAt<=now<endAt과 동일 원칙).
+        // now == activeTo인 경계는 활성이 아니어야 한다.
+        Instant activeTo = Instant.parse("2026-09-16T00:00:00Z");
+        Clock clock = Clock.fixed(activeTo, ZoneOffset.UTC);
+        Mission mission = new Mission(CREATOR_ID, MissionType.LIKE, 1,
+                Instant.parse("2026-09-01T00:00:00Z"), activeTo);
+        stubMemberAndMission(mission);
+        stubNoExistingReplay();
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.MISSION_INACTIVE);
+
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void activeTo_직전_시각은_활성이다() {
+        Instant activeTo = Instant.parse("2026-09-16T00:00:00Z");
+        Clock clock = Clock.fixed(activeTo.minusMillis(1), ZoneOffset.UTC);
+        Mission mission = new Mission(CREATOR_ID, MissionType.LIKE, 1,
+                Instant.parse("2026-09-01T00:00:00Z"), activeTo);
+        stubMemberAndMission(mission);
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+    }
+
+    @Test
+    void 동일_requestId_재요청은_earn을_통해서도_ALREADY_PROCESSED를_반환한다() {
+        // findExisting()이 NOT_FOUND였다가(예: idem 캐시가 막 만료), 실제 earn() 호출에서
+        // Lua가 가드로 재확인해 ALREADY_PROCESSED를 반환하는 경로도 그대로 성공 처리해야 한다.
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).completeVerifiedLike(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = EarnResultCode.class, names = {
+            "DUPLICATE_MISSION", "REQUEST_ID_CONFLICT", "EARN_PROCESSING_FAILED", "EARN_STATUS_UNKNOWN",
+            "BALANCE_MAINTENANCE"
+    })
+    void EARN_실패_결과코드는_대응하는_MissionErrorCode_예외로_변환된다(EarnResultCode code) {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-16T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(code));
+
+        assertThatThrownBy(() -> serviceWith(clock).completeVerifiedLike(CREATOR_ID, MISSION_ID,
+                new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MissionErrorCode.from(code));
+    }
+
+    @Test
+    void 일반_완료_API는_좋아요_미션을_새로_완료하지_않고_EARN을_호출하지_않는다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-10-13T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        stubNoExistingReplay();
+
+        assertThatThrownBy(() -> serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID())))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(MissionErrorCode.MISSION_REQUIRES_POST_LIKE));
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 일반_완료_API는_이미_성공한_좋아요_requestId의_replay는_기존_결과를_반환한다() {
+        Clock clock = Clock.fixed(Instant.parse("2026-10-13T01:00:00Z"), ZoneOffset.UTC);
+        stubMemberAndMission(likeMission());
+        when(ticketEarnService.findExisting(any()))
+                .thenReturn(new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED));
+
+        MissionCompleteOutcome outcome = serviceWith(clock).complete(
+                CREATOR_ID, MISSION_ID, new MissionCompleteCommand(USER_ID, UUID.randomUUID()));
+
+        assertThat(outcome.code()).isEqualTo(EarnResultCode.ALREADY_PROCESSED);
+        verify(ticketEarnService, never()).earn(any());
+    }
+
+    @Test
+    void 게시글_좋아요_보상은_같은_날_같은_requestId를_쓰고_날짜가_바뀌면_다른_requestId를_쓴다() {
+        Mission like = likeMission();
+        org.springframework.test.util.ReflectionTestUtils.setField(like, "missionId", MISSION_ID);
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.of(like));
+        stubMemberAndMission(like);
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+
+        MissionCompletionService service = serviceWith(Clock.systemUTC());
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-13T00:00:01Z"));
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-13T23:59:59Z"));
+        service.completeByPostLike(CREATOR_ID, USER_ID, Instant.parse("2026-10-14T00:00:01Z"));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(3)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(0).requestId()).isEqualTo(commands.get(1).requestId());
+        assertThat(commands.get(0).requestId()).isNotEqualTo(commands.get(2).requestId());
+        assertThat(commands.get(0).periodKey()).isEqualTo("2026-10-13");
+        assertThat(commands.get(2).periodKey()).isEqualTo("2026-10-14");
+        assertThat(commands.get(0).missionType()).isEqualTo("LIKE");
+        assertThat(commands.get(0).userId()).isEqualTo(USER_ID);
+    }
+
+    /**
+     * 자격 판정과 지급 사이에 UTC 자정을 넘긴 경우: 이 서비스의 시계가 이미 다음 날이어도 호출자가 판정한 시각(D)의 날짜로
+     * requestId·periodKey를 만든다. 시계를 다시 읽으면 D 판정이 D+1 보상으로 처리되어, 이전 날 좋아요에 날짜만 바뀐 중복 요청이
+     * 새 좋아요 없이 다음 날 보상을 받는다.
+     */
+    @Test
+    void 게시글_좋아요_보상은_판정_시각의_날짜를_쓰고_서비스_시계가_자정을_넘겨도_바뀌지_않는다() {
+        Mission like = likeMission();
+        org.springframework.test.util.ReflectionTestUtils.setField(like, "missionId", MISSION_ID);
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.of(like));
+        stubMemberAndMission(like);
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        Instant decidedBeforeMidnight = Instant.parse("2026-10-13T23:59:59.999Z");
+        MissionCompletionService afterMidnight =
+                serviceWith(Clock.fixed(Instant.parse("2026-10-14T00:00:00.050Z"), ZoneOffset.UTC));
+        MissionCompletionService beforeMidnight =
+                serviceWith(Clock.fixed(decidedBeforeMidnight, ZoneOffset.UTC));
+
+        beforeMidnight.completeByPostLike(CREATOR_ID, USER_ID, decidedBeforeMidnight);
+        afterMidnight.completeByPostLike(CREATOR_ID, USER_ID, decidedBeforeMidnight);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        var commands = captor.getAllValues();
+        assertThat(commands.get(1).periodKey()).isEqualTo("2026-10-13");
+        assertThat(commands.get(1).requestId()).isEqualTo(commands.get(0).requestId());
+        var observation = org.mockito.ArgumentCaptor.forClass(MissionObservationContext.class);
+        verify(abuseObserver, org.mockito.Mockito.times(2)).observeSuccess(observation.capture(), any());
+        assertThat(observation.getAllValues().get(1).requestedAt()).isEqualTo(decidedBeforeMidnight);
+    }
+
+    @Test
+    void 게시글_좋아요_보상은_다른_사용자와_다른_requestId를_쓴다() {
+        Mission like = likeMission();
+        org.springframework.test.util.ReflectionTestUtils.setField(like, "missionId", MISSION_ID);
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.of(like));
+        when(memberRepository.findById(any())).thenReturn(Optional.of(mock(Member.class)));
+        when(missionRepository.findByMissionIdAndCreatorId(MISSION_ID, CREATOR_ID)).thenReturn(Optional.of(like));
+        stubNoExistingReplay();
+        when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
+        MissionCompletionService service = serviceWith(Clock.systemUTC());
+        Instant decidedAt = Instant.parse("2026-10-13T00:00:01Z");
+
+        service.completeByPostLike(CREATOR_ID, USER_ID, decidedAt);
+        service.completeByPostLike(CREATOR_ID, USER_ID + 1, decidedAt);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(EarnCommand.class);
+        verify(ticketEarnService, org.mockito.Mockito.times(2)).earn(captor.capture());
+        assertThat(captor.getAllValues().get(0).requestId()).isNotEqualTo(captor.getAllValues().get(1).requestId());
+    }
+
+    @Test
+    void 게시글_좋아요_보상은_Creator에_좋아요_미션이_없으면_MISSION_NOT_FOUND다() {
+        when(missionRepository.findByCreatorIdAndType(CREATOR_ID, MissionType.LIKE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> serviceWith(Clock.systemUTC()).completeByPostLike(CREATOR_ID, USER_ID, Instant.now()))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(MissionErrorCode.MISSION_NOT_FOUND));
+        verify(ticketEarnService, never()).earn(any());
+    }
+}

@@ -1,0 +1,159 @@
+package kr.co.cking.event.application;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.Set;
+
+import kr.co.cking.event.application.dto.CachedEvent;
+import kr.co.cking.event.domain.EventStatus;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 같은 Redis DB를 다른 팀·다른 용도(stream:ticket-deducted 등)는 물론 애플리케이션이
+ * 이미 만들어둔 실제 cache:event:* 캐시와도 공유할 수 있으므로, 운영과 다른 전용
+ * prefix({@value #TEST_KEY_PREFIX})를 써서 이 테스트가 만든 키만 확실히 지운다.
+ */
+class EventCacheTest {
+
+    private static final String TEST_KEY_PREFIX = "cache:event:test:";
+    private static final String KEY_PATTERN = TEST_KEY_PREFIX + "*";
+
+    private LettuceConnectionFactory connectionFactory;
+    private RedisTemplate<String, CachedEvent> redisTemplate;
+    private EventCache eventCache;
+    private Instant now;
+
+    @BeforeEach
+    void setUp() {
+        connectionFactory = new LettuceConnectionFactory("localhost", 6379);
+        connectionFactory.afterPropertiesSet();
+        redisTemplate = new RedisTemplate<>();
+        redisTemplate.setConnectionFactory(connectionFactory);
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.afterPropertiesSet();
+        now = Instant.parse("2026-09-15T00:00:00Z");
+        eventCache = new EventCache(redisTemplate, Clock.fixed(now, ZoneOffset.UTC), TEST_KEY_PREFIX);
+    }
+
+    @AfterEach
+    void tearDown() {
+        Set<String> keys = redisTemplate.keys(KEY_PATTERN);
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
+        connectionFactory.destroy();
+    }
+
+    @Test
+    void 저장한_이벤트를_다시_조회할_수_있다() {
+        CachedEvent event = new CachedEvent(1L, 2L, 10L, "여름 이벤트", "설명",
+                now, now.plus(Duration.ofDays(5)), 3, "WEIGHTED", EventStatus.OPEN);
+
+        eventCache.save(event);
+
+        assertThat(eventCache.find(1L)).contains(event);
+    }
+
+    @Test
+    void 배너_CDN_주소도_캐시에_저장했다가_그대로_읽는다() {
+        CachedEvent event = new CachedEvent(6L, 2L, 10L, "배너 이벤트", "설명", now, now.plus(Duration.ofDays(5)), 3,
+                "WEIGHTED", "PRIZE_WEIGHTED_V1", EventStatus.OPEN, java.util.List.of(), null,
+                "https://cdn.example/creator-space-profile-images/2/event-banner/a.jpg");
+
+        eventCache.save(event);
+
+        assertThat(eventCache.find(6L)).map(CachedEvent::bannerImageUrl)
+                .contains("https://cdn.example/creator-space-profile-images/2/event-banner/a.jpg");
+    }
+
+    /** 소유 회원 ID가 빠진 이전 버전 캐시는 재조회해 본인 응모 검증에 쓰지 않는다. */
+    @Test
+    void 소유_회원_ID가_없는_캐시는_miss로_처리한다() {
+        CachedEvent oldPayload = new CachedEvent(7L, 2L, null, "이전 캐시", "설명",
+                now, now.plus(Duration.ofDays(1)), 3, "WEIGHTED", EventStatus.OPEN);
+        eventCache.save(oldPayload);
+
+        assertThat(eventCache.find(7L)).isEmpty();
+    }
+
+    @Test
+    void 없는_이벤트는_빈값이다() {
+        Optional<CachedEvent> found = eventCache.find(999L);
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void 이미_종료된_이벤트는_캐싱하지_않는다() {
+        CachedEvent ended = new CachedEvent(3L, 2L, 10L, "종료 이벤트", "설명",
+                now.minus(Duration.ofDays(10)), now.minus(Duration.ofDays(1)), 3, "WEIGHTED", EventStatus.CLOSED);
+
+        eventCache.save(ended);
+
+        assertThat(eventCache.find(3L)).isEmpty();
+    }
+
+    @Test
+    void TTL은_5초를_넘지_않는다() {
+        CachedEvent event = new CachedEvent(2L, 2L, 10L, "여름 이벤트", "설명",
+                now, now.plus(Duration.ofHours(3)), 3, "WEIGHTED", EventStatus.OPEN);
+
+        eventCache.save(event);
+
+        Long ttlSeconds = connectionFactory.getConnection().keyCommands()
+                .ttl((TEST_KEY_PREFIX + "2").getBytes());
+        assertThat(ttlSeconds).isLessThanOrEqualTo(5L);
+        assertThat(ttlSeconds).isGreaterThan(0L);
+    }
+
+    @Test
+    void endAt이_5초보다_가까우면_그때까지만_캐싱한다() {
+        CachedEvent event = new CachedEvent(4L, 2L, 10L, "곧 끝나는 이벤트", "설명",
+                now.minus(Duration.ofMinutes(1)), now.plus(Duration.ofSeconds(2)), 3, "WEIGHTED", EventStatus.OPEN);
+
+        eventCache.save(event);
+
+        Long ttlSeconds = connectionFactory.getConnection().keyCommands()
+                .ttl((TEST_KEY_PREFIX + "4").getBytes());
+        assertThat(ttlSeconds).isLessThanOrEqualTo(2L);
+        assertThat(ttlSeconds).isGreaterThan(0L);
+    }
+
+    @Test
+    void evict하면_더이상_조회되지_않는다() {
+        CachedEvent event = new CachedEvent(5L, 2L, 10L, "여름 이벤트", "설명",
+                now, now.plus(Duration.ofDays(5)), 3, "WEIGHTED", EventStatus.OPEN);
+        eventCache.save(event);
+
+        eventCache.evict(5L);
+
+        assertThat(eventCache.find(5L)).isEmpty();
+    }
+
+    /**
+     * 리뷰에서 지적: 역직렬화 실패를 기본값으로 복원하면(예: null 컴포넌트를 빈 목록으로
+     * 채우는 식) 배포 롤링 중첩 구간에 실제로는 값이 있는 필드를 빈 값처럼 정상 응답으로
+     * 내보내게 된다. find()는 대신 이런 payload를 cache miss로 처리해야 한다 — 호출자가
+     * DB에서 다시 읽어 같은 키를 정상 payload로 덮어쓰므로 다음 조회부터 정상화된다.
+     * 구버전 스키마를 실제로 만들기보다, 같은 실패 모드(JDK 역직렬화 실패)를 훨씬 간단히
+     * 재현할 수 있는 손상된 바이트를 그 키에 직접 심어 검증한다.
+     */
+    @Test
+    void 역직렬화에_실패한_캐시는_miss로_처리한다() {
+        byte[] key = (TEST_KEY_PREFIX + "6").getBytes();
+        connectionFactory.getConnection().stringCommands().set(key, "corrupted-not-a-java-object".getBytes());
+
+        assertThat(eventCache.find(6L)).isEmpty();
+    }
+}

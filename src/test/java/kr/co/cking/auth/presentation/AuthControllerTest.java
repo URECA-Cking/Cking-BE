@@ -1,0 +1,382 @@
+package kr.co.cking.auth.presentation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import kr.co.cking.auth.application.AccessTokenService;
+import kr.co.cking.auth.application.AdminAuthService;
+import kr.co.cking.auth.application.LoginCodeService;
+import kr.co.cking.auth.application.RefreshTokenService;
+import kr.co.cking.auth.application.dto.AccessTokenResult;
+import kr.co.cking.auth.application.dto.RefreshTokenRotationResult;
+import kr.co.cking.auth.domain.AuthErrorCode;
+import kr.co.cking.auth.domain.RefreshSessionType;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.ResponseCookie;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+/** Login Code 교환 API의 공통 응답과 입력 검증을 확인한다. */
+@WebMvcTest(AuthController.class)
+class AuthControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private AdminAuthService adminAuthService;
+
+    @MockitoBean
+    private LoginCodeService loginCodeService;
+
+    @MockitoBean
+    private AccessTokenService accessTokenService;
+
+    @MockitoBean
+    private RefreshTokenService refreshTokenService;
+
+    @MockitoBean
+    private RefreshTokenCookieFactory refreshTokenCookieFactory;
+
+    @MockitoBean
+    private LoginCodeCookieFactory loginCodeCookieFactory;
+
+    @MockitoBean
+    private RefreshRequestOriginValidator refreshRequestOriginValidator;
+
+    /** 유효한 Login Code를 Access Token 공통 응답으로 바꾸고, 쓰고 난 브라우저 값 쿠키를 만료하는지 검증한다. */
+    @Test
+    void LoginCode를_AccessToken으로_교환한다() throws Exception {
+        when(loginCodeService.consume("one-time-code", "browser-binding")).thenReturn(17L);
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
+                .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
+        when(refreshTokenService.issue(17L, RefreshSessionType.USER_WEB)).thenReturn("refresh-token");
+        when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+        ResponseCookie expiredBrowserCookie = ResponseCookie.from("cking_login_code", "").maxAge(0).build();
+        when(loginCodeCookieFactory.expire()).thenReturn(expiredBrowserCookie);
+
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType("application/json")
+                        .content("{\"code\":\"one-time-code\"}")
+                        .cookie(new jakarta.servlet.http.Cookie("cking_login_code", "browser-binding")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.data.expiresIn").value(1800))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getHeaders("Set-Cookie")).satisfiesExactly(
+                                refresh -> org.assertj.core.api.Assertions.assertThat(refresh).isEqualTo("refresh_token=refresh-token"),
+                                browser -> org.assertj.core.api.Assertions.assertThat(browser).startsWith("cking_login_code=; Max-Age=0;")));
+
+        verify(loginCodeService).consume("one-time-code", "browser-binding");
+        verify(accessTokenService).issue(17L, AuthErrorCode.INVALID_LOGIN_CODE);
+        verify(refreshTokenService).issue(17L, RefreshSessionType.USER_WEB);
+    }
+
+    /** Login Code 교환의 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기한다. */
+    @Test
+    void LoginCode_AccessToken발급_실패시_RefreshToken을_폐기한다() throws Exception {
+        when(loginCodeService.consume("one-time-code", "browser-binding")).thenReturn(17L);
+        when(refreshTokenService.issue(17L, RefreshSessionType.USER_WEB)).thenReturn("refresh-token");
+        when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+        when(loginCodeCookieFactory.expire()).thenReturn(ResponseCookie.from("cking_login_code", "").maxAge(0).build());
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE));
+
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType("application/json")
+                        .content("{\"code\":\"one-time-code\"}")
+                        .cookie(new jakarta.servlet.http.Cookie("cking_login_code", "browser-binding")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
+
+        verify(refreshTokenService).revoke("refresh-token");
+    }
+
+    /** 비어 있는 Login Code 요청은 Access Token 발급 전에 입력 오류로 거절하는지 검증한다. */
+    @Test
+    void LoginCode가_비어_있으면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType("application/json")
+                        .content("{\"code\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 브라우저 값 쿠키 없이 온 교환 요청은 빈 값으로 넘겨 Login Code 오류로 거절하는지 검증한다. */
+    @Test
+    void 브라우저_값_쿠키가_없으면_LoginCode_오류로_거절한다() throws Exception {
+        when(loginCodeService.consume("one-time-code", null))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE));
+
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType("application/json")
+                        .content("{\"code\":\"one-time-code\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
+
+        verify(refreshTokenService, org.mockito.Mockito.never()).issue(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    /** 유효한 관리자 ID/PW가 기존 Token 응답과 Refresh Cookie를 발급하는지 검증한다. */
+    @Test
+    void 관리자_로그인은_기존_Token응답과_RefreshCookie를_발급한다() throws Exception {
+        when(adminAuthService.authenticate("admin", "password")).thenReturn(17L);
+        when(accessTokenService.issueAdmin(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS))
+                .thenReturn(new AccessTokenResult("admin-access-token", "Bearer", 1800));
+        when(refreshTokenService.issue(17L, RefreshSessionType.ADMIN_WEB)).thenReturn("admin-refresh-token");
+        when(refreshTokenCookieFactory.create(RefreshSessionType.ADMIN_WEB, "admin-refresh-token"))
+                .thenReturn(ResponseCookie.from("admin_refresh_token", "admin-refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"admin\",\"password\":\"password\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.accessToken").value("admin-access-token"))
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Set-Cookie"))
+                        .contains("admin_refresh_token=admin-refresh-token"));
+
+        verify(adminAuthService).authenticate("admin", "password");
+        verify(accessTokenService).issueAdmin(17L, AuthErrorCode.INVALID_ADMIN_CREDENTIALS);
+        verify(refreshTokenService).issue(17L, RefreshSessionType.ADMIN_WEB);
+    }
+
+    /** 관리자 자격 증명 오류를 401과 단일 오류 코드로 응답하는지 검증한다. */
+    @Test
+    void 관리자_자격증명_오류는_401로_응답한다() throws Exception {
+        when(adminAuthService.authenticate("admin", "wrong-password"))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_ADMIN_CREDENTIALS));
+
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"admin\",\"password\":\"wrong-password\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_ADMIN_CREDENTIALS"));
+
+        verifyNoInteractions(accessTokenService, refreshTokenService);
+    }
+
+    /** 비어 있는 관리자 로그인 ID와 비밀번호는 인증 전에 입력 오류로 거절하는지 검증한다. */
+    @Test
+    void 관리자_로그인_필수값이_비어_있으면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"\",\"password\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAuthService);
+    }
+
+    /** 최대 길이를 넘는 관리자 로그인 ID는 인증 전에 입력 오류로 거절하는지 검증한다. */
+    @Test
+    void 관리자_로그인ID가_최대길이를_넘으면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/admin/login")
+                        .contentType("application/json")
+                        .content("{\"loginId\":\"" + "a".repeat(101) + "\",\"password\":\"password\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(adminAuthService);
+    }
+
+    /** Refresh Cookie가 회전되면 새 Access Token과 Set-Cookie 헤더를 반환하는지 검증한다. */
+    @Test
+    void RefreshToken을_회전해_AccessToken을_갱신한다() throws Exception {
+        when(refreshTokenService.rotate("old-refresh-token", RefreshSessionType.USER_WEB))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenReturn(new AccessTokenResult("next-access-token", "Bearer", 1800));
+        when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://dev.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "old-refresh-token")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.accessToken").value("next-access-token"))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getHeader("Set-Cookie")).contains("refresh_token=next-refresh-token"));
+
+        verify(refreshRequestOriginValidator).validate("https://dev.cking.co.kr", RefreshSessionType.USER_WEB);
+        verify(refreshTokenService).rotate("old-refresh-token", RefreshSessionType.USER_WEB);
+    }
+
+    /** 관리자 Refresh endpoint는 관리자 Cookie·Origin·세션으로만 ADMIN Access Token을 발급하는지 검증한다. */
+    @Test
+    void 관리자_RefreshToken을_회전해_ADMIN_AccessToken을_갱신한다() throws Exception {
+        when(refreshTokenService.rotate("old-admin-refresh-token", RefreshSessionType.ADMIN_WEB))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-admin-refresh-token"));
+        when(accessTokenService.issueAdmin(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenReturn(new AccessTokenResult("next-admin-access-token", "Bearer", 1800));
+        when(refreshTokenCookieFactory.create(RefreshSessionType.ADMIN_WEB, "next-admin-refresh-token"))
+                .thenReturn(ResponseCookie.from("admin_refresh_token", "next-admin-refresh-token").build());
+
+        mockMvc.perform(post("/api/admin/auth/refresh")
+                        .header("Origin", "https://dev-admin.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("admin_refresh_token", "old-admin-refresh-token")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").value("next-admin-access-token"))
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Set-Cookie"))
+                        .contains("admin_refresh_token=next-admin-refresh-token"));
+
+        verify(refreshRequestOriginValidator).validate("https://dev-admin.cking.co.kr", RefreshSessionType.ADMIN_WEB);
+        verify(refreshTokenService).rotate("old-admin-refresh-token", RefreshSessionType.ADMIN_WEB);
+        verify(accessTokenService).issueAdmin(17L, AuthErrorCode.INVALID_REFRESH_TOKEN);
+    }
+
+    /** 삭제된 Member의 Refresh Token은 회전 뒤 다음 Token을 폐기하고 Refresh 오류로 통합한다. */
+    @Test
+    void 존재하지_않는_Member의_RefreshToken은_401로_거절한다() throws Exception {
+        when(refreshTokenService.rotate("old-refresh-token", RefreshSessionType.USER_WEB))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://dev.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "old-refresh-token")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+
+        verify(refreshTokenService).revoke("next-refresh-token");
+    }
+
+    /** 응답 생성 중 예기치 않은 오류가 나도 클라이언트에 전달되지 않은 다음 Token을 폐기한다. */
+    @Test
+    void Refresh_응답생성_중_런타임오류가_나면_다음Token을_폐기한다() throws Exception {
+        when(refreshTokenService.rotate("old-refresh-token", RefreshSessionType.USER_WEB))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN))
+                .thenThrow(new IllegalStateException("JWT 발급 실패"));
+        when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://dev.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "old-refresh-token")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("SYSTEM_ERROR"));
+
+        verify(refreshTokenService).revoke("next-refresh-token");
+    }
+
+    /** Refresh Token 폐기에 실패해도 응답 생성의 원래 오류를 유지하고 cleanup 오류를 함께 보존한다. */
+    @Test
+    void RefreshToken_폐기실패가_원래예외를_가리지_않는다() {
+        BusinessException originalException = new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        IllegalStateException cleanupException = new IllegalStateException("Redis 폐기 실패");
+        when(refreshTokenService.rotate("old-refresh-token", RefreshSessionType.USER_WEB))
+                .thenReturn(new RefreshTokenRotationResult(17L, "next-refresh-token"));
+        when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "next-refresh-token"))
+                .thenReturn(ResponseCookie.from("refresh_token", "next-refresh-token").build());
+        when(accessTokenService.issue(17L, AuthErrorCode.INVALID_REFRESH_TOKEN)).thenThrow(originalException);
+        doThrow(cleanupException).when(refreshTokenService).revoke("next-refresh-token");
+        AuthController controller = new AuthController(
+                adminAuthService,
+                loginCodeService,
+                accessTokenService,
+                refreshTokenService,
+                refreshTokenCookieFactory,
+                loginCodeCookieFactory,
+                refreshRequestOriginValidator);
+
+        assertThatThrownBy(() -> controller.refresh("old-refresh-token", "https://dev.cking.co.kr"))
+                .isSameAs(originalException);
+        assertThat(originalException.getSuppressed()).containsExactly(cleanupException);
+    }
+
+    /** Refresh Cookie가 없으면 Refresh Token 오류 계약으로 거절하는지 검증한다. */
+    @Test
+    void RefreshCookie가_없으면_401로_거절한다() throws Exception {
+        when(refreshTokenService.rotate(null, RefreshSessionType.USER_WEB))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://dev.cking.co.kr"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+
+        verify(refreshTokenService).rotate(null, RefreshSessionType.USER_WEB);
+    }
+
+    /** 만료·폐기된 Refresh Token은 세부 사유와 관계없이 같은 401 계약으로 응답한다. */
+    @Test
+    void 만료되거나_폐기된_RefreshToken은_401로_거절한다() throws Exception {
+        when(refreshTokenService.rotate("expired-or-revoked-token", RefreshSessionType.USER_WEB))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://dev.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "expired-or-revoked-token")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+    }
+
+    /** 허용되지 않은 Origin은 Refresh Token을 소비하기 전에 CSRF 방어 오류로 거절한다. */
+    @Test
+    void 허용되지_않은_Origin의_Refresh는_403으로_거절한다() throws Exception {
+        doThrow(new BusinessException(CommonErrorCode.FORBIDDEN))
+                .when(refreshRequestOriginValidator).validate("https://attacker.example", RefreshSessionType.USER_WEB);
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header("Origin", "https://attacker.example")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "refresh-token")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    /** Logout이 Redis 폐기 호출과 만료 Cookie 응답을 함께 수행하는지 검증한다. */
+    @Test
+    void Logout은_RefreshToken을_폐기하고_Cookie를_만료한다() throws Exception {
+        when(refreshTokenCookieFactory.expire(RefreshSessionType.USER_WEB))
+                .thenReturn(ResponseCookie.from("refresh_token", "").maxAge(0).build());
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .header("Origin", "https://dev.cking.co.kr")
+                        .cookie(new jakarta.servlet.http.Cookie("refresh_token", "refresh-token")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getHeader("Set-Cookie")).contains("Max-Age=0"));
+
+        verify(refreshRequestOriginValidator).validate("https://dev.cking.co.kr", RefreshSessionType.USER_WEB);
+        verify(refreshTokenService).revoke("refresh-token");
+    }
+
+    /** Cookie가 없는 Logout도 만료 Cookie를 반환해 클라이언트의 정리를 성공으로 처리한다. */
+    @Test
+    void RefreshCookie가_없는_Logout도_성공한다() throws Exception {
+        when(refreshTokenCookieFactory.expire(RefreshSessionType.USER_WEB))
+                .thenReturn(ResponseCookie.from("refresh_token", "").maxAge(0).build());
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .header("Origin", "https://dev.cking.co.kr"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getHeader("Set-Cookie")).contains("Max-Age=0"));
+
+        verify(refreshTokenService).revoke(null);
+    }
+}

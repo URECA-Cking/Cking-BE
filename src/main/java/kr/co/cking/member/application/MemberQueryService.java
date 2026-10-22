@@ -1,0 +1,74 @@
+package kr.co.cking.member.application;
+
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.member.domain.Member;
+import kr.co.cking.member.domain.MemberRole;
+import kr.co.cking.member.repository.MemberRepository;
+import kr.co.cking.member.repository.MemberNicknameReservationRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collection;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class MemberQueryService {
+
+    private final MemberRepository memberRepository;
+    private final MemberNicknameReservationRepository nicknameReservationRepository;
+    private final ProfileImageUrlResolver profileImageUrlResolver;
+    private final Clock clock;
+
+    /** 인증된 호출자의 Member 프로필을 조회한다. */
+    public MemberProfile getProfile(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        String restorableNickname = member.getPreviousNicknameNormalized() == null ? null
+                : nicknameReservationRepository.findByNicknameNormalized(member.getPreviousNicknameNormalized())
+                .filter(reservation -> reservation.isOwnedBy(memberId, LocalDateTime.now(clock)))
+                .map(kr.co.cking.member.domain.MemberNicknameReservation::getNickname)
+                .orElse(null);
+        return MemberProfile.from(member, profileImageUrlResolver.resolve(member.getProfileImageKey()), restorableNickname);
+    }
+
+    /** 호출자 식별에 사용한 Member가 실제로 존재하는지 검증한다. */
+    public void validateExists(Long userId) {
+        if (!memberRepository.existsById(userId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+    }
+
+    /** 요청한 사용자가 관리자 역할을 보유했는지 검증한다. */
+    public void validateAdmin(Long userId) {
+        Member member = memberRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (member.getRole() != MemberRole.ADMIN) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN);
+        }
+    }
+
+    /** 존재하는 호출자 Member의 역할을 조회해 도메인별 접근 제어에 사용한다. */
+    public MemberRole getRole(Long userId) {
+        return memberRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .getRole();
+    }
+
+    public Map<Long, MemberInfo> findMemberInfosByIds(Collection<Long> memberIds) {
+        if (memberIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return memberRepository.findByMemberIdIn(memberIds).stream()
+                .map(MemberInfo::from)
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(MemberInfo::memberId, Function.identity()));
+    }
+}

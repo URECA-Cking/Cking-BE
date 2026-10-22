@@ -1,0 +1,266 @@
+# Post Comment API
+
+모든 성공·실패 응답은 [공통 API 규약](../../common/api.md)의 응답 봉투를 사용하며, 아래 Response 예시는 `data` 값이다. 권한 규칙은 [Post](README.md#댓글-권한)를 따른다.
+
+## 인증
+
+- 작성·수정·삭제·신고는 Bearer Access JWT가 필수다(없으면 `UNAUTHORIZED` 401). 호출자는 `@CurrentMemberId`로 식별한다.
+- 목록 조회는 인증이 필요 없다. 로그인했다면 Access JWT를 함께 보내야 팔로워 공개 게시글의 댓글을 볼 수 있다.
+- 경로의 `creatorId`·`postId`·`commentId`가 서로 맞지 않으면(다른 Creator의 게시글, 다른 게시글의 댓글) `RESOURCE_NOT_FOUND`(404)다.
+- 팬은 Member 닉네임, Creator는 활동명을 설정해야 댓글을 작성·수정할 수 있다. 활동명 미설정 Creator는
+  `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 받는다.
+
+## 댓글 응답
+
+| 필드 | 설명 |
+| --- | --- |
+| `commentId`, `postId` | 댓글·게시글 ID |
+| `authorMemberId` | 작성자 회원 ID |
+| `authorName` | 작성자 공개 이름. 팬은 닉네임, 승인된 Creator는 게시글 소유 여부와 관계없이 활동명이다. **원문이 가려진 댓글(`filtered`)이면 `null`** |
+| `authorProfileImageUrl` | 작성자 프로필 사진의 공개 URL(만료되지 않는 CDN 주소). 팬은 Member 사진, 승인된 Creator는 게시글 소유 여부와 관계없이 **Creator Space 프로필 사진**이다. 사진을 설정하지 않았거나 Space가 없으면 `null`이고, **원문이 가려진 댓글(`filtered`)이면 `null`** |
+| `writtenByCreator` | 게시글을 작성한 Creator 본인이 단 댓글이면 true |
+| `content` | 본문 (1~500자). **필터링된 댓글(`filtered`)이면 `null`** |
+| `filtered` | 필터가 차단(BLOCK)했거나 관리자가 숨겨 원문을 가린 댓글이면 true. **작성자 본인에게는 항상 false**다 |
+| `revealable` | `filtered`일 때 원문 보기를 누를 수 있는지. 개인정보로 막힌 댓글과 관리자가 숨긴 댓글은 false다. `filtered`가 false면 항상 false다 |
+| `createdAt`, `updatedAt` | UTC Instant |
+
+## 필터링
+
+댓글은 저장한 뒤 별도 필터 서비스가 비동기로 판정한다(이슈 #460). 판정 상태와 결과는 `creator_post_comment`의 `filter_*` 컬럼에 저장하며, 판정 사유(`filter_reasons`)는 어떤 응답에도 담지 않는다.
+
+- 판정받은 적 없는 댓글(`PENDING`·`FAILED`)과 통과(`PASS`)한 댓글은 평소처럼 원문을 내려준다. 가려지는 기준은 가장 최근 판정이 `BLOCK`인지다.
+- 차단(`BLOCK`)된 댓글은 **작성자 본인이 아닌 조회자**(비로그인, 다른 사용자, 게시글 작성 Creator 포함)에게 `content`를 비우고 `filtered: true`로 내려준다. 원문은 아래 `/original` 요청으로만 받을 수 있고, 그 요청은 스페이스 주인 Creator와 관리자만 성공한다(이슈 #721). 필터링된 댓글이 있다는 사실(자리 표시, 댓글 수)은 모든 조회자에게 그대로 보인다.
+- 작성자 본인에게는 필터링 여부를 알리지 않고 원문과 작성자 이름·프로필 사진을 그대로 내려준다(`filtered: false`).
+- 원문이 가려진 댓글(필터 차단, 관리자 숨김)은 작성자 본인이 아닌 조회자에게 **작성자 이름(`authorName`)과 프로필 사진(`authorProfileImageUrl`)도 `null`**로 내려준다(이슈 #546). `authorMemberId`와 `writtenByCreator`는 그대로 내려준다.
+- 개인정보 규칙(`privacy:*`)으로 막힌 댓글은 `revealable: false`이며 누구에게도 원문을 내려주지 않는다.
+- **관리자가 숨긴 댓글**(이슈 #499)은 필터 판정과 별개로 `admin_hidden_at`에 저장한다. 작성자 본인이 아닌 조회자에게 `content`를 비우고 `filtered: true`, `revealable: false`로 내려주며 `/original`도 `COMMENT_NOT_REVEALABLE`(403)이다. 작성자 본인에게는 가려졌는지 알리지 않고 원문을 그대로 내려준다. 숨김은 필터 재판정이나 댓글 본문 수정으로 풀리지 않고, 되돌리는 API도 없다.
+- 댓글 본문을 수정하면 다시 판정한다. 판정이 끝날 때까지(또는 재판정이 실패해도) 이전 판정이 `BLOCK`이면 계속 가려지고, 이전 판정이 `PASS`이거나 판정받은 적이 없으면 원문으로 보인다. 재판정 결과가 이전 판정을 덮어쓴다.
+- `cking.comment-filter.enabled`가 꺼져 있으면(기본값) 새 판정을 하지 않는다. 판정받은 적 없는 댓글은 원문으로 보이고, 필터가 켜져 있을 때 이미 `BLOCK`된 댓글은 필터를 꺼도 계속 가려진다(수정한 댓글의 이전 `BLOCK`도 마찬가지다).
+
+```json
+{
+  "commentId": 500,
+  "postId": 100,
+  "authorMemberId": 7,
+  "authorName": "팬",
+  "authorProfileImageUrl": "https://cdn.example.com/member-profile-images/7/uuid.jpg",
+  "writtenByCreator": false,
+  "content": "응원해요",
+  "filtered": false,
+  "revealable": false,
+  "createdAt": "2026-09-29T01:00:00Z",
+  "updatedAt": "2026-09-29T01:00:00Z"
+}
+```
+
+필터링되어 원문이 가려진 댓글은 다음과 같다. 작성자 이름과 프로필 사진도 함께 가려진다.
+
+```json
+{
+  "commentId": 501,
+  "postId": 100,
+  "authorMemberId": 8,
+  "authorName": null,
+  "authorProfileImageUrl": null,
+  "writtenByCreator": false,
+  "content": null,
+  "filtered": true,
+  "revealable": true,
+  "createdAt": "2026-09-29T01:05:00Z",
+  "updatedAt": "2026-09-29T01:05:00Z"
+}
+```
+
+## GET /api/creators/{creatorId}/posts/{postId}/comments
+
+댓글을 작성 순(`createdAt` 오름차순, tie-breaker `commentId` 오름차순)으로 조회한다. `page`(기본 0), `size`(기본 20, 최대 100)는 공통 페이지네이션을 따른다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `POST_FOLLOWERS_ONLY` | 403 | 팔로워 공개 게시글이고 팔로워·작성 Creator 본인이 아님 (비로그인 포함) |
+| `RESOURCE_NOT_FOUND` | 404 | Creator 또는 게시글 없음 |
+
+## GET /api/creators/{creatorId}/posts/{postId}/comments/{commentId}/original
+
+필터링되어 목록에서 원문이 가려진 댓글의 원문을 돌려준다. **해당 스페이스의 주인 Creator와 관리자만** 받을 수 있다(이슈 #721). 호출자는 선택적 Access JWT로 식별하며, 그 외 조회자(비로그인, 팔로워, 다른 Creator)는 `FORBIDDEN`(403)이다. 관리자는 개인정보로 막힌 댓글과 관리자가 숨긴 댓글의 원문도 받는다. 게시글 공개 범위 규칙(`POST_FOLLOWERS_ONLY`)은 관리자에게도 같다. 응답은 `{ "commentId": 501, "content": "..." }`.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
+| `FORBIDDEN` | 403 | 조회자가 스페이스 주인 Creator도 관리자도 아님(필터링된 댓글에 한함) |
+| `COMMENT_NOT_REVEALABLE` | 403 | 스페이스 주인이 요청했지만 개인정보 규칙으로 막힌 댓글, 관리자가 숨긴 댓글(관리자에게는 열림) |
+| `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음, 다른 게시글의 댓글, **필터링되지 않은 댓글**, **조회자가 작성자 본인인 댓글**(본인에게는 필터링된 댓글로 보이지 않는다) |
+
+## POST /api/creators/{creatorId}/posts/{postId}/comments
+
+댓글을 작성한다. 응답 `201`과 댓글.
+
+```json
+{ "content": "응원해요" }
+```
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | 본문이 비었거나 500자 초과 |
+| `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
+| `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로워도 작성 Creator 본인도 아님 (전체 공개 게시글 포함) |
+| `COMMENT_RESTRICTED` | 403 | 관리자가 직접 건 플랫폼 제한(모든 스페이스)으로 댓글 작성이 제한됨. 메시지에 해제 시각(UTC)이 들어간다. 이슈 #643 이전의 숨김 경고 제한도 이 코드다 ([Sanction](../sanction/README.md)) |
+| `SPACE_COMMENT_BLOCKED` | 403 | 이 스페이스의 크리에이터가 작성자를 차단함. 메시지에 해제 시각(UTC)이 들어가며 다른 스페이스에서는 쓸 수 있다 |
+| `ACTIVITY_NAME_SETUP_REQUIRED` | 409 | 활동명을 아직 설정하지 않은 Creator |
+| `RESOURCE_NOT_FOUND` | 404 | Member·Creator·게시글 없음 |
+
+## PATCH /api/creators/{creatorId}/posts/{postId}/comments/{commentId}
+
+본인 댓글의 본문을 수정한다. 요청 형식은 작성과 같다. 응답은 댓글.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | 본문이 비었거나 500자 초과 |
+| `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
+| `FORBIDDEN` | 403 | 다른 사람의 댓글 (게시글 작성 Creator 포함) |
+| `COMMENT_FOLLOWERS_ONLY` | 403 | 팔로우를 끊은 작성자 |
+| `COMMENT_RESTRICTED` | 403 | 댓글 작성이 제한된 작성자. 메시지에 해제 시각(UTC)이 들어간다. 삭제는 제한 중에도 할 수 있다 |
+| `SPACE_COMMENT_BLOCKED` | 403 | 이 스페이스의 크리에이터가 작성자를 차단함. 삭제는 차단 중에도 할 수 있다 |
+| `ACTIVITY_NAME_SETUP_REQUIRED` | 409 | 활동명을 아직 설정하지 않은 Creator |
+| `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음 |
+
+## DELETE /api/creators/{creatorId}/posts/{postId}/comments/{commentId}
+
+댓글을 삭제한다. 댓글 작성자 본인과 게시글 작성 Creator 본인만 가능하며, 공개 범위·팔로우 여부는 보지 않는다. 응답 `204`.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `FORBIDDEN` | 403 | 작성자도 게시글 작성 Creator도 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 댓글·게시글 없음 |
+
+## POST /api/creators/{creatorId}/posts/{postId}/comments/{commentId}/reports
+
+댓글을 신고한다(이슈 #485). 게시글을 볼 수 있는 로그인 사용자가 할 수 있으며, 전체 공개 게시글은 팔로우하지 않아도 신고할 수 있다. 본인이 쓴 댓글은 신고할 수 없다. 신고는 댓글의 노출 상태와 필터 판정을 바꾸지 않는다. 응답 `201`과 접수된 신고(신고자 정보는 담지 않는다).
+
+```json
+{ "reason": "OTHER", "detail": "위협으로 느껴집니다" }
+```
+
+| 필드 | 설명 |
+| --- | --- |
+| `reason` | 필수. `ABUSE`(욕설·혐오), `SPAM`(스팸·홍보), `PRIVACY`(개인정보 노출), `OTHER`(기타) |
+| `detail` | `reason`이 `OTHER`일 때만 필수이고 1~200자다(앞뒤 공백은 제거). 그 밖의 사유에서는 보내지 않는다 |
+
+```json
+{ "reportId": 900, "commentId": 500, "reason": "OTHER", "createdAt": "2026-10-07T00:00:00Z" }
+```
+
+- 같은 사용자가 같은 댓글을 다시 신고하면 새로 저장하지 않고 **처음 접수된 신고를 그대로** 돌려준다(요청한 `reason`이 달라도 기존 값이다). 이때도 `201`이다.
+- 같은 신고자가 1시간 안에 새로 접수할 수 있는 신고는 20건이다. 넘으면 `COMMENT_REPORT_LIMIT_EXCEEDED`(429)다. 이미 신고한 댓글의 재신고는 한도에 걸리지 않는다.
+- 댓글(게시글 삭제 포함)이 삭제되면 그 신고도 함께 삭제된다.
+- 접수된 신고는 처리 상태 `PENDING`으로 시작한다. 관리자가 [숨김·반려](#post-apiadmincomment-reportscommentidhide)로 처리한다(이슈 #499).
+- 이미 가려진 댓글(필터가 가장 최근에 차단(BLOCK)했거나 관리자가 숨김)에는 **새 신고를 받지 않고** `COMMENT_REPORT_ALREADY_FILTERED`(409)다. 가려지기 전에 같은 신고자가 접수한 신고를 다시 보내면 기존 신고를 그대로 돌려준다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `reason` 누락·알 수 없는 값, `OTHER`인데 `detail`이 없거나 200자 초과, `OTHER`가 아닌데 `detail`이 있음 |
+| `UNAUTHORIZED` | 401 | Access JWT 없음 |
+| `POST_FOLLOWERS_ONLY` | 403 | 볼 수 없는 팔로워 공개 게시글 |
+| `COMMENT_REPORT_OWN_COMMENT` | 403 | 본인이 쓴 댓글 |
+| `RESOURCE_NOT_FOUND` | 404 | Member·Creator·게시글·댓글 없음, 다른 게시글의 댓글 |
+| `COMMENT_REPORT_ALREADY_FILTERED` | 409 | 이미 필터가 차단했거나 관리자가 숨긴 댓글(새 신고) |
+| `COMMENT_REPORT_LIMIT_EXCEEDED` | 429 | 신고자별 반복 신고 한도 초과 |
+
+## GET /api/admin/comment-reports
+
+관리자가 신고된 댓글을 댓글별로 모아 조회한다. 가장 최근에 신고된 순서(`latestReportedAt` 내림차순, tie-breaker `commentId` 내림차순)이고 `page`(기본 0), `size`(기본 20, 최대 100)는 공통 페이지네이션을 따른다. Bearer Access JWT와 `ADMIN` 역할이 필수다. 신고자 정보는 담지 않는다.
+
+`status`(선택)로 댓글을 처리 상태별로 거른다(이슈 #499). 생략하면 모든 신고된 댓글이다. 알 수 없는 값은 `VALIDATION_FAILED`(400)다.
+
+| `status` | 거르는 댓글 |
+| --- | --- |
+| `PENDING` | 접수(처리 전) 신고가 하나라도 남은 댓글 |
+| `RESOLVED` | 접수 신고가 모두 처리됐고 관리자가 숨긴 댓글 |
+| `REJECTED` | 접수 신고가 모두 처리됐고 숨기지 않은 댓글(반려) |
+
+```json
+{
+  "items": [
+    {
+      "commentId": 500,
+      "postId": 100,
+      "creatorId": 1,
+      "authorMemberId": 7,
+      "content": "신고된 댓글",
+      "blocked": false,
+      "hiddenByAdmin": false,
+      "status": "PENDING",
+      "reportCount": 3,
+      "pendingReportCount": 2,
+      "reasonCounts": { "ABUSE": 2, "SPAM": 1 },
+      "latestReportedAt": "2026-10-07T00:00:00Z"
+    }
+  ],
+  "page": 0, "size": 20, "totalElements": 1, "totalPages": 1, "hasNext": false
+}
+```
+
+- `content`는 필터 차단 여부와 관계없이 원문이다(관리자 전용). `blocked`는 필터가 가장 최근에 차단(BLOCK)한 댓글이면 true다.
+- `reasonCounts`에는 신고가 있는 사유만 담는다. 처리 완료·반려된 신고도 센다.
+- `hiddenByAdmin`은 관리자가 숨긴 댓글이면 true다. `blocked`(필터 차단)와 별개다.
+- 댓글 단위 `status`는 `pendingReportCount`가 0보다 크면 `PENDING`, 0이면 숨겼는지에 따라 `RESOLVED`(숨김)와 `REJECTED`(반려)다. `reportCount`는 처리 여부와 관계없는 전체 신고 수다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `page`·`size` 범위 오류, 알 수 없는 `status` |
+| `UNAUTHORIZED` | 401 | Access JWT 없음 |
+| `FORBIDDEN` | 403 | ADMIN이 아님 |
+
+## POST /api/admin/comment-reports/{commentId}/hide
+
+관리자가 신고된 댓글을 숨기고 그 댓글의 **접수(PENDING) 신고를 모두 `RESOLVED`로** 바꾼다(이슈 #499). Bearer Access JWT와 `ADMIN` 역할이 필수이고 요청 본문은 없다. 응답 `200`.
+
+```json
+{ "commentId": 500, "status": "RESOLVED", "handledReportCount": 3 }
+```
+
+- 숨김은 필터 판정과 별개로 저장하며(`admin_hidden_at`, `admin_hidden_by`) 되돌리지 않는다. 숨긴 댓글은 사용자 목록에서 가려지고 원문 보기도 허용하지 않는다([필터링](#필터링)).
+- `handledReportCount`는 이번 요청으로 처리한 접수 신고 수다. **이미 숨긴 댓글을 다시 숨기면 아무것도 바꾸지 않고 성공**하며(멱등) 0이다.
+- 신고는 있지만 접수 신고가 모두 이미 반려된 댓글(숨기지도 않음)은 서로 모순되는 조치라 `COMMENT_REPORT_ALREADY_HANDLED`(409)다. 반려 뒤 새 신고가 접수되면(숨기기 전까지는 새 신고를 받는다) 다시 숨길 수 있다.
+- **작성자에게 경고가 쌓이고 그 스페이스의 작성이 제한된다**(이슈 #569, #643). 처음 숨길 때 작성자에게 경고 1회가 기록되고, 그 스페이스에서 최근 90일 안의 경고 횟수에 따라 **그 스페이스의** 댓글 작성이 1일·3일·7일 제한된다(`SPACE_COMMENT_BLOCKED`). 작성자가 관리자이거나 그 스페이스의 주인이면 경고도 제한도 만들지 않는다. 이미 숨긴 댓글을 다시 숨기면 경고를 새로 쌓지 않는다. 정책은 [Sanction](../sanction/README.md)을 따른다.
+- 잠금 순서는 작성자 행 → 게시글 공유 잠금 → 댓글 쓰기 잠금이고 숨김은 `READ_COMMITTED`로 실행해 잠금 이후 최신 경고를 센다. 같은 작성자의 서로 다른 댓글을 동시에 숨겨도 경고 횟수가 겹쳐 읽히지 않고, 같은 댓글에 동시에 들어오는 신고 접수와도 직렬화된다. 숨김이 끝난 뒤에는 새 신고를 받지 않으므로 숨긴 댓글에 접수 신고가 남지 않는다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `UNAUTHORIZED` | 401 | Access JWT 없음 |
+| `FORBIDDEN` | 403 | ADMIN이 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 없는 댓글, 신고가 하나도 없는 댓글 |
+| `COMMENT_REPORT_ALREADY_HANDLED` | 409 | 접수 신고가 모두 반려된 댓글을 숨기려 함 |
+
+## DELETE /api/admin/comments/{commentId}
+
+관리자가 신고 접수 여부와 상관없이 댓글을 삭제한다(이슈 #584). `ADMIN` 권한이 필요하고 응답 `204`.
+
+- 물리 삭제이며 그 댓글의 신고도 함께 삭제된다. 게시글 댓글 수는 집계라 따로 맞출 값이 없다.
+- 신고 기반 숨김(`hide`)과 달리 **작성자에게 경고가 쌓이지 않고**, 작성자 알림도 가지 않으며, 삭제 이력도 남기지 않는다.
+- 크리에이터·작성자의 삭제([위](#delete-apicreatorscreatoridpostspostidcommentscommentid))와 달리 게시글·소유 관계를 보지 않고 댓글 ID만으로 삭제한다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 400 | `commentId`가 양수가 아님 |
+| `FORBIDDEN` | 403 | 호출자가 관리자가 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 댓글 없음 |
+
+## POST /api/admin/comment-reports/{commentId}/reject
+
+관리자가 신고를 받아들이지 않고 그 댓글의 **접수(PENDING) 신고를 모두 `REJECTED`로** 바꾼다(이슈 #499). 댓글은 그대로 보인다. Bearer Access JWT와 `ADMIN` 역할이 필수이고 요청 본문은 없다. 응답 `200`.
+
+```json
+{ "commentId": 500, "status": "REJECTED", "handledReportCount": 2 }
+```
+
+- **접수 신고가 모두 이미 반려된 댓글을 다시 반려하면 아무것도 바꾸지 않고 성공**하며(멱등) `handledReportCount`는 0이다.
+- 이미 숨긴 댓글은 서로 모순되는 조치라 `COMMENT_REPORT_ALREADY_HANDLED`(409)다.
+- 반려한 뒤 같은 댓글에 새로 접수된 신고는 다시 `PENDING`이 되고, 이전에 반려한 신고는 그대로 둔다.
+
+| 오류 코드 | HTTP | 조건 |
+| --- | --- | --- |
+| `UNAUTHORIZED` | 401 | Access JWT 없음 |
+| `FORBIDDEN` | 403 | ADMIN이 아님 |
+| `RESOURCE_NOT_FOUND` | 404 | 없는 댓글, 신고가 하나도 없는 댓글 |
+| `COMMENT_REPORT_ALREADY_HANDLED` | 409 | 이미 숨긴 댓글 |

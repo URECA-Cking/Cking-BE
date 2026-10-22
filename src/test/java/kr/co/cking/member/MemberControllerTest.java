@@ -1,0 +1,237 @@
+package kr.co.cking.member;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import kr.co.cking.common.config.WebMvcConfig;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
+import kr.co.cking.creator.application.CreatorQueryService;
+import kr.co.cking.member.application.MemberProfile;
+import kr.co.cking.member.application.MemberProfileImageUploadService;
+import kr.co.cking.member.application.MemberQueryService;
+import kr.co.cking.member.application.MemberProfileUpdateService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
+import kr.co.cking.member.domain.MemberRole;
+import kr.co.cking.member.domain.MemberErrorCode;
+import kr.co.cking.member.presentation.MemberController;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.time.LocalDateTime;
+import java.util.function.Supplier;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
+
+@WebMvcTest(MemberController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import({WebMvcConfig.class, CurrentMemberIdArgumentResolver.class})
+class MemberControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private MemberQueryService memberQueryService;
+
+    @MockitoBean
+    private CreatorQueryService creatorQueryService;
+
+    @MockitoBean
+    private kr.co.cking.member.application.MemberOnboardingService memberOnboardingService;
+
+    @MockitoBean
+    private MemberProfileImageUploadService memberProfileImageUploadService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
+
+    @MockitoBean
+    private MemberProfileUpdateService memberProfileUpdateService;
+
+    @BeforeEach
+    void authenticatedMember() {
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(Jwt.withTokenValue("token")
+                .header("alg", "none").subject("1").claim("role", "USER").build(), java.util.List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void 일반_사용자의_현재_프로필을_공통_응답으로_반환한다() throws Exception {
+        when(memberQueryService.getProfile(1L))
+                .thenReturn(new MemberProfile(
+                        1L, "홍길동", "닉네임", null, "hong@example.com", MemberRole.USER, true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.memberId").value(1))
+                .andExpect(jsonPath("$.data.name").value("홍길동"))
+                .andExpect(jsonPath("$.data.nickname").value("닉네임"))
+                .andExpect(jsonPath("$.data.email").value("hong@example.com"))
+                .andExpect(jsonPath("$.data.role").value("USER"))
+                .andExpect(jsonPath("$.data.creator").value(false))
+                .andExpect(jsonPath("$.data.profileConfigured").value(true))
+                .andExpect(jsonPath("$.data.onboardingCompleted").value(true));
+    }
+
+    @Test
+    void Creator의_현재_프로필은_creator_true를_반환한다() throws Exception {
+        when(memberQueryService.getProfile(1L))
+                .thenReturn(new MemberProfile(
+                        1L, "크리에이터", null, null, "creator@example.com", MemberRole.USER, true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(true);
+
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creator").value(true))
+                .andExpect(jsonPath("$.data.profileConfigured").value(false));
+    }
+
+    @Test
+    void 닉네임_변경_가능_시각은_UTC_오프셋을_포함해_반환한다() throws Exception {
+        when(memberQueryService.getProfile(1L))
+                .thenReturn(new MemberProfile(
+                        1L, "홍길동", "닉네임", null, "hong@example.com", MemberRole.USER, true,
+                        LocalDateTime.of(2026, 10, 26, 12, 0), null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nicknameChangeableAt").value("2026-10-26T12:00:00Z"));
+    }
+
+    @Test
+    void JWT_호출자_Member가_없으면_RESOURCE_NOT_FOUND를_반환한다() throws Exception {
+        when(memberQueryService.getProfile(1L))
+                .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void 온보딩_완료_API는_JWT_회원으로_멱등_완료를_기록한다() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/me/onboarding/complete"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+
+        org.mockito.Mockito.verify(memberOnboardingService).complete(1L);
+    }
+
+    @Test
+    void 프로필_이미지_업로드는_연결용_imageKey를_반환한다() throws Exception {
+        doAnswer(invocation -> ((Supplier<?>) invocation.getArgument(0)).get())
+                .when(imageProcessingLimiter).admit(any());
+        when(memberProfileImageUploadService.upload(eq(1L), any())).thenReturn("member-profile-images/1/image.jpg");
+
+        mockMvc.perform(multipart("/api/me/profile-images")
+                        .file(new MockMultipartFile("image", "profile.png", "image/png", new byte[] {1, 2})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.imageKey").value("member-profile-images/1/image.jpg"));
+    }
+
+    @Test
+    void 프로필_수정은_JWT_회원으로_닉네임과_사진_키를_함께_전달한다() throws Exception {
+        when(memberQueryService.getProfile(1L)).thenReturn(new MemberProfile(
+                1L, "홍길동", "새닉네임", "https://cdn.example.test/profile.jpg", "hong@example.com", MemberRole.USER,
+                true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\",\"profileImageKey\":\"member-profile-images/1/image.jpg\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("새닉네임"))
+                .andExpect(jsonPath("$.data.profileImageUrl").value("https://cdn.example.test/profile.jpg"))
+                .andExpect(jsonPath("$.data.profileConfigured").value(true));
+
+        verify(memberProfileUpdateService).update(1L,
+                new MemberProfileUpdateService.UpdateFields("새닉네임", "member-profile-images/1/image.jpg", true));
+    }
+
+    @Test
+    void 프로필_사진_키를_생략하면_현재_사진_유지로_전달한다() throws Exception {
+        when(memberQueryService.getProfile(1L)).thenReturn(new MemberProfile(
+                1L, "홍길동", "새닉네임", "https://cdn.example.test/profile.jpg", "hong@example.com", MemberRole.USER,
+                true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\"}"))
+                .andExpect(status().isOk());
+
+        verify(memberProfileUpdateService).update(1L,
+                new MemberProfileUpdateService.UpdateFields("새닉네임", null, false));
+    }
+
+    @Test
+    void 프로필_사진_키에_null을_명시하면_기본_이미지로_전달한다() throws Exception {
+        when(memberQueryService.getProfile(1L)).thenReturn(new MemberProfile(
+                1L, "홍길동", "새닉네임", null, "hong@example.com", MemberRole.USER, true, null, null));
+        when(creatorQueryService.isCreatorMember(1L)).thenReturn(false);
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\",\"profileImageKey\":null}"))
+                .andExpect(status().isOk());
+
+        verify(memberProfileUpdateService).update(1L,
+                new MemberProfileUpdateService.UpdateFields("새닉네임", null, true));
+    }
+
+    @Test
+    void Creator의_개인_프로필_수정은_Space_편집으로_안내한다() throws Exception {
+        doThrow(new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE))
+                .when(memberProfileUpdateService)
+                .update(eq(1L), any());
+
+        mockMvc.perform(put("/api/me/profile")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"nickname\":\"새닉네임\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CREATOR_PROFILE_MANAGED_IN_SPACE"));
+    }
+
+    @Test
+    void Creator의_개인_프로필_사진_업로드는_Space_편집으로_안내한다() throws Exception {
+        doAnswer(invocation -> ((Supplier<?>) invocation.getArgument(0)).get())
+                .when(imageProcessingLimiter).admit(any());
+        doThrow(new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE))
+                .when(memberProfileImageUploadService)
+                .upload(eq(1L), any());
+
+        mockMvc.perform(multipart("/api/me/profile-images")
+                        .file(new MockMultipartFile("image", "profile.png", "image/png", new byte[] {1, 2})))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CREATOR_PROFILE_MANAGED_IN_SPACE"));
+    }
+}

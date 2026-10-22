@@ -1,0 +1,377 @@
+# Event API
+
+공개 이벤트 조회·응모, Creator Event 운영, 관리자 심사·마감 API 계약이다. 모든 성공·실패 응답은 [공통 API 규약](../../common/api.md)의 응답 봉투를 사용하며, 아래 Response 예시는 `data` 값이다.
+
+## 권한과 상태 전이
+
+- Creator는 승인된 `creator` 레코드가 존재해야 하며, 자신의 Event만 관리할 수 있다.
+- Creator는 공개 활동명 설정을 마친 뒤에만 Event를 생성·수정하거나 승인 요청을 할 수 있다. 기존 이관 Creator가
+  활동명을 설정하지 않았으면 `ACTIVITY_NAME_SETUP_REQUIRED`(409)를 반환한다. 내 Event 목록 조회와 기존 DRAFT·REJECTED
+  Event 삭제는 활동명 설정 전에도 허용해 기존 데이터를 확인·정리할 수 있다.
+- 관리자 목록·승인·거절은 `member.role == ADMIN`만 가능하다.
+- Event 상태는 Repository로 직접 변경하지 않는다. 아래 전이는 `EventCommandService`를 사용한다.
+
+```text
+DRAFT --requestApproval--> PENDING_APPROVAL --approve--> SCHEDULED --open--> OPEN
+                                      └--reject--> REJECTED --changeToDraft--> DRAFT
+
+CLOSED --completeDrawing--> DRAW_COMPLETED --publish--> PUBLISHED
+```
+
+`PUBLISHED` Event는 상태 전이를 바꾸지 않고 관리자 보관함으로 옮길 수 있다. 보관은 `archivedAt`,
+`archivedBy`만 기록하며 응모·추첨·당첨·알림 원본은 삭제하지 않는다. 보관된 Event는 사용자·Creator
+조회와 응모, 사용자 당첨/알림에서 제외되고 보관 해제 시 원래 `PUBLISHED` 상태로 다시 노출된다.
+
+## 내부 Lifecycle 계약
+
+시스템2 `EventLifecycleScheduler`는 시작 대상(`status = SCHEDULED`, `startAt <= now < endAt`)마다
+`EventCommandService.open(eventId)`를 호출한다. 이 메서드는 Event 행의 비관적 잠금 안에서
+`SCHEDULED → OPEN`만 허용한다. 같은 Event에 대한 병렬 호출은 한 건만 성공하고, 잠금 대기 후
+이미 `OPEN`을 확인한 호출은 `INVALID_STATE`로 실패한다. 존재하지 않는 Event는 `RESOURCE_NOT_FOUND`다.
+
+시스템3의 INITIAL Drawing 완료 Transaction은 `EventCommandService.completeDrawing(eventId)`를 호출한다.
+이 메서드는 Event 행의 비관적 잠금 안에서 `CLOSED → DRAW_COMPLETED`만 허용한다. 병렬 호출은 한 건만
+성공하고, 후행 호출과 다른 상태는 `INVALID_STATE`로 실패한다. Snapshot 생성·검증과 DrawingEngine 실행은
+이 계약의 책임이 아니며 호출자가 동일 Transaction에서 조합한다.
+
+시스템4의 INITIAL 결과 공개 Transaction은 `EventCommandService.publish(eventId)`를 호출한다. 이 메서드는 Event 행의
+비관적 잠금 안에서 `DRAW_COMPLETED → PUBLISHED`만 허용한다. 병렬 공개 요청은 한 건만 성공하고, 후행 호출과
+다른 상태는 `INVALID_STATE`로 실패한다. Drawing 공개 상태 변경과 Winner 알림 생성은 이 계약의 책임이 아니며
+호출자가 동일 Transaction에서 조합한다. 전이 성공 시 `publishedAt`을 기록한다. REDRAW 결과 공개는 Event가 이미
+`PUBLISHED`여야 하며 이 메서드를 재호출하지 않고 해당 상태를 유지한다.
+
+## GET /api/events
+
+Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API 표시 상태
+`UPCOMING`, `IN_PROGRESS`, `CLOSED` 중 하나다. `page`는 0부터 시작하고, `size` 기본값은 20,
+허용 범위는 1~100이다.
+
+삭제·보관되지 않은 공개 Event만 `createdAt DESC, eventId DESC`로 반환한다. DB 상태 `SCHEDULED`는
+`UPCOMING`, `OPEN`은 현재 시각이 `endAt` 전이면 `IN_PROGRESS`, 이후와 `CLOSING` 이후 상태는
+`CLOSED`로 표시한다.
+
+각 항목과 `GET /api/events/{eventId}` 응답에는 `closeRequestedAt`이 포함된다. 마감 요청 시각(`OPEN -> CLOSING`
+전이 시점)이며 자동·수동 마감에 같은 규칙으로 기록된다. 자동 마감은 스케줄러가 `endAt` 이후 마감을 시작한 시각이라
+`endAt`보다 수 초 늦을 수 있다. 마감 전 상태와 이 필드가 생기기 전에 마감된 Event는 `null`이므로 FE는 `endAt`으로
+대체해 표시한다. Drain 완료 시각인 `closedAt`은 관리자 운영 상세에만 있다. 배너 CDN 주소 `bannerImageUrl`(없으면 `null`)은 [배너 API](banner-api.md#응답-필드)를 따른다.
+
+## GET /api/events/counts
+
+인증이 필요 없다. 공개 Event 수를 표시 상태별로 한 번의 집계 쿼리로 반환한다. 삭제·비공개 상태
+(`DRAFT`, `PENDING_APPROVAL`, `REJECTED`) 제외와 표시 상태 분류는 `GET /api/events`와 같은 규칙이라, 각 값은
+같은 시점의 `GET /api/events?status=`의 `totalElements`와 같다. `total`은 세 값의 합이다. 상태마다 따로
+호출할 때 생기던 조회 시점 차이로 합이 어긋나는 일이 없다. 보관(archived) Event도 제외한다. 응답은 `GET /api/events`와 같은 정책으로 캐시한다(TTL 5초, 가장 임박한 `OPEN` Event의 `endAt`을 넘기지 않음).
+
+```json
+{ "total": 46, "upcoming": 5, "inProgress": 28, "closed": 13 }
+```
+
+`upcoming`은 `UPCOMING`, `inProgress`는 `IN_PROGRESS`, `closed`는 `CLOSED` 표시 상태의 개수다.
+
+## GET /api/events/{eventId}
+
+인증 없이 공개 Event 정보를 조회할 수 있다. 유효한 Bearer Access JWT가 있으면 `@CurrentMemberId`로
+호출자를 식별해 해당 Creator의 보유 응모권 수(`myTicketBalance`)와 공통 응모권 수
+(`myCommonTicketBalance`)를 함께 반환한다. 비로그인 호출에서는 두 필드를 모두 `0`으로 반환하며
+Member 확인이나 잔액 조회를 하지 않는다. 개인 잔액은 공개 Event 캐시 밖에서 응답에 붙인다.
+만료·유효하지 않은 Bearer Access JWT를 보내면 `UNAUTHORIZED`(401)다. 인증된 Member가 없으면
+공통 `RESOURCE_NOT_FOUND`, 존재하지 않거나 삭제·비공개 상태인 Event는 Event 전용
+`EVENT_NOT_FOUND`다. 보관 Event도 사용자에게는 존재하지 않는 Event와 같이 처리한다.
+공개 범위는 상세 GET만이며 응모·내 응모·실시간 현황 경로는 인증이 필요하다.
+
+## POST /api/events/{eventId}/entries
+
+응모 계약과 결과코드별 HTTP 매핑은 [응모 API](entry-api.md)를 따른다.
+
+## GET /api/creator/events
+
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Query `userId`는 받지 않는다.
+Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `deletedAt IS NULL`, `archivedAt IS NULL`인 Event만 반환한다.
+기본 정렬은 `createdAt DESC, eventId DESC`다.
+
+```json
+{
+  "items": [{
+    "eventId": 1,
+    "title": "팬미팅 이벤트",
+    "description": "팬미팅 응모 이벤트입니다.",
+    "rejectReason": null,
+    "startAt": "2026-09-20T09:00:00Z",
+    "endAt": "2026-09-21T09:00:00Z",
+    "winnerCount": 3,
+    "drawMethod": "WEIGHTED",
+    "prizeAlgorithmVersion": "PRIZE_WEIGHTED_V1",
+    "prizes": [
+      { "prizeKey": "FIRST", "displayName": "1등 상품", "priority": 1, "weight": 5, "quantity": 1 },
+      { "prizeKey": "SECOND", "displayName": "2등 상품", "priority": 2, "weight": 95, "quantity": 2 }
+    ],
+    "status": "DRAFT",
+    "createdAt": "2026-09-16T00:20:00Z"
+  }],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasNext": false
+}
+```
+
+- `description`은 작성하지 않았으면 `null`이다.
+- `rejectReason`은 `status == REJECTED`일 때만 가장 최근 승인 요청 차수의 반려 사유다. 그 외 상태(수정으로 `DRAFT`로 돌아간 경우 포함)이거나 사유가 없으면 `null`이다. 각 항목의 `bannerImageKey`·`bannerImageUrl`은 [배너 API](banner-api.md#응답-필드)를 따른다.
+
+## POST /api/creator/events
+
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "이벤트 제목",
+  "description": "이벤트 설명",
+  "startAt": "2026-09-20T09:00:00Z",
+  "endAt": "2026-09-21T09:00:00Z",
+  "winnerCount": 3,
+  "drawMethod": "WEIGHTED",
+  "prizeAlgorithmVersion": "PRIZE_UNIFORM_V1",
+  "prizes": [
+    { "prizeKey": "FIRST", "displayName": "1등 상품", "priority": 1, "weight": 5, "quantity": 1 },
+    { "prizeKey": "SECOND", "displayName": "2등 상품", "priority": 2, "weight": 95, "quantity": 2 }
+  ]
+}
+```
+
+- 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body `userId`는 받지 않는다.
+- `creatorId`는 인증된 Member의 승인 Creator에서 서버가 결정한다.
+- 생성 상태는 DRAFT다. 성공은 201이며 응답은 `{ "eventId": 1, "status": "DRAFT" }`다.
+- `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다. 선택 `bannerImageKey`(본문 비교 대상)로 배너를 연결한다([배너 API](banner-api.md#생성수정-연결)).
+- `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가,
+  description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이다.
+- `drawMethod`는 `UNIFORM`(후보 동일 확률) 또는 `WEIGHTED`(응모권 수 비례)를 사용한다.
+  `prizeAlgorithmVersion`은 `PRIZE_UNIFORM_V1` 또는 `PRIZE_WEIGHTED_V1`이며, 생략하면 하위 호환을
+  위해 `PRIZE_WEIGHTED_V1`을 사용한다. 두 필드는 독립적으로 조합한다.
+- `prizes`는 상품 등급 설정이다. `prizeKey`는 Event 안에서 고유하고 영문·숫자·`_`·`-`만 허용한다. `priority`, `weight`, `quantity`는 양수이며 전체 quantity 합은 `winnerCount` 이상이어야 한다. 가중치 합이 `long` 범위를 넘는 설정은 거부한다.
+- 상품 `weight`는 당첨자 선정에 사용하지 않는다. `PRIZE_WEIGHTED_V1`의 상품 배정에만
+  사용하며 `PRIZE_UNIFORM_V1`에서는 양의 정수 형식으로 보존하되 확률에는 반영하지 않는다.
+- 시간은 `Z` 또는 `+09:00`처럼 offset을 포함한 ISO-8601 instant로 받는다. 서버는 이를 UTC instant로 정규화해 처리하며, 응답 시각은 UTC `Z` 형식이다.
+
+## PATCH /api/creator/events/{eventId}
+
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body `userId`는 받지 않는다.
+요청 본문은 생성 API에서 `requestId`를 제외한 동일 필드를 사용한다. 상품 설정 변경도 DRAFT에서만 허용한다. DRAFT 또는 REJECTED 상태에서만 수정할 수 있으며, REJECTED 수정은 `EventCommandService.changeToDraft(eventId)`로 DRAFT로 전이한다. 배너 외 필드는 모두 교체하며, `bannerImageKey`는 생략하면 유지·키면 교체·`null`이면 제거한다([배너 API](banner-api.md#생성수정-연결)).
+
+성공은 200이고 응답은 `{ "eventId": 1, "status": "DRAFT" }`다. 별도 멱등 키는 사용하지 않으며 같은 값을 재적용해도 같은 최종 상태가 된다.
+
+## DELETE /api/creator/events/{eventId}
+
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Query `userId`는 받지 않는다.
+DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedAt`을 기록한다. 연결된 배너는 삭제 대기로 돌려 정리한다. 성공은 204 No Content다.
+
+## POST /api/creator/events/{eventId}/approval-request
+
+권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body는 없다.
+
+운영 환경에서는 서버 `Clock` 기준으로 `startAt >= now + 48시간`인 DRAFT Event만 요청할 수 있다. 정확히 48시간 전은 허용하며, 48시간 미만이면 `APPROVAL_REQUEST_TOO_LATE`(409, `이벤트 시작 최소 48시간 전까지 개설 승인을 요청해야 합니다.`)를 반환한다. 이 경우 Event는 DRAFT로 유지되고 승인 요청 이력도 생성하지 않는다. 생성·일정 수정에는 이 제한을 적용하지 않으며, 이미 접수된 요청을 관리자가 승인할 때도 다시 검사하지 않는다. 개발 서버는 검증·시연 목적으로 `application-dev.yml`의 최소 사전 시간을 `PT0S`로 완화하며, 운영 정책 검증이 필요하면 해당 값을 `PT48H`로 바꾼 뒤 재배포한다.
+
+조건을 충족하면 EventApprovalRequest를 새 차수로 생성한 뒤 `EventCommandService.requestApproval(eventId)`로 DRAFT에서 PENDING_APPROVAL로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "PENDING_APPROVAL" }`다.
+
+## GET /api/admin/events/pending
+
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 `page`, `size`다. 현재 PENDING_APPROVAL Event와 승인 요청을 반환하며 기본 정렬은 `requestedAt ASC, approvalRequestId ASC`다. 심사용으로 `bannerImageUrl`도 반환한다([배너 API](banner-api.md#응답-필드)).
+
+```json
+{
+  "items": [{
+    "eventId": 1,
+    "creatorId": 5,
+    "creatorName": "IVE",
+    "title": "팬미팅 이벤트",
+    "startAt": "2026-09-20T09:00:00Z",
+    "endAt": "2026-09-21T09:00:00Z",
+    "winnerCount": 3,
+    "drawMethod": "WEIGHTED",
+    "prizeAlgorithmVersion": "PRIZE_WEIGHTED_V1",
+    "status": "PENDING_APPROVAL",
+    "approvalRound": 1,
+    "requestedAt": "2026-09-16T00:40:00Z"
+  }],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasNext": false
+}
+```
+
+## GET /api/admin/events
+
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다.
+Application은 Spring Security의 1차 인가와 별도로 관리자 업무 권한을 다시 검증한다.
+
+Query는 선택 `status`, 선택 `archiveStatus`, 기본 `page=0`, `size=20`이다. `archiveStatus`는 `ACTIVE`(기본,
+보관되지 않은 Event), `ARCHIVED`(보관함), `ALL` 중 하나다. `size`는 1~100이어야 하며, `status`를 생략하면
+전체 `EventStatus`를 조회한다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`, `SCHEDULED`, `OPEN`, `CLOSING`,
+`CLOSED`, `DRAW_COMPLETED`, `PUBLISHED` 중 하나로 필터링할 수 있다. 삭제 Event는 기존 Event 목록 정책과 같이
+제외하고 `createdAt DESC, eventId DESC`로 정렬한다. 각 항목의 `archivedAt`, `archivedBy`는 일반 목록에서는
+생략되며 보관함에서 보관 시각·처리자 ID를 반환한다. 배너가 있으면 `bannerImageUrl`을 반환한다.
+
+```json
+{
+  "items": [{
+    "eventId": 1,
+    "creatorId": 5,
+    "creatorName": "IVE",
+    "title": "팬미팅 이벤트",
+    "startAt": "2026-09-20T09:00:00Z",
+    "endAt": "2026-09-21T09:00:00Z",
+    "winnerCount": 3,
+    "drawMethod": "WEIGHTED",
+    "status": "OPEN"
+  }],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasNext": false
+}
+```
+
+## GET /api/admin/events/{eventId}/operation
+
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 관리자 업무 식별자로 전달한다.
+관리자 운영 상세 화면의 초기 렌더링에 필요한 Event 기본 정보와 현재 운영 단계를 한 번에 조회한다. 삭제된
+Event는 조회할 수 없으며 없는 Event와 동일하게 `RESOURCE_NOT_FOUND`를 반환한다. 보관 Event는 관리자 운영
+대상이므로 조회할 수 있다.
+
+`event`에는 Creator 공개 활동명, 제목·설명, 일정, 상품 설정, 추첨·상품 배정 알고리즘, Event 상태와
+마감·공개·보관 시각, 배너 주소(`bannerImageUrl`)를 담는다. `snapshot`과 `initialDrawing`은 아직 생성되지 않았으면 `null`이다.
+Snapshot 후보 전체와 Drawing Winner 전체는 응답에 포함하지 않으며, 필요할 때 기존 Snapshot·Drawing
+상세 API를 호출한다.
+
+```json
+{
+  "event": {
+    "eventId": 1,
+    "creatorId": 5,
+    "creatorName": "IVE",
+    "title": "팬미팅 이벤트",
+    "description": "팬미팅 응모 이벤트입니다.",
+    "startAt": "2026-09-20T09:00:00Z",
+    "endAt": "2026-09-21T09:00:00Z",
+    "winnerCount": 3,
+    "drawMethod": "WEIGHTED",
+    "prizeAlgorithmVersion": "PRIZE_WEIGHTED_V1",
+    "status": "CLOSED",
+    "closedAt": "2026-09-21T09:00:00Z",
+    "publishedAt": null,
+    "archivedAt": null,
+    "archivedBy": null,
+    "createdAt": "2026-09-16T00:20:00Z",
+    "prizes": []
+  },
+  "snapshot": {
+    "snapshotId": 10,
+    "verificationStatus": "VERIFIED",
+    "candidateCount": 100,
+    "totalTicketCount": 340,
+    "winnerCount": 3,
+    "createdAt": "2026-09-21T09:01:00Z"
+  },
+  "initialDrawing": {
+    "drawingId": 20,
+    "drawNo": 0,
+    "drawType": "INITIAL",
+    "status": "COMPLETED",
+    "visibility": "PRIVATE",
+    "winnerCount": 3,
+    "storedWinnerCount": 3,
+    "createdAt": "2026-09-21T09:02:00Z",
+    "completedAt": "2026-09-21T09:02:03Z",
+    "publishedAt": null
+  }
+}
+```
+
+- `storedWinnerCount`는 현재 저장된 Winner 수다. `status`가 `READY`, `RUNNING`, `FAILED`이면 0일 수 있다.
+- Event 상태가 `CLOSING` 또는 `CLOSED`이면 `event.status`와 `closedAt`으로 마감 단계를 판별한다. Stream lag,
+  PEL, cutoff Stream ID 같은 내부 Stream 정보는 반환하지 않는다.
+
+## PATCH /api/admin/events/{eventId}/archive
+
+Bearer Access JWT와 ADMIN 역할이 필수다. `PUBLISHED` Event만 보관할 수 있으며 성공 시 200으로
+`eventId`, `status`, `archivedAt`, `archivedBy`를 반환한다. 운영 기본 설정에서는 `SELECTED` 수령 대기
+Winner가 있으면 `INVALID_STATE`로 거부한다. 개발 프로필은 테스트 데이터 정리를 위해 이를 허용한다.
+
+## PATCH /api/admin/events/{eventId}/unarchive
+
+Bearer Access JWT와 ADMIN 역할이 필수다. 보관된 `PUBLISHED` Event를 다시 노출한다. 성공 시 200이며
+보관 메타데이터 필드는 생략된다. 보관·복원은 삭제 API가 아니며 Event와 연관 원본을 바꾸지 않는다.
+
+## POST /api/admin/events/{eventId}/approve
+
+Request Body는 없다. 인증된 관리자만 `PENDING_APPROVAL` Event를 `EventCommandService.approve(eventId)`로 SCHEDULED로 전이할 수 있다. `endAt <= now`면 `INVALID_STATE`다. 현재 PENDING 승인 요청을 APPROVED로 기록하고 심사자·심사 시각을 저장한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "SCHEDULED" }`다.
+
+## POST /api/admin/events/{eventId}/reject
+
+```json
+{ "rejectReason": "거절 사유" }
+```
+
+거절 사유는 null·blank·trim 후 빈 문자열을 허용하지 않는다. `EventCommandService.reject(eventId, beforeTransition)`이 Event를 잠근 상태에서 현재 PENDING 승인 요청을 REJECTED로 기록(사유 포함)한 뒤 Event를 REJECTED로 전이한다. 성공은 200이며 응답은 `{ "eventId": 1, "status": "REJECTED" }`다.
+
+## 오류와 검증
+
+- 없는 Member 또는 Event는 `RESOURCE_NOT_FOUND`, 권한·소유권 위반은 `FORBIDDEN`이다.
+- 허용되지 않은 상태의 수정·삭제·심사·승인·보관 요청은 `INVALID_STATE`다.
+- 승인·거절처럼 Event 행 잠금으로 직렬화되는 상충 명령은 `EventCommandService`가 잠금을 획득하며, 선행 명령이 상태를 바꾼 뒤 후행 명령이 `INVALID_STATE`가 된다.
+- Event 상태 변경은 `EventCommandService`만 수행한다. 이 서비스에는 Redis Drain, Snapshot 생성, DrawingEngine 호출을 포함하지 않는다.
+- Event 생성에서 동일 requestId의 UNIQUE 충돌 후 기존 Event를 읽어 복구할 수 없으면 Event 전용 오류 `CONCURRENT_COMMAND`다.
+- Event 생성의 requestId 충돌은 `IDEMPOTENCY_CONFLICT`다.
+- 목록·심사 응답의 `creatorName`은 OAuth 원본 이름이 아닌 Creator의 현재 공개 활동명이다.
+- `event.request_id`는 UUID 저장과 생성 멱등성을 위해 UNIQUE 제약을 가진다.
+
+## GET /api/events/{eventId}/entries/me
+
+[응모 API](entry-api.md#get-apieventseventidentriesme)를 따른다.
+
+## GET /api/events/{eventId}/entry-status
+
+[응모 API](entry-api.md#get-apieventseventidentry-status)를 따른다.
+
+## POST /api/events/{eventId}/close
+
+호출자 식별자는 Access JWT에서 추출하며 Request Body는 없다. 요청 Member와 삭제되지 않은 Event가
+존재해야 한다. ADMIN은 모든 Event, Member에 연결된 Creator는 자신이 소유한 Event에 수동 마감을 요청할 수 있다.
+Creator가 타인의 Event를 요청하면 `FORBIDDEN`이고, 존재하지 않는 Member 또는 존재하지 않거나 삭제된 Event는
+`RESOURCE_NOT_FOUND`다. `OPEN`이면 마감을 시작하고, 이미 `CLOSING` 또는 `CLOSED`인 요청은
+오류 없이 현재 상태를 반환하는 멱등 명령이다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`,
+`SCHEDULED`, `DRAW_COMPLETED`, `PUBLISHED` 상태는 `INVALID_STATE`다.
+
+성공 시 시스템2 `EventClosingService.startClosing(eventId)`가 Gate 차단·cutoff 확정·`OPEN → CLOSING`
+전이를 처리한다. 시스템4는 Redis Gate나 Stream을 직접 조작하지 않는다. Drain 완료는 비동기로 이어지며,
+성공 응답은 202이고 공통 응답 봉투의 `data.status`는 실제 현재 상태인 `CLOSING` 또는 `CLOSED`다.
+처음 마감을 시작한 경우는 `CLOSING`을 반환한다.
+
+```json
+{ "eventId": 1, "status": "CLOSING" }
+```
+
+이미 완료된 Event를 재요청한 경우의 응답은 다음과 같다.
+
+```json
+{ "eventId": 1, "status": "CLOSED" }
+```
+
+## GET /api/admin/events/{eventId}/closing-status
+
+Bearer Access JWT와 ADMIN 역할이 필수이며, Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로
+전달한다. `eventId`는 양수 Long이어야 한다. 대상 Event가 존재해야 하며, 시스템2의 Closing Status 조회 서비스가 상태를
+확인한다. `CLOSING`이면 마감 진행 중, `CLOSED`이면 마감 완료를 의미한다. 그 외 Event 상태는
+`INVALID_STATE`다.
+
+성공은 200이며, 응답에는 상태만 포함한다. 진행률, Pending 수, cutoff Stream ID를 비롯한 Stream 내부
+정보는 반환하지 않는다.
+
+```json
+{ "status": "CLOSING" }
+```
+
+`eventId`가 누락·0 이하이거나 형식이 올바르지 않으면 `VALIDATION_FAILED`, 없는 Member 또는 Event는
+`RESOURCE_NOT_FOUND`, 관리자가 아닌 Member는 `FORBIDDEN`이다.

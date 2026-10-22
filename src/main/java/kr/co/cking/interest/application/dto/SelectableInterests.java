@@ -1,0 +1,22 @@
+package kr.co.cking.interest.application.dto;
+
+import java.util.List;
+
+/**
+ * 회원이 고를 수 있는 관심 분야 목록이다. 활성 분류체계가 없으면 버전은 null이고 목록은 비어 있다.
+ * 활성 세부 세트가 없으면 {@code subtopicVersion}은 null이고 각 항목의 세부 목록은 비어 있다.
+ */
+public record SelectableInterests(
+        String taxonomyVersion,
+        int maxSelection,
+        String subtopicVersion,
+        int maxSubtopicPerParent,
+        List<Item> items
+) {
+
+    public record Item(String interestCode, String name, int displayOrder, List<Subtopic> subtopics) {
+    }
+
+    public record Subtopic(String subtopicCode, String name, int displayOrder) {
+    }
+}

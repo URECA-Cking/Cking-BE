@@ -1,0 +1,217 @@
+package kr.co.cking.event.repository;
+
+import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+import kr.co.cking.event.domain.DisplayStatus;
+import kr.co.cking.event.domain.EventArchiveStatus;
+import kr.co.cking.event.domain.Event;
+import kr.co.cking.event.domain.EventStatus;
+
+public interface EventRepository extends JpaRepository<Event, Long> {
+
+    boolean existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(Long eventId);
+
+    /** @deprecated 사용자 노출 여부는 보관 상태까지 함께 확인하는 메서드를 사용한다. */
+    @Deprecated
+    default boolean existsByEventIdAndDeletedAtIsNull(Long eventId) {
+        return existsByEventIdAndDeletedAtIsNullAndArchivedAtIsNull(eventId);
+    }
+
+    Optional<Event> findByRequestId(String requestId);
+
+    /** 상태 전이를 직렬화해야 하는 명령 경로(승인·거절·마감 등) 전용 조회. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<Event> findByEventId(Long eventId);
+
+    /** 관리자 운영 조회에서 논리 삭제되지 않은 Event 한 건을 읽는다. */
+    Optional<Event> findByEventIdAndDeletedAtIsNull(Long eventId);
+
+    List<Event> findByEventIdIn(Collection<Long> eventIds);
+
+    Page<Event> findByCreatorIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable);
+
+    /** @deprecated Creator 운영 목록도 보관 Event를 제외한다. */
+    @Deprecated
+    default Page<Event> findByCreatorIdAndDeletedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable) {
+        return findByCreatorIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByCreatedAtDescEventIdDesc(creatorId, pageable);
+    }
+
+    /** 관리자의 일반 운영 목록(ACTIVE)을 선택 상태와 생성일 역순으로 조회한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+              and e.archivedAt is null
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedActive(@Param("status") EventStatus status, Pageable pageable);
+
+    /** 관리자의 보관함(ARCHIVED)을 선택 상태와 생성일 역순으로 조회한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+              and e.archivedAt is not null
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedArchived(@Param("status") EventStatus status, Pageable pageable);
+
+    /** 관리자가 보관 여부와 관계없이 모든 운영 Event를 선택 상태와 생성일 역순으로 조회한다. */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and (:status is null or e.status = :status)
+            order by e.createdAt desc, e.eventId desc
+            """)
+    Page<Event> findManagedAll(@Param("status") EventStatus status, Pageable pageable);
+
+    /** API 전용 archiveStatus는 Service 분기만 담당하고 JPQL에는 실제 컬럼 조건만 둔다. */
+    default Page<Event> findManagedEvents(EventStatus status, EventArchiveStatus archiveStatus, Pageable pageable) {
+        return switch (archiveStatus) {
+            case ACTIVE -> findManagedActive(status, pageable);
+            case ARCHIVED -> findManagedArchived(status, pageable);
+            case ALL -> findManagedAll(status, pageable);
+        };
+    }
+
+    /** 기존 호출자는 기본 운영 목록(ACTIVE)만 조회한다. */
+    default Page<Event> findManagedEvents(EventStatus status, Pageable pageable) {
+        return findManagedActive(status, pageable);
+    }
+
+    /** EventLifecycleScheduler가 자동 마감 대상(OPEN이고 endAt이 지난 이벤트)을 찾을 때 쓴다. */
+    List<Event> findByStatusAndEndAtLessThanEqual(EventStatus status, Instant endAt);
+
+    /** EventLifecycleScheduler가 자동 시작 대상(SCHEDULED이고 startAt <= now < endAt)을 찾을 때 쓴다. */
+    List<Event> findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
+            EventStatus status,
+            Instant startAt,
+            Instant endAt
+    );
+
+    /** 서버 재기동 후 Drain이 끝나지 않은 CLOSING 이벤트를 재개할 때 쓴다. */
+    List<Event> findByStatus(EventStatus status);
+
+    /**
+     * displayStatus는 저장 컬럼이 아니라 status+시각 조합으로 계산되는 값이라(API 명세 §4.1)
+     * 목록 필터도 그 조합 조건으로 짠다. creatorId/displayStatus는 null이면 필터 안 함.
+     *
+     * <p>DRAFT/PENDING_APPROVAL/REJECTED는 displayStatus 매핑 대상이 아니라서(§4.1) 필터 여부와
+     * 무관하게 항상 제외한다 — 포함되면 EventSummary 변환 시 DisplayStatus.of()가 예외를 던진다.
+     */
+    @Query("""
+            select e from Event e
+            where e.deletedAt is null
+              and e.archivedAt is null
+              and e.status not in (
+                  kr.co.cking.event.domain.EventStatus.DRAFT,
+                  kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL,
+                  kr.co.cking.event.domain.EventStatus.REJECTED
+              )
+              and (:creatorId is null or e.creatorId = :creatorId)
+              and (
+                :displayStatus is null
+                or (:displayStatus = 'UPCOMING' and e.status = kr.co.cking.event.domain.EventStatus.SCHEDULED)
+                or (:displayStatus = 'IN_PROGRESS'
+                    and e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now)
+                or (:displayStatus = 'CLOSED'
+                    and (
+                        (e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt <= :now)
+                        or e.status in (
+                            kr.co.cking.event.domain.EventStatus.CLOSING,
+                            kr.co.cking.event.domain.EventStatus.CLOSED,
+                            kr.co.cking.event.domain.EventStatus.DRAW_COMPLETED,
+                            kr.co.cking.event.domain.EventStatus.PUBLISHED
+                        )
+                    ))
+              )
+            """)
+    Page<Event> search(
+            @Param("creatorId") Long creatorId,
+            @Param("displayStatus") String displayStatus,
+            @Param("now") Instant now,
+            Pageable pageable
+    );
+
+    default Page<Event> search(Long creatorId, DisplayStatus displayStatus, Instant now, Pageable pageable) {
+        return search(creatorId, displayStatus == null ? null : displayStatus.name(), now, pageable);
+    }
+
+    /** 크리에이터별 집계 한 행. {@link #countInProgressByCreatorIds}의 결과다. */
+    interface CreatorEventCount {
+        Long getCreatorId();
+
+        long getTotal();
+    }
+
+    /** 표시 상태별 총 개수 한 행. 합이 곧 전체 개수다. */
+    interface DisplayStatusCounts {
+        long getUpcoming();
+
+        long getInProgress();
+
+        long getClosed();
+    }
+
+    /**
+     * 한 페이지 크리에이터의 진행 중(IN_PROGRESS) 이벤트 수를 한 번에 센다. 조건은 {@link #search}의
+     * IN_PROGRESS 필터와 같다. 진행 중 이벤트가 없는 크리에이터는 결과에 없다.
+     */
+    @Query("""
+            select e.creatorId as creatorId, count(e) as total from Event e
+            where e.deletedAt is null
+              and e.archivedAt is null
+              and e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now
+              and e.creatorId in :creatorIds
+            group by e.creatorId
+            """)
+    List<CreatorEventCount> countInProgressByCreatorIds(
+            @Param("creatorIds") Collection<Long> creatorIds,
+            @Param("now") Instant now
+    );
+
+    /** 공개 이벤트를 표시 상태별로 한 번에 센다. 분류 규칙은 {@link #search}와 같다. */
+    @Query("""
+            select
+              coalesce(sum(case when e.status = kr.co.cking.event.domain.EventStatus.SCHEDULED
+                                then 1L else 0L end), 0L) as upcoming,
+              coalesce(sum(case when e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now
+                                then 1L else 0L end), 0L) as inProgress,
+              coalesce(sum(case when (e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt <= :now)
+                                  or e.status in (
+                                    kr.co.cking.event.domain.EventStatus.CLOSING,
+                                    kr.co.cking.event.domain.EventStatus.CLOSED,
+                                    kr.co.cking.event.domain.EventStatus.DRAW_COMPLETED,
+                                    kr.co.cking.event.domain.EventStatus.PUBLISHED)
+                                then 1L else 0L end), 0L) as closed
+            from Event e
+            where e.deletedAt is null
+              and e.archivedAt is null
+              and e.status not in (
+                  kr.co.cking.event.domain.EventStatus.DRAFT,
+                  kr.co.cking.event.domain.EventStatus.PENDING_APPROVAL,
+                  kr.co.cking.event.domain.EventStatus.REJECTED
+              )
+            """)
+    DisplayStatusCounts countByDisplayStatus(@Param("now") Instant now);
+
+    /** 진행 중(OPEN, endAt 전) 이벤트 중 가장 임박한 endAt. 개수 캐시 TTL이 이 시각을 넘지 않게 하는 데 쓴다. */
+    @Query("""
+            select min(e.endAt) from Event e
+            where e.deletedAt is null
+              and e.archivedAt is null
+              and e.status = kr.co.cking.event.domain.EventStatus.OPEN and e.endAt > :now
+            """)
+    Optional<Instant> findEarliestOpenEndAt(@Param("now") Instant now);
+}

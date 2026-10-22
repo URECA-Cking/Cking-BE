@@ -1,0 +1,334 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [develop, main]
+  # 기본 브랜치에서 한 번 돌아야 Gradle 캐시가 저장되고, 이후 모든 PR이 그걸 재사용한다.
+  # main push는 운영 배포다.
+  push:
+    branches: [develop, main]
+
+# 기본은 읽기만 주고, 필요한 권한은 job별로 연다. 서드파티 액션이 쓸 수 있는 범위를 좁힌다.
+permissions:
+  contents: read
+
+# push 실행은 브랜치마다 하나씩 돈다(#694). 진행 중인 실행(배포 포함)은 취소하지 않고, 대기 실행은 밀어내지 않고 모두 남긴다(queue: max).
+# 그룹 안의 순서는 보장되지 않으므로, 옛 커밋이 새 커밋 배포 뒤에 돌면 배포 단계의 비교(scripts/check-deploy-order.sh)가 건너뛴다.
+# 작업 단위 취소는 작업이 시작한 순서(테스트가 끝난 순서)를 따라 옛 커밋의 빌드가 새 커밋의 빌드를 취소할 수 있어 쓰지 않는다.
+# PR 실행은 실행마다 그룹이 달라 서로 기다리지 않는다.
+concurrency:
+  group: ${{ github.event_name == 'push' && format('cicd-push-{0}', github.ref) || format('cicd-{0}', github.run_id) }}
+  cancel-in-progress: false
+  queue: max
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_ROLE_ARN: arn:aws:iam::551372961758:role/dev-cking-github-actions-role
+  DEPLOY_BUCKET: dev-cking-deploy-551372961758
+  INSTANCE_ID: i-0735892ba2bb25a70
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # PR에 새 커밋이 올라오면 이전 실행을 취소한다. develop push는 실행마다 그룹이 달라 취소되지 않는다.
+    concurrency:
+      group: test-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # 로컬과 같은 compose로 띄워 이미지·설정을 한 곳에서 관리한다. Dependabot이 이 파일만 갱신한다.
+      - name: MySQL·Redis 기동
+        run: docker compose -f docker-compose.yml up -d --wait mysql redis
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      # 명세 2.3에 따라 업무 시각은 UTC로 저장한다. compose의 시간대 옵션이 빠지면 여기서 실패한다.
+      - name: DB 시간대 검증
+        run: |
+          docker compose -f docker-compose.yml exec -T mysql \
+            mysql -uroot -proot -N -B -e \
+            "SELECT IF(TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) = 0, 'OK', 'NOT_UTC');" \
+            | grep -qx OK || { echo "DB 시간대가 UTC가 아니다"; exit 1; }
+
+      - run: ./gradlew test
+
+      # CI 로그에는 테스트 표준 출력이 없어 실패 원인을 보기 어렵다. 실패 시 리포트를 결과물로 남긴다.
+      - name: 테스트 리포트 업로드
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          retention-days: 7
+
+  migration-version:
+    runs-on: ubuntu-latest
+    # PR에 새 커밋이 올라오면 이전 실행을 취소한다. develop push는 실행마다 그룹이 달라 취소되지 않는다.
+    concurrency:
+      group: migration-version-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # PR은 대상 브랜치, develop push는 push 직전 커밋과 비교한다.
+      # push 검사는 오래된 PR 결과로 머지된 경우를 배포 전에 막는다.
+      - name: 마이그레이션 버전 순서 검사
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: scripts/check-migration-versions.sh "$BASE"
+
+  # 롤링 배포 중에는 옛 버전 서버가 새 마이그레이션이 적용된 DB로 요청을 받는다. PR의 마이그레이션을 적용한 DB에서
+  # 대상 브랜치 코드가 기동하는지 PR 단계에서 확인한다. 마이그레이션을 바꾼 PR에서만 준비 단계를 실행한다.
+  migration-compat:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: migration-compat-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # PR 이벤트는 대상 브랜치에 PR을 합친 커밋을 받으므로 첫 번째 부모가 대상 브랜치다.
+      - name: 마이그레이션 변경 확인
+        id: changed
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- src/main/resources/db/migration; then
+            echo "migration=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "migration=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: MySQL·Redis 기동
+        if: steps.changed.outputs.migration == 'true'
+        run: docker compose -f docker-compose.yml up -d --wait mysql redis
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: steps.changed.outputs.migration == 'true'
+        with:
+          java-version: "21"
+          distribution: "temurin"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        if: steps.changed.outputs.migration == 'true'
+      - name: 대상 브랜치 코드의 새 DB 구조 호환 검사
+        if: steps.changed.outputs.migration == 'true'
+        run: scripts/check-migration-compat.sh HEAD^1 HEAD
+
+  # 배포 워크플로·스크립트·compose는 develop에 머지된 뒤에야 실행되어, 오류가 배포 때 드러난다.
+  lint:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: lint-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 셸 스크립트 검사
+        run: shellcheck deploy/deploy.sh scripts/check-migration-versions.sh scripts/check-migration-compat.sh scripts/prod-refresh.sh scripts/prod-recover.sh scripts/check-deploy-order.sh
+      # actionlint는 concurrency의 queue 키를 아직 몰라 그 오류 하나만 무시한다(#694).
+      - name: 워크플로 검사
+        run: >
+          docker run --rm -v "$PWD:/repo:ro" -w /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -no-color
+          -ignore 'unexpected key "queue" for "concurrency" section'
+      # 값은 배포 때 Parameter Store에서 들어오므로 변수 치환 없이 구조만 검사한다.
+      - name: compose 검사
+        run: |
+          docker compose -f docker-compose.dev.yml config --no-interpolate --quiet
+          docker compose -f docker-compose.prod.yml config --no-interpolate --quiet
+          docker compose -f docker-compose.yml config --no-interpolate --quiet
+
+  build-and-push:
+    name: Build and Push to GHCR
+    # 검증을 통과한 커밋만 이미지로 만든다. 이미지 빌드는 -x test라 자체 검증이 없다.
+    needs: [test, migration-version, lint]
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    # 개발 서버가 t4g(ARM)이므로 ARM 러너에서 네이티브 빌드한다.
+    # x86 러너에서 QEMU로 크로스 빌드하면 Gradle 빌드가 몇 배 느려진다.
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write   # GHCR push
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 이미지 이름·태그 생성
+        id: meta
+        # 태그: latest만 두면 언제 올라간 이미지인지 알 수 없고, SHA만 두면 순서를 알 수 없다.
+        # 이름: 컨테이너 레지스트리는 소문자만 허용하는데 github.repository는 대문자를 포함한다.
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')
+          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          # 불변 태그만 push한다. latest는 동시 빌드 시 과거 커밋 이미지로 덮어써질 수 있다.
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to dev server
+    needs: build-and-push
+    # develop만 배포한다. 다른 브랜치의 수동 실행은 이미지 빌드까지만 하고 이 job은 건너뛴다.
+    # 실제 차단은 IAM 신뢰 정책(sub = develop)이 한다. 이 조건은 워크플로를 고치면 우회되므로
+    # 방어선이 아니라, 배포 대상이 아님을 실패가 아닌 skipped로 드러내기 위한 것이다.
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write   # OIDC 토큰 발급. AWS 역할을 맡는 데 필요하다.
+    # 실행 중인 배포는 취소하지 않는다. 컨테이너 교체 도중 워크플로가 취소되는 것을 막고,
+    # dev 서버에는 한 번에 하나의 배포만 들어가도록 직렬화한다.
+    concurrency:
+      group: cd-deploy-dev
+      cancel-in-progress: false
+
+    env:
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # 동시 실행 그룹 안의 순서는 보장되지 않아 옛 커밋의 실행이 새 커밋 배포 뒤에 돌 수 있다(#694).
+      # 개발 서버가 응답 헤더로 알려 주는 지금 이미지 태그와 비교해, 이번 커밋이 더 오래됐으면 배포하지 않는다.
+      # 서버가 응답하지 않아 태그를 모르면 배포한다(망가진 서버를 고치는 배포는 나가야 한다).
+      - name: 배포된 커밋보다 오래됐는지 확인
+        id: order
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DEPLOYED=$(curl -sS -o /dev/null -D - --max-time 10 "https://dev-api.cking.co.kr/api/events?page=0&size=1" \
+            | tr -d '\r' | awk -F': ' 'tolower($1) == "x-image-tag" { print $2 }') || DEPLOYED=""
+          RESULT=$(scripts/check-deploy-order.sh "$DEPLOYED" "$GITHUB_SHA")
+          echo "$RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "deploy=$([ "${RESULT%% *}" = deploy ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 배포 파일 S3 업로드
+        if: steps.order.outputs.deploy == 'true'
+        # 태그별 경로에 둔다. 어느 배포에 어떤 compose가 쓰였는지 추적할 수 있다.
+        run: |
+          aws s3 cp docker-compose.dev.yml "s3://$DEPLOY_BUCKET/releases/$IMAGE_TAG/docker-compose.yml"
+          aws s3 cp deploy/deploy.sh       "s3://$DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh"
+
+      - name: SSM Run Command 전송
+        id: send
+        if: steps.order.outputs.deploy == 'true'
+        # deploy.sh는 자기 자신을 받을 수 없으므로 인라인 명령이 먼저 받아서 실행한다.
+        # Run Command는 명령들을 하나의 스크립트로 합쳐 실행하고 마지막 줄의 결과만 본다.
+        # set -e가 없으면 다운로드가 실패해도 서버에 남은 이전 deploy.sh가 실행되어 성공으로 기록된다.
+        run: |
+          PARAMETERS=$(jq -n \
+            --arg dl "aws s3 cp s3://$DEPLOY_BUCKET/releases/$IMAGE_TAG/deploy.sh /opt/cking/deploy.sh" \
+            --arg run "/opt/cking/deploy.sh $IMAGE_TAG" \
+            '{commands: ["set -e", $dl, "chmod +x /opt/cking/deploy.sh", $run], executionTimeout: ["600"]}')
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy $IMAGE_TAG" \
+            --parameters "$PARAMETERS" \
+            --query Command.CommandId --output text)
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+
+      - name: 배포 결과 확인
+        if: steps.order.outputs.deploy == 'true'
+        # Run Command는 비동기다. 상태를 폴링해 Success가 아니면 워크플로를 실패시킨다.
+        env:
+          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+        run: |
+          for _ in $(seq 1 60); do
+            # 전송 직후에는 invocation이 아직 조회되지 않을 수 있다(eventual consistency).
+            # 이 오류만 재시도한다. 여기서 죽으면 서버 배포는 계속 도는데 워크플로만 실패로 남는다.
+            # 권한·네트워크 등 다른 오류는 기다려도 해결되지 않으므로 즉시 실패시킨다.
+            if ! STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>&1); then
+              if [[ "$STATUS" == *InvocationDoesNotExist* ]]; then
+                sleep 5
+                continue
+              fi
+              echo "상태 조회 실패: $STATUS"
+              exit 1
+            fi
+            case "$STATUS" in
+              Success)
+                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                  --query StandardOutputContent --output text
+                exit 0 ;;
+              Failed|TimedOut|Cancelled|Cancelling)
+                echo "배포 실패: $STATUS"
+                aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                  --query '[StandardOutputContent,StandardErrorContent]' --output text
+                exit 1 ;;
+              Pending|InProgress|Delayed)
+                sleep 10 ;;
+              *)
+                echo "알 수 없는 상태: $STATUS"
+                exit 1 ;;
+            esac
+          done
+          echo "배포 결과 확인 시간 초과 (10분)"
+          exit 1
+
+      # 배포 권한이 있는 job이라 서드파티 액션 대신 공식 릴리스를 받아 지문을 확인한 뒤 설치한다.
+      - name: k6 설치
+        if: steps.order.outputs.deploy == 'true'
+        env:
+          K6_VERSION: v2.2.0
+          K6_SHA256: b5a8003c86f35f5cd5ceef1490312c48e587696c94d998cefc6d7b3b4cb1597d
+        run: |
+          curl -fsSLo k6.tar.gz "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz"
+          echo "${K6_SHA256}  k6.tar.gz" | sha256sum -c -
+          tar -xzf k6.tar.gz
+          sudo mv "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      # deploy.sh의 헬스체크는 앱 기동만 보므로, 사용자와 같은 경로(ALB·인증서)로 설정까지 검증한다.
+      # 연속 배포 시 다음 배포가 끼어들지 않도록 배포 잠금 안에서 실행한다.
+      - name: 스모크 테스트
+        if: steps.order.outputs.deploy == 'true'
+        env:
+          BASE_URL: https://dev-api.cking.co.kr
+          FRONTEND_ORIGIN: https://dev.cking.co.kr
+          EXPECTED_IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: k6 run k6/smoke.js
+
+  # 운영 배포 단계는 수동 되돌리기와 같은 재사용 워크플로를 쓴다(deploy-prod.yml).
+  deploy-prod:
+    name: Deploy to prod
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-prod.yml
+    with:
+      image_tag: ${{ needs.build-and-push.outputs.image_tag }}

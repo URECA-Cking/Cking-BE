@@ -1,0 +1,82 @@
+spring:
+  datasource:
+    # 암호에는 기본값을 두지 않는다. 주입되지 않으면 잘못된 값으로 기동하는 대신 실패해야 한다.
+    url: jdbc:mysql://${DB_HOST}:3306/cking?characterEncoding=UTF-8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  data:
+    redis:
+      # ElastiCache는 TLS와 사용자 그룹(앱 사용자) 인증을 쓴다.
+      host: ${REDIS_HOST}
+      port: 6379
+      username: ${REDIS_USERNAME}
+      password: ${REDIS_PASSWORD}
+      ssl:
+        enabled: true
+
+server:
+  # ALB가 HTTPS를 종료하고 앱에는 HTTP로 전달한다. 8080은 ALB 보안 그룹에서만 열려 있다.
+  forward-headers-strategy: framework
+
+# 운영은 API 문서를 열지 않는다. Basic Auth 값이 비면 문서 보안 체인이 전체 허용이므로 엔드포인트 자체를 끈다.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+cking:
+  event:
+    approval-request:
+      # 시연 Event를 바로 개설할 수 있게 한다. 운영 정책 검증이 필요하면 PT48H로 바꿔 재배포한다.
+      minimum-lead-time: PT0S
+  cors:
+    # www.cking.co.kr은 CloudFront에서 cking.co.kr로 이동하므로 허용 목록에 두지 않는다.
+    allowed-origins: https://cking.co.kr,https://admin.cking.co.kr
+    allow-credentials: true
+  auth:
+    refresh:
+      user-allowed-origins: https://cking.co.kr
+      admin-allowed-origins: https://admin.cking.co.kr
+    frontend-callback-url: https://cking.co.kr/oauth/callback
+    jwt:
+      secret: ${JWT_SECRET}
+    refresh-cookie-secure: true
+    admin-seed:
+      enabled: ${ADMIN_ACCOUNT_SEED_ENABLED:true}
+      login-id: ${ADMIN_ACCOUNT_LOGIN_ID}
+      password: ${ADMIN_ACCOUNT_PASSWORD}
+  storage:
+    type: s3
+    bucket: prod-cking-uploads-551372961758-ap-northeast-2-an
+    region: ap-northeast-2
+  member:
+    profile-image:
+      public-base-url: https://images.cking.co.kr
+  creator:
+    space-profile-image:
+      public-base-url: https://images.cking.co.kr
+  ticket:
+    quiz-reward:
+      worker-enabled: true
+  # AI 기능은 기본으로 끄고, 제공자 지출 한도를 건 뒤 Parameter Store 값으로 켠다.
+  verification:
+    youtube-subscription:
+      submission-enabled: ${SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED:false}
+  quiz:
+    generation:
+      enabled: ${QUIZ_GENERATION_ENABLED:false}
+      content-review:
+        enabled: ${QUIZ_GENERATION_CONTENT_REVIEW_ENABLED:true}
+    judge:
+      enabled: ${QUIZ_JUDGE_ENABLED:false}
+  # 필터 Lambda 함수 URL은 IAM 인증이다. 필터 서비스 배포 뒤 Parameter Store 값으로 켜고, 값을 바꾸면 BE를 재배포해야 반영된다.
+  comment-filter:
+    enabled: ${COMMENT_FILTER_ENABLED:false}
+    base-url: ${COMMENT_FILTER_BASE_URL:http://localhost:8000}
+    auth: aws-iam
+
+info:
+  image:
+    tag: ${IMAGE_TAG:unknown}

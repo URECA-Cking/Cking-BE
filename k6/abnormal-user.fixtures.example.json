@@ -1,0 +1,15 @@
+{
+  "creatorId": 211,
+  "inactiveCreatorId": 212,
+  "likeMissionId": 311,
+  "shareMissionId": 312,
+  "inactiveMissionId": 313,
+  "eventId": 411,
+  "missionRequestBurst": { "memberId": 111, "token": "REPLACE_WITH_ISOLATED_TEST_JWT" },
+  "duplicateMissionBurst": { "memberId": 112, "token": "REPLACE_WITH_ISOLATED_TEST_JWT" },
+  "entryRequestBurst": { "memberId": 113, "token": "REPLACE_WITH_ISOLATED_TEST_JWT" },
+  "insufficientBalanceBurst": { "memberId": 114, "token": "REPLACE_WITH_ISOLATED_TEST_JWT" },
+  "requestIdRotation": { "memberId": 115, "token": "REPLACE_WITH_ISOLATED_TEST_JWT" },
+  "rapidEarnAndSpend": { "memberId": 116, "token": "REPLACE_WITH_ISOLATED_TEST_JWT" },
+  "failureBurst": { "memberId": 117, "token": "REPLACE_WITH_ISOLATED_TEST_JWT" }
+}

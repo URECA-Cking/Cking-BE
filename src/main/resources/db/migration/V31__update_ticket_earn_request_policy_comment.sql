@@ -1,0 +1,2 @@
+ALTER TABLE ticket_earn_request
+    MODIFY COLUMN reward_policy VARCHAR(10) NOT NULL COMMENT 'DAILY, ONCE, COMMON';

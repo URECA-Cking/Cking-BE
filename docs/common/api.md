@@ -1,0 +1,183 @@
+# 공통 API 규약
+
+## 적용 범위
+
+외부 REST API에 적용한다. 내부 Service 호출은 API 인덱스와 해당 도메인 문서에서 정의한다.
+
+## 응답 형식
+
+서버 응답은 아래 공통 봉투를 사용한다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {},
+  "message": null
+}
+```
+
+- 성공은 `code`가 `SUCCESS`다.
+- 실패는 `data`가 `null`이며, `message`에 사용자에게 표시할 메시지를 담는다.
+- HTTP 상태와 `code`를 함께 해석한다.
+
+## 사용자 식별
+
+### 현재: Access JWT 도입, 단계적 업무 API 전환
+
+- Access JWT는 `POST /api/auth/token`에서 발급하고 Resource Server가 검증한다. 새 인증 필요 API는
+  `@CurrentMemberId`로 검증된 `memberId`를 받으며 Controller가 JWT·SecurityContext를 직접 파싱하지 않는다.
+- AUTH-08 전환 API는 Bearer Access JWT가 필수이며, Controller가 `@CurrentMemberId Long memberId`로
+  호출자를 받는다. Request의 호출자 `userId`는 사용하지 않는다.
+- 전환 범위는 Mission 수행·조회, Ticket 조회, Event 응모·내 응모·실시간 응모 현황, Notification,
+  내 Winner·포기, Creator 신청·내 신청 조회, 내 개인화 Creator 추천 조회(관심 분야·팔로우 기반), 내 관심 분야 조회·저장이다.
+- Event 상세 GET은 공개 API다. Access JWT가 있으면 `@CurrentMemberId(required = false)`로 호출자를 식별해
+  개인 응모권 잔액을 붙이고, 없으면 두 잔액을 0으로 반환한다. 상세 계약은 [Event API](../domains/event/api.md#get-apieventseventid)를 따른다.
+- 전환되지 않은 외부 요청의 `userId`는 호출자 자신을 식별하는 현재 API 계약이다.
+- Creator Event 관리(`GET`/`POST`/`PATCH`/`DELETE /api/creator/events/**`, 승인 요청)와 수동 마감
+  (`POST /api/events/{eventId}/close`), Winner 상태 이력 조회와 현재 사용자 조회(`GET /api/me`)는 전환을
+  완료했으므로 호출자 `userId`를 받지 않고 `@CurrentMemberId`를 사용한다. USER/ADMIN 공용 Winner 상태
+  이력 API는 JWT 인증만 요구하고, USER 본인 여부와 ADMIN 업무 권한은 Application이 검증한다.
+- 모든 `/api/admin/**` 관리자 API는 전환을 완료했다. Drawing 계열(Snapshot, Drawing, Drawing Verification,
+  Winner, Redraw), Ticket 관리자 재동기화, Dead Stream 조회·replay, Creator 신청·Event 관리자 심사,
+  Event 마감 상태 조회와 Creator Space Template 관리를 포함한다. Bearer Access JWT와 `ADMIN` 역할이
+  필수이며, Controller는 `@CurrentMemberId`를 기존 Service의 관리자 업무 식별자로 전달한다. Spring
+  Security의 1차 인가 이후에도 Application의 `validateAdmin(memberId)` 등 기존 업무 권한 검증은 유지한다.
+  각 상세 계약은 해당 도메인 API 문서를 따른다.
+- **예외: 추천 결과 적재 API**(`PUT /api/admin/creators/{creatorId}/similar`, `PUT /api/admin/interests/{interestCode}/recommendations`)는 ADMIN JWT 대신 배치용
+  추천 적재 API Key(`X-Cking-Recommendation-Key`)로도 호출할 수 있다. 이 키는 `RECOMMENDATION_WRITE` 권한만
+  가지며 이 두 엔드포인트에서만 인정한다(다른 `/api/admin/**`는 키로 접근할 수 없다). 키 헤더가 있으면 JWT로
+  되돌아가지 않고 키만 판단하며, 헤더가 없으면 위 ADMIN JWT 규칙과 Application의 ADMIN 재검증을 그대로 따른다.
+  상세는 [Creator API](../domains/creator/api.md#put-apiadmincreatorscreatoridsimilar)를 따른다.
+- 전환되지 않은 GET·DELETE 요청은 query parameter `userId`를 사용한다.
+- 웰컴 퀘스트 `GET /api/me/welcome-quest`와 `POST /api/me/welcome-quest/{step}/claim`은 Bearer JWT와 `@CurrentMemberId`를 사용한다. 요청에 호출자 `userId`를 받지 않으며 상세 계약은 [웰컴 퀘스트 API](../domains/mission/welcome-quest.md)를 따른다.
+- 전환되지 않은 POST·PATCH 요청은 body의 `userId`를 사용한다.
+
+Controller는 전환 API에서는 인증된 `memberId`, 그 외에는 요청의 호출자 `userId`를 기존
+Application/Service의 비즈니스 수행 주체 ID로 전달한다. Application/Service는 presentation Request DTO에 직접 의존하지 않는다.
+
+### 이후: 업무 API 호출자 식별 전환 단계
+
+호출자 자신을 나타내는 Request의 `userId`는 제거한다. Controller는 인증된 사용자 정보에서 사용자 ID를 추출해 기존 Application/Service의 actor ID로 전달한다.
+
+- 인증 관련 객체와 HTTP Request/Response는 Controller와 인증 계층 경계에서만 사용한다.
+- Application/Service/Domain은 인증 기술에 직접 의존하지 않는다.
+- Application Command 또는 Service 파라미터의 `userId`·`actorId`는 비즈니스 수행 주체를 의미하므로 유지할 수 있다.
+- 인증 계층은 신원 확인을 담당한다. Service/Domain은 소유권, 역할, 상태 등 업무 권한을 검증한다.
+
+### 호출자 식별과 리소스·업무 데이터 식별
+
+- 호출자 `userId`는 요청을 수행하는 주체를 뜻한다.
+- `eventId`, `winnerId`, `notificationId`, `creatorId`와 같은 ID는 조회·변경 대상 리소스를 식별한다.
+- 특정 대상의 `memberId`, 응답의 사용자 ID, Entity·Redis Stream·Scheduler·Hash 입력에 사용되는 `userId` 또는 `memberId`는 업무 데이터다. 인증 도입만을 이유로 변경하지 않는다.
+- `userId`를 포함한 DB `BIGINT` PK/FK 대응 식별자는 Java `Long`, JSON number 타입을 사용한다.
+- 문서 예시의 `user-001` 같은 문자열은 식별자 종류를 설명하기 위한 표기일 뿐이며, 실제 요청에는 number를 사용한다.
+
+## 페이지네이션
+
+일반 목록과 관리자 목록은 Page 방식을 사용한다.
+
+- `page`는 0부터 시작한다.
+- `size`의 기본값은 20, 최댓값은 100이다.
+- 목록 API는 문서에 명시한 기본 정렬과 PK 기반 tie-breaker를 사용한다.
+
+응답 `data`는 다음 형식을 사용한다.
+
+```json
+{
+  "items": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 0,
+  "totalPages": 0,
+  "hasNext": false
+}
+```
+
+## 멱등성
+
+- 멱등성이 필요한 명령 API는 API 상세에 명시된 키(`requestId` 또는 `idempotencyKey`)를 사용한다.
+- 키의 위치, 재요청 결과, 상태 기반 중복 차단 규칙은 해당 도메인 API 문서가 정한다.
+
+## 오류 코드
+
+- 오류 코드의 정본은 서버의 `ErrorCode` enum이다.
+- 전 도메인 공통 오류는 `CommonErrorCode`에 둔다.
+- 업무 의미가 있는 오류는 해당 도메인 `*ErrorCode` enum에 둔다.
+- 각 API 문서는 그 API가 반환할 수 있는 오류 코드만 적는다.
+
+`VALIDATION_FAILED`, `UNAUTHORIZED`, `FORBIDDEN`, `RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UPLOAD_TOO_LARGE`, `IMAGE_PROCESSING_BUSY`, `SYSTEM_ERROR`는 전 도메인 공통 오류로서
+`CommonErrorCode`에 둔다. `INVALID_LOGIN_CODE`처럼 Auth 업무 의미가 있는 오류만 `AuthErrorCode`에 둔다.
+
+- 존재하지 않는 API 경로는 `RESOURCE_NOT_FOUND`(404)를 반환한다.
+- 지원하지 않는 HTTP Method는 `METHOD_NOT_ALLOWED`(405)를 반환한다.
+- 파일 업로드가 파일 5MB 또는 요청 6MB를 넘으면 `UPLOAD_TOO_LARGE`(413)를 반환한다.
+- 이미지 처리 요청이 몰려 정해진 시간 안에 처리를 시작하지 못하면 `IMAGE_PROCESSING_BUSY`(503)를 반환한다. 잠시 후 다시 시도한다.
+- 인증이 필요한 경로 패턴에 해당하면 인증 검사가 먼저 적용되어 `UNAUTHORIZED`(401)를 반환한다.
+
+### 인증 도입 후 오류 기준
+
+- Access Token 없음·만료·변조·형식 오류는 공통 `UNAUTHORIZED`(401)로 통합한다.
+- Login Code의 만료·소비·잘못된 값은 `INVALID_LOGIN_CODE`로 통합한다.
+- token의 세부 실패 원인은 외부 오류 코드로 노출하지 않고 서버 로그·모니터링에서만 구분한다.
+- 인증된 호출자의 업무 권한 부족은 `FORBIDDEN`(403), 요청 형식 오류는 `VALIDATION_FAILED`, 예상하지
+  못한 오류는 `SYSTEM_ERROR`을 사용한다.
+
+## Swagger UI 문서화
+
+- Swagger UI는 `/swagger-ui/index.html`, OpenAPI JSON은 `/v3/api-docs`에서 제공한다.
+- 외부 API의 정본은 [전체 API 인덱스](../api-index.md), 이 문서, 도메인별 API 문서다. Swagger UI는 이 계약을 보기 쉽게 표시하는 보조 문서이며 계약을 대체하지 않는다.
+- 문서화 대상 Controller 클래스에는 도메인 단위의 `@Tag(name, description)`을, 해당 외부 endpoint에는 동작을 요약하는 `@Operation(summary, description)`을 추가한다.
+- `summary`는 API가 수행하는 동작을 짧게 쓰고, `description`에는 권한, 멱등성, 비동기 처리, 페이지네이션처럼 호출자가 알아야 하는 계약만 적는다. DTO 필드·공통 응답 봉투·오류 코드를 중복해서 나열하지 않는다.
+- HTTP 상태별 `@ApiResponse`가 필요한 경우 프로젝트의 `kr.co.cking.common.response.ApiResponse`와 이름이 같으므로 `io.swagger.v3.oas.annotations.responses.ApiResponse`의 완전 수식명을 사용한다.
+
+## 공통 API
+
+### GET /api/me
+
+- 권한: Access JWT 인증 필요
+- 역할: 인증된 현재 사용자의 기본 정보와 Creator 여부를 조회한다.
+
+```json
+{
+  "code": "SUCCESS",
+  "data": {
+    "memberId": 1,
+    "name": "OAuth 원본 이름",
+    "nickname": "cking_fan",
+    "profileImageUrl": "https://cdn.example.com/member-profile-images/1/uuid.jpg",
+    "email": "hong@example.com",
+    "role": "USER",
+    "creator": false,
+    "onboardingCompleted": true,
+    "profileConfigured": true,
+    "nicknameChangeableAt": null,
+    "restorableNickname": null
+  },
+  "message": null
+}
+```
+
+- `creator`는 JWT role이 아니라 `creator.member_id` 존재 여부다.
+- JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
+- `name`은 OAuth 제공자 원본 이름이고 본인 조회에서만 반환한다. 팬 공개 응답은 닉네임·Member 사진을, 승인된 Creator
+  공개 응답은 활동명·Creator Space 사진을 사용한다. `profileConfigured`가 `false`인 팬 회원은 댓글 작성·수정,
+  Creator 신청, 이벤트 응모를 할 수 없다. Creator는 Member 닉네임 대신 활동명이 설정돼야 댓글·게시글·Event 작성과
+  이벤트 응모를 할 수 있다. 상세는 [Member API](../domains/member/api.md)를 따른다.
+
+### GET /api/creators
+
+- 권한: PUBLIC
+- 역할: Creator 목록을 조회한다. 요청·응답 계약은 [Creator Space API](../domains/creator/space-api.md#get-apicreators)를 따른다.
+
+### GET /api/creators/{creatorId}
+
+별도 상세 API는 제공하지 않는다. Creator 이름·소개·이미지·slug는 `GET /api/creators/{creatorId}/space`로 조회한다. 계약은 [Creator Space API](../domains/creator/space-api.md#get-apicreatorscreatoridspace)를 따른다.
+
+## 콘텐츠 배치 인증 예외
+
+`/api/internal/content-tags/**`는 별도 opaque Bearer 토큰의 SHA-256 설정
+`cking.content-tags.token-hash`로만 인증한다. ADMIN JWT·추천 적재 키의 권한을 확대하지 않는다.
+내부 체인은 명시적 `Authorization: Bearer` 요청에만 CSRF 예외를 적용한다. Cookie만 있거나
+인증이 없는 쓰기는 자격 증명 필터가 먼저 거부하며, 콘텐츠 토큰은 Cookie에서 읽지 않는다.
+일반 회원 JWT는 `/api/creator/content-tags`와 `/confirmation`에서 본인 식별에 사용한다.
+[콘텐츠 태그 계약](../domains/creator/content-tags.md)에 상세 경로·오류·출처 공개 범위를 정의한다.

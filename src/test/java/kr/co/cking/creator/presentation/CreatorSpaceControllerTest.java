@@ -1,0 +1,526 @@
+package kr.co.cking.creator.presentation;
+
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.security.WithMockJwt;
+import kr.co.cking.creator.application.CreatorSpaceProfileService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageLinkService;
+import kr.co.cking.creator.application.CreatorSpaceProfileImageUploadService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
+import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
+import kr.co.cking.creator.application.dto.CreatorSpaceView;
+import kr.co.cking.creator.domain.CreatorErrorCode;
+import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.member.repository.MemberRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(CreatorSpaceController.class)
+class CreatorSpaceControllerTest {
+
+    private static final String UPDATE_BODY = """
+            {
+              "introText": "새 소개",
+              "profileImageUrl": "https://img/p2.png",
+              "bannerImageUrl": "https://img/b2.png"
+            }
+            """;
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private CreatorSpaceProfileService profileService;
+
+    @MockitoBean
+    private CreatorSpaceProfileImageUploadService profileImageUploadService;
+
+    @MockitoBean
+    private CreatorSpaceProfileImageLinkService profileImageLinkService;
+
+    @MockitoBean
+    private ImageProcessingLimiter imageProcessingLimiter;
+
+    @MockitoBean
+    private MemberRepository memberRepository;
+
+    /** slug 변경 이력(slugChangeableAt)은 본인에게만 필요하므로 공개 응답에는 담지 않는다. */
+    @Test
+    void publicSpaceIsReadableWithoutJwt() throws Exception {
+        given(profileService.findByCreatorId(42L)).willReturn(slugChangedView());
+        given(profileService.countFollowers(42L)).willReturn(1280L);
+
+        mockMvc.perform(get("/api/creators/{creatorId}/space", 42L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.creatorId").value(42))
+                .andExpect(jsonPath("$.data.creatorName").value("크리에이터"))
+                .andExpect(jsonPath("$.data.slug").value("iu-official"))
+                .andExpect(jsonPath("$.data.introText").value("소개"))
+                .andExpect(jsonPath("$.data.followerCount").value(1280))
+                .andExpect(jsonPath("$.data.slugChangeableAt").doesNotExist());
+    }
+
+    @Test
+    void sharedUrlResolvesSpaceBySlugWithoutJwt() throws Exception {
+        given(profileService.findBySlug("creator-42")).willReturn(view());
+        given(profileService.countFollowers(42L)).willReturn(0L);
+
+        mockMvc.perform(get("/api/creator-spaces/{slug}", "creator-42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.creatorId").value(42))
+                .andExpect(jsonPath("$.data.slug").value("creator-42"))
+                .andExpect(jsonPath("$.data.followerCount").value(0));
+    }
+
+    @Test
+    void publicSpaceReturnsNotFoundEnvelopeWhenMissing() throws Exception {
+        given(profileService.findByCreatorId(42L))
+                .willThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(get("/api/creators/{creatorId}/space", 42L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void sharedUrlReturnsNotFoundEnvelopeWhenSlugIsMissing() throws Exception {
+        given(profileService.findBySlug("missing"))
+                .willThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(get("/api/creator-spaces/{slug}", "missing"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void mySpaceUsesJwtMemberId() throws Exception {
+        given(profileService.findMine(7L)).willReturn(slugChangedView());
+
+        mockMvc.perform(get("/api/creator/space"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.slug").value("iu-official"))
+                .andExpect(jsonPath("$.data.slugChangeableAt").value("2026-10-12T03:00:00Z"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "8")
+    void mySpaceReturnsForbiddenEnvelopeForNonCreator() throws Exception {
+        given(profileService.findMine(8L)).willThrow(new BusinessException(CommonErrorCode.FORBIDDEN));
+
+        mockMvc.perform(get("/api/creator/space"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void mySpaceRequiresJwt() throws Exception {
+        mockMvc.perform(get("/api/creator/space"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesAllProfileFields() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png"
+        );
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesExplicitNullImageKeyForDefaultImageRestore() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, true);
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "profileImageKey": null
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    @Test
+    void updateMySpaceRequiresJwt() throws Exception {
+        mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY))
+                .andExpect(status().isUnauthorized());
+        then(profileService).should(never()).updateMine(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void uploadProfileImageReturnsConnectionKey() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+        given(profileImageUploadService.upload(eq(7L), any())).willReturn("creator-space-profile-images/42/image.jpg");
+
+        mockMvc.perform(multipart("/api/creator/space/profile-images")
+                        .file(new MockMultipartFile("image", "profile.png", "image/png", new byte[] {1})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.imageKey").value("creator-space-profile-images/42/image.jpg"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void linkProfileImageUsesAuthenticatedCreatorAndReturnsMine() throws Exception {
+        given(profileService.findMine(7L)).willReturn(view());
+
+        mockMvc.perform(put("/api/creator/space/profile-image")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"imageKey\":\"creator-space-profile-images/42/image.jpg\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").value(42));
+
+        then(profileImageLinkService).should().link(7L, "creator-space-profile-images/42/image.jpg");
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesBannerImageKeyAndExplicitNullForDefaultBannerRestore() throws Exception {
+        CreatorSpaceProfileFields replace = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, false,
+                "creator-space-profile-images/42/banner/new.jpg", true);
+        CreatorSpaceProfileFields restore = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png", null, false, null, true);
+        given(profileService.updateMine(eq(7L), any())).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "bannerImageKey": "creator-space-profile-images/42/banner/new.jpg"
+                                }
+                                """))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": "새 소개",
+                                  "profileImageUrl": "https://img/p2.png",
+                                  "bannerImageUrl": "https://img/b2.png",
+                                  "bannerImageKey": null
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        then(profileService).should().updateMine(7L, replace);
+        then(profileService).should().updateMine(7L, restore);
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpaceDoesNotTouchBannerImageWhenKeyIsOmitted() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields(
+                "새 소개", "https://img/p2.png", "https://img/b2.png");
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(UPDATE_BODY))
+                .andExpect(status().isOk());
+
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void uploadBannerImageReturnsConnectionKey() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+        given(profileImageUploadService.uploadBanner(eq(7L), any())).willReturn("creator-space-profile-images/42/banner/image.jpg");
+
+        mockMvc.perform(multipart("/api/creator/space/banner-images")
+                        .file(new MockMultipartFile("image", "banner.png", "image/png", new byte[] {1})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.imageKey").value("creator-space-profile-images/42/banner/image.jpg"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void uploadBannerImageWithoutImagePartIsValidationFailure() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+
+        mockMvc.perform(multipart("/api/creator/space/banner-images"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void uploadBannerImageRequiresJwt() throws Exception {
+        mockMvc.perform(multipart("/api/creator/space/banner-images")
+                        .file(new MockMultipartFile("image", "banner.png", "image/png", new byte[] {1})))
+                .andExpect(status().isUnauthorized());
+        then(profileImageUploadService).should(never()).uploadBanner(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void linkBannerImageUsesAuthenticatedCreatorAndReturnsMine() throws Exception {
+        given(profileService.findMine(7L)).willReturn(view());
+
+        mockMvc.perform(put("/api/creator/space/banner-image")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"imageKey\":\"creator-space-profile-images/42/banner/image.jpg\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").value(42));
+
+        then(profileImageLinkService).should().linkBanner(7L, "creator-space-profile-images/42/banner/image.jpg");
+        then(profileImageLinkService).should(never()).link(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void linkBannerImageRejectsBlankKey() throws Exception {
+        mockMvc.perform(put("/api/creator/space/banner-image")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"imageKey\":\" \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileImageLinkService).should(never()).linkBanner(any(), any());
+    }
+
+    /** 모든 필드를 한 번에 교체하므로 공백이거나 누락된 필드는 검증 실패다. */
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpaceRejectsBlankOrMissingFields() throws Exception {
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "introText": " ",
+                                  "profileImageUrl": "https://img/p2.png"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileService).should(never()).updateMine(eq(7L), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpaceRejectsTooLongIntro() throws Exception {
+        String body = UPDATE_BODY.replace("새 소개", "a".repeat(501));
+
+        mockMvc.perform(patch("/api/creator/space").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void spaceIsReadableBySlugWithoutJwt() throws Exception {
+        given(profileService.findBySlug("iu-official")).willReturn(slugChangedView());
+
+        mockMvc.perform(get("/api/creator-spaces/{slug}", "iu-official"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.creatorId").value(42))
+                .andExpect(jsonPath("$.data.slug").value("iu-official"))
+                .andExpect(jsonPath("$.data.slugChangeableAt").doesNotExist());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugUsesJwtMemberId() throws Exception {
+        given(profileService.changeSlug(7L, "iu-official")).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-official\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+        then(profileService).should().changeSlug(7L, "iu-official");
+    }
+
+    /** 요청 단계에서는 빈 값과 컬럼 길이(100자) 초과만 막는다. */
+    @ParameterizedTest
+    @ValueSource(strings = {" ", ""})
+    @WithMockJwt(memberId = "7")
+    void changeSlugRejectsBlankSlug(String slug) throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"%s\"}".formatted(slug)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileService).should(never()).changeSlug(any(), any());
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugRejectsSlugLongerThanColumn() throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"%s\"}".formatted("a".repeat(101))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(profileService).should(never()).changeSlug(any(), any());
+    }
+
+    /** 커스텀 slug 형식(3~30자 등)은 되돌리기 때문에 Application이 새 slug일 때만 검증한다. */
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugPassesFormatCheckToApplication() throws Exception {
+        given(profileService.changeSlug(7L, "IU"))
+                .willThrow(new BusinessException(CommonErrorCode.VALIDATION_FAILED));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"IU\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugReturnsConflictWhenTaken() throws Exception {
+        given(profileService.changeSlug(7L, "taken"))
+                .willThrow(new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"taken\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SLUG_ALREADY_TAKEN"));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void changeSlugReturnsConflictWithinFourteenDays() throws Exception {
+        given(profileService.changeSlug(7L, "iu-2026"))
+                .willThrow(new BusinessException(CreatorErrorCode.SLUG_CHANGE_TOO_SOON));
+
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-2026\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SLUG_CHANGE_TOO_SOON"));
+    }
+
+    @Test
+    void changeSlugRequiresJwt() throws Exception {
+        mockMvc.perform(patch("/api/creator/space/slug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\": \"iu-official\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void publicCreatorListIsReadableWithoutJwtAndUsesDefaultPaging() throws Exception {
+        given(profileService.findPublicSpaces(null, PageRequest.of(0, 20)))
+                .willReturn(new PageImpl<>(List.of(view()), PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get("/api/creators"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[0].creatorId").value(42))
+                .andExpect(jsonPath("$.data.items[0].creatorName").value("크리에이터"))
+                .andExpect(jsonPath("$.data.items[0].slug").value("creator-42"))
+                .andExpect(jsonPath("$.data.items[0].introText").value("소개"))
+                .andExpect(jsonPath("$.data.items[0].profileImageUrl").value("https://img/profile.png"))
+                .andExpect(jsonPath("$.data.items[0].bannerImageUrl").value("https://img/banner.png"))
+                .andExpect(jsonPath("$.data.items[0].slugChangeableAt").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].followerCount").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].openEventCount").value(0))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void publicCreatorListIncludesOpenEventCount() throws Exception {
+        given(profileService.findPublicSpaces(null, PageRequest.of(0, 20)))
+                .willReturn(new PageImpl<>(List.of(view()), PageRequest.of(0, 20), 1));
+        given(profileService.countOpenEvents(List.of(42L))).willReturn(java.util.Map.of(42L, 3L));
+
+        mockMvc.perform(get("/api/creators"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].openEventCount").value(3));
+    }
+
+    @Test
+    void publicCreatorListPassesKeywordAndPagingToService() throws Exception {
+        given(profileService.findPublicSpaces("크리", PageRequest.of(1, 5)))
+                .willReturn(new PageImpl<>(List.of(), PageRequest.of(1, 5), 5));
+
+        mockMvc.perform(get("/api/creators").param("keyword", "크리").param("page", "1").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"page=-1", "size=0", "size=101", "page=abc"})
+    void publicCreatorListRejectsInvalidPaging(String query) throws Exception {
+        mockMvc.perform(get("/api/creators?" + query))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(profileService).should(never()).findPublicSpaces(any(), any());
+    }
+
+    @Test
+    void publicCreatorListRejectsTooLongKeyword() throws Exception {
+        mockMvc.perform(get("/api/creators").param("keyword", "가".repeat(51)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(profileService).should(never()).findPublicSpaces(any(), any());
+    }
+
+    private CreatorSpaceView view() {
+        CreatorSpace space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
+                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
+        ), "creator-42");
+        return new CreatorSpaceView(space, "크리에이터");
+    }
+
+    /** 2026-09-28T03:00Z에 slug를 바꿔 14일 뒤(2026-10-12T03:00Z)에 다시 바꿀 수 있는 Space. */
+    private CreatorSpaceView slugChangedView() {
+        CreatorSpaceView view = view();
+        view.space().changeSlug("iu-official", LocalDateTime.of(2026, 9, 28, 3, 0));
+        return view;
+    }
+}
