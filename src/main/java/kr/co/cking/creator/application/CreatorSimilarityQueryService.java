@@ -1,5 +1,7 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
+
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.CreatorSimilarityView;
@@ -23,6 +25,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class CreatorSimilarityQueryService {
+    // 저장 후보 상한을 일괄 검사한 뒤 size를 적용해 앞 순위의 무효 후보가 정상 후보를 가리지 않게 한다.
+    private static final int MAX_STORED_CANDIDATES = 100;
 
     private final CreatorRepository creatorRepository;
     private final CreatorSimilarityGenerationRepository generationRepository;
@@ -43,7 +47,7 @@ public class CreatorSimilarityQueryService {
         CreatorSimilarityGeneration generation = generationRepository.findById(generationId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.SYSTEM_ERROR));
         var candidates = candidateRepository.findByGenerationIdOrderByRankAsc(
-                generationId, PageRequest.of(0, 100));
+                generationId, PageRequest.of(0, MAX_STORED_CANDIDATES));
         var refs=candidates.stream().map(c -> new RecommendationEligibilityService.Ref(generationId,creatorId,c.getSimilarCreatorId(),java.util.Set.of())).toList();
         var valid=eligibility.valid("SIMILAR",refs);
         candidates=candidates.stream().filter(c -> valid.contains(new RecommendationEligibilityService.Ref(generationId,creatorId,c.getSimilarCreatorId(),java.util.Set.of()))).limit(size).toList();

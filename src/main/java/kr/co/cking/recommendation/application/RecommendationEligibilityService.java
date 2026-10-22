@@ -1,4 +1,4 @@
-package kr.co.cking.creator.application;
+package kr.co.cking.recommendation.application;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -15,9 +15,11 @@ import org.springframework.stereotype.Service;
 /** 모델 판단은 배치의 책임이다. BE는 근거의 완전성·분야 일치·현재 소개만 검증한다. */
 @Service
 @RequiredArgsConstructor
+@lombok.extern.slf4j.Slf4j
 public class RecommendationEligibilityService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final JdbcTemplate jdbc;
+    private final kr.co.cking.interest.application.InterestTaxonomyQueryService taxonomyQueryService;
     public record Ref(long generation, Long seed, long candidate, Set<String> interests) { }
 
     public static String introductionHash(String raw) {
@@ -45,9 +47,8 @@ public class RecommendationEligibilityService {
         String version=proof.path("taxonomyVersion").asText(), hash=proof.path("taxonomyHash").asText();
         String key = version + ":" + hash;
         if (cache.containsKey(key)) return cache.get(key);
-        var active=jdbc.queryForList("SELECT taxonomy_version FROM interest_taxonomy WHERE taxonomy_version=? AND taxonomy_hash=?",String.class,version,hash);
-        if (active.isEmpty()) throw invalid();
-        var allowed = new HashSet<>(jdbc.queryForList("SELECT interest_code FROM interest_category WHERE taxonomy_version=? AND active=TRUE",String.class,version));
+        var allowed = taxonomyQueryService.activeCodes(version, hash);
+        if (allowed.isEmpty()) throw invalid();
         cache.put(key, allowed);
         return allowed;
     }
@@ -90,19 +91,27 @@ public class RecommendationEligibilityService {
         return true;
     }
     public void save(String kind,long generation,JsonNode proof,Long seed,Set<Long> candidates,String interest) {
-        if(proof==null) return; // 구 적재는 보존하지만 자격 근거가 없어 조회에서 제외된다.
+        if(proof==null) {
+            log.warn("RECOMMENDATION_PROOF_MISSING sourceKind={} generationId={} candidateCount={} visible=false", kind, generation, candidates.size());
+            return;
+        }
+        validateForStorage(proof, seed, candidates, interest);
+        jdbc.update("INSERT INTO recommendation_eligibility(source_kind,generation_id,proof) VALUES(?,?,?)",kind,generation,proof.toString());
+    }
+    public void validateForStorage(JsonNode proof,Long seed,Set<Long> candidates,String interest) {
+        if (proof == null) return; // 구 클라이언트 호환. save에서 반드시 관측 가능한 경고를 남긴다.
         var rows=profiles(proof,taxonomy(proof));
         var expected=new TreeSet<>(candidates); if(seed!=null) expected.add(seed);
         if(!rows.keySet().equals(expected)) throw invalid();
-        var inputs=current(expected,true);
-        if(inputs.size()!=expected.size() || rows.entrySet().stream().anyMatch(e->!e.getValue().path("introductionHash").asText().equals(inputs.get(e.getKey())))) throw invalid();
-        for(long candidate:candidates) if(!matches(new Ref(generation,seed,candidate,interest==null?Set.of():Set.of(interest)),rows,inputs)) throw invalid();
-        jdbc.update("INSERT INTO recommendation_eligibility(source_kind,generation_id,proof) VALUES(?,?,?)",kind,generation,proof.toString());
+        var inputs = new HashMap<Long,String>();
+        rows.forEach((id,row) -> inputs.put(id,row.path("introductionHash").asText()));
+        for(long candidate:candidates) if(!matches(new Ref(0,seed,candidate,interest==null?Set.of():Set.of(interest)),rows,inputs)) throw invalid();
     }
     public boolean exists(String kind,long generation) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_eligibility WHERE source_kind=? AND generation_id=?",Long.class,kind,generation)>0;
     }
     public boolean same(String kind,long generation,JsonNode proof) {
+        if (proof == null) return !exists(kind, generation);
         var stored=jdbc.queryForList("SELECT CAST(proof AS CHAR) FROM recommendation_eligibility WHERE source_kind=? AND generation_id=?",String.class,kind,generation);
         return stored.size()==1 && parse(stored.getFirst()).equals(parse(proof.toString()));
     }
@@ -117,7 +126,8 @@ public class RecommendationEligibilityService {
                 try { var p=parse(r.getString(2)); payloads.put(r.getLong(1),profiles(p,taxonomy(p,taxonomies))); }
                 catch(BusinessException e) { /* 잘못되거나 등록되지 않은 분류체계의 과거 근거는 공개하지 않는다. */ }
             });
-        var ids=new HashSet<Long>(); payloads.values().forEach(p->ids.addAll(p.keySet()));
+        var ids=new HashSet<Long>();
+        refs.forEach(ref -> { ids.add(ref.candidate()); if (ref.seed()!=null) ids.add(ref.seed()); });
         var inputs=current(ids,false); var result=new HashSet<Ref>();
         for(var ref:refs) if(matches(ref,payloads.getOrDefault(ref.generation(),Map.of()),inputs)) result.add(ref);
         return result;

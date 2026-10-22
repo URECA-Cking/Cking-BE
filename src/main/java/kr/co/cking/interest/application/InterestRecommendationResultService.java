@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class InterestRecommendationResultService {
-    private final kr.co.cking.creator.application.RecommendationEligibilityService eligibility;
+    private final kr.co.cking.recommendation.application.RecommendationEligibilityService eligibility;
 
 
     private final InterestTaxonomyRepository taxonomyRepository;
@@ -71,7 +71,7 @@ public class InterestRecommendationResultService {
         requireExistingCreators(bundle.candidates());
         if (existing != null) {
             if (state != null && state.getCurrentGenerationId().equals(existing.getGenerationId())) {
-                if (!samePayload(existing, bundle) || (command.eligibility()!=null ? !eligibility.same("INTEREST",existing.getGenerationId(),command.eligibility()) : eligibility.exists("INTEREST",existing.getGenerationId()))) {
+                if (!samePayload(existing, bundle) || !eligibility.same("INTEREST", existing.getGenerationId(), command.eligibility())) {
                     throw new BusinessException(InterestErrorCode.RECOMMENDATION_INPUT_CONFLICT);
                 }
                 return StoreResult.of(existing, bundle.candidates().size(), false);
@@ -79,14 +79,16 @@ public class InterestRecommendationResultService {
             throw new BusinessException(InterestErrorCode.STALE_RECOMMENDATION_INPUT);
         }
 
+        if (command.eligibility()!=null && (!command.taxonomyVersion().equals(command.eligibility().path("taxonomyVersion").asText())
+                || !command.taxonomyHash().equals(command.eligibility().path("taxonomyHash").asText())))
+            throw new BusinessException(InterestErrorCode.INVALID_RECOMMENDATION_RESULT);
+        eligibility.validateForStorage(command.eligibility(), null, bundle.candidates().stream().map(InterestRecommendationBundleValidator.Candidate::creatorId).collect(java.util.stream.Collectors.toSet()), bundle.interestCode());
+
         InterestRecommendationGeneration generation = generationRepository.saveAndFlush(
                 new InterestRecommendationGeneration(
                         command.applicationSequence(), bundle.taxonomyVersion(), bundle.interestCode(), bundle.method(),
                         bundle.modelVersion(), bundle.inputHash(), Instant.now()));
-        if (command.eligibility()!=null && (!command.taxonomyVersion().equals(command.eligibility().path("taxonomyVersion").asText())
-                || !command.taxonomyHash().equals(command.eligibility().path("taxonomyHash").asText())))
-            throw new BusinessException(InterestErrorCode.INVALID_RECOMMENDATION_RESULT);
-        if (command.eligibility()!=null) eligibility.save("INTEREST",generation.getGenerationId(),command.eligibility(),null,bundle.candidates().stream().map(InterestRecommendationBundleValidator.Candidate::creatorId).collect(java.util.stream.Collectors.toSet()),bundle.interestCode());
+        eligibility.save("INTEREST",generation.getGenerationId(),command.eligibility(),null,bundle.candidates().stream().map(InterestRecommendationBundleValidator.Candidate::creatorId).collect(java.util.stream.Collectors.toSet()),bundle.interestCode());
         candidateRepository.saveAll(bundle.candidates().stream()
                 .map(candidate -> new InterestRecommendationCandidate(
                         generation.getGenerationId(), candidate.creatorId(), candidate.score(), candidate.rank()))

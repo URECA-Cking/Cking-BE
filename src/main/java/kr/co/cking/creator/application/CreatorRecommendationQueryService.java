@@ -1,5 +1,7 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.recommendation.application.RecommendationEligibilityService;
+
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
@@ -60,12 +62,18 @@ public class CreatorRecommendationQueryService {
                 : candidateRepository.findActiveCandidatesBySeedCreatorIds(followedCreatorIds);
         List<ActiveInterestRecommendationCandidate> interestRows = interestQueryService.findActiveCandidates(memberId);
         var selectedInterests = Set.copyOf(memberInterests.findMine(memberId).interestCodes());
-        var followRefs = followRows.stream().map(r -> new RecommendationEligibilityService.Ref(r.generationId(),r.seedCreatorId(),r.candidateCreatorId(),selectedInterests)).toList();
-        var interestRefs = interestRows.stream().map(r -> new RecommendationEligibilityService.Ref(r.generationId(),null,r.creatorId(),Set.of(r.interestCode()))).toList();
-        var validFollow = eligibility.valid("SIMILAR",followRefs);
-        var validInterest = eligibility.valid("INTEREST",interestRefs);
-        followRows = followRows.stream().filter(r -> validFollow.contains(new RecommendationEligibilityService.Ref(r.generationId(),r.seedCreatorId(),r.candidateCreatorId(),selectedInterests))).toList();
-        interestRows = interestRows.stream().filter(r -> validInterest.contains(new RecommendationEligibilityService.Ref(r.generationId(),null,r.creatorId(),Set.of(r.interestCode())))).toList();
+        var followEntries = followRows.stream().map(row -> java.util.Map.entry(row,
+                new RecommendationEligibilityService.Ref(row.generationId(), row.seedCreatorId(),
+                        row.candidateCreatorId(), selectedInterests))).toList();
+        var interestEntries = interestRows.stream().map(row -> java.util.Map.entry(row,
+                new RecommendationEligibilityService.Ref(row.generationId(), null,
+                        row.creatorId(), Set.of(row.interestCode())))).toList();
+        var validFollow = eligibility.valid("SIMILAR", followEntries.stream().map(java.util.Map.Entry::getValue).toList());
+        var validInterest = eligibility.valid("INTEREST", interestEntries.stream().map(java.util.Map.Entry::getValue).toList());
+        followRows = followEntries.stream().filter(entry -> validFollow.contains(entry.getValue()))
+                .map(java.util.Map.Entry::getKey).toList();
+        interestRows = interestEntries.stream().filter(entry -> validInterest.contains(entry.getValue()))
+                .map(java.util.Map.Entry::getKey).toList();
         PersonalizedCreatorRecommendationPolicy.Recommendation recommendation =
                 policy.recommend(followRows, interestRows, excludedCreatorIds);
 
