@@ -53,7 +53,7 @@ Query는 선택 `creatorId`, 선택 `status`, `page`, `size`다. `status`는 API
 각 항목과 `GET /api/events/{eventId}` 응답에는 `closeRequestedAt`이 포함된다. 마감 요청 시각(`OPEN -> CLOSING`
 전이 시점)이며 자동·수동 마감에 같은 규칙으로 기록된다. 자동 마감은 스케줄러가 `endAt` 이후 마감을 시작한 시각이라
 `endAt`보다 수 초 늦을 수 있다. 마감 전 상태와 이 필드가 생기기 전에 마감된 Event는 `null`이므로 FE는 `endAt`으로
-대체해 표시한다. Drain 완료 시각인 `closedAt`은 관리자 운영 상세에만 있다.
+대체해 표시한다. Drain 완료 시각인 `closedAt`은 관리자 운영 상세에만 있다. 배너 CDN 주소 `bannerImageUrl`(없으면 `null`)은 [배너 API](banner-api.md#응답-필드)를 따른다.
 
 ## GET /api/events/counts
 
@@ -117,7 +117,7 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
 ```
 
 - `description`은 작성하지 않았으면 `null`이다.
-- `rejectReason`은 `status == REJECTED`일 때만 가장 최근 승인 요청 차수의 반려 사유다. 그 외 상태(수정으로 `DRAFT`로 돌아간 경우 포함)이거나 사유가 없으면 `null`이다.
+- `rejectReason`은 `status == REJECTED`일 때만 가장 최근 승인 요청 차수의 반려 사유다. 그 외 상태(수정으로 `DRAFT`로 돌아간 경우 포함)이거나 사유가 없으면 `null`이다. 각 항목의 `bannerImageKey`·`bannerImageUrl`은 [배너 API](banner-api.md#응답-필드)를 따른다.
 
 ## POST /api/creator/events
 
@@ -141,7 +141,7 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
 - 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body `userId`는 받지 않는다.
 - `creatorId`는 인증된 Member의 승인 Creator에서 서버가 결정한다.
 - 생성 상태는 DRAFT다. 성공은 201이며 응답은 `{ "eventId": 1, "status": "DRAFT" }`다.
-- `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다.
+- `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다. 선택 `bannerImageKey`(본문 비교 대상)로 배너를 연결한다([배너 API](banner-api.md#생성수정-연결)).
 - `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가,
   description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이다.
 - `drawMethod`는 `UNIFORM`(후보 동일 확률) 또는 `WEIGHTED`(응모권 수 비례)를 사용한다.
@@ -155,14 +155,14 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
 ## PATCH /api/creator/events/{eventId}
 
 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Request Body `userId`는 받지 않는다.
-요청 본문은 생성 API에서 `requestId`를 제외한 동일 필드를 사용한다. 상품 설정 변경도 DRAFT에서만 허용한다. DRAFT 또는 REJECTED 상태에서만 수정할 수 있으며, REJECTED 수정은 `EventCommandService.changeToDraft(eventId)`로 DRAFT로 전이한다.
+요청 본문은 생성 API에서 `requestId`를 제외한 동일 필드를 사용한다. 상품 설정 변경도 DRAFT에서만 허용한다. DRAFT 또는 REJECTED 상태에서만 수정할 수 있으며, REJECTED 수정은 `EventCommandService.changeToDraft(eventId)`로 DRAFT로 전이한다. 배너 외 필드는 모두 교체하며, `bannerImageKey`는 생략하면 유지·키면 교체·`null`이면 제거한다([배너 API](banner-api.md#생성수정-연결)).
 
 성공은 200이고 응답은 `{ "eventId": 1, "status": "DRAFT" }`다. 별도 멱등 키는 사용하지 않으며 같은 값을 재적용해도 같은 최종 상태가 된다.
 
 ## DELETE /api/creator/events/{eventId}
 
 권한: 인증된 Creator. 호출자 식별자는 Access JWT에서 추출하며 Query `userId`는 받지 않는다.
-DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedAt`을 기록한다. 성공은 204 No Content다.
+DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedAt`을 기록한다. 연결된 배너는 삭제 대기로 돌려 정리한다. 성공은 204 No Content다.
 
 ## POST /api/creator/events/{eventId}/approval-request
 
@@ -174,7 +174,7 @@ DRAFT 또는 REJECTED만 삭제할 수 있으며, 물리 삭제 대신 `deletedA
 
 ## GET /api/admin/events/pending
 
-Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 `page`, `size`다. 현재 PENDING_APPROVAL Event와 승인 요청을 반환하며 기본 정렬은 `requestedAt ASC, approvalRequestId ASC`다.
+Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberId`를 기존 관리자 업무 식별자로 전달한다. Query는 `page`, `size`다. 현재 PENDING_APPROVAL Event와 승인 요청을 반환하며 기본 정렬은 `requestedAt ASC, approvalRequestId ASC`다. 심사용으로 `bannerImageUrl`도 반환한다([배너 API](banner-api.md#응답-필드)).
 
 ```json
 {
@@ -210,7 +210,7 @@ Query는 선택 `status`, 선택 `archiveStatus`, 기본 `page=0`, `size=20`이�
 전체 `EventStatus`를 조회한다. `DRAFT`, `PENDING_APPROVAL`, `REJECTED`, `SCHEDULED`, `OPEN`, `CLOSING`,
 `CLOSED`, `DRAW_COMPLETED`, `PUBLISHED` 중 하나로 필터링할 수 있다. 삭제 Event는 기존 Event 목록 정책과 같이
 제외하고 `createdAt DESC, eventId DESC`로 정렬한다. 각 항목의 `archivedAt`, `archivedBy`는 일반 목록에서는
-생략되며 보관함에서 보관 시각·처리자 ID를 반환한다.
+생략되며 보관함에서 보관 시각·처리자 ID를 반환한다. 배너가 있으면 `bannerImageUrl`을 반환한다.
 
 ```json
 {
@@ -241,7 +241,7 @@ Event는 조회할 수 없으며 없는 Event와 동일하게 `RESOURCE_NOT_FOUN
 대상이므로 조회할 수 있다.
 
 `event`에는 Creator 공개 활동명, 제목·설명, 일정, 상품 설정, 추첨·상품 배정 알고리즘, Event 상태와
-마감·공개·보관 시각을 담는다. `snapshot`과 `initialDrawing`은 아직 생성되지 않았으면 `null`이다.
+마감·공개·보관 시각, 배너 주소(`bannerImageUrl`)를 담는다. `snapshot`과 `initialDrawing`은 아직 생성되지 않았으면 `null`이다.
 Snapshot 후보 전체와 Drawing Winner 전체는 응답에 포함하지 않으며, 필요할 때 기존 Snapshot·Drawing
 상세 API를 호출한다.
 

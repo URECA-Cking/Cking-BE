@@ -47,15 +47,25 @@ public record AdminEventOperationResult(
             Instant archivedAt,
             Long archivedBy,
             Instant createdAt,
-            List<PrizeResult> prizes
+            List<PrizeResult> prizes,
+            String bannerImageUrl
     ) {
+        public EventSummary(Long eventId, Long creatorId, String creatorName, String title, String description,
+                            Instant startAt, Instant endAt, int winnerCount, DrawMethod drawMethod,
+                            String prizeAlgorithmVersion, EventStatus status, Instant closedAt, Instant publishedAt,
+                            Instant archivedAt, Long archivedBy, Instant createdAt, List<PrizeResult> prizes) {
+            this(eventId, creatorId, creatorName, title, description, startAt, endAt, winnerCount, drawMethod,
+                    prizeAlgorithmVersion, status, closedAt, publishedAt, archivedAt, archivedBy, createdAt, prizes, null);
+        }
+
         static EventSummary from(Event event, String creatorName) {
             return new EventSummary(
                     event.getEventId(), event.getCreatorId(), creatorName, event.getTitle(), event.getDescription(),
                     event.getStartAt(), event.getEndAt(), event.getWinnerCount(),
                     DrawMethod.valueOf(event.getDrawMethod()), event.getPrizeAlgorithmVersion(), event.getStatus(),
                     event.getClosedAt(), event.getPublishedAt(), event.getArchivedAt(), event.getArchivedBy(),
-                    event.getCreatedAt(), event.getPrizeConfigs().stream().map(PrizeResult::from).toList()
+                    event.getCreatedAt(), event.getPrizeConfigs().stream().map(PrizeResult::from).toList(),
+                    event.getBannerImageUrl()
             );
         }
     }

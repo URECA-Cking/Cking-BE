@@ -65,6 +65,18 @@ class EventCacheTest {
         assertThat(eventCache.find(1L)).contains(event);
     }
 
+    @Test
+    void 배너_CDN_주소도_캐시에_저장했다가_그대로_읽는다() {
+        CachedEvent event = new CachedEvent(6L, 2L, 10L, "배너 이벤트", "설명", now, now.plus(Duration.ofDays(5)), 3,
+                "WEIGHTED", "PRIZE_WEIGHTED_V1", EventStatus.OPEN, java.util.List.of(), null,
+                "https://cdn.example/creator-space-profile-images/2/event-banner/a.jpg");
+
+        eventCache.save(event);
+
+        assertThat(eventCache.find(6L)).map(CachedEvent::bannerImageUrl)
+                .contains("https://cdn.example/creator-space-profile-images/2/event-banner/a.jpg");
+    }
+
     /** 소유 회원 ID가 빠진 이전 버전 캐시는 재조회해 본인 응모 검증에 쓰지 않는다. */
     @Test
     void 소유_회원_ID가_없는_캐시는_miss로_처리한다() {

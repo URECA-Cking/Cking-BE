@@ -6,9 +6,13 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.common.security.CurrentMemberId;
 import kr.co.cking.common.response.ApiResponse;
 import kr.co.cking.event.application.CreatorEventService;
+import kr.co.cking.event.application.EventBannerImageUploadService;
 import kr.co.cking.event.application.EventReviewService;
 import kr.co.cking.event.application.AdminEventOperationQueryService;
 import kr.co.cking.event.application.AdminEventOperationResult;
@@ -20,7 +24,11 @@ import kr.co.cking.event.presentation.dto.EventManagementRequest;
 import kr.co.cking.event.presentation.dto.EventManagementResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -46,6 +54,8 @@ public class EventManagementController {
     private final CreatorEventService creatorEventService;
     private final EventReviewService eventReviewService;
     private final AdminEventOperationQueryService adminEventOperationQueryService;
+    private final EventBannerImageUploadService bannerImageUploadService;
+    private final ImageProcessingLimiter imageProcessingLimiter;
 
     /** Creator가 소유한 삭제되지 않은 Event 목록을 페이지로 반환한다. */
     @GetMapping("/api/creator/events")
@@ -120,8 +130,27 @@ public class EventManagementController {
             @Valid @RequestBody EventManagementRequest.Update request) {
         Event event = creatorEventService.update(new kr.co.cking.event.application.dto.UpdateEventCommand(
                 memberId, eventId, request.title(), request.description(), request.startAt(), request.endAt(),
-                request.winnerCount(), request.drawMethod(), request.prizeAlgorithmVersion(), request.prizeConfigs()));
+                request.winnerCount(), request.drawMethod(), request.prizeAlgorithmVersion(), request.prizeConfigs(),
+                request.bannerImageKey(), request.bannerImageKeyProvided()));
         return ApiResponse.success(EventManagementResponse.Result.from(event));
+    }
+
+    /** Event 배너 이미지를 올리고 생성·수정 요청에 쓸 imageKey를 반환한다(이슈 #748). */
+    @PostMapping(value = "/api/creator/events/banner-images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Event 배너 이미지 업로드",
+            description = "인증된 Creator가 배너 이미지를 올리고 Event 생성·수정의 bannerImageKey로 쓸 imageKey를 받습니다. 24시간 안에 연결하지 않으면 정리됩니다."
+    )
+    public ResponseEntity<ApiResponse<EventManagementResponse.BannerImage>> uploadBannerImage(
+            @CurrentMemberId Long memberId, @RequestPart(value = "image", required = false) MultipartFile image) {
+        String key = imageProcessingLimiter.admit(() -> bannerImageUploadService.upload(memberId, readBytes(image)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(new EventManagementResponse.BannerImage(key)));
+    }
+
+    private byte[] readBytes(MultipartFile image) {
+        if (image == null) throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        try { return image.getBytes(); }
+        catch (IOException exception) { throw new BusinessException(CommonErrorCode.SYSTEM_ERROR); }
     }
 
     /** Creator 소유 초안 Event를 논리 삭제한다. */
@@ -142,7 +171,7 @@ public class EventManagementController {
         Event event = creatorEventService.create(new CreateEventCommand(
                 memberId, request.requestId(), request.title(), request.description(), request.startAt(),
                 request.endAt(), request.winnerCount(), request.drawMethod(), request.prizeAlgorithmVersion(),
-                request.prizeConfigs()));
+                request.prizeConfigs(), request.bannerImageKey()));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(EventManagementResponse.Result.from(event)));
     }

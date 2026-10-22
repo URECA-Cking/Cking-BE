@@ -61,6 +61,8 @@ class TicketRewardNotificationMigrationTest {
         }
         var result=Flyway.configure().dataSource(url,"root","test").locations("classpath:db/migration").target("90").load().migrate();
         assertThat(result.migrationsExecuted).isEqualTo(1);
+        // JPA validate는 현재 Entity(Event 등) 기준이라, V90 이후 컬럼이 생기면 깨진다. 최종 migration까지 올린 뒤 검증한다.
+        Flyway.configure().dataSource(url,"root","test").locations("classpath:db/migration").load().migrate();
         context=new AnnotationConfigApplicationContext(Config.class);
         jdbc=context.getBean(JdbcTemplate.class);
         store=context.getBean(RewardNotificationLedgerStore.class);

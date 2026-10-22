@@ -97,6 +97,10 @@ cking:
     archive:
       # 운영에서는 수령 대기 당첨이 남은 Event를 보관하지 않는다.
       allow-pending-winners: ${EVENT_ARCHIVE_ALLOW_PENDING_WINNERS:false}
+    banner-image:
+      # 배너는 Creator Space 이미지 접두사(creator-space-profile-images/) 아래에 저장해 같은 CDN으로 읽는다(#748).
+      # 환경별 값을 따로 두지 않고 Space 이미지 주소(local S3Mock, dev·prod는 각 프로필의 CloudFront)를 그대로 따른다.
+      public-base-url: ${cking.creator.space-profile-image.public-base-url}
   recommendation:
     tracking:
       request-ttl: ${RECOMMENDATION_TRACKING_REQUEST_TTL:PT24H}

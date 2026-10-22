@@ -4,6 +4,8 @@ import kr.co.cking.event.application.CreatorEventService;
 import kr.co.cking.event.application.EventReviewService;
 import kr.co.cking.event.application.AdminEventOperationQueryService;
 import kr.co.cking.event.application.AdminEventOperationResult;
+import kr.co.cking.event.application.EventBannerImageUploadService;
+import kr.co.cking.common.image.ImageProcessingLimiter;
 import kr.co.cking.common.config.WebMvcConfig;
 import kr.co.cking.common.security.CurrentMemberIdArgumentResolver;
 import kr.co.cking.event.domain.DrawMethod;
@@ -38,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -54,6 +57,8 @@ class EventManagementControllerTest {
     @MockitoBean private CreatorEventService creatorEventService;
     @MockitoBean private EventReviewService eventReviewService;
     @MockitoBean private AdminEventOperationQueryService adminEventOperationQueryService;
+    @MockitoBean private EventBannerImageUploadService bannerImageUploadService;
+    @MockitoBean private ImageProcessingLimiter imageProcessingLimiter;
 
     @BeforeEach
     void authenticatedCreator() {
@@ -237,6 +242,96 @@ class EventManagementControllerTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 배너_업로드는_입장_제한을_거쳐_인증된_회원의_imageKey를_201로_반환한다() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+        given(bannerImageUploadService.upload(org.mockito.ArgumentMatchers.eq(1L), any()))
+                .willReturn("creator-space-profile-images/42/event-banner/image.jpg");
+
+        mockMvc.perform(multipart("/api/creator/events/banner-images")
+                        .file(new org.springframework.mock.web.MockMultipartFile("image", "banner.png", "image/png", new byte[] {1})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.imageKey").value("creator-space-profile-images/42/event-banner/image.jpg"));
+    }
+
+    @Test
+    void 배너_업로드에_image_part가_없으면_VALIDATION_FAILED다() throws Exception {
+        given(imageProcessingLimiter.admit(any())).willAnswer(invocation -> invocation.<java.util.function.Supplier<String>>getArgument(0).get());
+
+        mockMvc.perform(multipart("/api/creator/events/banner-images"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(bannerImageUploadService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 생성_요청의_bannerImageKey를_명령에_전달한다() throws Exception {
+        Event event = event(1L, "팬미팅");
+        given(creatorEventService.create(any())).willAnswer(invocation -> {
+            var command = invocation.getArgument(0, kr.co.cking.event.application.dto.CreateEventCommand.class);
+            assertThat(command.bannerImageKey()).isEqualTo("creator-space-profile-images/1/event-banner/a.jpg");
+            return event;
+        });
+
+        mockMvc.perform(post("/api/creator/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"requestId":"550e8400-e29b-41d4-a716-446655440000","title":"팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":1,"drawMethod":"WEIGHTED","bannerImageKey":"creator-space-profile-images/1/event-banner/a.jpg"}
+                                """))
+                .andExpect(status().isCreated());
+    }
+
+    /** 수정 요청은 bannerImageKey 생략(유지)과 null(제거)을 구분해 명령에 전달한다. */
+    @ParameterizedTest
+    @MethodSource("bannerImageKeyFields")
+    void 수정_요청의_bannerImageKey_생략과_null을_구분한다(String bannerField, boolean provided, String expectedKey) throws Exception {
+        Event event = event(7L, "변경된 팬미팅");
+        given(creatorEventService.update(any())).willAnswer(invocation -> {
+            var command = invocation.getArgument(0, kr.co.cking.event.application.dto.UpdateEventCommand.class);
+            assertThat(command.bannerImageKeyProvided()).isEqualTo(provided);
+            assertThat(command.bannerImageKey()).isEqualTo(expectedKey);
+            assertThat(command.title()).isEqualTo("변경된 팬미팅");
+            assertThat(command.winnerCount()).isEqualTo(2);
+            assertThat(command.prizeAlgorithmVersion().name()).isEqualTo("PRIZE_WEIGHTED_V1");
+            return event;
+        });
+
+        mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"변경된 팬미팅","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":2,"drawMethod":"WEIGHTED"%s}
+                                """.formatted(bannerField)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 수정_요청은_record였을_때와_같이_필수값이_없으면_VALIDATION_FAILED다() throws Exception {
+        mockMvc.perform(patch("/api/creator/events/{eventId}", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":" ","startAt":"2026-09-20T09:00:00Z","endAt":"2026-09-21T09:00:00Z","winnerCount":0}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        then(creatorEventService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 내_Event_목록은_배너_키와_CDN_주소를_반환하고_배너가_없으면_null이다() throws Exception {
+        Event withBanner = event(7L, "팬미팅");
+        withBanner.changeBannerImage("creator-space-profile-images/1/event-banner/a.jpg", "https://cdn.example/a.jpg");
+        Event withoutBanner = event(8L, "팬사인회");
+        given(creatorEventService.findMine(org.mockito.ArgumentMatchers.eq(1L), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(withBanner, withoutBanner)));
+
+        mockMvc.perform(get("/api/creator/events"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].bannerImageKey").value("creator-space-profile-images/1/event-banner/a.jpg"))
+                .andExpect(jsonPath("$.data.items[0].bannerImageUrl").value("https://cdn.example/a.jpg"))
+                .andExpect(jsonPath("$.data.items[1].bannerImageUrl").value(org.hamcrest.Matchers.nullValue()));
+    }
+
     /** 승인 요청 API가 승인 대기 상태를 공통 응답 봉투로 반환하는지 검증한다. */
     @Test
     void approvalRequestReturnsPendingApprovalResultEnvelope() throws Exception {
@@ -404,6 +499,15 @@ class EventManagementControllerTest {
                 "550e8400-e29b-41d4-a716-446655440000");
         ReflectionTestUtils.setField(event, "eventId", eventId);
         return event;
+    }
+
+    private static Stream<Arguments> bannerImageKeyFields() {
+        return Stream.of(
+                Arguments.of("", false, null),
+                Arguments.of(",\"bannerImageKey\":null", true, null),
+                Arguments.of(",\"bannerImageKey\":\"creator-space-profile-images/1/event-banner/b.jpg\"", true,
+                        "creator-space-profile-images/1/event-banner/b.jpg")
+        );
     }
 
     private static Stream<Arguments> invalidPageRequests() {

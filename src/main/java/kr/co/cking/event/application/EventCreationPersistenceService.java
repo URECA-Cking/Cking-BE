@@ -13,12 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 class EventCreationPersistenceService {
     private final EventRepository eventRepository;
+    private final EventBannerImageManager bannerImageManager;
 
-    /** requestId UNIQUE 제약 위반을 즉시 확정하도록 Event를 flush한다. */
+    /**
+     * requestId UNIQUE 제약 위반을 즉시 확정하도록 Event를 flush한다. 배너는 그 뒤에 연결해서, 같은 requestId 동시 요청의
+     * 뒤쪽은 배너 연결 실패가 아니라 제약 위반으로 끝나 기존 Event 재사용 경로를 탄다. 연결에 실패하면 Event INSERT도 함께 롤백된다.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Event create(CreateEventCommand command, Long creatorId) {
-        return eventRepository.saveAndFlush(new Event(creatorId, command.title().trim(), command.description(),
+        Event event = eventRepository.saveAndFlush(new Event(creatorId, command.title().trim(), command.description(),
                 command.startAt(), command.endAt(), command.winnerCount(), command.drawMethod(), command.userId(),
                 command.requestId(), command.prizes(), command.prizeAlgorithmVersion()));
+        bannerImageManager.apply(event, command.bannerImageKey());
+        return event;
     }
 }

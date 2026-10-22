@@ -181,7 +181,8 @@ public class SecurityConfig {
                                 "/api/creator/space/profile-images",
                                 "/api/creator/space/profile-image",
                                 "/api/creator/space/banner-images",
-                                "/api/creator/space/banner-image"
+                                "/api/creator/space/banner-image",
+                                "/api/creator/events/banner-images"
                         ).authenticated()
                         .requestMatchers("/api/me", "/api/me/welcome-quest", "/api/me/welcome-quest/*/claim")
                         .authenticated()

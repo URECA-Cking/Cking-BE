@@ -20,13 +20,22 @@ public record EventSummary(
         String prizeAlgorithmVersion,
         List<PrizeResult> prizes,
         Long myCommonTicketBalance,
-        Instant closeRequestedAt
+        Instant closeRequestedAt,
+        /** 배너 CDN 주소(이슈 #748). 배너가 없으면 null이고 화면이 대체 이미지를 고른다. */
+        String bannerImageUrl
 ) {
 
     public EventSummary(Long eventId, Long creatorId, String title, Instant startAt, Instant endAt, EventStatus status,
                         DisplayStatus displayStatus, Integer winnerCount, String drawMethod) {
         this(eventId, creatorId, title, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
-                "PRIZE_WEIGHTED_V1", List.of(), null, null);
+                "PRIZE_WEIGHTED_V1", List.of(), null, null, null);
+    }
+
+    public EventSummary(Long eventId, Long creatorId, String title, Instant startAt, Instant endAt, EventStatus status,
+                        DisplayStatus displayStatus, Integer winnerCount, String drawMethod, String prizeAlgorithmVersion,
+                        List<PrizeResult> prizes, Long myCommonTicketBalance, Instant closeRequestedAt) {
+        this(eventId, creatorId, title, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
+                prizeAlgorithmVersion, prizes, myCommonTicketBalance, closeRequestedAt, null);
     }
 
     public EventSummary {
@@ -36,7 +45,7 @@ public record EventSummary(
     /** userId를 준 목록 조회에서만 채운다 — 캐시 밖에서 사용자별로 붙이므로 캐시 키에 영향이 없다. */
     public EventSummary withMyCommonTicketBalance(long balance) {
         return new EventSummary(eventId, creatorId, title, startAt, endAt, status, displayStatus, winnerCount,
-                drawMethod, prizeAlgorithmVersion, prizes, balance, closeRequestedAt);
+                drawMethod, prizeAlgorithmVersion, prizes, balance, closeRequestedAt, bannerImageUrl);
     }
 
     public static EventSummary from(Event event, Instant now) {
@@ -53,7 +62,8 @@ public record EventSummary(
                 event.getPrizeAlgorithmVersion(),
                 event.getPrizeConfigs().stream().map(PrizeResult::from).toList(),
                 null,
-                event.getCloseRequestedAt()
+                event.getCloseRequestedAt(),
+                event.getBannerImageUrl()
         );
     }
 
@@ -72,7 +82,8 @@ public record EventSummary(
                 event.prizeAlgorithmVersion(),
                 event.prizes().stream().map(PrizeResult::from).toList(),
                 null,
-                event.closeRequestedAt()
+                event.closeRequestedAt(),
+                event.bannerImageUrl()
         );
     }
 }

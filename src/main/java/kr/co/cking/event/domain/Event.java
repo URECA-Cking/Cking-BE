@@ -45,6 +45,9 @@ public class Event {
     private String requestId;
     private String title;
     private String description;
+    /** 연결된 배너 업로드 키와 그 CDN 주소다(이슈 #748). 배너가 없으면 둘 다 null이다. */
+    private String bannerImageKey;
+    private String bannerImageUrl;
     private Instant startAt;
     private Instant endAt;
     private Integer winnerCount;
@@ -260,6 +263,13 @@ public class Event {
         this.drawMethod = drawMethod.name();
         this.prizeAlgorithmVersion = prizeAlgorithmVersion.name();
         replacePrizes(prizes);
+    }
+
+    /** 초안의 배너를 바꾼다. key가 null이면 배너를 뗀다. 업로드 기록의 연결·삭제 대기 전환은 호출자가 같은 트랜잭션에서 한다. */
+    public void changeBannerImage(String bannerImageKey, String bannerImageUrl) {
+        requireStatus(EventStatus.DRAFT);
+        this.bannerImageKey = bannerImageKey;
+        this.bannerImageUrl = bannerImageKey == null ? null : bannerImageUrl;
     }
 
     public List<EventPrize> getPrizes() {

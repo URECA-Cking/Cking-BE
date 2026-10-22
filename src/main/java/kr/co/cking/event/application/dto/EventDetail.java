@@ -21,14 +21,24 @@ public record EventDetail(
         long myTicketBalance,
         long myCommonTicketBalance,
         List<PrizeResult> prizes,
-        Instant closeRequestedAt
+        Instant closeRequestedAt,
+        /** 배너 CDN 주소(이슈 #748). 배너가 없으면 null이고 화면이 대체 이미지를 고른다. */
+        String bannerImageUrl
 ) {
 
     public EventDetail(Long eventId, Long creatorId, String title, String description, Instant startAt, Instant endAt,
                        EventStatus status, DisplayStatus displayStatus, Integer winnerCount, String drawMethod,
                        long myTicketBalance, long myCommonTicketBalance) {
         this(eventId, creatorId, title, description, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
-                "PRIZE_WEIGHTED_V1", myTicketBalance, myCommonTicketBalance, List.of(), null);
+                "PRIZE_WEIGHTED_V1", myTicketBalance, myCommonTicketBalance, List.of(), null, null);
+    }
+
+    public EventDetail(Long eventId, Long creatorId, String title, String description, Instant startAt, Instant endAt,
+                       EventStatus status, DisplayStatus displayStatus, Integer winnerCount, String drawMethod,
+                       String prizeAlgorithmVersion, long myTicketBalance, long myCommonTicketBalance,
+                       List<PrizeResult> prizes, Instant closeRequestedAt) {
+        this(eventId, creatorId, title, description, startAt, endAt, status, displayStatus, winnerCount, drawMethod,
+                prizeAlgorithmVersion, myTicketBalance, myCommonTicketBalance, prizes, closeRequestedAt, null);
     }
 
     public EventDetail {
@@ -51,7 +61,8 @@ public record EventDetail(
                 myTicketBalance,
                 myCommonTicketBalance,
                 event.prizes().stream().map(PrizeResult::from).toList(),
-                event.closeRequestedAt()
+                event.closeRequestedAt(),
+                event.bannerImageUrl()
         );
     }
 }
