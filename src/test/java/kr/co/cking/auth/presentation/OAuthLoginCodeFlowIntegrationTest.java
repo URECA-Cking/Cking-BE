@@ -1,13 +1,17 @@
 package kr.co.cking.auth.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -142,15 +146,36 @@ class OAuthLoginCodeFlowIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         OAuthIdentity identity = new OAuthIdentity(OAuthProvider.GOOGLE, "single-use-sub-" + suffix);
         createdIdentities.add(identity);
-        String code = completeOAuthLogin("google", "sub", Map.of(
+        IssuedCallback callback = completeOAuthLogin("google", "sub", Map.of(
                 "sub", identity.providerUserId(),
                 "name", "일회용 코드 사용자",
                 "email", "single-use-" + suffix + "@example.com"));
 
-        exchange(code).andExpect(status().isOk());
-        exchange(code)
+        exchange(callback.code(), callback.browserCookie()).andExpect(status().isOk());
+        exchange(callback.code(), callback.browserCookie())
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
+    }
+
+    @Test
+    void 다른_브라우저는_콜백_주소의_LoginCode로_로그인할_수_없다() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        OAuthIdentity identity = new OAuthIdentity(OAuthProvider.GOOGLE, "other-browser-sub-" + suffix);
+        createdIdentities.add(identity);
+        IssuedCallback callback = completeOAuthLogin("google", "sub", Map.of(
+                "sub", identity.providerUserId(),
+                "name", "다른 브라우저 사용자",
+                "email", "other-browser-" + suffix + "@example.com"));
+
+        exchange(callback.code(), null)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
+        exchange(callback.code(), new Cookie(LoginCodeCookieFactory.COOKIE_NAME, "other-browser-value"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
+        exchange(callback.code(), callback.browserCookie())
+                .andExpect(status().isOk())
+                .andExpect(header().stringValues(HttpHeaders.SET_COOKIE, hasItem(startsWith(LoginCodeCookieFactory.COOKIE_NAME + "=;"))));
     }
 
     @Test
@@ -185,8 +210,8 @@ class OAuthLoginCodeFlowIntegrationTest {
 
     private LoginResult loginAndExchange(String registrationId, String nameAttributeKey, Map<String, Object> attributes)
             throws Exception {
-        String code = completeOAuthLogin(registrationId, nameAttributeKey, attributes);
-        MvcResult result = exchange(code)
+        IssuedCallback callback = completeOAuthLogin(registrationId, nameAttributeKey, attributes);
+        MvcResult result = exchange(callback.code(), callback.browserCookie())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andReturn();
@@ -196,7 +221,7 @@ class OAuthLoginCodeFlowIntegrationTest {
         return new LoginResult(Long.valueOf(decodedToken.getSubject()), accessToken);
     }
 
-    private String completeOAuthLogin(String registrationId, String nameAttributeKey, Map<String, Object> attributes)
+    private IssuedCallback completeOAuthLogin(String registrationId, String nameAttributeKey, Map<String, Object> attributes)
             throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpSession session = new MockHttpSession();
@@ -214,13 +239,26 @@ class OAuthLoginCodeFlowIntegrationTest {
         assertThat(redirectUrl).startsWith("http://localhost:5173/oauth/callback?code=");
         var queryParams = UriComponentsBuilder.fromUriString(redirectUrl).build().getQueryParams();
         assertThat(queryParams).containsOnlyKeys("code");
-        return queryParams.getFirst("code");
+        Cookie browserCookie = response.getCookie(LoginCodeCookieFactory.COOKIE_NAME);
+        assertThat(browserCookie).isNotNull();
+        assertThat(browserCookie.isHttpOnly()).isTrue();
+        assertThat(browserCookie.getPath()).isEqualTo("/api/auth/token");
+        assertThat(browserCookie.getMaxAge()).isEqualTo(60);
+        assertThat(browserCookie.getAttribute("SameSite")).isEqualTo("Lax");
+        return new IssuedCallback(queryParams.getFirst("code"), browserCookie);
     }
 
-    private org.springframework.test.web.servlet.ResultActions exchange(String code) throws Exception {
-        return mockMvc.perform(post("/api/auth/token")
+    private org.springframework.test.web.servlet.ResultActions exchange(String code, Cookie browserCookie) throws Exception {
+        var request = post("/api/auth/token")
                 .contentType("application/json")
-                .content("{\"code\":\"%s\"}".formatted(code)));
+                .content("{\"code\":\"%s\"}".formatted(code));
+        if (browserCookie != null) {
+            request.cookie(new Cookie(browserCookie.getName(), browserCookie.getValue()));
+        }
+        return mockMvc.perform(request);
+    }
+
+    private record IssuedCallback(String code, Cookie browserCookie) {
     }
 
     private record OAuthIdentity(OAuthProvider provider, String providerUserId) {

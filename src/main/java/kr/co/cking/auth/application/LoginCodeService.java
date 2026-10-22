@@ -9,6 +9,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 
+import kr.co.cking.auth.application.dto.IssuedLoginCode;
 import kr.co.cking.auth.domain.AuthErrorCode;
 import kr.co.cking.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +24,7 @@ import org.springframework.stereotype.Service;
 public class LoginCodeService {
 
     private static final String KEY_PREFIX = "auth:login-code:";
-    private static final Duration TTL = Duration.ofSeconds(60);
+    public static final Duration TTL = Duration.ofSeconds(60);
     private static final int CODE_BYTE_LENGTH = 32;
 
     private final StringRedisTemplate redisTemplate;
@@ -31,20 +32,22 @@ public class LoginCodeService {
     private final DefaultRedisScript<String> loginCodeConsumeScript;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    /** 회원 ID를 교환할 새 Login Code를 생성하고 해시 key만 Redis에 저장한다. */
-    public String issue(Long memberId) {
+    /** 회원 ID를 교환할 새 Login Code와 브라우저 값을 만들고, 둘 다 해시로만 Redis에 저장한다. */
+    public IssuedLoginCode issue(Long memberId) {
         Objects.requireNonNull(memberId, "memberId는 필수입니다.");
         String code = createCode();
-        redisTemplate.opsForValue().set(redisKey(code), memberId.toString(), TTL);
-        return code;
+        String browserBinding = createCode();
+        redisTemplate.opsForValue().set(redisKey(code), memberId + ":" + sha256(browserBinding), TTL);
+        return new IssuedLoginCode(code, browserBinding);
     }
 
-    /** 원문 Code를 원자적으로 한 번 소비하고 연결된 회원 ID를 반환한다. */
-    public Long consume(String code) {
-        if (code == null || code.isBlank()) {
+    /** 발급받은 브라우저에서 온 Code만 원자적으로 한 번 소비하고 연결된 회원 ID를 반환한다. */
+    public Long consume(String code, String browserBinding) {
+        if (code == null || code.isBlank() || browserBinding == null || browserBinding.isBlank()) {
             throw new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE);
         }
-        String memberId = redisTemplate.execute(loginCodeConsumeScript, List.of(redisKey(code)));
+        String memberId = redisTemplate.execute(
+                loginCodeConsumeScript, List.of(redisKey(code)), sha256(browserBinding));
         if (memberId == null) {
             throw new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE);
         }

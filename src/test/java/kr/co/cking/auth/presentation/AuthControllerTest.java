@@ -50,30 +50,38 @@ class AuthControllerTest {
     private RefreshTokenCookieFactory refreshTokenCookieFactory;
 
     @MockitoBean
+    private LoginCodeCookieFactory loginCodeCookieFactory;
+
+    @MockitoBean
     private RefreshRequestOriginValidator refreshRequestOriginValidator;
 
-    /** 유효한 Login Code를 Access Token 공통 응답으로 바꾸는지 검증한다. */
+    /** 유효한 Login Code를 Access Token 공통 응답으로 바꾸고, 쓰고 난 브라우저 값 쿠키를 만료하는지 검증한다. */
     @Test
     void LoginCode를_AccessToken으로_교환한다() throws Exception {
-        when(loginCodeService.consume("one-time-code")).thenReturn(17L);
+        when(loginCodeService.consume("one-time-code", "browser-binding")).thenReturn(17L);
         when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
                 .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
         when(refreshTokenService.issue(17L, RefreshSessionType.USER_WEB)).thenReturn("refresh-token");
         when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+        ResponseCookie expiredBrowserCookie = ResponseCookie.from("cking_login_code", "").maxAge(0).build();
+        when(loginCodeCookieFactory.expire()).thenReturn(expiredBrowserCookie);
 
         mockMvc.perform(post("/api/auth/token")
                         .contentType("application/json")
-                        .content("{\"code\":\"one-time-code\"}"))
+                        .content("{\"code\":\"one-time-code\"}")
+                        .cookie(new jakarta.servlet.http.Cookie("cking_login_code", "browser-binding")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
                 .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.data.expiresIn").value(1800))
                 .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
-                        result.getResponse().getHeader("Set-Cookie")).contains("refresh_token=refresh-token"));
+                        result.getResponse().getHeaders("Set-Cookie")).satisfiesExactly(
+                                refresh -> org.assertj.core.api.Assertions.assertThat(refresh).isEqualTo("refresh_token=refresh-token"),
+                                browser -> org.assertj.core.api.Assertions.assertThat(browser).startsWith("cking_login_code=; Max-Age=0;")));
 
-        verify(loginCodeService).consume("one-time-code");
+        verify(loginCodeService).consume("one-time-code", "browser-binding");
         verify(accessTokenService).issue(17L, AuthErrorCode.INVALID_LOGIN_CODE);
         verify(refreshTokenService).issue(17L, RefreshSessionType.USER_WEB);
     }
@@ -81,16 +89,18 @@ class AuthControllerTest {
     /** Login Code 교환의 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기한다. */
     @Test
     void LoginCode_AccessToken발급_실패시_RefreshToken을_폐기한다() throws Exception {
-        when(loginCodeService.consume("one-time-code")).thenReturn(17L);
+        when(loginCodeService.consume("one-time-code", "browser-binding")).thenReturn(17L);
         when(refreshTokenService.issue(17L, RefreshSessionType.USER_WEB)).thenReturn("refresh-token");
         when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+        when(loginCodeCookieFactory.expire()).thenReturn(ResponseCookie.from("cking_login_code", "").maxAge(0).build());
         when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
                 .thenThrow(new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE));
 
         mockMvc.perform(post("/api/auth/token")
                         .contentType("application/json")
-                        .content("{\"code\":\"one-time-code\"}"))
+                        .content("{\"code\":\"one-time-code\"}")
+                        .cookie(new jakarta.servlet.http.Cookie("cking_login_code", "browser-binding")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
 
@@ -105,6 +115,21 @@ class AuthControllerTest {
                         .content("{\"code\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    /** 브라우저 값 쿠키 없이 온 교환 요청은 빈 값으로 넘겨 Login Code 오류로 거절하는지 검증한다. */
+    @Test
+    void 브라우저_값_쿠키가_없으면_LoginCode_오류로_거절한다() throws Exception {
+        when(loginCodeService.consume("one-time-code", null))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_LOGIN_CODE));
+
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType("application/json")
+                        .content("{\"code\":\"one-time-code\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_LOGIN_CODE"));
+
+        verify(refreshTokenService, org.mockito.Mockito.never()).issue(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     /** 유효한 관리자 ID/PW가 기존 Token 응답과 Refresh Cookie를 발급하는지 검증한다. */
@@ -271,6 +296,7 @@ class AuthControllerTest {
                 accessTokenService,
                 refreshTokenService,
                 refreshTokenCookieFactory,
+                loginCodeCookieFactory,
                 refreshRequestOriginValidator);
 
         assertThatThrownBy(() -> controller.refresh("old-refresh-token", "https://dev.cking.co.kr"))
