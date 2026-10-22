@@ -13,6 +13,7 @@ import kr.co.cking.auth.presentation.AuthController;
 import kr.co.cking.auth.presentation.OAuth2LoginFailureHandler;
 import kr.co.cking.auth.presentation.OAuth2LoginSuccessHandler;
 import kr.co.cking.auth.presentation.RefreshRequestOriginValidator;
+import kr.co.cking.auth.presentation.LoginCodeCookieFactory;
 import kr.co.cking.auth.presentation.RefreshTokenCookieFactory;
 import kr.co.cking.common.security.AccessTokenJwtValidator;
 import kr.co.cking.common.security.JwtAuthenticationConverterConfig;
@@ -124,6 +125,9 @@ class SecurityConfigTest {
 
     @MockitoBean
     private RefreshTokenCookieFactory refreshTokenCookieFactory;
+
+    @MockitoBean
+    private LoginCodeCookieFactory loginCodeCookieFactory;
 
     @MockitoBean
     private OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
@@ -336,21 +340,23 @@ class SecurityConfigTest {
     /** 만료된 Access JWT가 자동 첨부되어도 Login Code 교환을 차단하지 않는다. */
     @Test
     void 만료된_Access_JWT와_LoginCode로_AccessToken을_발급한다() throws Exception {
-        when(loginCodeService.consume("one-time-code")).thenReturn(17L);
+        when(loginCodeService.consume("one-time-code", "browser-binding")).thenReturn(17L);
         when(refreshTokenService.issue(17L, RefreshSessionType.USER_WEB)).thenReturn("refresh-token");
         when(accessTokenService.issue(17L, AuthErrorCode.INVALID_LOGIN_CODE))
                 .thenReturn(new AccessTokenResult("access-token", "Bearer", 1800));
         when(refreshTokenCookieFactory.create(RefreshSessionType.USER_WEB, "refresh-token"))
                 .thenReturn(ResponseCookie.from("refresh_token", "refresh-token").build());
+        when(loginCodeCookieFactory.expire()).thenReturn(ResponseCookie.from("cking_login_code", "").maxAge(0).build());
 
         mockMvc.perform(post("/api/auth/token")
                         .contentType("application/json")
                         .content("{\"code\":\"one-time-code\"}")
+                        .cookie(new jakarta.servlet.http.Cookie("cking_login_code", "browser-binding"))
                         .header(AUTHORIZATION, "Bearer " + expiredAccessToken()))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"code\":\"SUCCESS\"}"));
 
-        verify(loginCodeService).consume("one-time-code");
+        verify(loginCodeService).consume("one-time-code", "browser-binding");
     }
 
     /** 만료된 Access JWT가 자동 첨부되어도 관리자 ID/PW 로그인을 차단하지 않는다. */

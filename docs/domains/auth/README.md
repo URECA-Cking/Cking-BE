@@ -160,8 +160,13 @@ Login Code는 OAuth 로그인 결과를 Frontend로 안전하게 전달하는 1�
 - `SecureRandom`으로 생성하고 Redis에는 원문 대신 Hash를 key로 저장한다.
 - OAuth 성공 후 `memberId`를 담아 Frontend로 redirect하고, Frontend는
   `POST /api/auth/token`으로 교환한다. JWT를 redirect URL query parameter에 넣지 않는다.
-- Redis key는 `auth:login-code:<SHA-256(code)>`, value는 `memberId`다. Lua의 `GET`과 `DEL`을
-  한 원자 연산으로 실행해 동시 교환도 하나만 성공시킨다.
+- Redis key는 `auth:login-code:<SHA-256(code)>`, value는 `memberId:<SHA-256(브라우저 값)>`다. Lua가
+  브라우저 값을 비교하고 같을 때만 `DEL`해, 동시 교환도 하나만 성공시킨다.
+- Code를 받은 브라우저에서만 교환할 수 있다(#744). OAuth 성공 때 Code와 함께 만든 브라우저 값을
+  `cking_login_code` Cookie(`HttpOnly`, `SameSite=Lax`, `Path=/api/auth/token`, 60초)로 주고, 교환할 때
+  Cookie 값이 저장한 해시와 같아야 한다. 다른 사람의 callback 주소를 열어 그 사람 계정으로 로그인되는
+  것(로그인 CSRF)을 막는다. Cookie가 없거나 다르면 Code를 소비하지 않고 `INVALID_LOGIN_CODE`로 거절하며,
+  교환에 성공하면 Cookie를 만료한다.
 - Frontend callback 주소는 `cking.auth.frontend-callback-url`로 설정하고, 환경별 값은
   `application-<profile>.yml`에 둔다.
 
@@ -213,7 +218,7 @@ Login Code와 Refresh Token의 만료·소비·폐기 같은 내부 상태는 �
 
 | 대상 | 외부 오류 코드 | 통합하는 상태 |
 | --- | --- | --- |
-| Login Code | `INVALID_LOGIN_CODE` | 만료, 소비됨, 잘못된 값 |
+| Login Code | `INVALID_LOGIN_CODE` | 만료, 소비됨, 잘못된 값, Code를 받은 브라우저가 아님 |
 | Refresh Token | `INVALID_REFRESH_TOKEN` | 만료, 폐기, 재사용, rotation 후 사용, 잘못된 값 |
 
 세부 원인은 서버 로그와 모니터링에서만 구분한다. 외부 오류 구분을 위해 Redis에 tombstone 또는 meta

@@ -7,10 +7,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import kr.co.cking.auth.application.LoginCodeService;
+import kr.co.cking.auth.application.dto.IssuedLoginCode;
 import kr.co.cking.auth.security.oauth.OAuthMemberLoginService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -25,6 +27,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final OAuthMemberLoginService oauthMemberLoginService;
     private final LoginCodeService loginCodeService;
+    private final LoginCodeCookieFactory loginCodeCookieFactory;
     @Value("${cking.auth.frontend-callback-url}")
     private String frontendCallbackUrl;
 
@@ -41,7 +44,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                     oauthAuthentication.getAuthorizedClientRegistrationId(),
                     oauthAuthentication.getPrincipal().getAttributes()
             );
-            redirect(response, "code", loginCodeService.issue(memberId));
+            IssuedLoginCode loginCode = loginCodeService.issue(memberId);
+            response.addHeader(HttpHeaders.SET_COOKIE, loginCodeCookieFactory.create(loginCode.browserBinding()).toString());
+            redirect(response, "code", loginCode.code());
         } catch (RuntimeException exception) {
             log.error("OAuth 로그인 완료 처리 중 오류가 발생했습니다.", exception);
             redirect(response, "error", "login_processing_failed");

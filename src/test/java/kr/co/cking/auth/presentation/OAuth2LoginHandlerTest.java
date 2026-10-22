@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpSession;
 import java.util.List;
 import java.util.Map;
 import kr.co.cking.auth.application.LoginCodeService;
+import kr.co.cking.auth.application.dto.IssuedLoginCode;
 import kr.co.cking.auth.security.oauth.OAuthMemberLoginService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +21,7 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
+import org.springframework.http.ResponseCookie;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** OAuth 성공·실패 redirect가 외부 계약과 세션 정리를 지키는지 검증한다. */
@@ -28,23 +30,27 @@ class OAuth2LoginHandlerTest {
 
     @Mock private OAuthMemberLoginService oauthMemberLoginService;
     @Mock private LoginCodeService loginCodeService;
+    @Mock private LoginCodeCookieFactory loginCodeCookieFactory;
     @Mock private HttpServletRequest request;
     @Mock private HttpServletResponse response;
     @Mock private HttpSession session;
     @InjectMocks private OAuth2LoginSuccessHandler successHandler;
     @InjectMocks private OAuth2LoginFailureHandler failureHandler;
 
-    /** 성공 시 Login Code만 callback query에 담고 OAuth session을 비우는지 검증한다. */
+    /** 성공 시 Login Code만 callback query에 담고, 브라우저 값은 쿠키로만 주며 OAuth session을 비우는지 검증한다. */
     @Test
     void OAuth_성공_후_LoginCode만_담아_redirect하고_세션을_정리한다() throws Exception {
         configureCallbackUrl();
         OAuth2AuthenticationToken authentication = authentication();
         when(oauthMemberLoginService.login("google", authentication.getPrincipal().getAttributes())).thenReturn(31L);
-        when(loginCodeService.issue(31L)).thenReturn("one-time-code");
+        when(loginCodeService.issue(31L)).thenReturn(new IssuedLoginCode("one-time-code", "browser-binding"));
+        when(loginCodeCookieFactory.create("browser-binding"))
+                .thenReturn(ResponseCookie.from("cking_login_code", "browser-binding").build());
         when(request.getSession(false)).thenReturn(session);
 
         successHandler.onAuthenticationSuccess(request, response, authentication);
 
+        verify(response).addHeader("Set-Cookie", "cking_login_code=browser-binding");
         verify(response).sendRedirect("https://frontend.cking.co.kr/oauth/callback?code=one-time-code");
         verify(session).invalidate();
     }

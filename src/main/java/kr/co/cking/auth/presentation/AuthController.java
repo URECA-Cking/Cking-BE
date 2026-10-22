@@ -14,6 +14,7 @@ import kr.co.cking.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,21 +34,27 @@ public class AuthController {
     private final AccessTokenService accessTokenService;
     private final RefreshTokenService refreshTokenService;
     private final RefreshTokenCookieFactory refreshTokenCookieFactory;
+    private final LoginCodeCookieFactory loginCodeCookieFactory;
     private final RefreshRequestOriginValidator refreshRequestOriginValidator;
 
     /** 1회용 Login Code를 소비하고 해당 Member의 Access JWT를 발급한다. */
     @Operation(
             summary = "Access Token 발급",
-            description = "1회용 Login Code를 원자적으로 소비해 30분 유효한 Bearer Access JWT와 14일 Refresh Cookie를 발급합니다."
+            description = "1회용 Login Code를 원자적으로 소비해 30분 유효한 Bearer Access JWT와 14일 Refresh Cookie를 발급합니다. "
+                    + "Code를 받은 브라우저의 cking_login_code Cookie가 함께 와야 합니다."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Access JWT와 Refresh Cookie 발급 성공")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Login Code가 유효하지 않음")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Login Code가 유효하지 않거나 Code를 받은 브라우저가 아님")
     @PostMapping("/api/auth/token")
-    public ResponseEntity<ApiResponse<TokenResponse>> exchangeToken(@Valid @RequestBody TokenExchangeRequest request) {
-        Long memberId = loginCodeService.consume(request.code());
+    public ResponseEntity<ApiResponse<TokenResponse>> exchangeToken(
+            @Valid @RequestBody TokenExchangeRequest request,
+            @CookieValue(name = LoginCodeCookieFactory.COOKIE_NAME, required = false) String browserBinding
+    ) {
+        Long memberId = loginCodeService.consume(request.code(), browserBinding);
         String refreshToken = refreshTokenService.issue(memberId, RefreshSessionType.USER_WEB);
         try {
-            return tokenResponse(memberId, refreshToken, AuthErrorCode.INVALID_LOGIN_CODE, RefreshSessionType.USER_WEB);
+            return tokenResponse(memberId, refreshToken, AuthErrorCode.INVALID_LOGIN_CODE, RefreshSessionType.USER_WEB,
+                    loginCodeCookieFactory.expire());
         } catch (RuntimeException exception) {
             // 응답 생성이 실패하면 클라이언트에 전달되지 않은 Refresh Token을 폐기해 고아 key를 남기지 않는다.
             revokeUnsentRefreshToken(refreshToken, exception);
@@ -164,11 +171,15 @@ public class AuthController {
 
     /** 호출한 인증 수단의 오류 계약에 맞춰 Access JWT와 Refresh Cookie를 함께 반환한다. */
     private ResponseEntity<ApiResponse<TokenResponse>> tokenResponse(
-            Long memberId, String refreshToken, AuthErrorCode invalidCredentialError, RefreshSessionType sessionType
+            Long memberId, String refreshToken, AuthErrorCode invalidCredentialError, RefreshSessionType sessionType,
+            ResponseCookie... extraCookies
     ) {
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshTokenCookieFactory.create(sessionType, refreshToken).toString())
-                .body(ApiResponse.success(TokenResponse.from(issueAccessToken(memberId, invalidCredentialError, sessionType))));
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookieFactory.create(sessionType, refreshToken).toString());
+        for (ResponseCookie cookie : extraCookies) {
+            response.header(HttpHeaders.SET_COOKIE, cookie.toString());
+        }
+        return response.body(ApiResponse.success(TokenResponse.from(issueAccessToken(memberId, invalidCredentialError, sessionType))));
     }
 
     /** 관리자 세션은 ADMIN Member만, 사용자 세션은 기존 인증 수단 오류 계약으로 Access JWT를 발급한다. */
