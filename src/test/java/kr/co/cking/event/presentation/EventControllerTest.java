@@ -126,6 +126,25 @@ class EventControllerTest {
     }
 
     @Test
+    void 이벤트_목록과_상세는_배너_CDN_주소를_내려준다() throws Exception {
+        Instant startAt = Instant.parse("2026-09-01T00:00:00Z");
+        Instant endAt = Instant.parse("2026-09-30T00:00:00Z");
+        String bannerImageUrl = "https://cdn.example/creator-space-profile-images/2/event-banner/a.jpg";
+        EventSummary summary = new EventSummary(1L, 2L, "여름 이벤트", startAt, endAt, EventStatus.OPEN,
+                DisplayStatus.IN_PROGRESS, 3, "WEIGHTED", "PRIZE_WEIGHTED_V1", List.of(), null, null, bannerImageUrl);
+        EventDetail detail = new EventDetail(1L, 2L, "여름 이벤트", "설명", startAt, endAt, EventStatus.OPEN,
+                DisplayStatus.IN_PROGRESS, 3, "WEIGHTED", "PRIZE_WEIGHTED_V1", 0L, 0L, List.of(), null, bannerImageUrl);
+        when(eventQueryService.getEvents(any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(new PageImpl<>(List.of(summary), PageRequest.of(0, 10), 1));
+        when(eventQueryService.getEvent(1L, 100L)).thenReturn(detail);
+
+        mockMvc.perform(get("/api/events"))
+                .andExpect(jsonPath("$.data.items[0].bannerImageUrl").value(bannerImageUrl));
+        mockMvc.perform(get("/api/events/1"))
+                .andExpect(jsonPath("$.data.bannerImageUrl").value(bannerImageUrl));
+    }
+
+    @Test
     void 마감되지_않은_이벤트의_마감_요청_시각은_null이다() throws Exception {
         EventSummary summary = new EventSummary(1L, 2L, "여름 이벤트",
                 Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-30T00:00:00Z"),
