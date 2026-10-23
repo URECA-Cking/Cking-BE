@@ -4,16 +4,13 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
-import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorApplicationRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
-import kr.co.cking.creator.repository.CreatorSpaceTemplateRepository;
 import kr.co.cking.member.domain.Member;
 import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
@@ -48,10 +45,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 class CreatorSpaceProfileIntegrationTest {
 
-    private static final CreatorSpaceTemplateFields TEMPLATE_FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-    );
-
     @Autowired
     private CreatorSpaceProfileService profileService;
 
@@ -60,12 +53,6 @@ class CreatorSpaceProfileIntegrationTest {
 
     @Autowired
     private CreatorSpaceService creatorSpaceService;
-
-    @Autowired
-    private CreatorSpaceTemplateService creatorSpaceTemplateService;
-
-    @Autowired
-    private CreatorSpaceTemplateRepository templateRepository;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -108,7 +95,6 @@ class CreatorSpaceProfileIntegrationTest {
                     memberId
             );
             jdbcTemplate.update("DELETE FROM creator WHERE member_id = ?", memberId);
-            jdbcTemplate.update("DELETE FROM creator_space_template WHERE created_by = ?", memberId);
         });
         applicationIds.forEach(applicationId -> jdbcTemplate.update(
                 "DELETE FROM creator_application WHERE id = ?", applicationId));
@@ -126,8 +112,6 @@ class CreatorSpaceProfileIntegrationTest {
         owner.updateProfileImageKey(imageKey);
         memberRepository.saveAndFlush(owner);
 
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, owner);
 
         Creator creator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
@@ -137,9 +121,9 @@ class CreatorSpaceProfileIntegrationTest {
                 .startsWith("creator-space-profile-images/" + creator.getCreatorId() + "/");
         assertThat(space.getProfileImageKey()).isNotEqualTo(imageKey);
         assertThat(objectStorage.get(space.getProfileImageKey())).isEqualTo(photo);
-        // 기본 이미지로 되돌리는 대상은 템플릿 이미지다.
-        assertThat(space.getDefaultProfileImageUrl()).isEqualTo(TEMPLATE_FIELDS.profileImageUrl());
-        assertThat(space.getBannerImageUrl()).isEqualTo(TEMPLATE_FIELDS.bannerImageUrl());
+        // 기본 이미지(되돌리는 대상)는 없다. 연결을 풀면 이미지 없음이 된다.
+        assertThat(space.getDefaultProfileImageUrl()).isNull();
+        assertThat(space.getBannerImageUrl()).isNull();
         objectStorage.delete(imageKey);
         objectStorage.delete(space.getProfileImageKey());
     }
@@ -152,8 +136,6 @@ class CreatorSpaceProfileIntegrationTest {
         objectStorage.put(imageKey, new byte[]{1, 2, 3}, "image/jpeg");
         owner.updateProfileImageKey(imageKey);
         memberRepository.saveAndFlush(owner);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "첫저장사진 크리에이터"));
 
         CreatorSpace space = profileService.updateMine(owner.getMemberId(),
@@ -170,8 +152,6 @@ class CreatorSpaceProfileIntegrationTest {
     void Space가_없는_Creator의_동시_첫_저장은_한_행만_생성한다() throws Exception {
         Member admin = createMember("첫저장관리자", MemberRole.ADMIN);
         Member owner = createMember("첫저장크리에이터", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         Creator creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "첫저장 크리에이터"));
 
         CountDownLatch firstUpdated = new CountDownLatch(1);
@@ -205,12 +185,10 @@ class CreatorSpaceProfileIntegrationTest {
     }
 
     @Test
-    void 본인_수정은_자기_Space만_바꾸고_템플릿과_다른_Space는_그대로_둔다() {
+    void 본인_수정은_자기_Space만_바꾸고_다른_Space는_그대로_둔다() {
         Member admin = createMember("프로필관리자", MemberRole.ADMIN);
         Member owner = createMember("프로필수정자", MemberRole.USER);
         Member other = createMember("다른크리에이터", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, owner);
         approve(admin, other);
         Creator ownerCreator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
@@ -226,10 +204,7 @@ class CreatorSpaceProfileIntegrationTest {
         assertThat(updated.creatorName()).isEqualTo(ownerCreator.getName());
 
         CreatorSpaceView untouched = profileService.findByCreatorId(otherCreator.getCreatorId());
-        assertThat(untouched.space().getIntroText()).isEqualTo(TEMPLATE_FIELDS.introText());
-
-        CreatorSpaceTemplate template = templateRepository.findById(templateId).orElseThrow();
-        assertThat(template.getIntroText()).isEqualTo(TEMPLATE_FIELDS.introText());
+        assertThat(untouched.space().getIntroText()).isEqualTo(CreatorSpace.DEFAULT_INTRO_TEXT);
     }
 
     /**
@@ -241,14 +216,12 @@ class CreatorSpaceProfileIntegrationTest {
         Member admin = createMember("slug관리자", MemberRole.ADMIN);
         Member owner = createMember("slug선점자", MemberRole.USER);
         Member late = createMember("slug후발자", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, owner);
         Creator lateCreator = creatorRepository.saveAndFlush(new Creator(late.getMemberId(), "후발 크리에이터"));
         String lateAutoSlug = "creator-" + lateCreator.getCreatorId();
 
         profileService.changeSlug(owner.getMemberId(), lateAutoSlug);
-        CreatorSpace lateSpace = creatorSpaceService.createFromActiveTemplateIfAbsent(lateCreator.getCreatorId());
+        CreatorSpace lateSpace = creatorSpaceService.createIfAbsent(lateCreator.getCreatorId());
 
         assertThat(lateSpace.getSlug()).isEqualTo(lateAutoSlug + "-2");
         assertThat(profileService.findBySlug(lateAutoSlug).creatorName())
@@ -267,8 +240,6 @@ class CreatorSpaceProfileIntegrationTest {
     void 같은_Creator의_동시_slug_변경은_첫_변경_후_14일_제한을_적용한다() throws Exception {
         Member admin = createMember("동시변경관리자", MemberRole.ADMIN);
         Member owner = createMember("동시변경크리에이터", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, owner);
 
         CountDownLatch firstChanged = new CountDownLatch(1);
@@ -310,8 +281,6 @@ class CreatorSpaceProfileIntegrationTest {
         Member admin = createMember("백필관리자", MemberRole.ADMIN);
         Member owner = createMember("백필선점자", MemberRole.USER);
         Member missing = createMember("백필대상", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, owner);
         Creator missingCreator = creatorRepository.saveAndFlush(new Creator(missing.getMemberId(), "백필 대상"));
         String baseSlug = "creator-" + missingCreator.getCreatorId();
@@ -348,8 +317,6 @@ class CreatorSpaceProfileIntegrationTest {
         Member admin = createMember("예약관리자", MemberRole.ADMIN);
         Member owner = createMember("예약주인", MemberRole.USER);
         Member other = createMember("예약도전자", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, owner);
         approve(admin, other);
         Creator ownerCreator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
@@ -373,8 +340,6 @@ class CreatorSpaceProfileIntegrationTest {
         Member admin = createMember("만료예약관리자", MemberRole.ADMIN);
         Member owner = createMember("만료예약주인", MemberRole.USER);
         Member other = createMember("만료예약도전자", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, owner);
         approve(admin, other);
         Creator ownerCreator = creatorRepository.findByMemberId(owner.getMemberId()).orElseThrow();
@@ -400,8 +365,6 @@ class CreatorSpaceProfileIntegrationTest {
         Member first = createMember("목록검증Q7-가", MemberRole.USER);
         Member underscore = createMember("목록검증Q7_다", MemberRole.USER);
         Member withoutSpace = createMember("목록검증Q7-공간없음", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, second);
         approve(admin, first);
         approve(admin, underscore);
@@ -434,8 +397,6 @@ class CreatorSpaceProfileIntegrationTest {
         Member sameNameFirst = createMember("동명검증Q8-동일", MemberRole.USER);
         Member earlierName = createMember("동명검증Q8-가", MemberRole.USER);
         Member sameNameSecond = createMember("동명검증Q8-동일", MemberRole.USER);
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         approve(admin, sameNameFirst);
         approve(admin, earlierName);
         approve(admin, sameNameSecond);

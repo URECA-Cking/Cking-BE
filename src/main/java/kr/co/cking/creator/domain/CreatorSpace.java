@@ -14,7 +14,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
-/** 승인 시점의 템플릿 값을 독립적으로 보관하는 Creator Space. */
+/**
+ * 승인된 Creator의 Creator Space. 승인 시 기본 소개 문구와 이미지 없음으로 만든다(이슈 #754). 이미지가 없으면 FE가 기본 이미지를 보여 준다.
+ * 템플릿 기능을 쓰던 시기에 만든 Space는 그때 복사한 이미지 URL을 그대로 갖는다.
+ */
 @Entity
 @Table(
         name = "creator_space",
@@ -26,6 +29,12 @@ import java.time.ZoneOffset;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CreatorSpace {
+
+    /** 승인 시 Space에 넣는 소개 문구. Creator가 스페이스 편집에서 바꾼다. */
+    public static final String DEFAULT_INTRO_TEXT = "크리에이터와 함께하는 공간이에요";
+
+    /** 승인 시 자동으로 만드는 slug. 끝 숫자열이 creatorId라 서로 다른 Creator의 자동 slug는 겹치지 않는다. */
+    public static final String DEFAULT_SLUG_RULE = "creator-" + CreatorSpaceSlugRule.PLACEHOLDER;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,26 +50,28 @@ public class CreatorSpace {
     @Column(name = "content_revision", nullable = false)
     private long contentRevision = 1;
 
-    @Column(name = "profile_image_url", nullable = false, length = 500)
+    /** null이면 프로필 이미지가 없다. */
+    @Column(name = "profile_image_url", length = 500)
     private String profileImageUrl;
 
     /** 업로드된 Creator Space 프로필 이미지의 내부 Object Storage 키. 기존 URL 기반 Space는 null이다. */
     @Column(name = "profile_image_key", length = 200)
     private String profileImageKey;
 
-    /** 업로드 이미지 연결을 해제할 때 복귀할, Space 생성·기존 URL 수정 시점의 기본 프로필 이미지다. */
-    @Column(name = "default_profile_image_url", nullable = false, length = 500)
+    /** 업로드 이미지 연결을 해제할 때 복귀할, Space 생성·기존 URL 수정 시점의 기본 프로필 이미지다. null이면 이미지 없음으로 돌아간다. */
+    @Column(name = "default_profile_image_url", length = 500)
     private String defaultProfileImageUrl;
 
-    @Column(name = "banner_image_url", nullable = false, length = 500)
+    /** null이면 배너가 없다. */
+    @Column(name = "banner_image_url", length = 500)
     private String bannerImageUrl;
 
     /** 업로드된 Creator Space 배너 이미지의 내부 Object Storage 키(이슈 #590). 기존 URL 기반 Space는 null이다. */
     @Column(name = "banner_image_key", length = 200)
     private String bannerImageKey;
 
-    /** 업로드 배너 연결을 해제할 때 복귀할, Space 생성·기존 URL 수정 시점의 기본 배너 이미지다. */
-    @Column(name = "default_banner_image_url", nullable = false, length = 500)
+    /** 업로드 배너 연결을 해제할 때 복귀할, Space 생성·기존 URL 수정 시점의 기본 배너 이미지다. null이면 배너 없음으로 돌아간다. */
+    @Column(name = "default_banner_image_url", length = 500)
     private String defaultBannerImageUrl;
 
     @Column(name = "slug", nullable = false, length = 100)
@@ -94,13 +105,18 @@ public class CreatorSpace {
         if (!ContentIntro.hash(this.introText).equals(ContentIntro.hash(introText))) contentRevision++;
         this.introText = introText;
         if (profileImageKey == null) {
-            this.profileImageUrl = profileImageUrl;
-            this.defaultProfileImageUrl = profileImageUrl;
+            this.profileImageUrl = blankToNull(profileImageUrl);
+            this.defaultProfileImageUrl = this.profileImageUrl;
         }
         if (bannerImageKey == null) {
-            this.bannerImageUrl = bannerImageUrl;
-            this.defaultBannerImageUrl = bannerImageUrl;
+            this.bannerImageUrl = blankToNull(bannerImageUrl);
+            this.defaultBannerImageUrl = this.bannerImageUrl;
         }
+    }
+
+    /** 이미지 URL을 비워 보내면 이미지 없음으로 저장한다. 빈 문자열과 null을 따로 두지 않는다. */
+    private static String blankToNull(String url) {
+        return url == null || url.isBlank() ? null : url;
     }
 
     public void updateProfileImage(String profileImageKey, String profileImageUrl) {
@@ -149,13 +165,8 @@ public class CreatorSpace {
         return changeableAt == null || !now.isBefore(changeableAt);
     }
 
-    public static CreatorSpace fromTemplate(Long creatorId, CreatorSpaceTemplate template, String slug) {
-        return new CreatorSpace(
-                creatorId,
-                template.getIntroText(),
-                template.getProfileImageUrl(),
-                template.getBannerImageUrl(),
-                slug
-        );
+    /** 승인 시 만드는 Space. 기본 소개 문구에 이미지는 없다. */
+    public static CreatorSpace createDefault(Long creatorId, String slug) {
+        return new CreatorSpace(creatorId, DEFAULT_INTRO_TEXT, null, null, slug);
     }
 }

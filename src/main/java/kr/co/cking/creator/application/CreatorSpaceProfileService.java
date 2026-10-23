@@ -43,7 +43,6 @@ public class CreatorSpaceProfileService {
     private final Clock clock;
     private final CreatorFollowQueryService followQueryService;
     private final EventQueryService eventQueryService;
-    private final CreatorSpaceTemplateImagePinner imagePinner;
     private final CreatorContentOutbox contentOutbox;
     private final CreatorSpaceService spaceService;
 
@@ -103,14 +102,6 @@ public class CreatorSpaceProfileService {
         return new CreatorSpaceView(requireSpace(creator.getCreatorId()), creator.publicDisplayName());
     }
 
-    /**
-     * 요청 URL이 실제로 새로 적용되면 그 URL을, 아니면 null을 돌려준다. 업로드한 이미지가 연결돼 있으면({@code linkedKey} 있음)
-     * {@link CreatorSpace#updateProfile}이 URL 입력을 무시하고, 현재 URL과 같으면 바뀌는 것이 없다.
-     */
-    private static String changedUrl(String linkedKey, String currentUrl, String requestedUrl) {
-        return linkedKey == null && !Objects.equals(currentUrl, requestedUrl) ? requestedUrl : null;
-    }
-
     /** 인증된 Creator 본인의 Creator Space 프로필 값을 모두 갱신한다. */
     @Transactional
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
@@ -120,15 +111,10 @@ public class CreatorSpaceProfileService {
         creatorRepository.findByIdForUpdate(creator.getCreatorId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
         Optional<CreatorSpace> existing = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId());
-        CreatorSpace space = existing.orElseGet(() -> spaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId()));
+        CreatorSpace space = existing.orElseGet(() -> spaceService.createIfAbsent(creator.getCreatorId()));
         if (existing.isEmpty()) {
             releaseCarriedImageForRequestedUrl(creator, space, fields);
         }
-        // URL 입력이 실제로 새로 적용되는 경우만 템플릿 이미지를 고정한다. 클라이언트는 현재 URL을 그대로 다시 보내므로,
-        // 바뀌지 않는 URL까지 고정하면 이미 정리된 이미지를 가진 Space는 소개글만 고쳐도 계속 거절된다.
-        imagePinner.pin(
-                changedUrl(space.getProfileImageKey(), space.getProfileImageUrl(), fields.profileImageUrl()),
-                changedUrl(space.getBannerImageKey(), space.getBannerImageUrl(), fields.bannerImageUrl()));
         long previousRevision = space.getContentRevision();
         space.updateProfile(fields.introText(), fields.profileImageUrl(), fields.bannerImageUrl());
         // profileImageKey가 명시되면(특히 null로 기본 이미지 복귀를 요청하면) 일반 URL 수정 뒤에

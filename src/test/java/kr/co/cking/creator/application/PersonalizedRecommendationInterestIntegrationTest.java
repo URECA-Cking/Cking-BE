@@ -11,7 +11,7 @@ import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView.Item;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.follow.application.CreatorFollowService;
@@ -254,10 +254,8 @@ class PersonalizedRecommendationInterestIntegrationTest {
     }
 
     private Creator withSpace(Creator creator) {
-        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                creator.getMemberId(), "소개", "profile", "banner", "creator-{creatorId}");
-        spaceRepository.saveAndFlush(CreatorSpace.fromTemplate(
-                creator.getCreatorId(), template, "creator-" + creator.getCreatorId()));
+
+        spaceRepository.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), "소개", "profile", "banner", "creator-" + creator.getCreatorId()));
         return creator;
     }
 

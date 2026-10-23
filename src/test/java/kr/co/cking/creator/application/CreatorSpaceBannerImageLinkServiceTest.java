@@ -18,7 +18,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
@@ -48,9 +48,7 @@ class CreatorSpaceBannerImageLinkServiceTest {
     void setUp() {
         creator = new Creator(7L, "creator");
         ReflectionTestUtils.setField(creator, "creatorId", 42L);
-        space = CreatorSpace.fromTemplate(42L,
-                new CreatorSpaceTemplate(1L, "소개", "https://img/profile.png", "https://img/default-banner.png", "creator-{creatorId}"),
-                "creator-42");
+        space = CreatorSpaceFixtures.space(42L, "소개", "https://img/profile.png", "https://img/default-banner.png", "creator-42");
         given(creators.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaces.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
     }

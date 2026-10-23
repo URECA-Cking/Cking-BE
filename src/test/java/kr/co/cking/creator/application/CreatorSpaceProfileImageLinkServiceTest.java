@@ -15,7 +15,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
@@ -32,9 +32,7 @@ class CreatorSpaceProfileImageLinkServiceTest {
         CreatorSpaceRepository spaces = org.mockito.Mockito.mock(CreatorSpaceRepository.class);
         CreatorSpaceProfileImageRepository images = org.mockito.Mockito.mock(CreatorSpaceProfileImageRepository.class);
         Creator creator = creator(7L, 42L);
-        CreatorSpace space = CreatorSpace.fromTemplate(42L,
-                new CreatorSpaceTemplate(1L, "소개", "https://img/old.jpg", "https://img/banner.jpg", "creator-{creatorId}"),
-                "creator-42");
+        CreatorSpace space = CreatorSpaceFixtures.space(42L, "소개", "https://img/old.jpg", "https://img/banner.jpg", "creator-42");
         space.updateProfileImage("creator-space-profile-images/42/old.jpg", "https://cdn.example/creator-space-profile-images/42/old.jpg");
         given(creators.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaces.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
@@ -58,9 +56,7 @@ class CreatorSpaceProfileImageLinkServiceTest {
         CreatorSpaceRepository spaces = org.mockito.Mockito.mock(CreatorSpaceRepository.class);
         CreatorSpaceProfileImageRepository images = org.mockito.Mockito.mock(CreatorSpaceProfileImageRepository.class);
         given(creators.findByMemberId(7L)).willReturn(Optional.of(creator(7L, 42L)));
-        given(spaces.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(CreatorSpace.fromTemplate(42L,
-                new CreatorSpaceTemplate(1L, "소개", "https://img/profile.jpg", "https://img/banner.jpg", "creator-{creatorId}"),
-                "creator-42")));
+        given(spaces.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(CreatorSpaceFixtures.space(42L, "소개", "https://img/profile.jpg", "https://img/banner.jpg", "creator-42")));
         given(images.link(any(), eq(42L), any())).willReturn(0);
         CreatorSpaceProfileImageManager manager = new CreatorSpaceProfileImageManager(
                 images, new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),

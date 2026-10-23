@@ -6,7 +6,7 @@ import kr.co.cking.creator.domain.CreatorSimilarityCandidate;
 import kr.co.cking.creator.domain.CreatorSimilarityGeneration;
 import kr.co.cking.creator.domain.CreatorSimilarityState;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityGenerationRepository;
@@ -240,10 +240,8 @@ class CreatorRecommendationIntegrationTest {
     }
 
     private void createSpace(Creator creator, String introText, String profileImageUrl) {
-        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                creator.getMemberId(), introText, profileImageUrl, "banner", "creator-{creatorId}");
-        spaces.add(spaceRepository.saveAndFlush(CreatorSpace.fromTemplate(
-                creator.getCreatorId(), template, "creator-" + creator.getCreatorId())));
+
+        spaces.add(spaceRepository.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), introText, profileImageUrl, "banner", "creator-" + creator.getCreatorId())));
     }
 
     private String hash() {

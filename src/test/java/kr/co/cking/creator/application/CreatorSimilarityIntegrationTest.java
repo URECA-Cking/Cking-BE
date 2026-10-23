@@ -1,5 +1,6 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.application.dto.CreatorSimilarityResultCommand;
 import kr.co.cking.creator.application.dto.CreatorSimilarityView;
@@ -206,8 +207,7 @@ class CreatorSimilarityIntegrationTest {
         Member owner = member("owner-" + prefix, MemberRole.USER);
         Creator creator = creatorRepository.saveAndFlush(
                 new Creator(owner.getMemberId(), prefix + "-" + suffix()));
-        spaces.saveAndFlush(kr.co.cking.creator.domain.CreatorSpace.fromTemplate(creator.getCreatorId(),
-                new kr.co.cking.creator.domain.CreatorSpaceTemplate(owner.getMemberId(),"요리 소개","p","b","creator-{creatorId}"),"fixture-"+suffix()));
+        spaces.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), "요리 소개", "p", "b", "fixture-"+suffix()));
         creators.add(creator);
         return creator;
     }

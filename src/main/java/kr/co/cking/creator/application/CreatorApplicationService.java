@@ -102,7 +102,7 @@ public class CreatorApplicationService {
                 activityNameService.initialAvailableNameUnderAllocationLock(
                         applicant.getNickname(), applicant.getName(), application.getMemberId())));
         missionInitializationService.initializeDefaultMissions(creator.getCreatorId());
-        creatorSpaceService.createFromActiveTemplateIfAbsent(creator.getCreatorId());
+        creatorSpaceService.createIfAbsent(creator.getCreatorId());
         return application;
     }
 

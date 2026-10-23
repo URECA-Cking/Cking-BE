@@ -6,7 +6,7 @@ import kr.co.cking.creator.application.CreatorSpaceProfileService;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.member.domain.Member;
@@ -195,10 +195,8 @@ class CreatorSpaceShareE2EIntegrationTest {
     private CreatorFixture createCreator(String name, String slug) {
         Member owner = createMember(name + "회원");
         Creator creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), name));
-        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                owner.getMemberId(), "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-        );
-        creatorSpaceRepository.saveAndFlush(CreatorSpace.fromTemplate(creator.getCreatorId(), template, slug));
+
+        creatorSpaceRepository.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), "소개", "https://img/profile.png", "https://img/banner.png", slug));
         Mission mission = missionRepository.saveAndFlush(
                 new Mission(creator.getCreatorId(), MissionType.SHARE, 1, null, null));
         return new CreatorFixture(owner.getMemberId(), creator.getCreatorId(), mission.getMissionId(), slug);

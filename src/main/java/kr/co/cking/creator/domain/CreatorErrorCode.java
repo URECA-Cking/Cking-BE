@@ -8,8 +8,6 @@ import org.springframework.http.HttpStatus;
 public enum CreatorErrorCode implements ErrorCode {
     INVALID_STATE(HttpStatus.CONFLICT, "현재 상태에서는 수행할 수 없습니다."),
     CONCURRENT_COMMAND(HttpStatus.CONFLICT, "동일 대상에 대한 명령이 충돌했습니다."),
-    NO_ACTIVE_SPACE_TEMPLATE(HttpStatus.CONFLICT, "활성화된 기본 Creator Space 템플릿이 없습니다."),
-    INVALID_ACTIVE_SPACE_TEMPLATE(HttpStatus.CONFLICT, "활성화된 기본 Creator Space 템플릿의 slug 생성 규칙이 올바르지 않습니다."),
     RESERVED_SLUG(HttpStatus.BAD_REQUEST, "사용할 수 없는 slug입니다."),
     SLUG_ALREADY_TAKEN(HttpStatus.CONFLICT, "이미 사용 중인 slug입니다."),
     SLUG_CHANGE_TOO_SOON(HttpStatus.CONFLICT, "slug는 마지막 변경 후 14일이 지나야 다시 바꿀 수 있습니다."),
@@ -18,7 +16,6 @@ public enum CreatorErrorCode implements ErrorCode {
     ACTIVITY_NAME_SETUP_REQUIRED(HttpStatus.CONFLICT, "크리에이터 활동명을 먼저 설정해 주세요."),
     INVALID_SPACE_PROFILE_IMAGE(HttpStatus.BAD_REQUEST, "사용할 수 없는 Creator Space 프로필 이미지입니다."),
     INVALID_SPACE_BANNER_IMAGE(HttpStatus.BAD_REQUEST, "사용할 수 없는 Creator Space 배너 이미지입니다."),
-    INVALID_SPACE_TEMPLATE_IMAGE(HttpStatus.BAD_REQUEST, "사용할 수 없는 Creator Space 템플릿 이미지입니다."),
     INVALID_RECOMMENDATION_RESULT(HttpStatus.BAD_REQUEST, "유사 추천 결과 묶음이 올바르지 않습니다."),
     RECOMMENDATION_INPUT_CONFLICT(HttpStatus.CONFLICT, "같은 적용 실행 번호에 다른 추천 결과가 전달되었습니다."),
     STALE_RECOMMENDATION_INPUT(HttpStatus.CONFLICT, "현재보다 오래된 추천 적용 실행입니다."),

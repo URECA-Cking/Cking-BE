@@ -10,13 +10,16 @@ public final class CreatorSpaceRequest {
     private CreatorSpaceRequest() {
     }
 
-    /** slug는 {@link ChangeSlug}로 따로 바꾼다. 필드 길이는 creator_space 컬럼과 같다. */
+    /**
+     * slug는 {@link ChangeSlug}로 따로 바꾼다. 필드 길이는 creator_space 컬럼과 같다.
+     * 이미지 URL은 생략하거나 비워 보내면 이미지 없음이다(이슈 #754).
+     */
     public static final class UpdateProfile {
         @NotBlank @Size(max = 500)
         private String introText;
-        @NotBlank @Size(max = 500)
+        @Size(max = 500)
         private String profileImageUrl;
-        @NotBlank @Size(max = 500)
+        @Size(max = 500)
         private String bannerImageUrl;
         @Size(max = 200)
         private String profileImageKey;

@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -20,9 +20,7 @@ class CreatorSpaceProfileImageManagerTest {
         CreatorSpaceProfileImageRepository images = org.mockito.Mockito.mock(CreatorSpaceProfileImageRepository.class);
         Creator creator = new Creator(7L, "creator");
         ReflectionTestUtils.setField(creator, "creatorId", 42L);
-        CreatorSpace space = CreatorSpace.fromTemplate(42L,
-                new CreatorSpaceTemplate(1L, "소개", "https://img/default.jpg", "https://img/banner.jpg", "creator-{creatorId}"),
-                "creator-42");
+        CreatorSpace space = CreatorSpaceFixtures.space(42L, "소개", "https://img/default.jpg", "https://img/banner.jpg", "creator-42");
         space.updateProfileImage("creator-space-profile-images/42/current.jpg", "https://cdn/current.jpg");
         Instant now = Instant.parse("2026-10-12T00:00:00Z");
         CreatorSpaceProfileImageManager manager = new CreatorSpaceProfileImageManager(
