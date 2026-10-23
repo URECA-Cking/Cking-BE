@@ -6,28 +6,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class CreatorSpaceTest {
 
+    /** 승인 시 만드는 Space는 기본 소개 문구에 이미지가 없다. 이미지는 화면이 기본 이미지로 채운다. */
     @Test
-    void fromTemplateCopiesTemplateValues() {
-        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-        );
-
-        CreatorSpace space = CreatorSpace.fromTemplate(42L, template, "creator-42");
+    void createDefaultHasDefaultIntroAndNoImages() {
+        CreatorSpace space = CreatorSpace.createDefault(42L, "creator-42");
 
         assertThat(space.getCreatorId()).isEqualTo(42L);
-        assertThat(space.getIntroText()).isEqualTo("소개");
-        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
-        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/banner.png");
+        assertThat(space.getIntroText()).isEqualTo(CreatorSpace.DEFAULT_INTRO_TEXT);
+        assertThat(space.getProfileImageUrl()).isNull();
+        assertThat(space.getDefaultProfileImageUrl()).isNull();
+        assertThat(space.getBannerImageUrl()).isNull();
+        assertThat(space.getDefaultBannerImageUrl()).isNull();
         assertThat(space.getSlug()).isEqualTo("creator-42");
+        assertThat(space.getContentRevision()).isEqualTo(1L);
     }
 
     /** 홈·프로필 수정은 소개·이미지만 바꾸고 slug와 creatorId는 그대로 둔다. */
     @Test
     void updateProfileChangesProfileFieldsButKeepsSlug() {
-        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-        );
-        CreatorSpace space = CreatorSpace.fromTemplate(42L, template, "creator-42");
+        CreatorSpace space = CreatorSpace.createDefault(42L, "creator-42");
 
         space.updateProfile("새 소개", "https://img/p2.png", "https://img/b2.png");
 
@@ -38,18 +35,46 @@ class CreatorSpaceTest {
         assertThat(space.getCreatorId()).isEqualTo(42L);
     }
 
-    /** Space는 템플릿 값을 생성 시점에 복사만 할 뿐 템플릿을 참조로 들고 있지 않으므로, 이후 템플릿 수정은 이미 만든 Space에 영향을 주지 않는다. */
+    /** 빈 문자열은 이미지 없음이라 null로 저장하고, 기본 이미지(복귀 대상)도 없음이 된다. */
     @Test
-    void spaceIsIndependentFromLaterTemplateChanges() {
-        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, "원래 소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-        );
-        CreatorSpace space = CreatorSpace.fromTemplate(42L, template, "creator-42");
+    void blankImageUrlMeansNoImage() {
+        CreatorSpace space = CreatorSpaceFixtures.space(42L, "소개", "https://img/p.png", "https://img/b.png", "creator-42");
 
-        template.update(9L, "바뀐 소개", "https://img/new-profile.png", "https://img/new-banner.png",
-                "new-{creatorId}");
+        space.updateProfile("소개", "", " ");
 
-        assertThat(space.getIntroText()).isEqualTo("원래 소개");
-        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
+        assertThat(space.getProfileImageUrl()).isNull();
+        assertThat(space.getDefaultProfileImageUrl()).isNull();
+        assertThat(space.getBannerImageUrl()).isNull();
+        assertThat(space.getDefaultBannerImageUrl()).isNull();
+    }
+
+    /** null은 요청에 없었다는 뜻이라 템플릿 시기에 만든 Space의 이미지도 그대로 둔다. */
+    @Test
+    void missingImageUrlKeepsCurrentImage() {
+        CreatorSpace space = CreatorSpaceFixtures.space(42L, "소개", "https://img/p.png", "https://img/b.png", "creator-42");
+
+        space.updateProfile("새 소개", null, null);
+
+        assertThat(space.getIntroText()).isEqualTo("새 소개");
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/p.png");
+        assertThat(space.getDefaultProfileImageUrl()).isEqualTo("https://img/p.png");
+        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/b.png");
+        assertThat(space.getDefaultBannerImageUrl()).isEqualTo("https://img/b.png");
+    }
+
+    /** 업로드 이미지 연결을 풀면 기본 이미지로 돌아가는데, 기본 이미지가 없으면 이미지 없음이 된다. */
+    @Test
+    void restoringDefaultImagesOfDefaultSpaceMeansNoImage() {
+        CreatorSpace space = CreatorSpace.createDefault(42L, "creator-42");
+        space.updateProfileImage("creator-space-profile-images/42/p.jpg", "https://cdn/p.jpg");
+        space.updateBannerImage("creator-space-profile-images/42/banner/b.jpg", "https://cdn/b.jpg");
+
+        space.restoreDefaultProfileImage();
+        space.restoreDefaultBannerImage();
+
+        assertThat(space.getProfileImageKey()).isNull();
+        assertThat(space.getProfileImageUrl()).isNull();
+        assertThat(space.getBannerImageKey()).isNull();
+        assertThat(space.getBannerImageUrl()).isNull();
     }
 }

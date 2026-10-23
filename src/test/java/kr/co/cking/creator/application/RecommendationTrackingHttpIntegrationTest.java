@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 import kr.co.cking.auth.application.port.AccessTokenIssuer;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.member.domain.Member;
@@ -70,8 +70,8 @@ class RecommendationTrackingHttpIntegrationTest {
         Long fan = member();
         Long stranger = member();
         creator = creators.saveAndFlush(new Creator(member(), "http500-" + UUID.randomUUID()));
-        var template = new CreatorSpaceTemplate(fan, "intro", "profile", "banner", "creator-{creatorId}");
-        space = spaces.saveAndFlush(CreatorSpace.fromTemplate(creator.getCreatorId(), template, "http500-" + UUID.randomUUID()));
+
+        space = spaces.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), "intro", "profile", "banner", "http500-" + UUID.randomUUID()));
         String version = "v0.2";
         jdbc.update("INSERT INTO member_interest(member_id,taxonomy_version,interest_code,selected_at) VALUES(?,?,'FOOD',CURRENT_TIMESTAMP(6))",fan,version);
         var generation = jdbc.queryForObject("SELECT GREATEST(COALESCE(MAX(application_sequence),0),0)+1 FROM interest_recommendation_generation",Long.class);

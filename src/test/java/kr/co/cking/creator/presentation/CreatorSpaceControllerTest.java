@@ -11,7 +11,7 @@ import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.application.dto.CreatorSpaceView;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.member.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -322,7 +322,39 @@ class CreatorSpaceControllerTest {
         then(profileImageLinkService).should(never()).linkBanner(any(), any());
     }
 
-    /** 모든 필드를 한 번에 교체하므로 공백이거나 누락된 필드는 검증 실패다. */
+    /** 이미지 URL을 생략하면 현재 값을 유지하도록 null로 넘긴다(이슈 #754). */
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesOmittedImageUrlsAsKeep() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields("새 소개", null, null);
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "introText": "새 소개" }
+                                """))
+                .andExpect(status().isOk());
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    /** 빈 문자열과 명시적 null은 이미지 없음이라 빈 문자열로 넘긴다. 생략과 구분해야 기존 이미지가 실수로 지워지지 않는다. */
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesEmptyOrNullImageUrlsAsNoImage() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields("새 소개", "", "");
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "introText": "새 소개", "profileImageUrl": "", "bannerImageUrl": null }
+                                """))
+                .andExpect(status().isOk());
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    /** 소개 문구는 필수라 공백이면 검증 실패다. 이미지 URL은 생략할 수 있다. */
     @Test
     @WithMockJwt(memberId = "7")
     void updateMySpaceRejectsBlankOrMissingFields() throws Exception {
@@ -511,9 +543,7 @@ class CreatorSpaceControllerTest {
     }
 
     private CreatorSpaceView view() {
-        CreatorSpace space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-        ), "creator-42");
+        CreatorSpace space = CreatorSpaceFixtures.space(42L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-42");
         return new CreatorSpaceView(space, "크리에이터");
     }
 

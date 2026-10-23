@@ -1,5 +1,6 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.domain.*;
 import kr.co.cking.creator.repository.*;
 import kr.co.cking.member.domain.*;
@@ -66,7 +67,7 @@ class ContentTagReviewIntegrationTest {
             String name="review-"+UUID.randomUUID().toString().substring(0,8);
             var member=members.saveAndFlush(new Member(name,null,null,MemberRole.USER));memberIds.add(member.getMemberId());
             var creator=creators.saveAndFlush(new Creator(member.getMemberId(),name));creatorIds.add(creator.getCreatorId());
-            var space=spaces.saveAndFlush(CreatorSpace.fromTemplate(creator.getCreatorId(),new CreatorSpaceTemplate(member.getMemberId(),"singing intro","p","b","c-{creatorId}"),name));
+            var space=spaces.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), "singing intro", "p", "b", name));
             outbox.enqueue(space);return creator.getCreatorId();
         }));
     }

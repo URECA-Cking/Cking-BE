@@ -44,4 +44,4 @@ Creator 여부는 JWT Role이 아니라 `creator.member_id` 존재 여부로 판
 
 ## 검증 범위(caveat)
 
-- Creator Space에 캘린더를 노출하는 UI 연동(신규 탭 등)은 `CreatorSpace`/`CreatorSpaceTemplate` 소유자와 별도로 조율한다.
+- Creator Space에 캘린더를 노출하는 UI 연동(신규 탭 등)은 `CreatorSpace` 소유자와 별도로 조율한다.

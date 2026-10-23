@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 
 import java.math.BigDecimal;
 import java.util.*;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.application.dto.CreatorSimilarityResultCommand;
 import kr.co.cking.creator.domain.*;
@@ -44,8 +45,7 @@ class RecommendationEligibilityIntegrationTest {
     private Creator creator(String intro) {
         var owner=member();
         var creator=creators.saveAndFlush(new Creator(owner.getMemberId(), "related-"+UUID.randomUUID()));
-        spaces.saveAndFlush(CreatorSpace.fromTemplate(creator.getCreatorId(),
-                new CreatorSpaceTemplate(owner.getMemberId(),intro,"profile","banner","creator-{creatorId}"),"related-"+UUID.randomUUID()));
+        spaces.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), intro, "profile", "banner", "related-"+UUID.randomUUID()));
         return creator;
     }
     private InterestRecommendationCommand interest(long sequence, String code, Creator... selected) {

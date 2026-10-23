@@ -1,4 +1,6 @@
 package kr.co.cking.creator.application;
+
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.*;
 import kr.co.cking.creator.domain.*;
 import kr.co.cking.common.exception.BusinessException;
@@ -16,7 +18,7 @@ class ContentTagServiceTest {
             e -> assertThat(e.getErrorCode()).isEqualTo(ContentTagErrorCode.CONTENT_TAXONOMY_UNAVAILABLE));
     }
     @Test void noApprovedTaxonomyHidesPublicTags() {
-        when(spaces.findByCreatorId(1L)).thenReturn(Optional.of(CreatorSpace.fromTemplate(1L,new CreatorSpaceTemplate(1L,"intro","p","b","c-{creatorId}"),"c-1")));
+        when(spaces.findByCreatorId(1L)).thenReturn(Optional.of(CreatorSpaceFixtures.space(1L, "intro", "p", "b", "c-1")));
         assertThat(service.publicView(1L)).containsEntry("status","disabled").containsEntry("topics",List.of());
     }
     @Test void nonCreatorCannotConfirm() {
@@ -28,7 +30,7 @@ class ContentTagServiceTest {
             .isEqualTo(ContentTagService.digest(Map.of("a",1,"b",List.of(Map.of("a",1,"z",2)))));
     }
     @Test void publicReadNeverUsesTheMutationLock() {
-        when(spaces.findByCreatorId(1L)).thenReturn(Optional.of(CreatorSpace.fromTemplate(1L,new CreatorSpaceTemplate(1L,"intro","p","b","c-{creatorId}"),"c-1")));
+        when(spaces.findByCreatorId(1L)).thenReturn(Optional.of(CreatorSpaceFixtures.space(1L, "intro", "p", "b", "c-1")));
         service.publicView(1L);
         verify(spaces,never()).findByCreatorIdForUpdate(anyLong());
         verify(repo).taxonomies(false);

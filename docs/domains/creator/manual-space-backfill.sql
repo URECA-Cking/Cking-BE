@@ -1,6 +1,7 @@
--- V75 이후 스키마에서 Space가 없는 기존 Creator를 수동으로 채운다(배너 업로드 컬럼 포함).
+-- V94 이후 스키마에서 Space가 없는 기존 Creator를 수동으로 채운다. 승인 경로와 같은 기본값(기본 소개 문구, 이미지 없음, creator-{creatorId})을 쓴다.
 -- V19 Flyway 파일은 체크섬을 유지해야 하므로 수정하거나 재실행하지 않는다.
--- 활성 템플릿의 slug가 선점됐으면 승인 경로와 같이 -2부터 -100까지 찾는다.
+-- 소개 문구는 CreatorSpace.DEFAULT_INTRO_TEXT와 같아야 한다.
+-- 자동 slug가 선점됐으면 승인 경로와 같이 -2부터 -100까지 찾는다.
 INSERT INTO creator_space (
     creator_id, intro_text, profile_image_url, profile_image_key, default_profile_image_url,
     banner_image_url, banner_image_key, default_banner_image_url, slug, created_at
@@ -10,13 +11,9 @@ WITH RECURSIVE suffixes (n) AS (
     UNION ALL
     SELECT n + 1 FROM suffixes WHERE n < 100
 ), missing AS (
-    SELECT c.creator_id, t.intro_text, t.profile_image_url, t.banner_image_url,
-           REPLACE(t.slug_rule, '{creatorId}', CAST(c.creator_id AS CHAR)) AS base_slug
+    SELECT c.creator_id, CONCAT('creator-', CAST(c.creator_id AS CHAR)) AS base_slug
     FROM creator c
-    JOIN creator_space_template t ON t.active_marker = 1
-    WHERE REGEXP_LIKE(t.slug_rule, '^([a-z0-9-]*[a-z-])?[{]creatorId[}]$', 'c')
-      AND CHAR_LENGTH(REPLACE(t.slug_rule, '{creatorId}', CAST(c.creator_id AS CHAR))) <= 100
-      AND NOT EXISTS (SELECT 1 FROM creator_space s WHERE s.creator_id = c.creator_id)
+    WHERE NOT EXISTS (SELECT 1 FROM creator_space s WHERE s.creator_id = c.creator_id)
 ), candidates AS (
     SELECT m.*, suffixes.n,
            CASE WHEN suffixes.n = 1 THEN m.base_slug
@@ -29,7 +26,7 @@ WITH RECURSIVE suffixes (n) AS (
     WHERE CHAR_LENGTH(candidate_slug) <= 100
       AND NOT EXISTS (SELECT 1 FROM creator_space s WHERE s.slug = candidates.candidate_slug)
 )
-SELECT creator_id, intro_text, profile_image_url, NULL, profile_image_url,
-       banner_image_url, NULL, banner_image_url, candidate_slug, UTC_TIMESTAMP(6)
+SELECT creator_id, '크리에이터와 함께하는 공간이에요', NULL, NULL, NULL,
+       NULL, NULL, NULL, candidate_slug, UTC_TIMESTAMP(6)
 FROM available
 WHERE choice_rank = 1;

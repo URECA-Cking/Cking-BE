@@ -3,7 +3,7 @@ package kr.co.cking.creator.domain;
 import java.util.regex.Pattern;
 
 /**
- * 템플릿이 바뀌어도 slug의 끝 숫자열이 creatorId를 식별하도록 규칙을 제한한다.
+ * 자동 slug의 끝 숫자열이 creatorId를 식별하도록 규칙을 제한한다.
  * 소문자 ASCII 제한은 DB의 대소문자·악센트 무시 collation과도 일치시킨다.
  */
 public final class CreatorSpaceSlugRule {

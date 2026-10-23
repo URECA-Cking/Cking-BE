@@ -19,7 +19,7 @@ class ContentIntroTest {
         for(var row:rows) org.assertj.core.api.Assertions.assertThatThrownBy(() -> ContentIntro.hash(row.asText())).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void canonicalEquivalentEditDoesNotIncrementRevision() {
-        var space=CreatorSpace.fromTemplate(1L,new CreatorSpaceTemplate(1L,"é","p","b","c-{creatorId}"),"c-1");
+        var space=CreatorSpaceFixtures.space(1L, "é", "p", "b", "c-1");
         space.updateProfile("e\u0301","p2","b");
         assertThat(space.getContentRevision()).isEqualTo(1);
         space.updateProfile("새 소개","p2","b");

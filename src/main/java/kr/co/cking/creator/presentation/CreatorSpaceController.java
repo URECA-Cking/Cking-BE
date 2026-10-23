@@ -155,7 +155,8 @@ public class CreatorSpaceController {
     /** 인증된 Creator 본인의 Creator Space slug를 변경한다. */
     @Operation(
             summary = "내 Creator Space 홈·프로필 수정",
-            description = "Creator 본인만 수정할 수 있습니다. 모든 필드를 한 번에 교체합니다. slug는 slug 변경 API로 바꿉니다."
+            description = "Creator 본인만 수정할 수 있습니다. 소개 문구는 필수입니다. 이미지 URL은 생략하면 현재 값을 유지하고, "
+                    + "빈 문자열이나 null을 보내면 이미지 없음이 됩니다. slug는 slug 변경 API로 바꿉니다."
     )
     @PatchMapping("/api/creator/space")
     public ApiResponse<CreatorSpaceResponse.Mine> updateMine(

@@ -5,7 +5,7 @@ import kr.co.cking.recommendation.application.RecommendationEligibilityService;
 import kr.co.cking.creator.application.dto.PersonalizedCreatorRecommendationView;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSimilarityCandidateRepository;
 import kr.co.cking.interest.application.InterestRecommendationQueryService;
@@ -347,8 +347,6 @@ class CreatorRecommendationQueryServiceTest {
     }
 
     private CreatorSpace space(Long creatorId, String introText, String profileImageUrl) {
-        CreatorSpaceTemplate template = new CreatorSpaceTemplate(
-                1L, introText, profileImageUrl, "banner", "creator-{creatorId}");
-        return CreatorSpace.fromTemplate(creatorId, template, "creator-" + creatorId);
+        return CreatorSpaceFixtures.space(creatorId, introText, profileImageUrl, "banner", "creator-" + creatorId);
     }
 }

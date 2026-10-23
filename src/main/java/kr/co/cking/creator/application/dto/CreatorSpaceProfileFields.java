@@ -3,6 +3,8 @@ package kr.co.cking.creator.application.dto;
 /**
  * Creator 본인이 수정하는 Space 홈·프로필 필드다.
  *
+ * <p>{@code profileImageUrl}·{@code bannerImageUrl}은 null이면 요청에 없었다는 뜻이라 현재 값을 유지하고, 빈 문자열이면 이미지 없음이다(이슈 #754).
+ *
  * <p>{@code profileImageKey}·{@code bannerImageKey}는 업로드한 이미지 키이고, {@code *Provided}가 false면 요청에 없었다는 뜻이라
  * 현재 연결을 유지한다. provided인데 키가 null이면 기본 이미지로 복귀한다(이슈 #590에서 배너 키를 추가).
  */
