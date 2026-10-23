@@ -57,10 +57,6 @@
     "candidatesMatched": true,
     "exclusionsMatched": true,
     "ranksMatched": true,
-    "snapshotHashMatched": true,
-    "inputHashMatched": true,
-    "resultHashMatched": true,
-    "algorithmMatched": true,
     "replayedWinners": [
       {
         "rankInDrawing": 1,
@@ -77,6 +73,10 @@
         "prizePriority": 2
       }
     ],
+    "snapshotHashMatched": true,
+    "inputHashMatched": true,
+    "resultHashMatched": true,
+    "algorithmMatched": true,
     "failureCode": null,
     "failureMessage": null,
     "verifiedBy": 1,
