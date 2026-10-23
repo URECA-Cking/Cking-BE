@@ -39,7 +39,7 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 - 승인 때 회원이 올려 둔 프로필 사진이 있으면 그 파일을 Space용 파일로 복사해 프로필 사진으로 연결한다. 복사하지 못하면 승인을 막지 않고 이미지 없이 만든다.
 - 기본 이미지(업로드 연결을 풀 때 돌아가는 값)도 없음이라, 업로드한 사진·배너를 해제하면 이미지 없음이 된다.
-- 이슈 #754 전에는 관리자가 활성화한 Creator Space 템플릿 값을 복사했다. 그때 만든 Space는 복사한 이미지 URL을 그대로 갖는다. 템플릿 테이블과 템플릿 이미지 업로드 기록은 V94에서 삭제했고, 템플릿용으로 올린 저장소 객체(`creator-space-profile-images/template/`)는 더 이상 정리하지 않는다.
+- 이슈 #754 전에는 관리자가 활성화한 Creator Space 템플릿 값을 복사했다. 그때 만든 Space는 복사한 이미지 URL을 그대로 갖는다. 템플릿 테이블(`creator_space_template`, `creator_space_template_image`)은 롤링 배포 중 옛 버전 서버가 매핑하고 있어 이번 배포에서는 남기고, 모든 서버가 이 버전이 된 뒤 다음 마이그레이션에서 지운다([롤링 배포](../../operations/rolling-deploy.md)). 템플릿용으로 올린 저장소 객체(`creator-space-profile-images/template/`)는 더 이상 정리하지 않는다.
 
 ### slug 생성
 
