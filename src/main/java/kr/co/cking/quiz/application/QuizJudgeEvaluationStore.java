@@ -102,10 +102,17 @@ public class QuizJudgeEvaluationStore {
     /** Creator의 오래된 PENDING은 FAILED, 오래된 RUNNING은 UNKNOWN으로 끝낸다. Provider를 다시 호출하지 않는다. */
     @Transactional
     public void expireStale(Long creatorId, Instant now) {
-        jobRepository.expirePending(creatorId, now.minus(properties.getStalePending()), QuizJudgeJobStatus.PENDING,
-                QuizJudgeJobStatus.FAILED, QuizJudgeFailure.STALE_PENDING, now);
-        jobRepository.expireRunning(creatorId, now.minus(properties.getStaleRunning()), QuizJudgeJobStatus.RUNNING,
-                QuizJudgeJobStatus.UNKNOWN, QuizJudgeFailure.STALE_RUNNING, now);
+        // 범위 UPDATE는 상태 인덱스 → PK 순서로 잠가 완료 저장(PK → 상태 인덱스)과 교착할 수 있다.
+        Instant pendingBefore = now.minus(properties.getStalePending());
+        for (Long jobId : jobRepository.findPendingToExpire(creatorId, pendingBefore, QuizJudgeJobStatus.PENDING)) {
+            jobRepository.expirePending(jobId, pendingBefore, QuizJudgeJobStatus.PENDING,
+                    QuizJudgeJobStatus.FAILED, QuizJudgeFailure.STALE_PENDING, now);
+        }
+        Instant runningBefore = now.minus(properties.getStaleRunning());
+        for (Long jobId : jobRepository.findRunningToExpire(creatorId, runningBefore, QuizJudgeJobStatus.RUNNING)) {
+            jobRepository.expireRunning(jobId, runningBefore, QuizJudgeJobStatus.RUNNING,
+                    QuizJudgeJobStatus.UNKNOWN, QuizJudgeFailure.STALE_RUNNING, now);
+        }
     }
 
     /**
