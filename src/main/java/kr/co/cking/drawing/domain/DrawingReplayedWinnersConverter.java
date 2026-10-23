@@ -28,14 +28,15 @@ public class DrawingReplayedWinnersConverter implements AttributeConverter<List<
         }
     }
 
-    /** 기존 이력의 null과 저장된 재현 당첨자 목록을 복원한다. */
+    /** 기존 이력의 null·공백·JSON null을 처리하고 저장된 재현 당첨자 목록을 복원한다. */
     @Override
     public List<DrawingReplayedWinner> convertToEntityAttribute(String json) {
-        if (json == null) {
+        if (json == null || json.isBlank()) {
             return null;
         }
         try {
-            return List.copyOf(JSON.readValue(json, WINNERS_TYPE));
+            List<DrawingReplayedWinner> winners = JSON.readValue(json, WINNERS_TYPE);
+            return winners == null ? null : List.copyOf(winners);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("재현 당첨자 JSON을 복원할 수 없습니다.", exception);
         }

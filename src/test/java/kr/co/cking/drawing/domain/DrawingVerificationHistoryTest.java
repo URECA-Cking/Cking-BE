@@ -65,6 +65,8 @@ class DrawingVerificationHistoryTest {
         DrawingReplayedWinnersConverter converter = new DrawingReplayedWinnersConverter();
         assertThat(converter.convertToDatabaseColumn(null)).isNull();
         assertThat(converter.convertToEntityAttribute(null)).isNull();
+        assertThat(converter.convertToEntityAttribute("   ")).isNull();
+        assertThat(converter.convertToEntityAttribute("null")).isNull();
         assertThat(converter.convertToDatabaseColumn(java.util.List.of())).isEqualTo("[]");
         assertThat(converter.convertToEntityAttribute("[]")).isEmpty();
 
