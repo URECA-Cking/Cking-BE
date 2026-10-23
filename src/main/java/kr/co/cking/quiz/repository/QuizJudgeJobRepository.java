@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /** 상태 전이는 현재 상태를 조건으로 거는 UPDATE나 행 잠금으로만 한다. 바뀐 행 수가 0이면 전이하지 않은 것이다. */
@@ -51,25 +52,36 @@ public interface QuizJudgeJobRepository extends JpaRepository<QuizJudgeJob, Long
                     @Param("failed") QuizJudgeJobStatus failed, @Param("failure") QuizJudgeFailure failure,
                     @Param("now") Instant now);
 
-    /** Creator의 Job 중 {@code before}보다 먼저 접수돼 아직 PENDING인 Job을 FAILED로 끝낸다. */
+    /** 후보는 잠금 없는 조회로 찾고, 상태 전이는 기본키로 다시 확인한다. */
+    @Query("select j.jobId from QuizJudgeJob j where j.creatorId = :creatorId "
+            + "and j.status = :pending and j.requestedAt < :before order by j.jobId")
+    List<Long> findPendingToExpire(@Param("creatorId") Long creatorId, @Param("before") Instant before,
+                                   @Param("pending") QuizJudgeJobStatus pending);
+
+    @Query("select j.jobId from QuizJudgeJob j where j.creatorId = :creatorId "
+            + "and j.status = :running and j.startedAt < :before order by j.jobId")
+    List<Long> findRunningToExpire(@Param("creatorId") Long creatorId, @Param("before") Instant before,
+                                   @Param("running") QuizJudgeJobStatus running);
+
+    /** 후보 조회 뒤 실행이 시작됐으면 전이하지 않는다. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update QuizJudgeJob j
                set j.status = :failed, j.failureCode = :failure, j.completedAt = :now, j.updatedAt = :now
-             where j.creatorId = :creatorId and j.status = :pending and j.requestedAt < :before
+             where j.jobId = :jobId and j.status = :pending and j.requestedAt < :before
             """)
-    int expirePending(@Param("creatorId") Long creatorId, @Param("before") Instant before,
+    int expirePending(@Param("jobId") Long jobId, @Param("before") Instant before,
                       @Param("pending") QuizJudgeJobStatus pending, @Param("failed") QuizJudgeJobStatus failed,
                       @Param("failure") QuizJudgeFailure failure, @Param("now") Instant now);
 
-    /** Creator의 Job 중 {@code before}보다 먼저 시작해 아직 RUNNING인 Job을 UNKNOWN으로 끝낸다. */
+    /** 후보 조회 뒤 완료됐으면 전이하지 않는다. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update QuizJudgeJob j
                set j.status = :unknown, j.failureCode = :failure, j.completedAt = :now, j.updatedAt = :now
-             where j.creatorId = :creatorId and j.status = :running and j.startedAt < :before
+             where j.jobId = :jobId and j.status = :running and j.startedAt < :before
             """)
-    int expireRunning(@Param("creatorId") Long creatorId, @Param("before") Instant before,
+    int expireRunning(@Param("jobId") Long jobId, @Param("before") Instant before,
                       @Param("running") QuizJudgeJobStatus running, @Param("unknown") QuizJudgeJobStatus unknown,
                       @Param("failure") QuizJudgeFailure failure, @Param("now") Instant now);
 }

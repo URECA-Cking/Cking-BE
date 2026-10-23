@@ -297,12 +297,23 @@ class QuizJudgeEvaluationStoreTest {
 
     @Test
     void 오래된_PENDING은_15분_RUNNING은_5분_기준으로_정리한다() {
+        given(jobRepository.findPendingToExpire(CREATOR_ID, NOW.minus(Duration.ofMinutes(15)), QuizJudgeJobStatus.PENDING))
+                .willReturn(List.of(101L));
+        given(jobRepository.findRunningToExpire(CREATOR_ID, NOW.minus(Duration.ofMinutes(5)), QuizJudgeJobStatus.RUNNING))
+                .willReturn(List.of(102L));
         store.expireStale(CREATOR_ID, NOW);
 
-        verify(jobRepository).expirePending(CREATOR_ID, NOW.minus(Duration.ofMinutes(15)), QuizJudgeJobStatus.PENDING,
+        verify(jobRepository).expirePending(101L, NOW.minus(Duration.ofMinutes(15)), QuizJudgeJobStatus.PENDING,
                 QuizJudgeJobStatus.FAILED, QuizJudgeFailure.STALE_PENDING, NOW);
-        verify(jobRepository).expireRunning(CREATOR_ID, NOW.minus(Duration.ofMinutes(5)), QuizJudgeJobStatus.RUNNING,
+        verify(jobRepository).expireRunning(102L, NOW.minus(Duration.ofMinutes(5)), QuizJudgeJobStatus.RUNNING,
                 QuizJudgeJobStatus.UNKNOWN, QuizJudgeFailure.STALE_RUNNING, NOW);
+    }
+
+    @Test
+    void 만료후보가_없으면_범위_UPDATE를_실행하지_않는다() {
+        store.expireStale(CREATOR_ID, NOW);
+        verify(jobRepository, never()).expirePending(any(), any(), any(), any(), any(), any());
+        verify(jobRepository, never()).expireRunning(any(), any(), any(), any(), any(), any());
     }
 
     @Test
