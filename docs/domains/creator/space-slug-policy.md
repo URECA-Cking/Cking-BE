@@ -6,7 +6,7 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 
 | 구분 | 언제 | 누가 | 예 |
 | --- | --- | --- | --- |
-| 자동 slug | Creator 승인 시 | 시스템(활성 템플릿의 `slugRule`) | `creator-42` |
+| 자동 slug | Creator 승인 시 | 시스템(`creator-{creatorId}`) | `creator-42` |
 | 커스텀 slug | 승인 이후 언제든 | Creator 본인 | `iu-official` |
 
 - 공유 링크는 slug 기반(`/space/{slug}`)이며 `GET /api/creator-spaces/{slug}`로 연다.
@@ -73,7 +73,7 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 
 ### 되돌리기
 
-- **본인이 버린 slug로는 예약 기간 안에 언제든 되돌릴 수 있다.** 14일 변경 간격을 받지 않는다. 이미 쓰던 값이라 형식 검사는 다시 하지 않는다. 다만 이후 예약어로 추가된 값으로는 되돌릴 수 없다(`RESERVED_SLUG`). 30자를 넘는 긴 자동 slug(관리자가 긴 템플릿 규칙을 쓴 경우)로도 되돌릴 수 있도록, 요청 단계에서는 빈 값과 컬럼 길이(100자)만 검사하고 커스텀 slug 형식은 새 slug일 때만 서비스에서 검사한다.
+- **본인이 버린 slug로는 예약 기간 안에 언제든 되돌릴 수 있다.** 14일 변경 간격을 받지 않는다. 이미 쓰던 값이라 형식 검사는 다시 하지 않는다. 다만 이후 예약어로 추가된 값으로는 되돌릴 수 없다(`RESERVED_SLUG`). 30자를 넘는 긴 자동 slug(템플릿 기능을 쓰던 시기에 관리자가 긴 규칙을 쓴 경우)로도 되돌릴 수 있도록, 요청 단계에서는 빈 값과 컬럼 길이(100자)만 검사하고 커스텀 slug 형식은 새 slug일 때만 서비스에서 검사한다.
 - 되돌려도 마지막 변경 시각(`slug_changed_at`)은 바뀌지 않는다. 되돌리기를 이용해 새 slug로 바꾸는 14일 제한을 우회할 수 없다.
   - 예: 9/1 `creator-42` → `iu-official`, 9/4 `creator-42`로 되돌림(가능), 9/5 `iu-2026`으로 변경(거절, 9/15부터 가능)
 - 되돌리면서 버린 slug(위 예의 `iu-official`)도 14일 예약된다. 그 사이 본인은 다시 그 slug로 돌아갈 수 있다.
@@ -85,7 +85,7 @@ Creator Space slug의 생성·변경 규칙이다(이슈 #270, #290). 코드의 
 
 ## 자동 slug
 
-- 승인 시 활성 템플릿의 `slugRule`에서 `{creatorId}`를 실제 creatorId로 바꿔 만든다. 규칙 형식은 [README.md](README.md#slug-생성과-slugrule-검증2단-방어)를 따른다.
+- 승인 시 `creator-{creatorId}`의 `{creatorId}`를 실제 creatorId로 바꿔 만든다([README.md](README.md#slug-생성)).
 - 자동 slug끼리는 끝 숫자열이 creatorId라서 겹치지 않는다.
 
 ### 자동 slug 충돌
