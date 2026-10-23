@@ -50,8 +50,8 @@
     "drawingId": 20,
     "status": "VERIFIED",
     "verificationMode": "DETERMINISTIC_AND_CARDINALITY_REPLAY",
-    "expectedWinnerCount": 10,
-    "actualWinnerCount": 10,
+    "expectedWinnerCount": 2,
+    "actualWinnerCount": 2,
     "winnerCountMatched": true,
     "winnersUnique": true,
     "candidatesMatched": true,
@@ -61,6 +61,22 @@
     "inputHashMatched": true,
     "resultHashMatched": true,
     "algorithmMatched": true,
+    "replayedWinners": [
+      {
+        "rankInDrawing": 1,
+        "userId": 2,
+        "prizeKey": "FIRST",
+        "prizeDisplayName": "1등 상품",
+        "prizePriority": 1
+      },
+      {
+        "rankInDrawing": 2,
+        "userId": 7,
+        "prizeKey": "SECOND",
+        "prizeDisplayName": "2등 상품",
+        "prizePriority": 2
+      }
+    ],
     "failureCode": null,
     "failureMessage": null,
     "verifiedBy": 1,
@@ -74,6 +90,15 @@
 `actualWinnerCount`가 `null`일 수 있다. 마이그레이션 전에 생성된 기존 이력은
 `verificationMode=LEGACY_INTEGRITY`로 표시되며 `expectedWinnerCount`도 `null`일 수 있다.
 신규 이력만 `DETERMINISTIC_AND_CARDINALITY_REPLAY`로 기록된다. `failureCode`는 다음 중 하나다.
+
+`replayedWinners`는 원본 Seed 결정적 재현의 당첨자이며 `rankInDrawing ASC`로 반환한다.
+각 항목의 `userId`, `prizeKey`, `prizeDisplayName`, `prizePriority`는 관리자 Drawing 결과 조회의
+Winner 필드와 같은 이름을 사용한다. 이름·연락처 등 개인정보는 포함하지 않는다. FE는
+`GET /api/admin/drawings/{drawingId}/result`의 저장 Winner와 `userId`로 매칭할 수 있다.
+상품 Snapshot이 없는 레거시 Drawing에서는 세 상품 필드가 `null`이다.
+저장 Winner와 재현 결과가 불일치해 `VERIFICATION_FAILED`가 되더라도 재현된 목록은 남긴다.
+기존 `LEGACY_INTEGRITY` 이력과 재현 단계에 도달하지 못한 실패 이력에서는 `null`이며,
+빈 배열은 재현이 완료됐지만 당첨자가 없는 경우만 의미한다. 새 Seed 독립 재실행의 당첨자 목록은 포함하지 않는다.
 
 | 코드 | 조건 |
 | --- | --- |
@@ -118,3 +143,5 @@ backfill한다. V7 이후 생성되는 이력은 애플리케이션에서
 `DETERMINISTIC_AND_CARDINALITY_REPLAY`를 명시한다.
 
 독립 재실행 Seed는 이력에만 보존하며 운영 Drawing의 `seed_id`나 결과에는 영향을 주지 않는다.
+`V93__add_drawing_replayed_winners.sql`은 원본 Seed 재현 당첨자 목록을 nullable JSON으로 저장한다.
+기존 이력은 재현 목록을 역산하지 않고 `null`로 유지한다.

@@ -12,6 +12,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.response.PageResponse;
 import kr.co.cking.drawing.domain.Drawing;
 import kr.co.cking.drawing.domain.DrawingErrorCode;
+import kr.co.cking.drawing.domain.DrawingReplayedWinner;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVerificationFailureCode;
@@ -79,6 +80,7 @@ public class DrawingVerificationService {
     private final PrizeAllocationEngine prizeAllocationEngine;
     private final Clock clock;
 
+    /** 완료된 Drawing을 재현 검증하고 결과와 재현 당첨자를 새 이력으로 남긴다. */
     @Transactional
     public DrawingVerificationResult verify(Long drawingId, Long adminId) {
         memberQueryService.validateAdmin(adminId);
@@ -102,6 +104,7 @@ public class DrawingVerificationService {
         return DrawingVerificationResult.from(saved);
     }
 
+    /** Drawing의 검증 이력을 최신순으로 조회한다. */
     @Transactional(readOnly = true)
     public PageResponse<DrawingVerificationResult> getHistory(
             Long drawingId,
@@ -117,6 +120,7 @@ public class DrawingVerificationService {
         return PageResponse.from(result);
     }
 
+    /** 원본 Seed 재현과 독립 재실행을 수행하며 단계별 검증 증거를 채운다. */
     private void verify(Drawing drawing, VerificationEvidence evidence) {
         VerifiedSnapshot snapshot = snapshotIntegrityService.verifyForReplay(drawing.getSnapshotId());
         evidence.snapshotHashMatched = true;
@@ -177,6 +181,7 @@ public class DrawingVerificationService {
         DrawOutput deterministicOutput = drawingEngine.draw(originalInput);
         PrizeAllocationOutput deterministicPrizeOutput = allocatePrizes(
                 drawing, originalSeed, snapshot, deterministicOutput, prizes, inheritedPrizes);
+        evidence.replayedWinners = toReplayedWinners(deterministicOutput, deterministicPrizeOutput);
         DrawingHash deterministicResultHash = generateResultHash(
                 originalInputHash.value(), deterministicOutput, deterministicPrizeOutput);
         evidence.algorithmMatched = deterministicOutput.algorithmVersion() == algorithmVersion;
@@ -205,6 +210,28 @@ public class DrawingVerificationService {
             );
         }
         evidence.status = DrawingVerificationStatus.VERIFIED;
+    }
+
+    /** 원본 Seed 재현 결과를 순위와 Snapshot 상품 정보만 담은 목록으로 변환한다. */
+    private List<DrawingReplayedWinner> toReplayedWinners(
+            DrawOutput output,
+            PrizeAllocationOutput prizeOutput
+    ) {
+        Map<Integer, AllocatedPrize> prizesByRank = prizeOutput == null ? Map.of() : prizeOutput.allocations().stream()
+                .collect(Collectors.toMap(AllocatedPrize::rank, java.util.function.Function.identity()));
+        return output.winners().stream()
+                .sorted(java.util.Comparator.comparingInt(DrawWinner::rank))
+                .map(winner -> {
+                    AllocatedPrize allocation = prizesByRank.get(winner.rank());
+                    PrizeValue prize = allocation == null ? null : allocation.prize();
+                    return new DrawingReplayedWinner(
+                            winner.rank(), winner.memberId(),
+                            prize == null ? null : prize.prizeKey(),
+                            prize == null ? null : prize.displayName(),
+                            prize == null ? null : prize.priority()
+                    );
+                })
+                .toList();
     }
 
     private void requireDrawingContract(Drawing drawing, VerifiedSnapshot snapshot) {
@@ -450,6 +477,7 @@ public class DrawingVerificationService {
         private Boolean candidatesMatched;
         private Boolean exclusionsMatched;
         private Boolean ranksMatched;
+        private List<DrawingReplayedWinner> replayedWinners;
         private boolean snapshotHashMatched;
         private boolean inputHashMatched;
         private boolean resultHashMatched;
@@ -496,6 +524,7 @@ public class DrawingVerificationService {
             failureMessage = message;
         }
 
+        /** 재현 단계에서 확보한 목록을 포함해 검증 증거를 append-only 이력으로 만든다. */
         private DrawingVerificationHistory toHistory(Long drawingId, Long adminId, java.time.Instant verifiedAt) {
             return DrawingVerificationHistory.record(
                     drawingId,
@@ -508,6 +537,7 @@ public class DrawingVerificationService {
                     candidatesMatched,
                     exclusionsMatched,
                     ranksMatched,
+                    replayedWinners,
                     snapshotHashMatched,
                     inputHashMatched,
                     resultHashMatched,

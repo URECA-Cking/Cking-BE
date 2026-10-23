@@ -445,7 +445,10 @@ class DrawingAdminControllerTest {
                         .value("DETERMINISTIC_AND_CARDINALITY_REPLAY"))
                 .andExpect(jsonPath("$.data.expectedWinnerCount").value(10))
                 .andExpect(jsonPath("$.data.actualWinnerCount").value(10))
-                .andExpect(jsonPath("$.data.winnerCountMatched").value(true));
+                .andExpect(jsonPath("$.data.winnerCountMatched").value(true))
+                .andExpect(jsonPath("$.data.replayedWinners[0].rankInDrawing").value(1))
+                .andExpect(jsonPath("$.data.replayedWinners[0].userId").value(2))
+                .andExpect(jsonPath("$.data.replayedWinners[0].prizeDisplayName").value("1등 상품"));
     }
 
     @Test
@@ -457,6 +460,7 @@ class DrawingAdminControllerTest {
                         .param("userId", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].verificationId").value(100))
+                .andExpect(jsonPath("$.data.items[0].replayedWinners[0].prizeKey").value("FIRST"))
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.size").value(20))
                 .andExpect(jsonPath("$.data.totalElements").value(1));
@@ -490,6 +494,7 @@ class DrawingAdminControllerTest {
                 true,
                 true,
                 true,
+                List.of(new kr.co.cking.drawing.domain.DrawingReplayedWinner(1, 2L, "FIRST", "1등 상품", 1)),
                 true,
                 true,
                 true,

@@ -144,6 +144,17 @@ class DrawingVerificationIntegrationTest {
         assertThat(first.expectedWinnerCount()).isEqualTo(10);
         assertThat(first.actualWinnerCount()).isEqualTo(10);
         assertThat(second.status()).isEqualTo(DrawingVerificationStatus.VERIFIED);
+        assertThat(first.replayedWinners()).hasSize(10);
+        assertThat(first.replayedWinners()).extracting("rankInDrawing")
+                .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1, 10).boxed().toList());
+        assertThat(first.replayedWinners()).allSatisfy(winner -> {
+            assertThat(winner.userId()).isPositive();
+            assertThat(winner.prizeKey()).isNotBlank();
+            assertThat(winner.prizeDisplayName()).isNotBlank();
+            assertThat(winner.prizePriority()).isPositive();
+        });
+        assertThat(verificationService.getHistory(drawingId, adminId, 0, 20).items().get(0).replayedWinners())
+                .containsExactlyElementsOf(second.replayedWinners());
         assertThat(historyRepository.countByDrawingId(drawingId)).isEqualTo(2);
         assertThat(seedRepository.count()).isEqualTo(seedCountBefore);
         assertThat(after.getInputHash()).isEqualTo(before.getInputHash());
