@@ -1,6 +1,7 @@
 package kr.co.cking.drawing.domain;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -10,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -60,6 +62,10 @@ public class DrawingVerificationHistory {
     @Column(name = "ranks_matched", updatable = false)
     private Boolean ranksMatched;
 
+    @Convert(converter = DrawingReplayedWinnersConverter.class)
+    @Column(name = "replayed_winners", updatable = false, columnDefinition = "json")
+    private List<DrawingReplayedWinner> replayedWinners;
+
     @Column(name = "snapshot_hash_matched", nullable = false, updatable = false)
     private boolean snapshotHashMatched;
 
@@ -84,6 +90,7 @@ public class DrawingVerificationHistory {
     @Column(name = "verified_at", nullable = false, updatable = false)
     private Instant verifiedAt;
 
+    /** 검증 증거와 재현 당첨자를 수정 불가능한 새 이력 행으로 구성한다. */
     public static DrawingVerificationHistory record(
             Long drawingId,
             DrawingVerificationStatus status,
@@ -95,6 +102,7 @@ public class DrawingVerificationHistory {
             Boolean candidatesMatched,
             Boolean exclusionsMatched,
             Boolean ranksMatched,
+            List<DrawingReplayedWinner> replayedWinners,
             boolean snapshotHashMatched,
             boolean inputHashMatched,
             boolean resultHashMatched,
@@ -126,6 +134,7 @@ public class DrawingVerificationHistory {
         history.candidatesMatched = candidatesMatched;
         history.exclusionsMatched = exclusionsMatched;
         history.ranksMatched = ranksMatched;
+        history.replayedWinners = replayedWinners == null ? null : List.copyOf(replayedWinners);
         history.snapshotHashMatched = snapshotHashMatched;
         history.inputHashMatched = inputHashMatched;
         history.resultHashMatched = resultHashMatched;
@@ -139,5 +148,10 @@ public class DrawingVerificationHistory {
 
     public byte[] getReplaySeedValue() {
         return replaySeedValue == null ? null : Arrays.copyOf(replaySeedValue, replaySeedValue.length);
+    }
+
+    /** 저장된 재현 당첨자 목록을 변경할 수 없는 형태로 반환한다. */
+    public List<DrawingReplayedWinner> getReplayedWinners() {
+        return replayedWinners == null ? null : List.copyOf(replayedWinners);
     }
 }

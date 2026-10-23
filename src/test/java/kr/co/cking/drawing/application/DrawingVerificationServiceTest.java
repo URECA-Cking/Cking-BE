@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.LongStream;
 import kr.co.cking.drawing.domain.Drawing;
+import kr.co.cking.drawing.domain.DrawingReplayedWinner;
 import kr.co.cking.drawing.domain.DrawingStatus;
 import kr.co.cking.drawing.domain.DrawingType;
 import kr.co.cking.drawing.domain.DrawingVerificationHistory;
@@ -159,6 +160,9 @@ class DrawingVerificationServiceTest {
         assertThat(result.resultHashMatched()).isTrue();
         assertThat(result.algorithmMatched()).isTrue();
         assertThat(result.failureCode()).isNull();
+        assertThat(result.replayedWinners()).hasSize(10);
+        assertThat(result.replayedWinners().get(0))
+                .isEqualTo(new DrawingReplayedWinner(1, 1L, null, null, null));
         verify(drawingEngine, times(2)).draw(any());
         verify(historyRepository).save(any(DrawingVerificationHistory.class));
     }
@@ -196,7 +200,7 @@ class DrawingVerificationServiceTest {
                 DrawingAlgorithmVersion.WEIGHTED_V1,
                 LongStream.rangeClosed(2, 11)
                         .mapToObj(memberId -> new DrawWinner(memberId, (int) memberId - 1, 1L))
-                        .toList()
+                        .toList().reversed()
         ));
 
         DrawingVerificationResult result = service.verify(DRAWING_ID, ADMIN_ID);
@@ -204,6 +208,8 @@ class DrawingVerificationServiceTest {
         assertThat(result.status()).isEqualTo(DrawingVerificationStatus.VERIFICATION_FAILED);
         assertThat(result.resultHashMatched()).isFalse();
         assertThat(result.failureCode()).isEqualTo("DETERMINISTIC_REPLAY_MISMATCH");
+        assertThat(result.replayedWinners()).hasSize(10);
+        assertThat(result.replayedWinners().get(0).userId()).isEqualTo(2L);
         verify(drawingSeedPolicy, never()).createForVerification(any());
         verify(historyRepository).save(any(DrawingVerificationHistory.class));
     }
@@ -239,6 +245,7 @@ class DrawingVerificationServiceTest {
         assertThat(result.status()).isEqualTo(DrawingVerificationStatus.VERIFICATION_FAILED);
         assertThat(result.failureCode()).isEqualTo("STORED_INPUT_INTEGRITY_FAILED");
         assertThat(result.actualWinnerCount()).isNull();
+        assertThat(result.replayedWinners()).isNull();
         verify(drawingEngine, never()).draw(any());
         verify(historyRepository).save(any(DrawingVerificationHistory.class));
     }
@@ -281,6 +288,8 @@ class DrawingVerificationServiceTest {
         DrawingVerificationResult result = service.verify(DRAWING_ID, ADMIN_ID);
 
         assertThat(result.status()).isEqualTo(DrawingVerificationStatus.VERIFIED);
+        assertThat(result.replayedWinners()).containsExactly(
+                new DrawingReplayedWinner(1, 3L, "SECOND", "2등 상품", 2));
         verify(redrawDrawingQueryRepository, times(1)).findVacancyPrizeSourcesByRequestId(50L);
     }
 

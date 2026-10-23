@@ -17,7 +17,7 @@ class DrawingVerificationHistoryTest {
 
         DrawingVerificationHistory history = DrawingVerificationHistory.record(
                 10L, DrawingVerificationStatus.VERIFIED, seed, 2, 2,
-                true, true, true, true, true,
+                true, true, true, true, true, null,
                 true, true, true, true,
                 null, null, 1L, Instant.parse("2026-09-18T00:00:00Z")
         );
@@ -35,7 +35,7 @@ class DrawingVerificationHistoryTest {
     void 재실행_Seed는_32바이트여야_한다() {
         assertThatThrownBy(() -> DrawingVerificationHistory.record(
                 10L, DrawingVerificationStatus.VERIFIED, new byte[31], 2, 2,
-                true, true, true, true, true,
+                true, true, true, true, true, null,
                 true, true, true, true,
                 null, null, 1L, Instant.parse("2026-09-18T00:00:00Z")
         )).isInstanceOf(IllegalArgumentException.class);
@@ -56,6 +56,22 @@ class DrawingVerificationHistoryTest {
         DrawingVerificationResult result = DrawingVerificationResult.from(legacyHistory);
 
         assertThat(result.expectedWinnerCount()).isNull();
+        assertThat(result.replayedWinners()).isNull();
         assertThat(result.verificationMode()).isEqualTo(DrawingVerificationMode.LEGACY_INTEGRITY);
+    }
+
+    @Test
+    void 재현_당첨자_JSON은_null과_빈_목록을_구별하고_상품을_복원한다() {
+        DrawingReplayedWinnersConverter converter = new DrawingReplayedWinnersConverter();
+        assertThat(converter.convertToDatabaseColumn(null)).isNull();
+        assertThat(converter.convertToEntityAttribute(null)).isNull();
+        assertThat(converter.convertToEntityAttribute("   ")).isNull();
+        assertThat(converter.convertToEntityAttribute("null")).isNull();
+        assertThat(converter.convertToDatabaseColumn(java.util.List.of())).isEqualTo("[]");
+        assertThat(converter.convertToEntityAttribute("[]")).isEmpty();
+
+        DrawingReplayedWinner winner = new DrawingReplayedWinner(1, 2L, "FIRST", "1등 상품", 1);
+        assertThat(converter.convertToEntityAttribute(converter.convertToDatabaseColumn(java.util.List.of(winner))))
+                .containsExactly(winner);
     }
 }
