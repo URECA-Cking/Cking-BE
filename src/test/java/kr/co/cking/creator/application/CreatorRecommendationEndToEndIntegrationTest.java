@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 import kr.co.cking.auth.application.port.AccessTokenIssuer;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
 import kr.co.cking.member.domain.Member;
@@ -286,9 +286,9 @@ class CreatorRecommendationEndToEndIntegrationTest {
 
     private Creator creatorWithSpace(Long memberId) {
         Creator creator = creator(memberId);
-        var template = new CreatorSpaceTemplate(memberId, "intro", "profile", "banner", "creator-{creatorId}");
+
         fixtureSpaces.add(spaces.saveAndFlush(
-                CreatorSpace.fromTemplate(creator.getCreatorId(), template, "e2e609-" + UUID.randomUUID())));
+                CreatorSpaceFixtures.space(creator.getCreatorId(), "intro", "profile", "banner", "e2e609-" + UUID.randomUUID())));
         return creator;
     }
 

@@ -15,7 +15,7 @@ import kr.co.cking.common.image.NormalizedImage;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorSpace;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
@@ -33,9 +33,7 @@ class CreatorSpaceProfileImageUploadServiceTest {
         Creator creator = new Creator(7L, "creator");
         ReflectionTestUtils.setField(creator, "creatorId", 42L);
         given(creators.findByMemberId(7L)).willReturn(Optional.of(creator));
-        given(spaces.findByCreatorId(42L)).willReturn(Optional.of(CreatorSpace.fromTemplate(42L,
-                new CreatorSpaceTemplate(1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"),
-                "creator-42")));
+        given(spaces.findByCreatorId(42L)).willReturn(Optional.of(CreatorSpaceFixtures.space(42L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-42")));
         given(normalizer.normalize(any(), any())).willReturn(new NormalizedImage(new byte[] {1}, "a", "b", "v", 200, 200));
         CreatorSpaceProfileImageUploadService service = new CreatorSpaceProfileImageUploadService(
                 creators, spaces, images, normalizer, storage, Clock.fixed(Instant.parse("2026-10-12T00:00:00Z"), ZoneOffset.UTC));

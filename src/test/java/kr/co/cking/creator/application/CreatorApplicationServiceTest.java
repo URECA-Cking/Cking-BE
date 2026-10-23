@@ -179,10 +179,10 @@ class CreatorApplicationServiceTest {
         assertThat(creatorCaptor.getValue().getName()).isEqualTo("신청자");
         assertThat(creatorCaptor.getValue().getActivityName()).isEqualTo("신청자닉네임");
         verify(missionInitializationService).initializeDefaultMissions(20L);
-        verify(creatorSpaceService).createFromActiveTemplateIfAbsent(20L);
+        verify(creatorSpaceService).createIfAbsent(20L);
     }
 
-    /** 활성 템플릿이 없어 Space 생성이 실패하면 승인 자체가 예외로 실패해 롤백 대상이 되는지 검증한다. */
+    /** 자동 slug를 쓸 수 없는 등으로 Space 생성이 실패하면 승인 자체가 예외로 실패해 롤백 대상이 되는지 검증한다. */
     @Test
     void spaceCreationFailureFailsApprovalItself() {
         MemberRepository memberRepository = mock(MemberRepository.class);
@@ -206,8 +206,8 @@ class CreatorApplicationServiceTest {
         Creator creator = new Creator(10L, "신청자");
         ReflectionTestUtils.setField(creator, "creatorId", 20L);
         given(creatorRepository.save(any(Creator.class))).willReturn(creator);
-        doThrow(new BusinessException(CreatorErrorCode.NO_ACTIVE_SPACE_TEMPLATE))
-                .when(creatorSpaceService).createFromActiveTemplateIfAbsent(20L);
+        doThrow(new BusinessException(CreatorErrorCode.SLUG_ALREADY_TAKEN))
+                .when(creatorSpaceService).createIfAbsent(20L);
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
                 creatorSpaceService, activityNameService
@@ -216,7 +216,7 @@ class CreatorApplicationServiceTest {
         assertThatThrownBy(() -> service.approve(1L, 100L))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(CreatorErrorCode.NO_ACTIVE_SPACE_TEMPLATE);
+                .isEqualTo(CreatorErrorCode.SLUG_ALREADY_TAKEN);
     }
 
     @Test

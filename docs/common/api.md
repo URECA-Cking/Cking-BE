@@ -39,7 +39,7 @@
   이력 API는 JWT 인증만 요구하고, USER 본인 여부와 ADMIN 업무 권한은 Application이 검증한다.
 - 모든 `/api/admin/**` 관리자 API는 전환을 완료했다. Drawing 계열(Snapshot, Drawing, Drawing Verification,
   Winner, Redraw), Ticket 관리자 재동기화, Dead Stream 조회·replay, Creator 신청·Event 관리자 심사,
-  Event 마감 상태 조회와 Creator Space Template 관리를 포함한다. Bearer Access JWT와 `ADMIN` 역할이
+  Event 마감 상태 조회를 포함한다. Bearer Access JWT와 `ADMIN` 역할이
   필수이며, Controller는 `@CurrentMemberId`를 기존 Service의 관리자 업무 식별자로 전달한다. Spring
   Security의 1차 인가 이후에도 Application의 `validateAdmin(memberId)` 등 기존 업무 권한 검증은 유지한다.
   각 상세 계약은 해당 도메인 API 문서를 따른다.

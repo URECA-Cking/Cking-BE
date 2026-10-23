@@ -1,5 +1,6 @@
 package kr.co.cking.creator.application;
 
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.domain.*;
 import kr.co.cking.creator.repository.*;
@@ -30,11 +31,10 @@ class CreatorContentOutboxIntegrationTest {
         String name="outbox-"+UUID.randomUUID().toString().substring(0,8);
         var m=members.saveAndFlush(new Member(name,null,null,MemberRole.USER));
         var c=creators.saveAndFlush(new Creator(m.getMemberId(),name));
-        return spaces.saveAndFlush(CreatorSpace.fromTemplate(c.getCreatorId(),new CreatorSpaceTemplate(
-            m.getMemberId(),"소개","https://img/profile.png","https://img/banner.png","c-{creatorId}"),"outbox-"+c.getCreatorId()));
+        return spaces.saveAndFlush(CreatorSpaceFixtures.space(c.getCreatorId(), "소개", "https://img/profile.png", "https://img/banner.png", "outbox-"+c.getCreatorId()));
     }
     @Test void writesRequireTheSpaceTransaction() {
-        assertThatThrownBy(() -> outbox.enqueue(CreatorSpace.fromTemplate(1L,new CreatorSpaceTemplate(1L,"x","p","b","c-{creatorId}"),"c-1")))
+        assertThatThrownBy(() -> outbox.enqueue(CreatorSpaceFixtures.space(1L, "x", "p", "b", "c-1")))
             .isInstanceOf(IllegalTransactionStateException.class);
     }
     @Test void rolledBackSpaceNeverLeavesAJob() {

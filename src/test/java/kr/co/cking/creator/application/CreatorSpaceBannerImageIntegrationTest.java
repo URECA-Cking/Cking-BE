@@ -11,8 +11,8 @@ import kr.co.cking.creator.application.dto.CreatorSpaceProfileFields;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.domain.CreatorSpaceProfileImage;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
@@ -35,10 +35,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 @SpringBootTest
 class CreatorSpaceBannerImageIntegrationTest {
-
-    /** Space 값을 복사하는 원본일 뿐이라 저장하지 않는다. 저장된 활성 템플릿과 무관하다. */
-    private static final CreatorSpaceTemplate TEMPLATE = new CreatorSpaceTemplate(
-            1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}");
 
     @Autowired private CreatorSpaceProfileImageLinkService linkService;
     @Autowired private CreatorSpaceProfileService profileService;
@@ -230,12 +226,11 @@ class CreatorSpaceBannerImageIntegrationTest {
         return creator.getCreatorId();
     }
 
-    /** 회원·Creator·Space를 직접 만든다. Space의 기본 배너는 {@link #TEMPLATE}의 배너다. */
+    /** 회원·Creator·Space를 직접 만든다. Space의 기본 배너는 {@code https://img/banner.png}다. */
     private Member creatorWithSpace(String name) {
         Member owner = createMember(name);
         Creator creator = creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), name));
-        spaceRepository.saveAndFlush(CreatorSpace.fromTemplate(
-                creator.getCreatorId(), TEMPLATE, "banner-it-" + creator.getCreatorId()));
+        spaceRepository.saveAndFlush(CreatorSpaceFixtures.space(creator.getCreatorId(), "소개", "https://img/profile.png", "https://img/banner.png", "banner-it-" + creator.getCreatorId()));
         return owner;
     }
 

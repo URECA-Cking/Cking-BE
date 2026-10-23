@@ -1,6 +1,5 @@
 package kr.co.cking.creator.application;
 
-import kr.co.cking.creator.application.dto.CreatorSpaceTemplateFields;
 import kr.co.cking.creator.domain.CreatorApplication;
 import kr.co.cking.creator.domain.CreatorApplicationStatus;
 import kr.co.cking.creator.domain.CreatorSpace;
@@ -23,15 +22,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Transactional
 class CreatorApplicationServiceIntegrationTest {
 
-    private static final CreatorSpaceTemplateFields TEMPLATE_FIELDS = new CreatorSpaceTemplateFields(
-            "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-    );
-
     @Autowired
     private CreatorApplicationService creatorApplicationService;
-
-    @Autowired
-    private CreatorSpaceTemplateService creatorSpaceTemplateService;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -63,8 +55,6 @@ class CreatorApplicationServiceIntegrationTest {
     void approvingApplicationCreatesOneCreatorAndSpaceForApplicant() {
         Member applicant = memberRepository.save(configuredApplicant());
         Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
-        Long templateId = creatorSpaceTemplateService.create(admin.getMemberId(), TEMPLATE_FIELDS).getTemplateId();
-        creatorSpaceTemplateService.activate(admin.getMemberId(), templateId);
         CreatorApplication application = creatorApplicationService.apply(applicant.getMemberId()).application();
 
         creatorApplicationService.approve(admin.getMemberId(), application.getId());
@@ -78,7 +68,9 @@ class CreatorApplicationServiceIntegrationTest {
         });
         CreatorSpace space = creatorSpaceRepository.findByCreatorId(creator.orElseThrow().getCreatorId())
                 .orElseThrow();
-        assertThat(space.getIntroText()).isEqualTo("소개");
+        assertThat(space.getIntroText()).isEqualTo(CreatorSpace.DEFAULT_INTRO_TEXT);
+        assertThat(space.getProfileImageUrl()).isNull();
+        assertThat(space.getBannerImageUrl()).isNull();
         assertThat(space.getSlug()).isEqualTo("creator-" + creator.orElseThrow().getCreatorId());
     }
 

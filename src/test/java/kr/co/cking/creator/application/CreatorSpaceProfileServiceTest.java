@@ -9,8 +9,8 @@ import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorActivityName;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.CreatorSpace;
+import kr.co.cking.creator.domain.CreatorSpaceFixtures;
 import kr.co.cking.creator.domain.CreatorSpaceSlugReservation;
-import kr.co.cking.creator.domain.CreatorSpaceTemplate;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.repository.CreatorSpaceProfileImageRepository;
 import kr.co.cking.creator.repository.CreatorSpaceRepository;
@@ -37,7 +37,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
@@ -55,12 +54,11 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorSpaceSlugReservationRepository reservationRepository = mock(CreatorSpaceSlugReservationRepository.class);
     private final CreatorFollowQueryService followQueryService = mock(CreatorFollowQueryService.class);
     private final CreatorSpaceProfileImageManager profileImageManager = mock(CreatorSpaceProfileImageManager.class);
-    private final CreatorSpaceTemplateImagePinner imagePinner = mock(CreatorSpaceTemplateImagePinner.class);
     private final CreatorContentOutbox contentOutbox = mock(CreatorContentOutbox.class);
     private final CreatorSpaceService spaceService = mock(CreatorSpaceService.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
             creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox, spaceService);
+            profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), contentOutbox, spaceService);
 
     private Creator creator;
     private CreatorSpace space;
@@ -70,9 +68,7 @@ class CreatorSpaceProfileServiceTest {
         creator = new Creator(7L, "크리에이터");
         ReflectionTestUtils.setField(creator, "creatorId", 42L);
         given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
-        space = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
-                1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"
-        ), "creator-42");
+        space = CreatorSpaceFixtures.space(42L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-42");
     }
 
     @Test
@@ -131,9 +127,7 @@ class CreatorSpaceProfileServiceTest {
     void findPublicSpacesAttachesCreatorNamesAndKeepsRepositoryOrder() {
         Creator other = new Creator(8L, "다른 크리에이터", CreatorActivityName.of("다른크리에이터"));
         ReflectionTestUtils.setField(other, "creatorId", 43L);
-        CreatorSpace otherSpace = CreatorSpace.fromTemplate(43L, new CreatorSpaceTemplate(
-                1L, "소개2", "https://img/profile2.png", "https://img/banner2.png", "creator-{creatorId}"
-        ), "creator-43");
+        CreatorSpace otherSpace = CreatorSpaceFixtures.space(43L, "소개2", "https://img/profile2.png", "https://img/banner2.png", "creator-43");
         PageRequest pageable = PageRequest.of(0, 20);
         given(spaceRepository.findAllByCreatorNamePattern("%", pageable))
                 .willReturn(new PageImpl<>(List.of(otherSpace, space), pageable, 2));
@@ -222,14 +216,14 @@ class CreatorSpaceProfileServiceTest {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty());
-        given(spaceService.createFromActiveTemplateIfAbsent(42L)).willReturn(space);
+        given(spaceService.createIfAbsent(42L)).willReturn(space);
 
         service.updateMine(7L, NEW_PROFILE);
 
         var lockOrder = inOrder(creatorRepository, spaceRepository, spaceService);
         lockOrder.verify(creatorRepository).findByIdForUpdate(42L);
         lockOrder.verify(spaceRepository).findByCreatorIdForUpdate(42L);
-        lockOrder.verify(spaceService).createFromActiveTemplateIfAbsent(42L);
+        lockOrder.verify(spaceService).createIfAbsent(42L);
         assertThat(space.getIntroText()).isEqualTo(NEW_PROFILE.introText());
         assertThat(space.getBannerImageUrl()).isEqualTo(NEW_PROFILE.bannerImageUrl());
     }
@@ -245,7 +239,7 @@ class CreatorSpaceProfileServiceTest {
         var lockOrder = inOrder(creatorRepository, spaceRepository);
         lockOrder.verify(creatorRepository).findByIdForUpdate(42L);
         lockOrder.verify(spaceRepository).findByCreatorIdForUpdate(42L);
-        then(spaceService).should(never()).createFromActiveTemplateIfAbsent(any());
+        then(spaceService).should(never()).createIfAbsent(any());
         assertThat(space.getIntroText()).isEqualTo(NEW_PROFILE.introText());
     }
 
@@ -256,7 +250,7 @@ class CreatorSpaceProfileServiceTest {
         given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty());
         space.updateProfileImage("creator-space-profile-images/42/copy.jpg", "https://cdn/copy.jpg");
-        given(spaceService.createFromActiveTemplateIfAbsent(42L)).willReturn(space);
+        given(spaceService.createIfAbsent(42L)).willReturn(space);
 
         service.updateMine(7L, new CreatorSpaceProfileFields("소개", "https://img/mine.png", "https://img/banner.png"));
 
@@ -270,7 +264,7 @@ class CreatorSpaceProfileServiceTest {
         given(creatorRepository.findByIdForUpdate(42L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.empty());
         space.updateProfileImage("creator-space-profile-images/42/copy.jpg", "https://cdn/copy.jpg");
-        given(spaceService.createFromActiveTemplateIfAbsent(42L)).willReturn(space);
+        given(spaceService.createIfAbsent(42L)).willReturn(space);
 
         service.updateMine(7L, new CreatorSpaceProfileFields("소개", "https://cdn/copy.jpg", "https://img/banner.png"));
 
@@ -285,7 +279,7 @@ class CreatorSpaceProfileServiceTest {
 
         service.updateMine(7L, NEW_PROFILE);
 
-        then(spaceService).should(never()).createFromActiveTemplateIfAbsent(any());
+        then(spaceService).should(never()).createIfAbsent(any());
         then(creatorRepository).should().findByIdForUpdate(42L);
     }
 
@@ -300,52 +294,33 @@ class CreatorSpaceProfileServiceTest {
         assertThat(view.space().getSlug()).isEqualTo("creator-42");
     }
 
-    /** 새로 적용되는 URL만 고정한다. 템플릿 이미지를 이 URL로 기록하는 경로이므로 삭제 확정과 겹치지 않아야 한다(이슈 #598). */
+    /** 이미지가 없는 Space(승인 시 기본값)도 이미지 URL 없이 소개글만 고칠 수 있다(이슈 #754). */
     @Test
-    void updateMinePinsOnlyTheUrlsThatActuallyChange() {
+    void updateMineAcceptsIntroOnlyForSpaceWithoutImages() {
+        CreatorSpace defaultSpace = CreatorSpace.createDefault(42L, "creator-42");
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
-        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(defaultSpace));
 
-        service.updateMine(7L, new CreatorSpaceProfileFields("새 소개", "https://img/profile.png", "https://img/b2.png"));
+        CreatorSpaceView view = service.updateMine(7L, new CreatorSpaceProfileFields("새 소개", null, null));
 
-        then(imagePinner).should().pin(null, "https://img/b2.png");
+        assertThat(view.space().getIntroText()).isEqualTo("새 소개");
+        assertThat(view.space().getProfileImageUrl()).isNull();
+        assertThat(view.space().getBannerImageUrl()).isNull();
     }
 
-    /** FE는 저장할 때 현재 URL을 그대로 다시 보낸다. 고정하지 않아야 정리된 이미지를 가진 Space도 소개글을 고칠 수 있다. */
+    /** 이미지 URL을 생략하면 템플릿 시기에 만든 Space의 이미지를 지우지 않는다. */
     @Test
-    void updateMineDoesNotPinUrlsThatAreUnchanged() {
+    void updateMineKeepsImagesWhenUrlsAreOmitted() {
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        String profileUrl = space.getProfileImageUrl();
+        String bannerUrl = space.getBannerImageUrl();
 
-        service.updateMine(7L, new CreatorSpaceProfileFields("새 소개", "https://img/profile.png", "https://img/banner.png"));
+        CreatorSpaceView view = service.updateMine(7L, new CreatorSpaceProfileFields("새 소개", null, null));
 
-        then(imagePinner).should().pin(null, null);
-        assertThat(space.getIntroText()).isEqualTo("새 소개");
-    }
-
-    @Test
-    void updateMineDoesNotPinUrlsIgnoredBecauseAnUploadedImageIsLinked() {
-        space.updateProfileImage("creator-space-profile-images/42/current.jpg", "https://cdn/current.jpg");
-        space.updateBannerImage("creator-space-profile-images/42/banner/current.jpg", "https://cdn/banner.jpg");
-        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
-        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
-
-        service.updateMine(7L, NEW_PROFILE);
-
-        then(imagePinner).should().pin(null, null);
-    }
-
-    @Test
-    void updateMineIsRejectedAndLeavesTheSpaceUnchangedWhenAPinnedImageWasCleanedUp() {
-        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
-        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
-        willThrow(new BusinessException(CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE)).given(imagePinner).pin(any(), any());
-
-        assertErrorCode(() -> service.updateMine(7L, NEW_PROFILE), CreatorErrorCode.INVALID_SPACE_TEMPLATE_IMAGE);
-
-        assertThat(space.getIntroText()).isEqualTo("소개");
-        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/profile.png");
-        then(profileImageManager).shouldHaveNoInteractions();
+        assertThat(view.space().getIntroText()).isEqualTo("새 소개");
+        assertThat(view.space().getProfileImageUrl()).isEqualTo(profileUrl).isNotNull();
+        assertThat(view.space().getBannerImageUrl()).isEqualTo(bannerUrl).isNotNull();
     }
 
     @Test
@@ -373,7 +348,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox, spaceService);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), contentOutbox, spaceService);
 
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
                 "새 소개", "https://cdn/current.jpg", "https://img/b2.png", null, true));
@@ -409,7 +384,7 @@ class CreatorSpaceProfileServiceTest {
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
                 creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
-                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), imagePinner, contentOutbox, spaceService);
+                realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), contentOutbox, spaceService);
 
         // 클라이언트가 현재 배너 URL(업로드 이미지)을 그대로 보내도 기본 배너로 저장되지 않아야 한다.
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
@@ -585,9 +560,7 @@ class CreatorSpaceProfileServiceTest {
     @Test
     void changeSlugRevertsToOwnLongAutoSlug() {
         String longAutoSlug = "creator-official-fan-space-of-" + 42;
-        CreatorSpace longSpace = CreatorSpace.fromTemplate(42L, new CreatorSpaceTemplate(
-                1L, "소개", "p", "b", "creator-official-fan-space-of-{creatorId}"
-        ), longAutoSlug);
+        CreatorSpace longSpace = CreatorSpaceFixtures.space(42L, "소개", "p", "b", longAutoSlug);
         longSpace.changeSlug("iu-official", NOW.minusDays(1));
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(longSpace));

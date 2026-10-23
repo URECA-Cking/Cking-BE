@@ -12,9 +12,7 @@ class CreatorSpaceBannerImageTest {
 
     @BeforeEach
     void setUp() {
-        space = CreatorSpace.fromTemplate(42L,
-                new CreatorSpaceTemplate(1L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-{creatorId}"),
-                "creator-42");
+        space = CreatorSpaceFixtures.space(42L, "소개", "https://img/profile.png", "https://img/banner.png", "creator-42");
     }
 
     @Test

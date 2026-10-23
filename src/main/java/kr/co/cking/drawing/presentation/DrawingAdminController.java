@@ -103,7 +103,8 @@ public class DrawingAdminController {
     /** 관리자가 저장된 입력을 기준으로 Drawing 결과를 재현 검증한다. */
     @Operation(
             summary = "Drawing 재현 검증",
-            description = "관리자가 완료된 Drawing의 Snapshot·Seed·알고리즘을 다시 실행해 저장된 결과와 일치하는지 검증합니다."
+            description = "관리자가 완료된 Drawing을 원본 Seed로 재현하고 독립 재실행의 인원 계약을 검사합니다. "
+                    + "원본 재현 당첨자는 순위·사용자 ID·상품 정보로 반환하며, 검증 불일치는 실패 상태의 이력으로 반환합니다."
     )
     @PostMapping("/api/admin/drawings/{drawingId}/verify")
     public ApiResponse<DrawingVerificationResult> verifyDrawing(
@@ -116,7 +117,8 @@ public class DrawingAdminController {
     /** 관리자가 Drawing 재현 검증 실행 이력을 페이지로 조회한다. */
     @Operation(
             summary = "Drawing 검증 이력 조회",
-            description = "관리자가 Drawing의 재현 검증 결과를 최신 실행순으로 페이지 조회합니다."
+            description = "관리자가 Drawing의 검증 결과와 원본 Seed 재현 당첨자를 최신 실행순으로 페이지 조회합니다. "
+                    + "기존 이력이나 재현 전 실패 이력의 당첨자 목록은 null입니다."
     )
     @GetMapping("/api/admin/drawings/{drawingId}/verification-history")
     public ApiResponse<PageResponse<DrawingVerificationResult>> getVerificationHistory(

@@ -74,11 +74,6 @@
 | 68 | 외부 | Ticket | USER | GET | `/api/tickets/common` | 공용 Balance 조회 | - |
 | 69 | 외부 | Ticket | USER | GET | `/api/tickets/common/history` | 공용 Ledger 조회 | - |
 | 70 | 외부 | Auth | PUBLIC | POST | `/api/auth/token` | Login Code를 Access JWT로 교환 | Login Code 1회 소비 |
-| 71 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates` | 기본 템플릿 생성 | - |
-| 72 | 외부 | Creator Space Template | ADMIN | GET | `/api/admin/creator-space-templates` | 템플릿 목록 | - |
-| 73 | 외부 | Creator Space Template | ADMIN | GET | `/api/admin/creator-space-templates/{templateId}` | 템플릿 상세 | - |
-| 74 | 외부 | Creator Space Template | ADMIN | PATCH | `/api/admin/creator-space-templates/{templateId}` | 템플릿 수정 | 상태 기반 |
-| 75 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/{templateId}/activate` | 템플릿 활성화 | 상태 기반 |
 | 76 | 외부 | Auth | PUBLIC | POST | `/api/auth/refresh` | Refresh Cookie를 회전해 Access JWT 갱신 | Refresh Token 1회 소비 |
 | 77 | 외부 | Auth | PUBLIC | POST | `/api/auth/logout` | Refresh Token 폐기 및 Cookie 만료 | - |
 | 78 | 외부 | Member | USER | GET | `/api/me` | 인증된 현재 사용자 기본 정보·닉네임 설정 상태 조회 | - |
@@ -184,8 +179,6 @@
 | 179 | 외부 | Creator | CREATOR | POST | `/api/creator/space/banner-images` | Creator Space 배너 이미지 업로드(JPEG/PNG 5MB 이하, 최소 600×200px, 프로필 사진과 같은 저장 경로) | - |
 | 180 | 외부 | Creator | CREATOR | PUT | `/api/creator/space/banner-image` | 업로드한 Space 배너 이미지 연결(같은 key 재요청은 멱등) | - |
 | 181 | 외부 | Ticket | USER | GET | `/api/me/tickets` | 내 응모권 요약(공용 잔액·팔로우한 Creator별 잔액·서버 계산 합계, DB 기준 표시용) | - |
-| 182 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/profile-images` | 템플릿 기본 프로필 이미지 업로드(JPEG/PNG 5MB 이하, 최소 200×200px, CDN `imageUrl` 반환) | - |
-| 183 | 외부 | Creator Space Template | ADMIN | POST | `/api/admin/creator-space-templates/banner-images` | 템플릿 기본 배너 이미지 업로드(JPEG/PNG 5MB 이하, 최소 600×200px, CDN `imageUrl` 반환) | - |
 | 184 | 외부 | Notification | USER | PATCH | `/api/me/notifications/read` | 내 미확인 알림 전체 읽음 | 상태 기반 |
 | 185 | 외부 | Notification | USER | PATCH | `/api/me/notifications/{notificationId}/hide` | 내 알림 하나를 알림함에서 숨김(삭제 아님, 숨긴 알림은 목록·읽음에서 제외, 반복 요청은 멱등) | 상태 기반 |
 | 186 | 외부 | AI Quiz | CREATOR | GET | `/api/creator/quizzes/generations/current` | 내 진행 중 Quiz 생성 작업(없으면 data 생략, 원문 검토 대기면 AI 원문·facts 포함) | - |
