@@ -104,7 +104,7 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 
 ## PATCH /api/creator/space
 
-호출자 본인의 Creator Space 홈·프로필을 수정한다. 기본 필드는 모두 교체하며 slug는 아래 slug 변경 API로 바꾼다. `profileImageKey`와 `bannerImageKey`는 생략하면 현재 이미지를 유지하고, 본인이 업로드한 키를 보내면 교체하며, `null`을 명시하면 Space의 기본 이미지로 복귀한다. 응답은 수정된 Space이며 위 본인 API 응답이다.
+호출자 본인의 Creator Space 홈·프로필을 수정한다. 소개 문구는 매번 교체하고, 이미지 URL은 보낸 값만 바꾼다(생략하면 유지). slug는 아래 slug 변경 API로 바꾼다. `profileImageKey`와 `bannerImageKey`는 생략하면 현재 이미지를 유지하고, 본인이 업로드한 키를 보내면 교체하며, `null`을 명시하면 Space의 기본 이미지로 복귀한다. 응답은 수정된 Space이며 위 본인 API 응답이다.
 
 ```json
 {
@@ -119,7 +119,7 @@ creatorId로 Creator Space를 조회한다. 인증이 필요 없다. 응답은 �
 | 필드 | 제약 |
 | --- | --- |
 | `introText` | 필수, 공백 불가, 최대 500자 |
-| `profileImageUrl`, `bannerImageUrl` | 선택, 최대 500자. 생략하거나 비우면 이미지 없음(`null`)으로 저장한다 |
+| `profileImageUrl`, `bannerImageUrl` | 선택, 최대 500자. 생략하면 현재 값을 유지하고, 빈 문자열이나 `null`을 보내면 이미지 없음(`null`)으로 저장한다 |
 | `profileImageKey` | 선택, 최대 200자. 생략하면 유지, 업로드 완료한 본인 키면 교체, `null`이면 기본 이미지 복귀 |
 | `bannerImageKey` | 선택, 최대 200자. 생략하면 유지, 배너로 업로드 완료한 본인 키면 교체, `null`이면 기본 배너 복귀 |
 

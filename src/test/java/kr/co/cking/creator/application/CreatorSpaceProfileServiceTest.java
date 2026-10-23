@@ -296,7 +296,7 @@ class CreatorSpaceProfileServiceTest {
 
     /** 이미지가 없는 Space(승인 시 기본값)도 이미지 URL 없이 소개글만 고칠 수 있다(이슈 #754). */
     @Test
-    void updateMineAcceptsMissingImageUrlsAsNoImage() {
+    void updateMineAcceptsIntroOnlyForSpaceWithoutImages() {
         CreatorSpace defaultSpace = CreatorSpace.createDefault(42L, "creator-42");
         given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
         given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(defaultSpace));
@@ -306,6 +306,21 @@ class CreatorSpaceProfileServiceTest {
         assertThat(view.space().getIntroText()).isEqualTo("새 소개");
         assertThat(view.space().getProfileImageUrl()).isNull();
         assertThat(view.space().getBannerImageUrl()).isNull();
+    }
+
+    /** 이미지 URL을 생략하면 템플릿 시기에 만든 Space의 이미지를 지우지 않는다. */
+    @Test
+    void updateMineKeepsImagesWhenUrlsAreOmitted() {
+        given(creatorRepository.findByMemberId(7L)).willReturn(Optional.of(creator));
+        given(spaceRepository.findByCreatorIdForUpdate(42L)).willReturn(Optional.of(space));
+        String profileUrl = space.getProfileImageUrl();
+        String bannerUrl = space.getBannerImageUrl();
+
+        CreatorSpaceView view = service.updateMine(7L, new CreatorSpaceProfileFields("새 소개", null, null));
+
+        assertThat(view.space().getIntroText()).isEqualTo("새 소개");
+        assertThat(view.space().getProfileImageUrl()).isEqualTo(profileUrl).isNotNull();
+        assertThat(view.space().getBannerImageUrl()).isEqualTo(bannerUrl).isNotNull();
     }
 
     @Test

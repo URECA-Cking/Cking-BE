@@ -12,15 +12,18 @@ public final class CreatorSpaceRequest {
 
     /**
      * slug는 {@link ChangeSlug}로 따로 바꾼다. 필드 길이는 creator_space 컬럼과 같다.
-     * 이미지 URL은 생략하거나 비워 보내면 이미지 없음이다(이슈 #754).
+     * 이미지 URL은 생략하면 현재 값을 유지하고, 빈 문자열이나 null을 보내면 이미지 없음이다(이슈 #754).
+     * Application에는 생략을 null, 이미지 없음을 빈 문자열로 넘긴다.
      */
     public static final class UpdateProfile {
         @NotBlank @Size(max = 500)
         private String introText;
         @Size(max = 500)
         private String profileImageUrl;
+        private boolean profileImageUrlProvided;
         @Size(max = 500)
         private String bannerImageUrl;
+        private boolean bannerImageUrlProvided;
         @Size(max = 200)
         private String profileImageKey;
         private boolean profileImageKeyProvided;
@@ -30,8 +33,14 @@ public final class CreatorSpaceRequest {
         private boolean bannerImageKeyProvided;
 
         public String introText() { return introText; }
-        public String profileImageUrl() { return profileImageUrl; }
-        public String bannerImageUrl() { return bannerImageUrl; }
+        public String profileImageUrl() { return requestedUrl(profileImageUrl, profileImageUrlProvided); }
+        public String bannerImageUrl() { return requestedUrl(bannerImageUrl, bannerImageUrlProvided); }
+
+        /** 생략은 null(유지), 보냈는데 null이면 빈 문자열(이미지 없음), 그 밖에는 보낸 값이다. */
+        private static String requestedUrl(String url, boolean provided) {
+            if (!provided) return null;
+            return url == null ? "" : url;
+        }
         public String profileImageKey() { return profileImageKey; }
         public boolean profileImageKeyProvided() { return profileImageKeyProvided; }
         public String bannerImageKey() { return bannerImageKey; }
@@ -45,11 +54,13 @@ public final class CreatorSpaceRequest {
         @JsonSetter("profileImageUrl")
         public void setProfileImageUrl(String profileImageUrl) {
             this.profileImageUrl = profileImageUrl;
+            this.profileImageUrlProvided = true;
         }
 
         @JsonSetter("bannerImageUrl")
         public void setBannerImageUrl(String bannerImageUrl) {
             this.bannerImageUrl = bannerImageUrl;
+            this.bannerImageUrlProvided = true;
         }
 
         @JsonSetter("profileImageKey")

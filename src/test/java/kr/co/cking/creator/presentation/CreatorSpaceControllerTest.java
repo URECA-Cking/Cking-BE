@@ -322,10 +322,10 @@ class CreatorSpaceControllerTest {
         then(profileImageLinkService).should(never()).linkBanner(any(), any());
     }
 
-    /** 이미지 없는 Space(승인 시 기본값)는 이미지 URL 없이 소개글만 보내도 저장된다(이슈 #754). */
+    /** 이미지 URL을 생략하면 현재 값을 유지하도록 null로 넘긴다(이슈 #754). */
     @Test
     @WithMockJwt(memberId = "7")
-    void updateMySpaceAcceptsMissingImageUrls() throws Exception {
+    void updateMySpacePassesOmittedImageUrlsAsKeep() throws Exception {
         CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields("새 소개", null, null);
         given(profileService.updateMine(7L, expected)).willReturn(view());
 
@@ -333,6 +333,22 @@ class CreatorSpaceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "introText": "새 소개" }
+                                """))
+                .andExpect(status().isOk());
+        then(profileService).should().updateMine(7L, expected);
+    }
+
+    /** 빈 문자열과 명시적 null은 이미지 없음이라 빈 문자열로 넘긴다. 생략과 구분해야 기존 이미지가 실수로 지워지지 않는다. */
+    @Test
+    @WithMockJwt(memberId = "7")
+    void updateMySpacePassesEmptyOrNullImageUrlsAsNoImage() throws Exception {
+        CreatorSpaceProfileFields expected = new CreatorSpaceProfileFields("새 소개", "", "");
+        given(profileService.updateMine(7L, expected)).willReturn(view());
+
+        mockMvc.perform(patch("/api/creator/space")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "introText": "새 소개", "profileImageUrl": "", "bannerImageUrl": null }
                                 """))
                 .andExpect(status().isOk());
         then(profileService).should().updateMine(7L, expected);

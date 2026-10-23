@@ -148,6 +148,26 @@ class CreatorSpaceProfileIntegrationTest {
         objectStorage.delete(imageKey);
     }
 
+    /** 이미지 URL을 생략한 첫 저장은 복사해 둔 회원 사진 연결을 풀지 않는다(이슈 #754). */
+    @Test
+    void 회원_사진이_있는_Creator의_첫_저장에서_이미지_URL을_생략하면_회원_사진을_유지한다() {
+        Member owner = createMember("첫저장생략크리에이터", MemberRole.USER);
+        String imageKey = "member-profile-images/" + owner.getMemberId() + "/first-save-omit.jpg";
+        objectStorage.put(imageKey, new byte[]{1, 2, 3}, "image/jpeg");
+        owner.updateProfileImageKey(imageKey);
+        memberRepository.saveAndFlush(owner);
+        creatorRepository.saveAndFlush(new Creator(owner.getMemberId(), "첫저장생략 크리에이터"));
+
+        CreatorSpace space = profileService.updateMine(owner.getMemberId(),
+                new CreatorSpaceProfileFields("첫 소개", null, null)).space();
+
+        assertThat(space.getProfileImageKey()).isNotNull();
+        assertThat(space.getProfileImageUrl()).isNotNull();
+        assertThat(space.getIntroText()).isEqualTo("첫 소개");
+        objectStorage.delete(imageKey);
+        objectStorage.delete(space.getProfileImageKey());
+    }
+
     @Test
     void Space가_없는_Creator의_동시_첫_저장은_한_행만_생성한다() throws Exception {
         Member admin = createMember("첫저장관리자", MemberRole.ADMIN);

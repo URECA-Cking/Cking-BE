@@ -100,23 +100,24 @@ public class CreatorSpace {
     /**
      * Creator 본인이 홈·프로필을 수정한다. slug는 이 메서드로 바꾸지 않는다. 업로드한 프로필 사진·배너가 연결돼 있으면 그 이미지의
      * URL 입력은 무시하고 현재 연결을 유지한다(교체·복귀는 {@link #updateProfileImage}·{@link #updateBannerImage} 등으로 한다).
+     * 이미지 URL이 null이면 요청에 없었다는 뜻이라 그대로 두고, 빈 문자열이면 이미지 없음으로 바꾼다(이슈 #754).
      */
     public void updateProfile(String introText, String profileImageUrl, String bannerImageUrl) {
         if (!ContentIntro.hash(this.introText).equals(ContentIntro.hash(introText))) contentRevision++;
         this.introText = introText;
-        if (profileImageKey == null) {
+        if (profileImageKey == null && profileImageUrl != null) {
             this.profileImageUrl = blankToNull(profileImageUrl);
             this.defaultProfileImageUrl = this.profileImageUrl;
         }
-        if (bannerImageKey == null) {
+        if (bannerImageKey == null && bannerImageUrl != null) {
             this.bannerImageUrl = blankToNull(bannerImageUrl);
             this.defaultBannerImageUrl = this.bannerImageUrl;
         }
     }
 
-    /** 이미지 URL을 비워 보내면 이미지 없음으로 저장한다. 빈 문자열과 null을 따로 두지 않는다. */
+    /** 빈 문자열은 이미지 없음이라 null로 저장한다. */
     private static String blankToNull(String url) {
-        return url == null || url.isBlank() ? null : url;
+        return url.isBlank() ? null : url;
     }
 
     public void updateProfileImage(String profileImageKey, String profileImageUrl) {

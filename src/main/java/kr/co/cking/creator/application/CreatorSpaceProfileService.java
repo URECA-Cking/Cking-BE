@@ -205,11 +205,13 @@ public class CreatorSpaceProfileService {
 
     /**
      * 방금 만든 Space에 회원 사진을 복사해 연결했는데 이번 요청이 다른 프로필 이미지 URL을 보냈다면, 요청 값이 우선이므로 복사본 연결을 풀고
-     * (이전 파일은 삭제 대기) 이어지는 URL 적용이 그대로 반영되게 한다. 현재 URL을 그대로 보냈거나 키를 명시한 요청은 건드리지 않는다.
+     * (이전 파일은 삭제 대기) 이어지는 URL 적용이 그대로 반영되게 한다. URL을 보내지 않았거나(null) 현재 URL을 그대로 보냈거나
+     * 키를 명시한 요청은 건드리지 않는다.
      */
     private void releaseCarriedImageForRequestedUrl(Creator creator, CreatorSpace space, CreatorSpaceProfileFields fields) {
         if (space.getProfileImageKey() != null
                 && !fields.profileImageKeyProvided()
+                && fields.profileImageUrl() != null
                 && !Objects.equals(fields.profileImageUrl(), space.getProfileImageUrl())) {
             profileImageManager.apply(creator, space, null, true);
         }

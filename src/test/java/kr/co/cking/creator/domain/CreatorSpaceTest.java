@@ -35,17 +35,31 @@ class CreatorSpaceTest {
         assertThat(space.getCreatorId()).isEqualTo(42L);
     }
 
-    /** 이미지 URL을 비우거나 생략하면 이미지 없음으로 저장하고, 기본 이미지(복귀 대상)도 없음이 된다. */
+    /** 빈 문자열은 이미지 없음이라 null로 저장하고, 기본 이미지(복귀 대상)도 없음이 된다. */
     @Test
-    void blankOrMissingImageUrlMeansNoImage() {
+    void blankImageUrlMeansNoImage() {
         CreatorSpace space = CreatorSpaceFixtures.space(42L, "소개", "https://img/p.png", "https://img/b.png", "creator-42");
 
-        space.updateProfile("소개", " ", null);
+        space.updateProfile("소개", "", " ");
 
         assertThat(space.getProfileImageUrl()).isNull();
         assertThat(space.getDefaultProfileImageUrl()).isNull();
         assertThat(space.getBannerImageUrl()).isNull();
         assertThat(space.getDefaultBannerImageUrl()).isNull();
+    }
+
+    /** null은 요청에 없었다는 뜻이라 템플릿 시기에 만든 Space의 이미지도 그대로 둔다. */
+    @Test
+    void missingImageUrlKeepsCurrentImage() {
+        CreatorSpace space = CreatorSpaceFixtures.space(42L, "소개", "https://img/p.png", "https://img/b.png", "creator-42");
+
+        space.updateProfile("새 소개", null, null);
+
+        assertThat(space.getIntroText()).isEqualTo("새 소개");
+        assertThat(space.getProfileImageUrl()).isEqualTo("https://img/p.png");
+        assertThat(space.getDefaultProfileImageUrl()).isEqualTo("https://img/p.png");
+        assertThat(space.getBannerImageUrl()).isEqualTo("https://img/b.png");
+        assertThat(space.getDefaultBannerImageUrl()).isEqualTo("https://img/b.png");
     }
 
     /** 업로드 이미지 연결을 풀면 기본 이미지로 돌아가는데, 기본 이미지가 없으면 이미지 없음이 된다. */
