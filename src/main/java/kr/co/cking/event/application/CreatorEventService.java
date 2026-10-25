@@ -2,6 +2,7 @@ package kr.co.cking.event.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
@@ -159,7 +160,8 @@ public class CreatorEventService {
                 || command.title() == null || command.title().isBlank() || command.startAt() == null
                 || command.endAt() == null || command.winnerCount() < 1 || command.drawMethod() == null
                 || command.prizeAlgorithmVersion() == null
-                || !command.startAt().isBefore(command.endAt())) {
+                || !command.startAt().isBefore(command.endAt())
+                || !ServiceDateRange.contains(command.startAt()) || !ServiceDateRange.containsEnd(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
         validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());
@@ -179,7 +181,8 @@ public class CreatorEventService {
         if (command.userId() == null || command.eventId() == null || command.title() == null || command.title().isBlank()
                 || command.startAt() == null || command.endAt() == null || command.winnerCount() < 1
                 || command.drawMethod() == null || command.prizeAlgorithmVersion() == null
-                || !command.startAt().isBefore(command.endAt())) {
+                || !command.startAt().isBefore(command.endAt())
+                || !ServiceDateRange.contains(command.startAt()) || !ServiceDateRange.containsEnd(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
         validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());

@@ -1,5 +1,6 @@
 package kr.co.cking.calendar.repository;
 
+import kr.co.cking.calendar.application.CreatorScheduleQueryService;
 import kr.co.cking.calendar.domain.CreatorSchedule;
 import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.creator.domain.Creator;
@@ -55,6 +56,31 @@ class CreatorScheduleRepositoryQueryTest {
                         overlapStart.getScheduleId(), inside.getScheduleId(), overlapEnd.getScheduleId());
         assertThat(result).extracting(CreatorSchedule::getTitle)
                 .doesNotContain(before.getTitle(), after.getTitle());
+    }
+
+    @Test
+    void 다섯_자리_연도로_조회해도_DB_오류_없이_빈_목록이다() {
+        Member member = memberRepository.saveAndFlush(new Member("먼 미래 조회 크리에이터", null, null, MemberRole.USER));
+        Creator creator = creatorRepository.saveAndFlush(new Creator(member.getMemberId(), "먼 미래 조회 크리에이터"));
+        CreatorScheduleQueryService service = new CreatorScheduleQueryService(creatorRepository, scheduleRepository);
+
+        assertThat(service.findByCreatorId(creator.getCreatorId(),
+                Instant.parse("+10000-01-01T00:00:00Z"), Instant.parse("+10000-01-02T00:00:00Z"))).isEmpty();
+    }
+
+    @Test
+    void 저장_범위를_걸친_기존_일정은_겹치는_조회에만_나오고_범위_밖_조회에는_나오지_않는다() {
+        Member member = memberRepository.saveAndFlush(new Member("경계 일정 크리에이터", null, null, MemberRole.USER));
+        Creator creator = creatorRepository.saveAndFlush(new Creator(member.getMemberId(), "경계 일정 크리에이터"));
+        CreatorSchedule crossing = save(creator, "범위를 걸친 기존 일정",
+                Instant.parse("2099-12-31T00:00:00Z"), Instant.parse("2101-01-01T00:00:00Z"));
+        CreatorScheduleQueryService service = new CreatorScheduleQueryService(creatorRepository, scheduleRepository);
+
+        assertThat(service.findByCreatorId(creator.getCreatorId(),
+                Instant.parse("2101-06-01T00:00:00Z"), Instant.parse("2101-06-02T00:00:00Z"))).isEmpty();
+        assertThat(service.findByCreatorId(creator.getCreatorId(),
+                Instant.parse("2099-12-01T00:00:00Z"), Instant.parse("2100-01-30T00:00:00Z")))
+                .extracting(CreatorSchedule::getScheduleId).containsExactly(crossing.getScheduleId());
     }
 
     private CreatorSchedule save(Creator creator, String title, Instant startAt, Instant endAt) {

@@ -41,11 +41,11 @@ services:
       ENTRY_REPLICATION_WAIT_TIMEOUT_MS: ${ENTRY_REPLICATION_WAIT_TIMEOUT_MS:-0}
       IMAGE_TAG: ${IMAGE_TAG}
       CKING_CONSUMER_ID: ${CKING_CONSUMER_ID:-}
-      # 개발과 같은 크기(t4g.small)에서 부하 테스트로 확인한 값이다. 힙 460MiB, 컨테이너 1000MiB.
-      JDK_JAVA_OPTIONS: "-Xmx460m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+      # c6g.large(4GiB) 운영 측정 기준. 힙 1200MiB, 컨테이너 1800MiB.
+      JDK_JAVA_OPTIONS: "-Xmx1200m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
     # memswap_limit을 mem_limit과 같게 두어 컨테이너가 swap을 쓰지 않게 한다.
-    mem_limit: 1000m
-    memswap_limit: 1000m
+    mem_limit: 1800m
+    memswap_limit: 1800m
     logging:
       driver: json-file
       options:

@@ -5,6 +5,7 @@ import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.calendar.repository.CreatorScheduleRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.repository.CreatorRepository;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class CreatorScheduleQueryServiceTest {
 
@@ -61,6 +63,17 @@ class CreatorScheduleQueryServiceTest {
         given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, from, to)).willReturn(List.of(schedule));
 
         assertThat(service.findByCreatorId(CREATOR_ID, from, to)).containsExactly(schedule);
+    }
+
+    @Test
+    void 기간_조회는_저장_범위_밖_끝값을_범위_안으로_잘라_조회한다() {
+        given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
+        Instant from = Instant.parse("1999-12-01T00:00:00Z");
+        Instant to = Instant.parse("2000-01-15T00:00:00Z");
+        given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, ServiceDateRange.MIN, to)).willReturn(List.of());
+
+        assertThat(service.findByCreatorId(CREATOR_ID, from, to)).isEmpty();
+        verify(scheduleRepository).findByCreatorIdAndRange(CREATOR_ID, ServiceDateRange.MIN, to);
     }
 
     @Test
