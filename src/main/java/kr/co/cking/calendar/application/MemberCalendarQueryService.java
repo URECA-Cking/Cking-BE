@@ -28,6 +28,9 @@ public class MemberCalendarQueryService {
         if (!ScheduleQueryRange.isValid(from, to)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
+        if (!ServiceDateRange.overlaps(from, to)) {
+            return List.of();
+        }
         return entryRepository.findSchedulesByMemberIdAndRange(memberId, ServiceDateRange.clamp(from), ServiceDateRange.clamp(to))
                 .stream()
                 .map(MemberCalendarScheduleResult::from)

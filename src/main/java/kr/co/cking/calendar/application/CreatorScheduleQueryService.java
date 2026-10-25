@@ -28,6 +28,9 @@ public class CreatorScheduleQueryService {
         if (!ScheduleQueryRange.isValid(from, to)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
+        if (!ServiceDateRange.overlaps(from, to)) {
+            return List.of();
+        }
         return scheduleRepository.findByCreatorIdAndRange(creatorId, ServiceDateRange.clamp(from), ServiceDateRange.clamp(to));
     }
 

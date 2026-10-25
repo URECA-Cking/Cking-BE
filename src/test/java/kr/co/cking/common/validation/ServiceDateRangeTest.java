@@ -34,4 +34,20 @@ class ServiceDateRangeTest {
         Instant inside = Instant.parse("2026-10-10T00:00:00Z");
         assertThat(ServiceDateRange.clamp(inside)).isEqualTo(inside);
     }
+
+    @Test
+    void 끝_시각은_상한과_같아도_받고_넘으면_받지_않는다() {
+        assertThat(ServiceDateRange.containsEnd(ServiceDateRange.MAX_EXCLUSIVE)).isTrue();
+        assertThat(ServiceDateRange.containsEnd(ServiceDateRange.MAX_EXCLUSIVE.plusSeconds(1))).isFalse();
+        assertThat(ServiceDateRange.containsEnd(ServiceDateRange.MIN.minusSeconds(1))).isFalse();
+        assertThat(ServiceDateRange.containsEnd(null)).isFalse();
+    }
+
+    @Test
+    void 조회_구간이_범위와_조금이라도_겹치는지_판단한다() {
+        assertThat(ServiceDateRange.overlaps(Instant.parse("2099-12-01T00:00:00Z"), Instant.parse("2100-01-30T00:00:00Z"))).isTrue();
+        assertThat(ServiceDateRange.overlaps(Instant.parse("2101-06-01T00:00:00Z"), Instant.parse("2101-06-02T00:00:00Z"))).isFalse();
+        assertThat(ServiceDateRange.overlaps(ServiceDateRange.MAX_EXCLUSIVE, Instant.parse("2100-02-01T00:00:00Z"))).isFalse();
+        assertThat(ServiceDateRange.overlaps(Instant.parse("1999-01-01T00:00:00Z"), ServiceDateRange.MIN)).isFalse();
+    }
 }

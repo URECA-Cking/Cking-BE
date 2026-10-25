@@ -229,16 +229,24 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
-    void 기간_조회는_저장_범위_밖_끝값을_범위_안으로_잘라_조회한다() {
+    void 기간_조회가_저장_범위와_겹치지_않으면_조회하지_않고_빈_목록이다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
-        Instant from = Instant.parse("+10000-01-01T00:00:00Z");
-        Instant to = Instant.parse("+10000-01-02T00:00:00Z");
-        given(scheduleRepository.findByCreatorIdAndRange(
-                CREATOR_ID, ServiceDateRange.MAX_EXCLUSIVE, ServiceDateRange.MAX_EXCLUSIVE)).willReturn(List.of());
 
-        assertThat(service.findMine(MEMBER_ID, from, to)).isEmpty();
-        verify(scheduleRepository).findByCreatorIdAndRange(
-                CREATOR_ID, ServiceDateRange.MAX_EXCLUSIVE, ServiceDateRange.MAX_EXCLUSIVE);
+        assertThat(service.findMine(MEMBER_ID,
+                Instant.parse("+10000-01-01T00:00:00Z"), Instant.parse("+10000-01-02T00:00:00Z"))).isEmpty();
+        verify(scheduleRepository, never()).findByCreatorIdAndRange(any(), any(), any());
+    }
+
+    @Test
+    void 끝_시각은_저장_범위_상한과_같아도_받는다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        given(scheduleRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.OTHER, "UTC-12의 마지막 날", null,
+                Instant.parse("2099-12-31T12:00:00Z"), ServiceDateRange.MAX_EXCLUSIVE,
+                "Etc/GMT+12", null, null, null);
+
+        assertThat(service.create(MEMBER_ID, fields).getEndAt()).isEqualTo(ServiceDateRange.MAX_EXCLUSIVE);
     }
 
     private CreatorScheduleFields validFields() {

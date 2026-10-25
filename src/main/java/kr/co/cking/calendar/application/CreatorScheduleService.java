@@ -66,6 +66,9 @@ public class CreatorScheduleService {
         if (!ScheduleQueryRange.isValid(from, to)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
+        if (!ServiceDateRange.overlaps(from, to)) {
+            return List.of();
+        }
         return scheduleRepository.findByCreatorIdAndRange(
                 creator.getCreatorId(), ServiceDateRange.clamp(from), ServiceDateRange.clamp(to));
     }
@@ -73,7 +76,7 @@ public class CreatorScheduleService {
     private String validateAndNormalize(CreatorScheduleFields fields) {
         if (fields.scheduleType() == null || fields.title() == null || fields.title().isBlank()
                 || fields.startAt() == null || fields.endAt() == null || !fields.startAt().isBefore(fields.endAt())
-                || !ServiceDateRange.contains(fields.startAt()) || !ServiceDateRange.contains(fields.endAt())
+                || !ServiceDateRange.contains(fields.startAt()) || !ServiceDateRange.containsEnd(fields.endAt())
                 || !ScheduleTimeZones.isValid(fields.timeZone())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }

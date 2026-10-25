@@ -17,7 +17,7 @@
 | `scheduleType` | `BIRTHDAY`, `FAN_SIGN`, `BROADCAST`, `CONTENT_RELEASE`, `OTHER` 중 하나 |
 | `title` | 일정 제목 (최대 100자) |
 | `description` | 설명 (최대 1000자, nullable) |
-| `startAt`/`endAt` | UTC Instant. `startAt < endAt`이어야 하고, `1999-12-31T10:00:00Z` 이상 `2100-01-01T12:00:00Z` 미만이어야 한다(`ServiceDateRange`). 어느 한 시간대에서라도 2000\~2099년에 해당하는 시각이다(UTC+14의 2000-01-01 0시부터 UTC-12의 2100-01-01 0시 전까지) |
+| `startAt`/`endAt` | UTC Instant. `startAt < endAt`이어야 하고, `startAt`은 `1999-12-31T10:00:00Z` 이상 `2100-01-01T12:00:00Z` 미만, `endAt`은 포함하지 않는 끝이라 `2100-01-01T12:00:00Z`까지 된다(`ServiceDateRange`). 어느 한 시간대에서라도 2000\~2099년에 해당하는 시각이다(UTC+14의 2000-01-01 0시부터 UTC-12의 2100-01-01 0시까지) |
 | `timeZone` | IANA Time Zone Database 지역명 (최대 50자). 아래 "timeZone 검증" 참고 |
 | `location` | 장소 (최대 200자, nullable) |
 | `imageUrl`/`externalUrl` | 이미지·외부 링크 URL (각 최대 500자, nullable) |
@@ -119,7 +119,7 @@
 - 조회 조건은 `startAt < to AND endAt > from`이다. 즉 조회 기간과 조금이라도 겹치는 일정을 모두 반환한다.
 - 정렬은 `startAt ASC, scheduleId ASC`다.
 - 페이지네이션 대신 기간으로 조회하며, `to - from`이 365일을 넘으면 `VALIDATION_FAILED`다.
-- `from`·`to`가 일정 날짜 범위(`ServiceDateRange`) 밖이면 거절하지 않고 그 범위 안으로 잘라 조회한다. 범위 밖 구간만 조회하면 빈 목록이다.
+- `from`·`to`가 일정 날짜 범위(`ServiceDateRange`) 밖이면 거절하지 않고 그 범위 안으로 잘라 조회한다. 조회 구간이 범위와 겹치지 않으면 조회하지 않고 빈 목록이다(범위를 걸친 기존 일정이 경계로 잘린 구간에 걸리지 않게 한다).
 
 ```json
 [

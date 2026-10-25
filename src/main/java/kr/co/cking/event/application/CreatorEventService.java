@@ -161,7 +161,7 @@ public class CreatorEventService {
                 || command.endAt() == null || command.winnerCount() < 1 || command.drawMethod() == null
                 || command.prizeAlgorithmVersion() == null
                 || !command.startAt().isBefore(command.endAt())
-                || !ServiceDateRange.contains(command.startAt()) || !ServiceDateRange.contains(command.endAt())) {
+                || !ServiceDateRange.contains(command.startAt()) || !ServiceDateRange.containsEnd(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
         validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());
@@ -182,7 +182,7 @@ public class CreatorEventService {
                 || command.startAt() == null || command.endAt() == null || command.winnerCount() < 1
                 || command.drawMethod() == null || command.prizeAlgorithmVersion() == null
                 || !command.startAt().isBefore(command.endAt())
-                || !ServiceDateRange.contains(command.startAt()) || !ServiceDateRange.contains(command.endAt())) {
+                || !ServiceDateRange.contains(command.startAt()) || !ServiceDateRange.containsEnd(command.endAt())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
         validatePrizes(command.prizes(), command.winnerCount(), command.prizeAlgorithmVersion());
