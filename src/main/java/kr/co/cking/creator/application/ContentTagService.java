@@ -263,7 +263,7 @@ public class ContentTagService {
             var job = jobs.getFirst(); long creatorId = job.creatorId();
             if (job.attempts() >= 5) {
                 repo.update("UPDATE creator_content_job SET status='FAILED' WHERE creator_id=?",creatorId);
-                LoggerFactory.getLogger(getClass()).error("Content job exhausted retries creatorId={}",creatorId);
+                LoggerFactory.getLogger(getClass()).warn("Content job exhausted retries creatorId={}",creatorId);
                 continue;
             }
             String token = UUID.randomUUID().toString();
@@ -286,7 +286,7 @@ public class ContentTagService {
         String safe = encode(Map.of("failureCount",summary.path("failureCount").asInt(),"startedAt",summary.path("startedAt").asDouble(),"completedAt",summary.path("completedAt").asDouble()));
         int updated = repo.update("UPDATE creator_content_job SET status=?,lease_token=NULL,lease_until=NULL,completed_at=IF(?='COMPLETED',UTC_TIMESTAMP(6),NULL),next_retry_at=TIMESTAMPADD(SECOND,?,UTC_TIMESTAMP(6)),last_summary=? WHERE creator_id=? AND lease_until>=UTC_TIMESTAMP(6)",next,next,Math.min(3600,30*(1<<attempts)),safe,creatorId);
         if (updated != 1) throw new BusinessException(CONTENT_LEASE_CONFLICT);
-        if (next.equals("FAILED")) LoggerFactory.getLogger(getClass()).error("Content job failed creatorId={}",creatorId);
+        if (next.equals("FAILED")) LoggerFactory.getLogger(getClass()).warn("Content job failed creatorId={}",creatorId);
         return Map.of("status",next);
     }
     @Transactional(propagation=Propagation.NOT_SUPPORTED)
