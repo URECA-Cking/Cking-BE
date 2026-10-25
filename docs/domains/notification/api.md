@@ -6,7 +6,7 @@
 - 커밋된 양수 EARN 원장의 보상 종류·실제 수량을 본문에 표시한다. 예: `출석체크 보상으로 공용 응모권 2장이 지급됐어요.`
 - `event`·`drawing`은 없으며 기존 NON_NULL 직렬화 정책을 따른다. 기존 조회·읽음·숨김 API를 쓰고 별도 이동은 없다.
 - 원장별 V90 마지막 기본값 전환 이후 INSERT만 대상이다. 이전 원장은 소급하지 않고 재시작 시 경계를 재설정하지 않는다.
-- 기본 비활성이다. FE #360 및 모든 BE 인스턴스가 새 타입을 지원한 뒤 `TICKET_REWARD_NOTIFICATION_ENABLED=true`로 활성화한다. 비활성 중 쌓인 대상은 활성화 후 처리한다.
+- 기본 비활성이고 개발(`application-dev.yml`)·운영(`application-prod.yml`) 프로필에서 켠다. 운영에서 끌 때는 Parameter Store `/cking/prod/TICKET_REWARD_NOTIFICATION_ENABLED`를 `false`로 두고 재배포한다(`deploy.sh`가 값이 있을 때만 넘긴다). 비활성 중 쌓인 대상은 활성화 후 처리한다.
 - 기본 30초(dev는 2초, `cking.notification.ticket-reward.interval-ms`) 간격으로 원장별 최대 20건(설정 상한 100건), 실패는 60초 뒤 재시도한다. 완료 이력은 조회에서 제외한다. 즉시 전달·실시간 배지 갱신을 보장하지 않는다.
 - 공용 Scheduler를 지연시키지 않도록 전용 실행 풀(`ticketRewardNotificationTaskScheduler`, 스레드 1개)에서 실행한다. 기능이 꺼져 있으면 실행 풀을 만들지 않는다(#732).
 - 지급 데이터는 append-only이며 알림 상태·재시도 시각·알림 참조만 별도 트랜잭션에서 변경한다. 기존 지급·ACK와 분리한다.

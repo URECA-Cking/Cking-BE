@@ -39,6 +39,8 @@ services:
       COMMENT_FILTER_BASE_URL: ${COMMENT_FILTER_BASE_URL:-http://localhost:8000}
       ENTRY_REPLICATION_WAIT_ENABLED: ${ENTRY_REPLICATION_WAIT_ENABLED:-false}
       ENTRY_REPLICATION_WAIT_TIMEOUT_MS: ${ENTRY_REPLICATION_WAIT_TIMEOUT_MS:-0}
+      # 지급 완료 알림은 application-prod.yml에서 켠다. deploy.sh가 Parameter Store 값을 넘길 때만 전달한다(끄기).
+      TICKET_REWARD_NOTIFICATION_ENABLED:
       IMAGE_TAG: ${IMAGE_TAG}
       CKING_CONSUMER_ID: ${CKING_CONSUMER_ID:-}
       # c6g.large(4GiB) 운영 측정 기준. 힙 1200MiB, 컨테이너 1800MiB.
