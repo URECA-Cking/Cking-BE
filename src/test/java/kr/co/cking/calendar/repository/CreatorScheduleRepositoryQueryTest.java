@@ -1,5 +1,6 @@
 package kr.co.cking.calendar.repository;
 
+import kr.co.cking.calendar.application.CreatorScheduleQueryService;
 import kr.co.cking.calendar.domain.CreatorSchedule;
 import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.creator.domain.Creator;
@@ -55,6 +56,16 @@ class CreatorScheduleRepositoryQueryTest {
                         overlapStart.getScheduleId(), inside.getScheduleId(), overlapEnd.getScheduleId());
         assertThat(result).extracting(CreatorSchedule::getTitle)
                 .doesNotContain(before.getTitle(), after.getTitle());
+    }
+
+    @Test
+    void 다섯_자리_연도로_조회해도_DB_오류_없이_빈_목록이다() {
+        Member member = memberRepository.saveAndFlush(new Member("먼 미래 조회 크리에이터", null, null, MemberRole.USER));
+        Creator creator = creatorRepository.saveAndFlush(new Creator(member.getMemberId(), "먼 미래 조회 크리에이터"));
+        CreatorScheduleQueryService service = new CreatorScheduleQueryService(creatorRepository, scheduleRepository);
+
+        assertThat(service.findByCreatorId(creator.getCreatorId(),
+                Instant.parse("+10000-01-01T00:00:00Z"), Instant.parse("+10000-01-02T00:00:00Z"))).isEmpty();
     }
 
     private CreatorSchedule save(Creator creator, String title, Instant startAt, Instant endAt) {

@@ -6,6 +6,7 @@ import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.calendar.repository.CreatorScheduleRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
@@ -115,6 +116,26 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
+    void 수정도_날짜가_2000_2099년_범위를_벗어나면_VALIDATION_FAILED다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        CreatorSchedule mine = new CreatorSchedule(
+                CREATOR_ID, ScheduleType.OTHER, "기존 제목", null,
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"),
+                "Asia/Seoul", null, null, null, NOW);
+        given(scheduleRepository.findById(5L)).willReturn(Optional.of(mine));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.OTHER, "제목", null,
+                Instant.parse("1945-08-15T00:00:00Z"), Instant.parse("1945-08-15T01:00:00Z"),
+                "Asia/Seoul", null, null, null);
+
+        assertThatThrownBy(() -> service.update(MEMBER_ID, 5L, fields))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+        assertThat(mine.getTitle()).isEqualTo("기존 제목");
+    }
+
+    @Test
     void timeZone이_오프셋_표기면_VALIDATION_FAILED다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorScheduleFields fields = new CreatorScheduleFields(
@@ -205,6 +226,19 @@ class CreatorScheduleServiceTest {
         given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, from, to)).willReturn(List.of(schedule));
 
         assertThat(service.findMine(MEMBER_ID, from, to)).containsExactly(schedule);
+    }
+
+    @Test
+    void 기간_조회는_저장_범위_밖_끝값을_범위_안으로_잘라_조회한다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        Instant from = Instant.parse("+10000-01-01T00:00:00Z");
+        Instant to = Instant.parse("+10000-01-02T00:00:00Z");
+        given(scheduleRepository.findByCreatorIdAndRange(
+                CREATOR_ID, ServiceDateRange.MAX_EXCLUSIVE, ServiceDateRange.MAX_EXCLUSIVE)).willReturn(List.of());
+
+        assertThat(service.findMine(MEMBER_ID, from, to)).isEmpty();
+        verify(scheduleRepository).findByCreatorIdAndRange(
+                CREATOR_ID, ServiceDateRange.MAX_EXCLUSIVE, ServiceDateRange.MAX_EXCLUSIVE);
     }
 
     private CreatorScheduleFields validFields() {

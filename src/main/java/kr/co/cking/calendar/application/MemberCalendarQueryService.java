@@ -4,6 +4,7 @@ import kr.co.cking.calendar.domain.ScheduleQueryRange;
 import kr.co.cking.calendar.repository.MemberCalendarEntryRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.member.application.MemberQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,8 @@ public class MemberCalendarQueryService {
         if (!ScheduleQueryRange.isValid(from, to)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        return entryRepository.findSchedulesByMemberIdAndRange(memberId, from, to).stream()
+        return entryRepository.findSchedulesByMemberIdAndRange(memberId, ServiceDateRange.clamp(from), ServiceDateRange.clamp(to))
+                .stream()
                 .map(MemberCalendarScheduleResult::from)
                 .toList();
     }

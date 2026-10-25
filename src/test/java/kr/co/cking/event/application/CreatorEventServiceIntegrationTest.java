@@ -93,6 +93,25 @@ class CreatorEventServiceIntegrationTest {
     }
 
     @Test
+    void 수정도_날짜가_2000_2099년_범위를_벗어나면_바꾸지_않고_VALIDATION_FAILED다() {
+        Member member = saveMember(new Member("날짜 범위 수정", null, null, MemberRole.USER));
+        saveCreator(new Creator(member.getMemberId(), member.getName()));
+        Event event = creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440096", "범위 수정 원본", null,
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.now().plus(java.time.Duration.ofDays(2)),
+                1, DrawMethod.WEIGHTED));
+
+        assertThatThrownBy(() -> creatorEventService.update(new UpdateEventCommand(
+                member.getMemberId(), event.getEventId(), "먼 미래로 수정", null,
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.parse("+10000-12-25T01:01:00Z"),
+                1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(exception -> ((kr.co.cking.common.exception.BusinessException) exception).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
+        assertThat(eventRepository.findById(event.getEventId()).orElseThrow().getTitle()).isEqualTo("범위 수정 원본");
+    }
+
+    @Test
     void 활동명_미설정_기존_Creator는_Event를_생성할_수_없다() {
         Member member = saveMember(new Member("기존크리에이터", null, null, MemberRole.USER));
         Creator legacyCreator = new Creator(member.getMemberId(), member.getName());

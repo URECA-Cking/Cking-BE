@@ -5,6 +5,7 @@ import kr.co.cking.calendar.domain.ScheduleQueryRange;
 import kr.co.cking.calendar.repository.CreatorScheduleRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.repository.CreatorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,7 @@ public class CreatorScheduleQueryService {
         if (!ScheduleQueryRange.isValid(from, to)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        return scheduleRepository.findByCreatorIdAndRange(creatorId, from, to);
+        return scheduleRepository.findByCreatorIdAndRange(creatorId, ServiceDateRange.clamp(from), ServiceDateRange.clamp(to));
     }
 
     public CreatorSchedule findDetail(Long creatorId, Long scheduleId) {

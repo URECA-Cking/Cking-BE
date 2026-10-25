@@ -66,7 +66,8 @@ public class CreatorScheduleService {
         if (!ScheduleQueryRange.isValid(from, to)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        return scheduleRepository.findByCreatorIdAndRange(creator.getCreatorId(), from, to);
+        return scheduleRepository.findByCreatorIdAndRange(
+                creator.getCreatorId(), ServiceDateRange.clamp(from), ServiceDateRange.clamp(to));
     }
 
     private String validateAndNormalize(CreatorScheduleFields fields) {

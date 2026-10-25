@@ -143,8 +143,9 @@ Query는 `page`, `size`다. 요청 Member에 연결된 Creator가 소유하고 `
 - 생성 상태는 DRAFT다. 성공은 201이며 응답은 `{ "eventId": 1, "status": "DRAFT" }`다.
 - `requestId`는 필수 UUID다. 같은 requestId와 같은 본문은 기존 생성 결과를 반환하고, 다른 본문은 `IDEMPOTENCY_CONFLICT`다. 선택 `bannerImageKey`(본문 비교 대상)로 배너를 연결한다([배너 API](banner-api.md#생성수정-연결)).
 - `title`, `startAt`, `endAt`, `winnerCount`, `drawMethod`는 필수다. title은 blank 불가,
-  description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이다. `startAt`·`endAt`은 어느 시간대 기준으로도
-  2000\~2099년 안이어야 한다(`ServiceDateRange`, 범위 밖은 `VALIDATION_FAILED`).
+  description은 null 허용, `startAt < endAt`, winnerCount는 1 이상이다. `startAt`·`endAt`은
+  `1999-12-31T10:00:00Z` 이상 `2100-01-01T12:00:00Z` 미만이어야 한다(`ServiceDateRange`, 어느 한 시간대에서라도 2000\~2099년인 시각,
+  범위 밖은 `VALIDATION_FAILED`). 수정도 같아서 범위 밖에 저장된 값은 날짜를 범위 안으로 바꿔야 저장된다.
 - `drawMethod`는 `UNIFORM`(후보 동일 확률) 또는 `WEIGHTED`(응모권 수 비례)를 사용한다.
   `prizeAlgorithmVersion`은 `PRIZE_UNIFORM_V1` 또는 `PRIZE_WEIGHTED_V1`이며, 생략하면 하위 호환을
   위해 `PRIZE_WEIGHTED_V1`을 사용한다. 두 필드는 독립적으로 조합한다.
