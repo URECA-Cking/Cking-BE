@@ -118,6 +118,39 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
+    void 종일_일정은_시작이나_끝_한쪽만_0시가_아니어도_VALIDATION_FAILED다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        for (Instant[] range : new Instant[][]{
+                {Instant.parse("2026-10-09T16:00:00Z"), Instant.parse("2026-10-10T15:00:00Z")},
+                {Instant.parse("2026-10-09T15:00:00Z"), Instant.parse("2026-10-10T16:00:00Z")}}) {
+            CreatorScheduleFields fields = new CreatorScheduleFields(
+                    ScheduleType.BIRTHDAY, "생일", null, range[0], range[1], true, "Asia/Seoul", null, null, null);
+
+            assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                    .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+        }
+        verify(scheduleRepository, never()).save(any());
+    }
+
+    @Test
+    void 종일_일정은_서머타임_전환일에도_그날_첫_시각부터_다음날_첫_시각까지를_받는다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        given(scheduleRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+        // 상파울루 2018-11-04는 0시가 없어 01:00(-02:00)에 시작하는 23시간, 뉴욕 2025-11-02는 25시간인 날이다.
+        for (Object[] day : new Object[][]{
+                {"America/Sao_Paulo", Instant.parse("2018-11-04T03:00:00Z"), Instant.parse("2018-11-05T02:00:00Z")},
+                {"America/New_York", Instant.parse("2025-11-02T04:00:00Z"), Instant.parse("2025-11-03T05:00:00Z")}}) {
+            CreatorSchedule saved = service.create(MEMBER_ID, new CreatorScheduleFields(
+                    ScheduleType.BIRTHDAY, "생일", null, (Instant) day[1], (Instant) day[2], true,
+                    (String) day[0], null, null, null));
+
+            assertThat(saved.isAllDay()).isTrue();
+        }
+    }
+
+    @Test
     void startAt이_endAt보다_늦으면_VALIDATION_FAILED다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorScheduleFields fields = new CreatorScheduleFields(
@@ -184,6 +217,34 @@ class CreatorScheduleServiceTest {
 
         assertThat(result.getTitle()).isEqualTo(validFields().title());
         assertThat(result.getUpdatedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void 시간_일정을_종일로_수정하면_0시를_검증하고_종일로_바꾼다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        CreatorSchedule mine = new CreatorSchedule(
+                CREATOR_ID, ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), false,
+                "Asia/Seoul", null, null, null, NOW);
+        given(scheduleRepository.findById(5L)).willReturn(Optional.of(mine));
+
+        assertThatThrownBy(() -> service.update(MEMBER_ID, 5L, new CreatorScheduleFields(
+                ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), true,
+                "Asia/Seoul", null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+        assertThat(mine.isAllDay()).isFalse();
+
+        CreatorSchedule result = service.update(MEMBER_ID, 5L, new CreatorScheduleFields(
+                ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-09T15:00:00Z"), Instant.parse("2026-10-10T15:00:00Z"), true,
+                "Asia/Seoul", null, null, null));
+
+        assertThat(result.isAllDay()).isTrue();
+        assertThat(result.getStartAt()).isEqualTo(Instant.parse("2026-10-09T15:00:00Z"));
+        assertThat(result.getEndAt()).isEqualTo(Instant.parse("2026-10-10T15:00:00Z"));
     }
 
     @Test

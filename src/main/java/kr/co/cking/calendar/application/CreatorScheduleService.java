@@ -83,8 +83,11 @@ public class CreatorScheduleService {
 
     /** 종일 일정은 timeZone 기준 첫날 0시에 시작해 마지막 날 다음 날 0시에 끝나야 한다. */
     private void validateAllDay(CreatorScheduleFields fields, String timeZone) {
+        if (!fields.allDay()) {
+            return;
+        }
         ZoneId zone = ZoneId.of(timeZone);
-        if (fields.allDay() && (!isStartOfDay(fields.startAt(), zone) || !isStartOfDay(fields.endAt(), zone))) {
+        if (!isStartOfDay(fields.startAt(), zone) || !isStartOfDay(fields.endAt(), zone)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
     }
