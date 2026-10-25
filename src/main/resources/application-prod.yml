@@ -76,6 +76,10 @@ cking:
     enabled: ${COMMENT_FILTER_ENABLED:false}
     base-url: ${COMMENT_FILTER_BASE_URL:http://localhost:8000}
     auth: aws-iam
+  # 응모권 지급 완료 알림(이슈 #728). 끌 때는 Parameter Store 값을 false로 두고 재배포한다.
+  notification:
+    ticket-reward:
+      enabled: ${TICKET_REWARD_NOTIFICATION_ENABLED:true}
 
 info:
   image:
