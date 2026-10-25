@@ -17,7 +17,7 @@
 | `scheduleType` | `BIRTHDAY`, `FAN_SIGN`, `BROADCAST`, `CONTENT_RELEASE`, `OTHER` 중 하나 |
 | `title` | 일정 제목 (최대 100자) |
 | `description` | 설명 (최대 1000자, nullable) |
-| `startAt`/`endAt` | UTC Instant. `startAt < endAt`이어야 한다 |
+| `startAt`/`endAt` | UTC Instant. `startAt < endAt`이어야 하고, 어느 시간대 기준으로도 2000\~2099년 안이어야 한다(`ServiceDateRange`) |
 | `timeZone` | IANA Time Zone Database 지역명 (최대 50자). 아래 "timeZone 검증" 참고 |
 | `location` | 장소 (최대 200자, nullable) |
 | `imageUrl`/`externalUrl` | 이미지·외부 링크 URL (각 최대 500자, nullable) |
@@ -145,6 +145,7 @@
 - 유효하지 않은 요청은 `VALIDATION_FAILED`다.
   - 빈 제목, 필드 길이 초과
   - `startAt >= endAt`
+  - `startAt`·`endAt`이 2000\~2099년 범위 밖(예: 다섯 자리 연도)
   - 지원하지 않는 `scheduleType`
   - `timeZone`이 null/blank이거나 IANA Zone ID가 아니거나 길이 초과
   - `from >= to`이거나 조회 범위가 365일을 초과

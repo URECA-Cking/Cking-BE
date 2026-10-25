@@ -101,6 +101,20 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
+    void 날짜가_2000_2099년_범위를_벗어나면_VALIDATION_FAILED다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.FAN_SIGN, "제목", null,
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("+10000-12-25T01:01:00Z"),
+                "Asia/Seoul", null, null, null);
+
+        assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
     void timeZone이_오프셋_표기면_VALIDATION_FAILED다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorScheduleFields fields = new CreatorScheduleFields(

@@ -78,6 +78,21 @@ class CreatorEventServiceIntegrationTest {
     }
 
     @Test
+    void 날짜가_2000_2099년_범위를_벗어나면_생성하지_않고_VALIDATION_FAILED다() {
+        Member member = saveMember(new Member("날짜 범위", null, null, MemberRole.USER));
+        saveCreator(new Creator(member.getMemberId(), member.getName()));
+
+        assertThatThrownBy(() -> creatorEventService.create(new CreateEventCommand(
+                member.getMemberId(), "550e8400-e29b-41d4-a716-446655440097", "먼 미래 이벤트", null,
+                Instant.now().plus(java.time.Duration.ofDays(1)), Instant.parse("+10000-12-25T01:01:00Z"),
+                1, DrawMethod.WEIGHTED)))
+                .isInstanceOf(kr.co.cking.common.exception.BusinessException.class)
+                .extracting(exception -> ((kr.co.cking.common.exception.BusinessException) exception).getErrorCode())
+                .isEqualTo(kr.co.cking.common.exception.CommonErrorCode.VALIDATION_FAILED);
+        assertThat(eventRepository.findAll()).noneMatch(event -> "먼 미래 이벤트".equals(event.getTitle()));
+    }
+
+    @Test
     void 활동명_미설정_기존_Creator는_Event를_생성할_수_없다() {
         Member member = saveMember(new Member("기존크리에이터", null, null, MemberRole.USER));
         Creator legacyCreator = new Creator(member.getMemberId(), member.getName());
