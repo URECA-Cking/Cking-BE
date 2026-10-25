@@ -5,9 +5,13 @@ import kr.co.cking.creator.repository.*;
 import kr.co.cking.creator.domain.*;
 import kr.co.cking.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
+@ExtendWith(OutputCaptureExtension.class)
 class ContentTagServiceTest {
     final ContentTagRepository repo=mock(ContentTagRepository.class);
     final CreatorSpaceRepository spaces=mock(CreatorSpaceRepository.class);
@@ -59,5 +63,15 @@ class ContentTagServiceTest {
         order.verify(repo).claimable();
         order.verify(repo).update(contains("SET status='RUNNING'"),anyString(),eq(900L),eq(2L));
         verifyNoInteractions(spaces);
+    }
+    /** 재시도를 다 쓴 작업은 작업자가 다음 날 다시 처리하는 예상된 결과라 ERROR 경보가 아니라 WARN으로 남긴다. */
+    @Test void exhaustedJobsAreLoggedAsWarnings(CapturedOutput output) {
+        when(repo.claimable()).thenReturn(List.of(new ContentTagRepository.Job(1,1,"PENDING",null,5)),List.of());
+        service.claim(Map.of("leaseSeconds",900));
+        when(repo.job(3L)).thenReturn(List.of(new ContentTagRepository.Job(3,1,"RUNNING","lease",5)));
+        doReturn(1).when(repo).update(contains("lease_until>=UTC_TIMESTAMP"),any(Object[].class));
+        assertThat(service.ack(3L,Map.of("status","retry","generation",1,"leaseToken","lease","summary",Map.of()))).containsEntry("status","FAILED");
+        assertThat(output.getOut().lines().filter(line -> line.contains("Content job")).toList())
+            .hasSize(2).allMatch(line -> line.contains("WARN") && !line.contains("ERROR"));
     }
 }

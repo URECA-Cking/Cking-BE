@@ -87,12 +87,14 @@ public class CreatorScheduleController {
     private CreatorScheduleFields toFields(CreatorScheduleRequest.Create request) {
         return new CreatorScheduleFields(
                 request.scheduleType(), request.title(), request.description(), request.startAt(), request.endAt(),
-                request.timeZone(), request.location(), request.imageUrl(), request.externalUrl());
+                Boolean.TRUE.equals(request.allDay()), request.timeZone(), request.location(), request.imageUrl(),
+                request.externalUrl());
     }
 
     private CreatorScheduleFields toFields(CreatorScheduleRequest.Update request) {
         return new CreatorScheduleFields(
                 request.scheduleType(), request.title(), request.description(), request.startAt(), request.endAt(),
-                request.timeZone(), request.location(), request.imageUrl(), request.externalUrl());
+                Boolean.TRUE.equals(request.allDay()), request.timeZone(), request.location(), request.imageUrl(),
+                request.externalUrl());
     }
 }

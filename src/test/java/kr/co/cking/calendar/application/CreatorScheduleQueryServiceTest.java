@@ -5,6 +5,7 @@ import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.calendar.repository.CreatorScheduleRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.repository.CreatorRepository;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class CreatorScheduleQueryServiceTest {
 
@@ -57,10 +59,21 @@ class CreatorScheduleQueryServiceTest {
         Instant from = Instant.parse("2026-01-01T00:00:00Z");
         Instant to = Instant.parse("2026-01-31T00:00:00Z");
         CreatorSchedule schedule = new CreatorSchedule(
-                CREATOR_ID, ScheduleType.OTHER, "제목", null, from, to, "Asia/Seoul", null, null, null, NOW);
+                CREATOR_ID, ScheduleType.OTHER, "제목", null, from, to, false, "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, from, to)).willReturn(List.of(schedule));
 
         assertThat(service.findByCreatorId(CREATOR_ID, from, to)).containsExactly(schedule);
+    }
+
+    @Test
+    void 기간_조회는_저장_범위_밖_끝값을_범위_안으로_잘라_조회한다() {
+        given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
+        Instant from = Instant.parse("1999-12-01T00:00:00Z");
+        Instant to = Instant.parse("2000-01-15T00:00:00Z");
+        given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, ServiceDateRange.MIN, to)).willReturn(List.of());
+
+        assertThat(service.findByCreatorId(CREATOR_ID, from, to)).isEmpty();
+        verify(scheduleRepository).findByCreatorIdAndRange(CREATOR_ID, ServiceDateRange.MIN, to);
     }
 
     @Test
@@ -68,7 +81,7 @@ class CreatorScheduleQueryServiceTest {
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         CreatorSchedule othersSchedule = new CreatorSchedule(
                 999L, ScheduleType.OTHER, "다른 크리에이터 일정", null,
-                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"),
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(othersSchedule));
 
@@ -94,7 +107,7 @@ class CreatorScheduleQueryServiceTest {
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         CreatorSchedule schedule = new CreatorSchedule(
                 CREATOR_ID, ScheduleType.OTHER, "제목", null,
-                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"),
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(schedule));
 

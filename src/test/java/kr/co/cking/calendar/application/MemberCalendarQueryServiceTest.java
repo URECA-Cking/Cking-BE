@@ -5,6 +5,7 @@ import kr.co.cking.calendar.repository.MemberCalendarEntryRepository;
 import kr.co.cking.calendar.repository.MemberCalendarScheduleProjection;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.member.application.MemberQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,6 +65,17 @@ class MemberCalendarQueryServiceTest {
     }
 
     @Test
+    void 기간_조회는_저장_범위_밖_끝값을_범위_안으로_잘라_조회한다() {
+        Instant from = Instant.parse("2099-12-01T00:00:00Z");
+        Instant to = Instant.parse("2100-01-30T00:00:00Z");
+        when(entryRepository.findSchedulesByMemberIdAndRange(MEMBER_ID, from, ServiceDateRange.MAX_EXCLUSIVE))
+                .thenReturn(List.of());
+
+        assertThat(service.findMine(MEMBER_ID, from, to)).isEmpty();
+        verify(entryRepository).findSchedulesByMemberIdAndRange(MEMBER_ID, from, ServiceDateRange.MAX_EXCLUSIVE);
+    }
+
+    @Test
     void 정상_조회는_크리에이터_이름을_포함해_결과를_그대로_반환한다() {
         Instant from = Instant.parse("2026-10-01T00:00:00Z");
         Instant to = Instant.parse("2026-10-31T00:00:00Z");
@@ -71,7 +83,7 @@ class MemberCalendarQueryServiceTest {
         Instant endAt = Instant.parse("2026-10-10T07:00:00Z");
         MemberCalendarScheduleProjection projection = new MemberCalendarScheduleProjection(
                 100L, 5L, "테스트 크리에이터", ScheduleType.FAN_SIGN, "서울 팬사인회", "설명",
-                startAt, endAt, "Asia/Seoul", "서울", "https://img/1.png", "https://example.com");
+                startAt, endAt, false, "Asia/Seoul", "서울", "https://img/1.png", "https://example.com");
         when(entryRepository.findSchedulesByMemberIdAndRange(MEMBER_ID, from, to)).thenReturn(List.of(projection));
 
         List<MemberCalendarScheduleResult> results = service.findMine(MEMBER_ID, from, to);

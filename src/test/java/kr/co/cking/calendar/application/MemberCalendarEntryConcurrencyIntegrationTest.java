@@ -52,7 +52,7 @@ class MemberCalendarEntryConcurrencyIntegrationTest {
         Creator creator = creatorRepository.saveAndFlush(new Creator(creatorMember.getMemberId(), "동시 담기 크리에이터"));
         CreatorSchedule schedule = scheduleRepository.saveAndFlush(new CreatorSchedule(
                 creator.getCreatorId(), ScheduleType.OTHER, "동시 담기 대상", null,
-                Instant.now(), Instant.now().plusSeconds(3600), "Asia/Seoul", null, null, null, Instant.now()));
+                Instant.now(), Instant.now().plusSeconds(3600), false, "Asia/Seoul", null, null, null, Instant.now()));
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -88,7 +88,7 @@ class MemberCalendarEntryConcurrencyIntegrationTest {
             for (int i = 0; i < 30; i++) {
                 CreatorSchedule schedule = scheduleRepository.saveAndFlush(new CreatorSchedule(
                         creator.getCreatorId(), ScheduleType.OTHER, "삭제 경합 대상 " + i, null,
-                        Instant.now(), Instant.now().plusSeconds(3600), "Asia/Seoul", null, null, null, Instant.now()));
+                        Instant.now(), Instant.now().plusSeconds(3600), false, "Asia/Seoul", null, null, null, Instant.now()));
                 Long scheduleId = schedule.getScheduleId();
 
                 CountDownLatch start = new CountDownLatch(1);

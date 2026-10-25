@@ -113,7 +113,7 @@ class MemberCalendarControllerTest {
         Instant to = Instant.parse("2026-10-31T00:00:00Z");
         MemberCalendarScheduleResult result = new MemberCalendarScheduleResult(
                 100L, 5L, "테스트 크리에이터", "FAN_SIGN", "서울 팬사인회", "설명",
-                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"),
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), false,
                 "Asia/Seoul", "서울", "https://img/1.png", "https://example.com");
         given(queryService.findMine(7L, from, to)).willReturn(List.of(result));
 

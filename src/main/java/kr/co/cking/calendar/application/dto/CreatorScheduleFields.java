@@ -11,6 +11,7 @@ public record CreatorScheduleFields(
         String description,
         Instant startAt,
         Instant endAt,
+        boolean allDay,
         String timeZone,
         String location,
         String imageUrl,
