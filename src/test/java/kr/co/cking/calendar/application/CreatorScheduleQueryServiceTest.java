@@ -59,7 +59,7 @@ class CreatorScheduleQueryServiceTest {
         Instant from = Instant.parse("2026-01-01T00:00:00Z");
         Instant to = Instant.parse("2026-01-31T00:00:00Z");
         CreatorSchedule schedule = new CreatorSchedule(
-                CREATOR_ID, ScheduleType.OTHER, "제목", null, from, to, "Asia/Seoul", null, null, null, NOW);
+                CREATOR_ID, ScheduleType.OTHER, "제목", null, from, to, false, "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, from, to)).willReturn(List.of(schedule));
 
         assertThat(service.findByCreatorId(CREATOR_ID, from, to)).containsExactly(schedule);
@@ -81,7 +81,7 @@ class CreatorScheduleQueryServiceTest {
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         CreatorSchedule othersSchedule = new CreatorSchedule(
                 999L, ScheduleType.OTHER, "다른 크리에이터 일정", null,
-                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"),
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(othersSchedule));
 
@@ -107,7 +107,7 @@ class CreatorScheduleQueryServiceTest {
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         CreatorSchedule schedule = new CreatorSchedule(
                 CREATOR_ID, ScheduleType.OTHER, "제목", null,
-                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"),
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(schedule));
 

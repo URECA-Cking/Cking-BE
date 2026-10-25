@@ -18,6 +18,7 @@
 | `title` | 일정 제목 (최대 100자) |
 | `description` | 설명 (최대 1000자, nullable) |
 | `startAt`/`endAt` | UTC Instant. `startAt < endAt`이어야 하고, `startAt`은 `1999-12-31T10:00:00Z` 이상 `2100-01-01T12:00:00Z` 미만, `endAt`은 포함하지 않는 끝이라 `2100-01-01T12:00:00Z`까지 된다(`ServiceDateRange`). 어느 한 시간대에서라도 2000\~2099년에 해당하는 시각이다(UTC+14의 2000-01-01 0시부터 UTC-12의 2100-01-01 0시까지) |
+| `allDay` | 종일 일정 여부(boolean, 생략하면 `false`). `true`면 `startAt`은 `timeZone` 기준 첫날 0시, `endAt`은 마지막 날 다음 날 0시여야 한다(`endAt`은 포함하지 않는다). 예: 서울 10/10 하루 종일은 `2026-10-09T15:00:00Z` \~ `2026-10-10T15:00:00Z` |
 | `timeZone` | IANA Time Zone Database 지역명 (최대 50자). 아래 "timeZone 검증" 참고 |
 | `location` | 장소 (최대 200자, nullable) |
 | `imageUrl`/`externalUrl` | 이미지·외부 링크 URL (각 최대 500자, nullable) |
@@ -37,6 +38,7 @@
   "description": "선착순 100명",
   "startAt": "2026-10-10T05:00:00Z",
   "endAt": "2026-10-10T07:00:00Z",
+  "allDay": false,
   "timeZone": "Asia/Seoul",
   "location": "서울 성수동",
   "imageUrl": "https://cdn.cking.co.kr/schedule/1.png",
@@ -55,6 +57,7 @@
   "description": "선착순 100명",
   "startAt": "2026-10-10T05:00:00Z",
   "endAt": "2026-10-10T07:00:00Z",
+  "allDay": false,
   "timeZone": "Asia/Seoul",
   "location": "서울 성수동",
   "imageUrl": "https://cdn.cking.co.kr/schedule/1.png",
@@ -105,6 +108,7 @@
     "description": "선착순 100명",
     "startAt": "2026-10-10T05:00:00Z",
     "endAt": "2026-10-10T07:00:00Z",
+    "allDay": false,
     "timeZone": "Asia/Seoul",
     "location": "서울 성수동",
     "imageUrl": "https://cdn.cking.co.kr/schedule/1.png",
@@ -131,6 +135,7 @@
     "description": "선착순 100명",
     "startAt": "2026-10-10T05:00:00Z",
     "endAt": "2026-10-10T07:00:00Z",
+    "allDay": false,
     "timeZone": "Asia/Seoul",
     "location": "서울 성수동",
     "imageUrl": "https://cdn.cking.co.kr/schedule/1.png",
@@ -147,6 +152,7 @@
   - 빈 제목, 필드 길이 초과
   - `startAt >= endAt`
   - `startAt`·`endAt`이 2000\~2099년 범위 밖(예: 다섯 자리 연도)
+  - `allDay`가 `true`인데 `startAt`·`endAt`이 `timeZone` 기준 0시가 아님
   - 지원하지 않는 `scheduleType`
   - `timeZone`이 null/blank이거나 IANA Zone ID가 아니거나 길이 초과
   - `from >= to`이거나 조회 범위가 365일을 초과

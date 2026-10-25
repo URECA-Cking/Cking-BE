@@ -49,6 +49,10 @@ public class CreatorSchedule {
     @Column(name = "end_at", nullable = false)
     private Instant endAt;
 
+    /** 종일 일정이면 startAt·endAt은 timeZone 기준 첫날 0시와 마지막 날 다음 날 0시다. */
+    @Column(name = "all_day", nullable = false)
+    private boolean allDay;
+
     /** IANA Zone ID. 검증·정규화는 Service 계층({@code CreatorScheduleService})에서 수행한다. */
     @Column(name = "time_zone", nullable = false, length = 50)
     private String timeZone;
@@ -75,6 +79,7 @@ public class CreatorSchedule {
             String description,
             Instant startAt,
             Instant endAt,
+            boolean allDay,
             String timeZone,
             String location,
             String imageUrl,
@@ -83,7 +88,7 @@ public class CreatorSchedule {
     ) {
         this.creatorId = creatorId;
         this.createdAt = now;
-        apply(scheduleType, title, description, startAt, endAt, timeZone, location, imageUrl, externalUrl, now);
+        apply(scheduleType, title, description, startAt, endAt, allDay, timeZone, location, imageUrl, externalUrl, now);
     }
 
     /** 전체 필드를 새 값으로 교체한다(부분 patch 아님). */
@@ -93,13 +98,14 @@ public class CreatorSchedule {
             String description,
             Instant startAt,
             Instant endAt,
+            boolean allDay,
             String timeZone,
             String location,
             String imageUrl,
             String externalUrl,
             Instant now
     ) {
-        apply(scheduleType, title, description, startAt, endAt, timeZone, location, imageUrl, externalUrl, now);
+        apply(scheduleType, title, description, startAt, endAt, allDay, timeZone, location, imageUrl, externalUrl, now);
     }
 
     private void apply(
@@ -108,6 +114,7 @@ public class CreatorSchedule {
             String description,
             Instant startAt,
             Instant endAt,
+            boolean allDay,
             String timeZone,
             String location,
             String imageUrl,
@@ -119,6 +126,7 @@ public class CreatorSchedule {
         this.description = description;
         this.startAt = startAt;
         this.endAt = endAt;
+        this.allDay = allDay;
         this.timeZone = timeZone;
         this.location = location;
         this.imageUrl = imageUrl;

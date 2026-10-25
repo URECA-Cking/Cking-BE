@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
@@ -38,19 +40,21 @@ public class CreatorScheduleService {
     public CreatorSchedule create(Long memberId, CreatorScheduleFields fields) {
         Creator creator = requireCreator(memberId);
         String timeZone = validateAndNormalize(fields);
+        validateAllDay(fields, timeZone);
         return scheduleRepository.save(new CreatorSchedule(
                 creator.getCreatorId(), fields.scheduleType(), fields.title().trim(), fields.description(),
-                fields.startAt(), fields.endAt(), timeZone, fields.location(), fields.imageUrl(),
+                fields.startAt(), fields.endAt(), fields.allDay(), timeZone, fields.location(), fields.imageUrl(),
                 fields.externalUrl(), Instant.now(clock)));
     }
 
     public CreatorSchedule update(Long memberId, Long scheduleId, CreatorScheduleFields fields) {
         Creator creator = requireCreator(memberId);
         String timeZone = validateAndNormalize(fields);
+        validateAllDay(fields, timeZone);
         CreatorSchedule schedule = requireOwnedSchedule(scheduleId, creator.getCreatorId());
         schedule.update(
                 fields.scheduleType(), fields.title().trim(), fields.description(), fields.startAt(), fields.endAt(),
-                timeZone, fields.location(), fields.imageUrl(), fields.externalUrl(), Instant.now(clock));
+                fields.allDay(), timeZone, fields.location(), fields.imageUrl(), fields.externalUrl(), Instant.now(clock));
         return schedule;
     }
 
@@ -81,6 +85,22 @@ public class CreatorScheduleService {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
         return ScheduleTimeZones.normalize(fields.timeZone());
+    }
+
+    /** 종일 일정은 timeZone 기준 첫날 0시에 시작해 마지막 날 다음 날 0시에 끝나야 한다. */
+    private void validateAllDay(CreatorScheduleFields fields, String timeZone) {
+        if (!fields.allDay()) {
+            return;
+        }
+        ZoneId zone = ZoneId.of(timeZone);
+        if (!isStartOfDay(fields.startAt(), zone) || !isStartOfDay(fields.endAt(), zone)) {
+            throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
+        }
+    }
+
+    private static boolean isStartOfDay(Instant instant, ZoneId zone) {
+        ZonedDateTime local = instant.atZone(zone);
+        return local.equals(local.toLocalDate().atStartOfDay(zone));
     }
 
     /** 없는 Member는 404, Member는 있지만 Creator가 아니면 403 — 존재 여부와 자격을 구분한다. */

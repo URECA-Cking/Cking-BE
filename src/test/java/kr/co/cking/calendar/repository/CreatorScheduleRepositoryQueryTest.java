@@ -85,7 +85,7 @@ class CreatorScheduleRepositoryQueryTest {
 
     private CreatorSchedule save(Creator creator, String title, Instant startAt, Instant endAt) {
         return scheduleRepository.saveAndFlush(new CreatorSchedule(
-                creator.getCreatorId(), ScheduleType.OTHER, title, null, startAt, endAt,
+                creator.getCreatorId(), ScheduleType.OTHER, title, null, startAt, endAt, false,
                 "Asia/Seoul", null, null, null, Instant.now()));
     }
 }

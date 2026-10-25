@@ -88,11 +88,75 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
+    void 종일_일정은_시간대_기준_첫날_0시부터_다음날_0시까지로_저장한다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        given(scheduleRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-09T15:00:00Z"), Instant.parse("2026-10-11T15:00:00Z"), true,
+                "Asia/Seoul", null, null, null);
+
+        CreatorSchedule saved = service.create(MEMBER_ID, fields);
+
+        assertThat(saved.isAllDay()).isTrue();
+        assertThat(saved.getStartAt()).isEqualTo(Instant.parse("2026-10-09T15:00:00Z"));
+        assertThat(saved.getEndAt()).isEqualTo(Instant.parse("2026-10-11T15:00:00Z"));
+    }
+
+    @Test
+    void 종일_일정이_시간대_기준_0시에_시작하거나_끝나지_않으면_VALIDATION_FAILED다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-10T00:00:00Z"), Instant.parse("2026-10-11T00:00:00Z"), true,
+                "Asia/Seoul", null, null, null);
+
+        assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+        verify(scheduleRepository, never()).save(any());
+    }
+
+    @Test
+    void 종일_일정은_시작이나_끝_한쪽만_0시가_아니어도_VALIDATION_FAILED다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        for (Instant[] range : new Instant[][]{
+                {Instant.parse("2026-10-09T16:00:00Z"), Instant.parse("2026-10-10T15:00:00Z")},
+                {Instant.parse("2026-10-09T15:00:00Z"), Instant.parse("2026-10-10T16:00:00Z")}}) {
+            CreatorScheduleFields fields = new CreatorScheduleFields(
+                    ScheduleType.BIRTHDAY, "생일", null, range[0], range[1], true, "Asia/Seoul", null, null, null);
+
+            assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                    .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+        }
+        verify(scheduleRepository, never()).save(any());
+    }
+
+    @Test
+    void 종일_일정은_서머타임_전환일에도_그날_첫_시각부터_다음날_첫_시각까지를_받는다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        given(scheduleRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+        // 상파울루 2018-11-04는 0시가 없어 01:00(-02:00)에 시작하는 23시간, 뉴욕 2025-11-02는 25시간인 날이다.
+        for (Object[] day : new Object[][]{
+                {"America/Sao_Paulo", Instant.parse("2018-11-04T03:00:00Z"), Instant.parse("2018-11-05T02:00:00Z")},
+                {"America/New_York", Instant.parse("2025-11-02T04:00:00Z"), Instant.parse("2025-11-03T05:00:00Z")}}) {
+            CreatorSchedule saved = service.create(MEMBER_ID, new CreatorScheduleFields(
+                    ScheduleType.BIRTHDAY, "생일", null, (Instant) day[1], (Instant) day[2], true,
+                    (String) day[0], null, null, null));
+
+            assertThat(saved.isAllDay()).isTrue();
+        }
+    }
+
+    @Test
     void startAt이_endAt보다_늦으면_VALIDATION_FAILED다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorScheduleFields fields = new CreatorScheduleFields(
                 ScheduleType.FAN_SIGN, "제목", null,
-                Instant.parse("2026-10-10T10:00:00Z"), Instant.parse("2026-10-10T09:00:00Z"),
+                Instant.parse("2026-10-10T10:00:00Z"), Instant.parse("2026-10-10T09:00:00Z"), false,
                 "Asia/Seoul", null, null, null);
 
         assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
@@ -106,7 +170,7 @@ class CreatorScheduleServiceTest {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorScheduleFields fields = new CreatorScheduleFields(
                 ScheduleType.FAN_SIGN, "제목", null,
-                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("+10000-12-25T01:01:00Z"),
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("+10000-12-25T01:01:00Z"), false,
                 "Asia/Seoul", null, null, null);
 
         assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
@@ -120,12 +184,12 @@ class CreatorScheduleServiceTest {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorSchedule mine = new CreatorSchedule(
                 CREATOR_ID, ScheduleType.OTHER, "기존 제목", null,
-                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"),
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(mine));
         CreatorScheduleFields fields = new CreatorScheduleFields(
                 ScheduleType.OTHER, "제목", null,
-                Instant.parse("1945-08-15T00:00:00Z"), Instant.parse("1945-08-15T01:00:00Z"),
+                Instant.parse("1945-08-15T00:00:00Z"), Instant.parse("1945-08-15T01:00:00Z"), false,
                 "Asia/Seoul", null, null, null);
 
         assertThatThrownBy(() -> service.update(MEMBER_ID, 5L, fields))
@@ -140,7 +204,7 @@ class CreatorScheduleServiceTest {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorScheduleFields fields = new CreatorScheduleFields(
                 ScheduleType.FAN_SIGN, "제목", null,
-                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"),
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"), false,
                 "+09:00", null, null, null);
 
         assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
@@ -154,7 +218,7 @@ class CreatorScheduleServiceTest {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorSchedule othersSchedule = new CreatorSchedule(
                 999L, ScheduleType.OTHER, "다른 사람 일정", null,
-                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"),
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("2026-10-10T10:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(othersSchedule));
 
@@ -180,7 +244,7 @@ class CreatorScheduleServiceTest {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorSchedule mine = new CreatorSchedule(
                 CREATOR_ID, ScheduleType.OTHER, "기존 제목", "기존 설명",
-                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"),
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(mine));
 
@@ -191,11 +255,39 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
+    void 시간_일정을_종일로_수정하면_0시를_검증하고_종일로_바꾼다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        CreatorSchedule mine = new CreatorSchedule(
+                CREATOR_ID, ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), false,
+                "Asia/Seoul", null, null, null, NOW);
+        given(scheduleRepository.findById(5L)).willReturn(Optional.of(mine));
+
+        assertThatThrownBy(() -> service.update(MEMBER_ID, 5L, new CreatorScheduleFields(
+                ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), true,
+                "Asia/Seoul", null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+        assertThat(mine.isAllDay()).isFalse();
+
+        CreatorSchedule result = service.update(MEMBER_ID, 5L, new CreatorScheduleFields(
+                ScheduleType.BIRTHDAY, "생일", null,
+                Instant.parse("2026-10-09T15:00:00Z"), Instant.parse("2026-10-10T15:00:00Z"), true,
+                "Asia/Seoul", null, null, null));
+
+        assertThat(result.isAllDay()).isTrue();
+        assertThat(result.getStartAt()).isEqualTo(Instant.parse("2026-10-09T15:00:00Z"));
+        assertThat(result.getEndAt()).isEqualTo(Instant.parse("2026-10-10T15:00:00Z"));
+    }
+
+    @Test
     void 삭제는_소유권_확인_후_repository_delete를_호출한다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorSchedule mine = new CreatorSchedule(
                 CREATOR_ID, ScheduleType.OTHER, "제목", null,
-                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"),
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"), false,
                 "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findById(5L)).willReturn(Optional.of(mine));
 
@@ -222,7 +314,7 @@ class CreatorScheduleServiceTest {
         Instant from = Instant.parse("2026-01-01T00:00:00Z");
         Instant to = Instant.parse("2026-01-31T00:00:00Z");
         CreatorSchedule schedule = new CreatorSchedule(
-                CREATOR_ID, ScheduleType.OTHER, "제목", null, from, to, "Asia/Seoul", null, null, null, NOW);
+                CREATOR_ID, ScheduleType.OTHER, "제목", null, from, to, false, "Asia/Seoul", null, null, null, NOW);
         given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, from, to)).willReturn(List.of(schedule));
 
         assertThat(service.findMine(MEMBER_ID, from, to)).containsExactly(schedule);
@@ -238,12 +330,26 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
+    void UTC_12의_2099년_마지막_날_종일_일정도_받는다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        given(scheduleRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+        CreatorSchedule saved = service.create(MEMBER_ID, new CreatorScheduleFields(
+                ScheduleType.BIRTHDAY, "2099년 마지막 날", null,
+                Instant.parse("2099-12-31T12:00:00Z"), Instant.parse("2100-01-01T12:00:00Z"), true,
+                "Etc/GMT+12", null, null, null));
+
+        assertThat(saved.isAllDay()).isTrue();
+        assertThat(saved.getEndAt()).isEqualTo(ServiceDateRange.MAX_EXCLUSIVE);
+    }
+
+    @Test
     void 끝_시각은_저장_범위_상한과_같아도_받는다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         given(scheduleRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
         CreatorScheduleFields fields = new CreatorScheduleFields(
                 ScheduleType.OTHER, "UTC-12의 마지막 날", null,
-                Instant.parse("2099-12-31T12:00:00Z"), ServiceDateRange.MAX_EXCLUSIVE,
+                Instant.parse("2099-12-31T12:00:00Z"), ServiceDateRange.MAX_EXCLUSIVE, false,
                 "Etc/GMT+12", null, null, null);
 
         assertThat(service.create(MEMBER_ID, fields).getEndAt()).isEqualTo(ServiceDateRange.MAX_EXCLUSIVE);
@@ -252,7 +358,7 @@ class CreatorScheduleServiceTest {
     private CreatorScheduleFields validFields() {
         return new CreatorScheduleFields(
                 ScheduleType.FAN_SIGN, "서울 팬사인회", "설명",
-                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"),
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), false,
                 "Asia/Seoul", "서울", "https://img/1.png", "https://example.com");
     }
 

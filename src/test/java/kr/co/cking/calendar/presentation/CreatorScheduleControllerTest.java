@@ -66,7 +66,29 @@ class CreatorScheduleControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.scheduleId").value(100))
-                .andExpect(jsonPath("$.data.scheduleType").value("FAN_SIGN"));
+                .andExpect(jsonPath("$.data.scheduleType").value("FAN_SIGN"))
+                .andExpect(jsonPath("$.data.allDay").value(false));
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 생성은_allDay를_받아_서비스에_넘기고_없으면_false다() throws Exception {
+        given(scheduleService.create(org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.any()))
+                .willReturn(schedule());
+        String allDayBody = REQUEST_BODY.replace("\"timeZone\"", "\"allDay\": true, \"timeZone\"");
+
+        mockMvc.perform(post("/api/creator/calendar/schedules").contentType(MediaType.APPLICATION_JSON).content(allDayBody))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/creator/calendar/schedules").contentType(MediaType.APPLICATION_JSON).content(REQUEST_BODY))
+                .andExpect(status().isCreated());
+
+        org.mockito.ArgumentCaptor<kr.co.cking.calendar.application.dto.CreatorScheduleFields> captor =
+                org.mockito.ArgumentCaptor.forClass(kr.co.cking.calendar.application.dto.CreatorScheduleFields.class);
+        org.mockito.Mockito.verify(scheduleService, org.mockito.Mockito.times(2))
+                .create(org.mockito.ArgumentMatchers.eq(7L), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getAllValues())
+                .extracting(kr.co.cking.calendar.application.dto.CreatorScheduleFields::allDay)
+                .containsExactly(true, false);
     }
 
     @Test
@@ -174,7 +196,7 @@ class CreatorScheduleControllerTest {
     private CreatorSchedule schedule() {
         CreatorSchedule schedule = new CreatorSchedule(
                 7L, ScheduleType.FAN_SIGN, "서울 팬사인회", "설명",
-                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"),
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), false,
                 "Asia/Seoul", "서울", "https://img/1.png", "https://example.com", Instant.now());
         org.springframework.test.util.ReflectionTestUtils.setField(schedule, "scheduleId", 100L);
         return schedule;

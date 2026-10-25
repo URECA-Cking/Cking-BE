@@ -103,7 +103,7 @@ class PublicCreatorScheduleControllerTest {
     private CreatorSchedule schedule() {
         CreatorSchedule schedule = new CreatorSchedule(
                 42L, ScheduleType.FAN_SIGN, "서울 팬사인회", "설명",
-                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"),
+                Instant.parse("2026-10-10T05:00:00Z"), Instant.parse("2026-10-10T07:00:00Z"), false,
                 "Asia/Seoul", "서울", "https://img/1.png", "https://example.com", Instant.now());
         ReflectionTestUtils.setField(schedule, "scheduleId", 100L);
         return schedule;
