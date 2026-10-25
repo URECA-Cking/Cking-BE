@@ -5,6 +5,7 @@ import kr.co.cking.calendar.repository.MemberCalendarEntryRepository;
 import kr.co.cking.calendar.repository.MemberCalendarScheduleProjection;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.member.application.MemberQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,6 +62,17 @@ class MemberCalendarQueryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
+    void 기간_조회는_저장_범위_밖_끝값을_범위_안으로_잘라_조회한다() {
+        Instant from = Instant.parse("2099-12-01T00:00:00Z");
+        Instant to = Instant.parse("2100-01-30T00:00:00Z");
+        when(entryRepository.findSchedulesByMemberIdAndRange(MEMBER_ID, from, ServiceDateRange.MAX_EXCLUSIVE))
+                .thenReturn(List.of());
+
+        assertThat(service.findMine(MEMBER_ID, from, to)).isEmpty();
+        verify(entryRepository).findSchedulesByMemberIdAndRange(MEMBER_ID, from, ServiceDateRange.MAX_EXCLUSIVE);
     }
 
     @Test

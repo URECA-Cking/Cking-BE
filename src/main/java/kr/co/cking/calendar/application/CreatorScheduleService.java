@@ -7,6 +7,7 @@ import kr.co.cking.calendar.domain.ScheduleTimeZones;
 import kr.co.cking.calendar.repository.CreatorScheduleRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.repository.MemberRepository;
@@ -65,12 +66,17 @@ public class CreatorScheduleService {
         if (!ScheduleQueryRange.isValid(from, to)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
-        return scheduleRepository.findByCreatorIdAndRange(creator.getCreatorId(), from, to);
+        if (!ServiceDateRange.overlaps(from, to)) {
+            return List.of();
+        }
+        return scheduleRepository.findByCreatorIdAndRange(
+                creator.getCreatorId(), ServiceDateRange.clamp(from), ServiceDateRange.clamp(to));
     }
 
     private String validateAndNormalize(CreatorScheduleFields fields) {
         if (fields.scheduleType() == null || fields.title() == null || fields.title().isBlank()
                 || fields.startAt() == null || fields.endAt() == null || !fields.startAt().isBefore(fields.endAt())
+                || !ServiceDateRange.contains(fields.startAt()) || !ServiceDateRange.containsEnd(fields.endAt())
                 || !ScheduleTimeZones.isValid(fields.timeZone())) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }

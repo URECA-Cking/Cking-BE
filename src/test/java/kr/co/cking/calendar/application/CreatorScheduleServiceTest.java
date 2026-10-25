@@ -6,6 +6,7 @@ import kr.co.cking.calendar.domain.ScheduleType;
 import kr.co.cking.calendar.repository.CreatorScheduleRepository;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.domain.Member;
@@ -101,6 +102,40 @@ class CreatorScheduleServiceTest {
     }
 
     @Test
+    void 날짜가_2000_2099년_범위를_벗어나면_VALIDATION_FAILED다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.FAN_SIGN, "제목", null,
+                Instant.parse("2026-10-10T09:00:00Z"), Instant.parse("+10000-12-25T01:01:00Z"),
+                "Asia/Seoul", null, null, null);
+
+        assertThatThrownBy(() -> service.create(MEMBER_ID, fields))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
+    void 수정도_날짜가_2000_2099년_범위를_벗어나면_VALIDATION_FAILED다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        CreatorSchedule mine = new CreatorSchedule(
+                CREATOR_ID, ScheduleType.OTHER, "기존 제목", null,
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T01:00:00Z"),
+                "Asia/Seoul", null, null, null, NOW);
+        given(scheduleRepository.findById(5L)).willReturn(Optional.of(mine));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.OTHER, "제목", null,
+                Instant.parse("1945-08-15T00:00:00Z"), Instant.parse("1945-08-15T01:00:00Z"),
+                "Asia/Seoul", null, null, null);
+
+        assertThatThrownBy(() -> service.update(MEMBER_ID, 5L, fields))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(CommonErrorCode.VALIDATION_FAILED);
+        assertThat(mine.getTitle()).isEqualTo("기존 제목");
+    }
+
+    @Test
     void timeZone이_오프셋_표기면_VALIDATION_FAILED다() {
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
         CreatorScheduleFields fields = new CreatorScheduleFields(
@@ -191,6 +226,27 @@ class CreatorScheduleServiceTest {
         given(scheduleRepository.findByCreatorIdAndRange(CREATOR_ID, from, to)).willReturn(List.of(schedule));
 
         assertThat(service.findMine(MEMBER_ID, from, to)).containsExactly(schedule);
+    }
+
+    @Test
+    void 기간_조회가_저장_범위와_겹치지_않으면_조회하지_않고_빈_목록이다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+
+        assertThat(service.findMine(MEMBER_ID,
+                Instant.parse("+10000-01-01T00:00:00Z"), Instant.parse("+10000-01-02T00:00:00Z"))).isEmpty();
+        verify(scheduleRepository, never()).findByCreatorIdAndRange(any(), any(), any());
+    }
+
+    @Test
+    void 끝_시각은_저장_범위_상한과_같아도_받는다() {
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator()));
+        given(scheduleRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+        CreatorScheduleFields fields = new CreatorScheduleFields(
+                ScheduleType.OTHER, "UTC-12의 마지막 날", null,
+                Instant.parse("2099-12-31T12:00:00Z"), ServiceDateRange.MAX_EXCLUSIVE,
+                "Etc/GMT+12", null, null, null);
+
+        assertThat(service.create(MEMBER_ID, fields).getEndAt()).isEqualTo(ServiceDateRange.MAX_EXCLUSIVE);
     }
 
     private CreatorScheduleFields validFields() {
