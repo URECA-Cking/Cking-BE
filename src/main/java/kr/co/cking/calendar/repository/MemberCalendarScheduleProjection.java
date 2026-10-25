@@ -14,6 +14,7 @@ public record MemberCalendarScheduleProjection(
         String description,
         Instant startAt,
         Instant endAt,
+        boolean allDay,
         String timeZone,
         String location,
         String imageUrl,

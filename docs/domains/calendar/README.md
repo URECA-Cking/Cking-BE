@@ -14,7 +14,7 @@ Creator Space 탭 구성(`[홈] [콘텐츠] [미션] [이벤트] [팬 활동]`)�
 
 ## 소유 데이터와 경계
 
-- `creator_schedule`: 크리에이터 일정 원본. `creatorId`, `scheduleType`, `title`, `description`, `startAt`/`endAt`, `timeZone`, `location`, `imageUrl`, `externalUrl`을 가진다. 관리자 승인 절차가 없어 생성 즉시 공개된다.
+- `creator_schedule`: 크리에이터 일정 원본. `creatorId`, `scheduleType`, `title`, `description`, `startAt`/`endAt`, `allDay`(종일), `timeZone`, `location`, `imageUrl`, `externalUrl`을 가진다. 관리자 승인 절차가 없어 생성 즉시 공개된다.
 - 인덱스 `idx_creator_schedule_creator_start(creator_id, start_at, schedule_id)`는 `WHERE creator_id = ? AND start_at < :to AND end_at > :from ORDER BY start_at ASC, schedule_id ASC` 조회를 지원한다. `end_at` 조건은 인덱스만으로 걸러지지 않는 residual condition이라 `creator_id` 동등조건·`start_at` 범위조건·정렬까지만 인덱스로 처리한다. 두 범위 조건을 모두 커버하는 단일 B-tree 인덱스는 만들 수 없어 받아들인 트레이드오프다.
 
 ## Creator 판정과 소유권

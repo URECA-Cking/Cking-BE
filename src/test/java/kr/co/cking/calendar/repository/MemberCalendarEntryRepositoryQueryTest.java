@@ -68,6 +68,27 @@ class MemberCalendarEntryRepositoryQueryTest {
     }
 
     @Test
+    void 기간_조회는_종일_여부도_함께_반환한다() {
+        Member fan = memberRepository.saveAndFlush(new Member("종일 조회 팬", null, null, MemberRole.USER));
+        Member creatorMember = memberRepository.saveAndFlush(new Member("종일 조회 크리에이터", null, null, MemberRole.USER));
+        Creator creator = creatorRepository.saveAndFlush(new Creator(
+                creatorMember.getMemberId(),
+                "종일 조회 크리에이터",
+                CreatorActivityName.of("종일조회크리에이터")
+        ));
+        CreatorSchedule allDay = scheduleRepository.saveAndFlush(new CreatorSchedule(
+                creator.getCreatorId(), ScheduleType.BIRTHDAY, "종일", null,
+                Instant.parse("2026-10-09T15:00:00Z"), Instant.parse("2026-10-10T15:00:00Z"), true,
+                "Asia/Seoul", null, null, null, Instant.now()));
+        entryRepository.saveAndFlush(new MemberCalendarEntry(fan.getMemberId(), allDay.getScheduleId(), Instant.now()));
+
+        assertThat(entryRepository.findSchedulesByMemberIdAndRange(
+                fan.getMemberId(), Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-31T00:00:00Z")))
+                .extracting(MemberCalendarScheduleProjection::allDay)
+                .containsExactly(true);
+    }
+
+    @Test
     void 같은_회원이_같은_일정을_두_번_담을_수_없다() {
         Member fan = memberRepository.saveAndFlush(new Member("중복 담기 팬", null, null, MemberRole.USER));
         Member creatorMember = memberRepository.saveAndFlush(new Member("중복 담기 크리에이터", null, null, MemberRole.USER));
@@ -97,7 +118,7 @@ class MemberCalendarEntryRepositoryQueryTest {
 
     private CreatorSchedule save(Creator creator, String title, Instant startAt, Instant endAt) {
         return scheduleRepository.saveAndFlush(new CreatorSchedule(
-                creator.getCreatorId(), ScheduleType.OTHER, title, null, startAt, endAt,
+                creator.getCreatorId(), ScheduleType.OTHER, title, null, startAt, endAt, false,
                 "Asia/Seoul", null, null, null, Instant.now()));
     }
 }

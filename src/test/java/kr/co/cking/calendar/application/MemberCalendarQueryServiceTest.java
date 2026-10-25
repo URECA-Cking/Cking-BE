@@ -71,7 +71,7 @@ class MemberCalendarQueryServiceTest {
         Instant endAt = Instant.parse("2026-10-10T07:00:00Z");
         MemberCalendarScheduleProjection projection = new MemberCalendarScheduleProjection(
                 100L, 5L, "테스트 크리에이터", ScheduleType.FAN_SIGN, "서울 팬사인회", "설명",
-                startAt, endAt, "Asia/Seoul", "서울", "https://img/1.png", "https://example.com");
+                startAt, endAt, false, "Asia/Seoul", "서울", "https://img/1.png", "https://example.com");
         when(entryRepository.findSchedulesByMemberIdAndRange(MEMBER_ID, from, to)).thenReturn(List.of(projection));
 
         List<MemberCalendarScheduleResult> results = service.findMine(MEMBER_ID, from, to);
