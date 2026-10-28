@@ -23,6 +23,10 @@ public class ObjectStorageConfig {
     // 게시글 이미지 10분이 들어가고, EC2 역할 자격 증명 교체 주기보다 짧은 값
     private static final Duration MAX_PRESIGNED_TTL = Duration.ofHours(1);
 
+    // 개발 서버 실측 S3 호출 최악 약 0.7초. 전체 제한은 시도 두 번 + 재시도 간격 (#773)
+    static final Duration S3_CALL_ATTEMPT_TIMEOUT = Duration.ofSeconds(3);
+    static final Duration S3_CALL_TIMEOUT = Duration.ofSeconds(7);
+
     @Bean
     @ConditionalOnProperty(name = "cking.storage.type", havingValue = "memory", matchIfMissing = true)
     public ObjectStorage inMemoryObjectStorage() {
@@ -39,7 +43,11 @@ public class ObjectStorageConfig {
 
         @Bean(destroyMethod = "close")
         S3Client s3Client(ObjectStorageProperties properties) {
-            S3ClientBuilder builder = S3Client.builder().region(Region.of(properties.region()));
+            S3ClientBuilder builder = S3Client.builder()
+                    .region(Region.of(properties.region()))
+                    .overrideConfiguration(c -> c
+                            .apiCallAttemptTimeout(S3_CALL_ATTEMPT_TIMEOUT)
+                            .apiCallTimeout(S3_CALL_TIMEOUT));
             if (properties.endpoint() != null) {
                 builder.endpointOverride(properties.endpoint())
                         .forcePathStyle(true)
