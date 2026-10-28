@@ -23,4 +23,14 @@ public interface ImageUploadRepository extends JpaRepository<ImageUpload, String
     @Modifying
     @Query("update ImageUpload u set u.status = kr.co.cking.upload.domain.ImageUploadStatus.FAILED, u.failureReason = :reason, u.completedAt = :now where u.objectKey = :key and u.status = kr.co.cking.upload.domain.ImageUploadStatus.PENDING")
     int markFailed(@Param("key") String key, @Param("reason") String reason, @Param("now") Instant now);
+
+    @Transactional
+    @Modifying
+    @Query("update ImageUpload u set u.status = kr.co.cking.upload.domain.ImageUploadStatus.FAILED, u.failureReason = 'expired', u.completedAt = :now where u.status = kr.co.cking.upload.domain.ImageUploadStatus.PENDING and u.createdAt < :cutoff")
+    int expirePending(@Param("cutoff") Instant cutoff, @Param("now") Instant now);
+
+    @Transactional
+    @Modifying
+    @Query(value = "delete from image_upload where created_at < :cutoff limit :limit", nativeQuery = true)
+    int deleteCreatedBefore(@Param("cutoff") Instant cutoff, @Param("limit") int limit);
 }
