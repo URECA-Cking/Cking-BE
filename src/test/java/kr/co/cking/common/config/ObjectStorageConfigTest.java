@@ -23,4 +23,11 @@ class ObjectStorageConfigTest {
             assertThat(ObjectStorageConfig.S3_CALL_TIMEOUT).isGreaterThan(ObjectStorageConfig.S3_CALL_ATTEMPT_TIMEOUT);
         }
     }
+
+    /** #778: 연결이 안 되면 IP 8개를 차례로 시도하는데, 그동안은 제한 시간이 끊지 못한다. 한 시도 안에 끝나야 한다. */
+    @Test
+    void 연결_대기는_풀린_주소를_모두_시도해도_시도당_제한_시간_안에_끝난다() {
+        assertThat(ObjectStorageConfig.S3_CONNECT_TIMEOUT.multipliedBy(ObjectStorageConfig.S3_RESOLVED_ADDRESSES))
+                .isLessThan(ObjectStorageConfig.S3_CALL_ATTEMPT_TIMEOUT);
+    }
 }
