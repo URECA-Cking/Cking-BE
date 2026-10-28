@@ -3,6 +3,8 @@ package kr.co.cking.common.storage;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -15,6 +17,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 public class S3ObjectStorage implements ObjectStorage {
 
@@ -91,6 +95,30 @@ public class S3ObjectStorage implements ObjectStorage {
                 .build();
         try {
             return presigner.presignGetObject(request).url().toURI();
+        } catch (URISyntaxException | SdkException e) {
+            throw new ObjectStorageException("presign failed: " + objectKey, e);
+        }
+    }
+
+    @Override
+    public PresignedUpload presignedPut(String objectKey, String contentType, long contentLength,
+                                        Map<String, String> metadata, Duration ttl) {
+        ObjectStorageArguments.requireKey(objectKey);
+        ObjectStorageArguments.requirePresignedTtl(ttl, maxPresignedTtl);
+        PutObjectPresignRequest request = PutObjectPresignRequest.builder()
+                .signatureDuration(ttl)
+                .putObjectRequest(builder -> builder.bucket(bucket).key(objectKey)
+                        .contentType(contentType).contentLength(contentLength).metadata(metadata))
+                .build();
+        try {
+            PresignedPutObjectRequest presigned = presigner.presignPutObject(request);
+            Map<String, String> headers = new LinkedHashMap<>();
+            presigned.signedHeaders().forEach((name, values) -> {
+                if (!name.equalsIgnoreCase("host") && !name.equalsIgnoreCase("content-length")) {
+                    headers.put(name, String.join(",", values));
+                }
+            });
+            return new PresignedUpload(presigned.url().toURI(), headers);
         } catch (URISyntaxException | SdkException e) {
             throw new ObjectStorageException("presign failed: " + objectKey, e);
         }

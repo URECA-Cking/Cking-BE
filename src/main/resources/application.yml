@@ -132,6 +132,9 @@ cking:
         window: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_WINDOW:PT10M}
         threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_THRESHOLD:5}
         consecutive-threshold: ${CKING_ABUSE_YOUTUBE_NEGATIVE_DECISION_CONSECUTIVE_THRESHOLD:3}
+  # 앱 밖 이미지 파이프라인 결과 큐(#780). 비어 있으면 업로드 예약 API와 결과 소비가 꺼지고 기존 업로드만 쓴다.
+  image-pipeline:
+    results-queue-url: ${IMAGE_PIPELINE_RESULTS_QUEUE_URL:}
   image-processing:
     # 20MP 한 장이 heap 약 80MiB를 쓰고, 동시 4장부터 GCLocker로 OutOfMemoryError가 났다(로컬 측정). CPU 2개라 처리량도 2에서 멈춘다.
     max-concurrent: 2

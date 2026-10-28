@@ -43,6 +43,18 @@ public class PostImageUploadService {
         return objectKey;
     }
 
+    /** 정규화를 앱 밖 파이프라인에 맡길 때 권한 확인과 업로드 기록만 먼저 만든다(#780). */
+    public String reserve(Long memberId) {
+        Creator creator = authorLookup.requireConfiguredCreator(memberId);
+        String objectKey = objectKey(creator.getCreatorId());
+        imageRepository.save(CreatorPostImage.uploading(objectKey, creator.getCreatorId(), clock.instant()));
+        return objectKey;
+    }
+
+    public boolean markUploaded(String objectKey) {
+        return imageRepository.markUploaded(objectKey, clock.instant()) == 1;
+    }
+
     static String objectKey(Long creatorId) {
         return "post-images/%d/%s.jpg".formatted(creatorId, UUID.randomUUID());
     }
