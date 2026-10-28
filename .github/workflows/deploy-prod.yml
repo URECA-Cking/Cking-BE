@@ -138,6 +138,17 @@ jobs:
           sudo mv "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
           k6 version
 
+      # 운영 API 앞 비밀 쿠키 게이트(WAF)를 스모크가 통과하게 한다. 값이 없으면 헤더 없이 진행한다.
+      - name: 게이트 값 읽기
+        if: steps.order.outputs.deploy != 'false'
+        run: |
+          if GATE_SECRET=$(aws ssm get-parameter --name /cking/prod/GATE_SECRET --with-decryption --query Parameter.Value --output text 2>/dev/null); then
+            echo "::add-mask::$GATE_SECRET"
+            echo "GATE_SECRET=$GATE_SECRET" >> "$GITHUB_ENV"
+          else
+            echo "::warning::/cking/prod/GATE_SECRET을 읽지 못해 게이트 헤더 없이 스모크를 실행한다"
+          fi
+
       # 서버 안 검사가 보지 못하는 ALB·인증서·WAF 경로까지 사용자와 같은 경로로 확인한다.
       - name: 스모크 테스트
         id: smoke
