@@ -36,8 +36,7 @@ public class EventBannerImageUploadService {
     private final Clock clock;
 
     public String upload(Long memberId, byte[] bytes) {
-        Creator creator = creatorRepository.findByMemberId(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        Creator creator = requireCreator(memberId);
         NormalizedImage image;
         try {
             image = imageNormalizer.normalize(bytes, BANNER_POLICY);
@@ -50,5 +49,22 @@ public class EventBannerImageUploadService {
         objectStorage.put(key, image.normalizedImageBytes(), "image/jpeg");
         imageRepository.markUploaded(key, clock.instant());
         return key;
+    }
+
+    /** 정규화를 앱 밖 파이프라인에 맡길 때 권한 확인과 업로드 기록만 먼저 만든다(#780). */
+    public String reserve(Long memberId) {
+        Creator creator = requireCreator(memberId);
+        String key = KEY_FORMAT.formatted(creator.getCreatorId(), UUID.randomUUID());
+        imageRepository.save(EventBannerImage.uploading(key, creator.getCreatorId(), clock.instant()));
+        return key;
+    }
+
+    public boolean markUploaded(String key) {
+        return imageRepository.markUploaded(key, clock.instant()) == 1;
+    }
+
+    private Creator requireCreator(Long memberId) {
+        return creatorRepository.findByMemberId(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
     }
 }

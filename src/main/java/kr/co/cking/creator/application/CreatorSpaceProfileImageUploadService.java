@@ -52,6 +52,25 @@ public class CreatorSpaceProfileImageUploadService {
         return store(key, image);
     }
 
+    /** 정규화를 앱 밖 파이프라인에 맡길 때 권한 확인과 업로드 기록만 먼저 만든다(#780). */
+    public String reserve(Long memberId) {
+        Creator creator = requireCreatorWithSpace(memberId);
+        String key = "%s%d/%s.jpg".formatted(KEY_PREFIX, creator.getCreatorId(), UUID.randomUUID());
+        imageRepository.save(CreatorSpaceProfileImage.uploading(key, creator.getCreatorId(), clock.instant()));
+        return key;
+    }
+
+    public String reserveBanner(Long memberId) {
+        Creator creator = requireCreatorWithSpace(memberId);
+        String key = "%s%d/banner/%s.jpg".formatted(KEY_PREFIX, creator.getCreatorId(), UUID.randomUUID());
+        imageRepository.save(CreatorSpaceProfileImage.uploadingBanner(key, creator.getCreatorId(), clock.instant()));
+        return key;
+    }
+
+    public boolean markUploaded(String key) {
+        return imageRepository.markUploaded(key, clock.instant()) == 1;
+    }
+
     private Creator requireCreatorWithSpace(Long memberId) {
         Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));

@@ -58,6 +58,8 @@ services:
       # 필터는 application-dev.yml에서 켠다. 아래 값은 deploy.sh가 넘길 때만 전달한다(개발은 주소, 부하 테스트는 끄기).
       COMMENT_FILTER_ENABLED:
       COMMENT_FILTER_BASE_URL:
+      # 이미지 파이프라인 결과 큐. deploy.sh가 넘길 때만 전달한다(없으면 기존 업로드만).
+      IMAGE_PIPELINE_RESULTS_QUEUE_URL:
       # 지급 완료 알림은 application-dev.yml에서 켠다. deploy.sh가 끄는 값을 넘길 때만 전달한다(부하 테스트).
       TICKET_REWARD_NOTIFICATION_ENABLED:
       # 추천 배치 인증 해시. deploy.sh가 넘길 때만 전달한다(개발만. 부하 테스트는 비어 키 인증이 꺼진다).
