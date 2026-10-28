@@ -65,7 +65,7 @@ export function enter(memberId, eventId, tags = {}, { requestId = uuid(), token 
   return { requestId, status: response.status, code };
 }
 
-function tokenOf(memberId) {
+export function tokenOf(memberId) {
   return tokens[memberId - CREATORS - 1];
 }
 

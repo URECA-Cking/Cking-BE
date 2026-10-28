@@ -18,6 +18,7 @@
 | `closing-burst.js` | k6 서버 | 마감 직전 몰림 | 종료 시각 전후로 일정한 도착률 |
 | `draw.js` | k6 서버 | 추첨 | 마감된 이벤트로 추첨 실행 → 재현 검증 |
 | `race.js` | k6 서버 | 동시 요청 | 같은 requestId 동시 재전송, 잔액보다 많은 동시 응모 |
+| `image-upload.js` | k6 서버 | 이미지 업로드 | 회원 프로필 이미지를 고정 도착률로 올리며 조회를 함께 보낸다. `MODE=legacy`(앱 안 정규화) / `MODE=pipeline`(예약 → S3 PUT → 상태 확인) |
 | `verify.sh` | 테스트 앱 서버 | 검증 | 처리 완료, Redis·DB 잔액, 잔액·원장, 마감 경계, Snapshot 생성 시간, 동시 요청 회원 잔액 |
 | `lib/token.js`, `lib/api.js` | | | Access Token 생성(HS256, 메모리에서만), 응모 요청·결과 기록 |
 
@@ -95,8 +96,21 @@ mkdir -p results
 | 마감 직전 몰림 | 테스트 앱 서버에서 `seed-closing.sql` 실행(`SET @closing_creator = 1, @closing_minutes = 5;`) → 출력의 `closing_event_id`, `end_at_ms`로 `CLOSING_EVENT_ID=… END_AT_MS=… RATE=… DURATION=… k6 run closing-burst.js` | 종료 시각 전에 시작해 종료 뒤까지 이어지게 DURATION을 정한다 |
 | 추첨 | 이벤트가 CLOSED가 된 뒤 `CLOSING_EVENT_ID=… ADMIN_MEMBER_ID=… k6 run draw.js` | `verify.sh <이벤트 ID>`의 status로 CLOSED 확인 |
 | 동시 요청 | `RACE_FIRST_MEMBER_ID=… ROUNDS=20 CONCURRENCY=50 k6 run race.js` | 회원마다 예열 1건 뒤, 라운드마다 모든 VU가 같은 시각에 보낸다(`ROUND_GAP_MS`, 기본 1초) |
+| 이미지 업로드 | `MODE=legacy RATE=2 k6 run image-upload.js` → 도착률 4·8·16, 파이프라인을 켠 뒤 `MODE=pipeline`으로 같은 도착률 | 아래 [이미지 업로드](#이미지-업로드) |
 
 k6가 목표 도착률을 못 맞추면(`dropped_iterations`) 실행이 멈춘다. 부하 발생기 한계이므로 k6 서버 크기를 올린다.
+
+#### 이미지 업로드
+
+파이프라인(#780)을 켜기 전·후를 같은 도착률로 비교한다. 응모 시나리오와 별개로 돌린다.
+
+- 원본 이미지 두 장을 k6 서버 `/opt/loadtest/images/`에 둔다: `img-12mp.jpg`(약 3.9MB), `img-20mp.jpg`(약 5.1MB, `LARGE_RATIO` 기본 0.2 비율). 경로는 `IMAGE_SMALL`·`IMAGE_LARGE`로 바꿀 수 있다
+- 원본은 `k6/experimental/fs`로 한 번만 읽어 VU끼리 나눠 쓴다. VU마다 사본을 두면(`open(…, 'b')`) 원본 약 9MB × VU 수라 k6 서버 메모리가 먼저 찬다(개발 측정에서 c7g.large가 16건/초에 종료됨)
+- 환경 변수: `MODE`(필수), `RATE`(필수, 업로드 건/초), `DURATION`(기본 2m), `PROBE_RATE`(조회 건/초, 기본 10), `PRE_VUS`(기본 RATE × 6), `MAX_VUS`(기본 RATE × 40)
+- 업로드 회원은 시딩한 일반 회원을 순서대로 쓴다. 올린 이미지는 프로필에 연결하지 않아 정리 스케줄러가 지운다
+- 파이프라인 모드는 FE와 같은 간격(3초까지 0.5초, 6초까지 1초, 그 뒤 2초)으로 상태를 확인하고 30초가 넘으면 `timeout`으로 센다. 파이프라인이 꺼져 있으면 예약이 404라 모두 `reserve_fail`이 된다
+- 결과: `upload_results{result:…}`(파이프라인 `ready`·`failed`·`timeout`·`reserve_fail`·`put_fail`, 기존 `created`·`rejected`), `upload_end_to_end`(예약부터 READY까지), 조회 `http_req_duration{name:probe}`·`http_req_failed{name:probe}`
+- 함께 볼 것: 앱 컨테이너 재시작·OOM(`docker events --filter event=oom`), 정규화 Lambda 동시 실행·스로틀, 작업 큐 가장 오래된 메시지, 두 DLQ
 
 ### 5. 정합성 검증
 
