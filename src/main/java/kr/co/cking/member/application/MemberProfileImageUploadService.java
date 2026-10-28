@@ -30,18 +30,34 @@ public class MemberProfileImageUploadService {
     private final Clock clock;
 
     public String upload(Long memberId, byte[] imageBytes) {
-        if (!memberRepository.existsById(memberId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
-        }
-        if (creatorQueryService.isCreatorMember(memberId)) {
-            throw new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE);
-        }
+        requireProfileOwner(memberId);
         NormalizedImage image = imageProcessor.process(imageBytes);
         String objectKey = objectKey(memberId);
         profileImageRepository.save(MemberProfileImage.uploading(objectKey, memberId, clock.instant()));
         objectStorage.put(objectKey, image.normalizedImageBytes(), CONTENT_TYPE);
         profileImageRepository.markUploaded(objectKey, clock.instant());
         return objectKey;
+    }
+
+    /** 정규화를 앱 밖 파이프라인에 맡길 때 권한 확인과 업로드 기록만 먼저 만든다(#780). */
+    public String reserve(Long memberId) {
+        requireProfileOwner(memberId);
+        String objectKey = objectKey(memberId);
+        profileImageRepository.save(MemberProfileImage.uploading(objectKey, memberId, clock.instant()));
+        return objectKey;
+    }
+
+    public boolean markUploaded(String objectKey) {
+        return profileImageRepository.markUploaded(objectKey, clock.instant()) == 1;
+    }
+
+    private void requireProfileOwner(Long memberId) {
+        if (!memberRepository.existsById(memberId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+        if (creatorQueryService.isCreatorMember(memberId)) {
+            throw new BusinessException(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE);
+        }
     }
 
     static String objectKey(Long memberId) {

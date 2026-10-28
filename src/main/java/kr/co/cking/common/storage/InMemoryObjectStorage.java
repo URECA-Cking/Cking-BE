@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.Map;
 import java.util.HexFormat;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,6 +65,21 @@ public class InMemoryObjectStorage implements ObjectStorage {
             return HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(content));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    @Override
+    public PresignedUpload presignedPut(String objectKey, String contentType, long contentLength,
+                                        Map<String, String> metadata, Duration ttl) {
+        ObjectStorageArguments.requireKey(objectKey);
+        ObjectStorageArguments.requirePresignedTtl(ttl, maxPresignedTtl);
+        Map<String, String> headers = new java.util.LinkedHashMap<>();
+        headers.put("content-type", contentType);
+        metadata.forEach((name, value) -> headers.put("x-amz-meta-" + name, value));
+        try {
+            return new PresignedUpload(new URI("memory", null, "/" + objectKey, "ttl=" + ttl.toSeconds(), null), headers);
+        } catch (URISyntaxException e) {
+            throw new ObjectStorageException("invalid object key: " + objectKey, e);
         }
     }
 }

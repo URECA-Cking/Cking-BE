@@ -104,4 +104,30 @@ class MemberProfileImageUploadServiceTest {
     private NormalizedImage normalized() {
         return new NormalizedImage(NORMALIZED, "source", "normalized", "JPEG_V1", 300, 300);
     }
+
+    /** #780: 정규화를 앱 밖 파이프라인에 맡길 때는 권한 확인과 업로드 기록만 남기고 저장소에는 쓰지 않는다. */
+    @Test
+    void 예약은_같은_권한_확인_뒤_UPLOADING_기록만_남긴다() {
+        given(memberRepository.existsById(MEMBER_ID)).willReturn(true);
+
+        String imageKey = service.reserve(MEMBER_ID);
+
+        assertThat(imageKey).matches("member-profile-images/10/[0-9a-f-]{36}\\.jpg");
+        ArgumentCaptor<MemberProfileImage> saved = ArgumentCaptor.forClass(MemberProfileImage.class);
+        org.mockito.Mockito.verify(imageRepository).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo(MemberProfileImageStatus.UPLOADING);
+        verifyNoInteractions(imageProcessor, objectStorage);
+    }
+
+    @Test
+    void 크리에이터는_회원_프로필_이미지를_예약할_수_없다() {
+        given(memberRepository.existsById(MEMBER_ID)).willReturn(true);
+        given(creatorQueryService.isCreatorMember(MEMBER_ID)).willReturn(true);
+
+        assertThatThrownBy(() -> service.reserve(MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(MemberErrorCode.CREATOR_PROFILE_MANAGED_IN_SPACE);
+        verifyNoInteractions(imageRepository);
+    }
 }
