@@ -1,6 +1,7 @@
 // 배포 후 서버의 주요 경로를 검증한다. 운영은 API 문서를 끄므로 DOCS_DISABLED=1로 문서가 없는지 확인한다.
 // 운영 새 서버는 ALB에 붙기 전에 이 파일로 자기 자신을 검사한다(BASE_URL=http://localhost:8080).
 // 이때 PUBLIC_BASE_URL에 공개 주소를 주면 ALB가 붙이는 X-Forwarded-* 헤더를 흉내 내 같은 기대값으로 검사한다.
+// GATE_SECRET이 있으면 운영 API 앞 비밀 쿠키 게이트(WAF)를 통과하는 헤더를 붙인다.
 import http from 'k6/http';
 import { check } from 'k6';
 
@@ -9,6 +10,7 @@ const FRONTEND_ORIGIN = __ENV.FRONTEND_ORIGIN || 'https://dev.cking.co.kr';
 const EXPECTED_IMAGE_TAG = __ENV.EXPECTED_IMAGE_TAG || '';
 const DOCS_DISABLED = __ENV.DOCS_DISABLED === '1';
 const PUBLIC_BASE_URL = __ENV.PUBLIC_BASE_URL || BASE_URL;
+const GATE_HEADERS = __ENV.GATE_SECRET ? { 'x-cking-gate': __ENV.GATE_SECRET } : {};
 const FORWARDED_HEADERS = PUBLIC_BASE_URL === BASE_URL ? {} : {
   'X-Forwarded-Proto': 'https',
   'X-Forwarded-Host': PUBLIC_BASE_URL.replace(/^https?:\/\//, ''),
@@ -16,7 +18,7 @@ const FORWARDED_HEADERS = PUBLIC_BASE_URL === BASE_URL ? {} : {
 };
 
 function params(extra = {}) {
-  return { ...extra, headers: { ...FORWARDED_HEADERS, ...(extra.headers || {}) } };
+  return { ...extra, headers: { ...GATE_HEADERS, ...FORWARDED_HEADERS, ...(extra.headers || {}) } };
 }
 
 export const options = {
