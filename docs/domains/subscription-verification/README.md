@@ -78,7 +78,7 @@ APPROVED
 
 채널명은 동일성의 최종 기준이 아니다. handle은 trim 후 앞의 `@`를 하나만 두고 `Locale.ROOT` 기준으로 소문자화한다. handle 본문은 Unicode 문자·숫자와 `.`, `_`, `-`만 허용하며 공백·URL 구분자는 거부한다. 소유권의 최종 식별자는 `youtube_channel_id`다. 기존 수동 등록 채널은 V97에서 모두 `UNVERIFIED`로 이관하고 인증·보상 이력은 유지한다.
 
-채널 연결은 기존 Google·Kakao 로그인과 분리한다. JWT로 Creator를 확인한 뒤 Redis에 시작 회원·Creator·handle·PKCE verifier를 10분간 저장하고 state와 브라우저 쿠키를 결합해 한 번 소비한다. Google `mine=true`와 입력 handle의 `forHandle`이 동일 채널 ID를 가리켜야 한다. 토큰은 조회 후 폐기하고 DB 잠금은 Provider 호출 뒤에만 획득한다. 처리 중 Verification은 동결된 기존 채널 정보로 완료한다. 신규 제출은 잠금 안에서 VERIFIED를 재검사한다.
+채널 연결은 기존 Google·Kakao 로그인과 분리한다. JWT로 Creator를 확인한 뒤 Redis에 시작 회원·Creator·handle·PKCE verifier를 10분간 저장하고 state와 브라우저 쿠키를 결합해 한 번 소비한다. Google `mine=true`와 입력 handle의 `forHandle`이 동일 채널 ID를 가리켜야 한다. 액세스 토큰은 조회 후 저장하지 않고 DB 잠금은 Provider 호출 뒤에만 획득한다. 처리 중 Verification은 동결된 기존 채널 정보로 완료한다. 신규 제출은 잠금 안에서 VERIFIED를 재검사한다. 새 채널의 VLM 승인 후보는 별도 YouTube Data API key로 현재 handle의 채널 ID를 재확인해야 최종 승인한다.
 
 Creator 본인만 채널을 생성·수정한다. Creator는 JWT role이 아니므로 인증된 `memberId`로 `creator.member_id`를 조회해 소유권을 확인한다. 삭제 API는 제공하지 않는다.
 

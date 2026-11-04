@@ -28,6 +28,7 @@ class GoogleYoutubeOAuthClientTest {
     private final GoogleYoutubeOAuthClient client = spy(new GoogleYoutubeOAuthClient(
             "google-client", "google-secret", "https://dev-api.cking.co.kr/login/oauth2/code/youtube"));
 
+
     @Test
     void 핸들_채널이_로그인_계정의_소유_목록에_있을_때만_확인한다() {
         doReturn("access-token").when(client).exchangeCode(anyString(), anyString());
@@ -161,6 +162,20 @@ class GoogleYoutubeOAuthClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_UNAVAILABLE);
+        server.verify();
+    }
+
+    @Test
+    void 현재_핸들이_가리키는_채널_ID를_공개_API로_재확인한다() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GoogleYoutubeOAuthClient real = new GoogleYoutubeOAuthClient("id", "secret", "api-key", "redirect",
+                builder.build());
+        server.expect(requestTo("https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=@official&key=api-key"))
+                .andRespond(withSuccess("{\"items\":[{\"id\":\"UCabcdefghijklmnopqrstuv\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(real.currentChannelId("@official")).isEqualTo("UCabcdefghijklmnopqrstuv");
         server.verify();
     }
 

@@ -76,8 +76,8 @@ public class CreatorYoutubeChannelService {
 
         String channelName = normalizeName(command);
         String channelHandle = normalizeHandle(command);
-        // Creator row is the shared lock for channel writes and verification submissions.
-        // Avoid SELECT FOR UPDATE on an absent channel row: its gap lock can deadlock cross-Creator inserts.
+        // Creator 행이 채널 변경과 인증 제출의 공통 잠금이다.
+        // 채널 행이 없을 때 SELECT FOR UPDATE의 gap lock은 Creator 간 삽입 교착을 일으킬 수 있다.
         CreatorYoutubeChannel existing = channelRepository.findById(creatorId).orElse(null);
 
         if (existing != null && existing.hasSameConfiguration(channelName, channelHandle)) {
@@ -102,7 +102,7 @@ public class CreatorYoutubeChannelService {
         return new CreatorYoutubeChannelUpsertResult(created, true);
     }
 
-    /** The OAuth request is checked outside this transaction; the Creator lock serializes channel changes and submissions. */
+    /** OAuth 확인은 트랜잭션 밖에서 하고 Creator 잠금으로 채널 변경과 제출을 직렬화한다. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public CreatorYoutubeChannel connectVerified(Long memberId, Long expectedCreatorId,
             String channelId, String channelName,

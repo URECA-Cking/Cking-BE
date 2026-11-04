@@ -111,12 +111,11 @@ public class SecurityConfig {
                 .build();
     }
 
-    /** Channel ownership callback has its own public route and cannot enter the login filter. */
+    /** YouTube 채널 연결 콜백을 로그인 필터와 분리한다. GET 요청에는 CSRF 검증이 적용되지 않는다. */
     @Bean
     @Order(3)
     public SecurityFilterChain youtubeConnectionCallbackSecurityFilterChain(HttpSecurity http) throws Exception {
         return http.securityMatcher("/login/oauth2/code/youtube")
-                .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
                 .build();

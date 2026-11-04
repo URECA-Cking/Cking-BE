@@ -4,7 +4,7 @@
 
 ## 자동 E2E
 
-`YoutubeSubscriptionVerificationE2EIntegrationTest`는 외부 모델의 비용·장애·비결정성을 제외하기 위해 `VisionAnalysisPort`만 결정론적 테스트 구현으로 교체한다. 나머지는 실제 Spring Bean, MySQL, Redis Lua, EARN Stream Consumer를 사용한다.
+`YoutubeSubscriptionVerificationE2EIntegrationTest`는 외부 모델과 YouTube Data API의 비용·장애·비결정성을 제외하기 위해 `VisionAnalysisPort`와 채널 ID 재확인 Service를 결정론적 테스트 구현으로 교체한다. 나머지는 실제 Spring Bean, MySQL, Redis Lua, EARN Stream Consumer를 사용한다.
 
 검증 범위:
 
@@ -30,9 +30,12 @@
 
 - Google Cloud Console에 `https://dev-api.cking.co.kr/login/oauth2/code/youtube`를 Authorized redirect URI로 등록하고 `youtube.readonly` 동의 화면의 Testing 사용자 목록에 검증 계정을 추가한다.
 - 서울 리전 AWS Systems Manager Parameter Store의 `/cking/dev/OAUTH_YOUTUBE_CLIENT_ID`(String), `/cking/dev/OAUTH_YOUTUBE_CLIENT_SECRET`(SecureString)에 별도 YouTube OAuth 클라이언트 자격 증명을 입력한다. `deploy.sh`는 값이 등록된 경우에만 읽어 컨테이너에 전달한다. 값을 바꾸면 재배포한다. 실제 값은 저장소·Issue·PR·로그에 넣지 않는다.
+- 같은 Google Cloud 프로젝트에서 YouTube Data API v3를 활성화하고 제한된 API key를 `/cking/dev/OAUTH_YOUTUBE_API_KEY`(SecureString)에 저장한다. 검증된 채널의 구독 인증을 최종 승인할 때 현재 handle의 채널 ID를 다시 조회한다. key가 없거나 조회가 실패하면 승인·보상을 진행하지 않고 Recovery에 맡긴다.
+- OAuth·채널 조회의 기본 connect/read timeout은 각각 `PT5S`·`PT10S`다. 운영상 조정이 필요하면 `OAUTH_YOUTUBE_CONNECT_TIMEOUT`·`OAUTH_YOUTUBE_READ_TIMEOUT`을 Parameter Store에 넣고 재배포한다.
 - 소유권 연결 API가 503이면 두 환경변수 주입과 Google API 접근을 확인한다. 기존 Google 로그인 클라이언트 자격 증명과 혼용하지 않는다.
-- 운영에 연결 기능을 열 때는 별도 운영 OAuth 클라이언트에 `https://api.cking.co.kr/login/oauth2/code/youtube`를 등록하고 `/cking/prod/OAUTH_YOUTUBE_CLIENT_ID`·`/cking/prod/OAUTH_YOUTUBE_CLIENT_SECRET`을 설정한 뒤 배포한다. 운영 자격 증명이 없으면 연결 시작 API만 503이다.
+- 운영에 연결 기능을 열 때는 별도 운영 OAuth 클라이언트에 `https://api.cking.co.kr/login/oauth2/code/youtube`를 등록하고 `/cking/prod/OAUTH_YOUTUBE_CLIENT_ID`·`/cking/prod/OAUTH_YOUTUBE_CLIENT_SECRET`·`/cking/prod/OAUTH_YOUTUBE_API_KEY`를 설정한 뒤 배포한다. OAuth 자격 증명이 없으면 연결 시작 API는 503이고, API key가 없으면 새 채널의 구독 인증은 승인되지 않는다.
 - 기존 수동 채널은 V97에서 `UNVERIFIED`가 되어 미션 노출과 신규 이미지 제출이 중단된다. Creator가 채널을 OAuth로 다시 연결한 뒤 재개한다. 기존 접수·보상 이력은 유지한다.
+- 이 변경을 포함한 BE를 먼저 `develop`에 머지하면 개발 서버에서 미검증 구독 미션이 즉시 숨겨진다. FE 연결 화면·결과 처리 PR이 준비된 뒤 머지·배포 순서를 맞춘다. 처리 중인 기존 인증이 끝나야 해당 Creator의 첫 OAuth 연결을 완료할 수 있다.
 
 - `application-dev.yml`의 `cking.storage.type: s3`, 버킷·리전과 EC2 IAM Role 권한을 확인한다.
 - S3 `subscription-verifications/` prefix에 30일 Lifecycle 만료 규칙을 적용한다.

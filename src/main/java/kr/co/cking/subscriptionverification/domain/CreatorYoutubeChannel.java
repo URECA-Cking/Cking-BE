@@ -76,7 +76,7 @@ public class CreatorYoutubeChannel {
         this.verifiedAt = null;
     }
 
-    /** OAuth ownership and public handle lookup must resolve to the same channel ID before this call. */
+    /** OAuth 소유 채널과 공개 핸들 조회가 같은 채널 ID를 가리킨 뒤 호출한다. */
     public void verify(String channelId, String channelName, String channelHandle, Instant now) {
         if (channelId == null || !channelId.matches("UC[A-Za-z0-9_-]{22}") || now == null) {
             throw new IllegalArgumentException("YouTube 채널 ID가 유효하지 않습니다.");

@@ -1,14 +1,13 @@
 package kr.co.cking.subscriptionverification.infrastructure.youtube;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
@@ -18,7 +17,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.subscriptionverification.application.YoutubeChannelOwnershipClient;
 import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 
-/** One-time YouTube ownership lookup. Provider credentials and tokens never leave this backend. */
+/** YouTube 소유 채널을 조회하고 OAuth 토큰은 저장하지 않는다. */
 @Component
 public class GoogleYoutubeOAuthClient implements YoutubeChannelOwnershipClient {
 
@@ -29,6 +28,7 @@ public class GoogleYoutubeOAuthClient implements YoutubeChannelOwnershipClient {
 
     private final String clientId;
     private final String clientSecret;
+    private final String apiKey;
     private final String redirectUri;
     private final RestClient client;
 
@@ -36,22 +36,23 @@ public class GoogleYoutubeOAuthClient implements YoutubeChannelOwnershipClient {
     public GoogleYoutubeOAuthClient(
             @Value("${cking.youtube-oauth.client-id:}") String clientId,
             @Value("${cking.youtube-oauth.client-secret:}") String clientSecret,
-            @Value("${cking.youtube-oauth.redirect-uri:}") String redirectUri
+            @Value("${cking.youtube-oauth.api-key:}") String apiKey,
+            @Value("${cking.youtube-oauth.redirect-uri:}") String redirectUri,
+            @Qualifier("youtubeOAuthRestClient") RestClient client
     ) {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
+        this.apiKey = apiKey;
         this.redirectUri = redirectUri;
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(5));
-        factory.setReadTimeout(Duration.ofSeconds(10));
-        this.client = RestClient.builder().requestFactory(factory).build();
+        this.client = client;
     }
 
     GoogleYoutubeOAuthClient(String clientId, String clientSecret, String redirectUri, RestClient client) {
-        this.clientId = clientId;
-        this.clientSecret = clientSecret;
-        this.redirectUri = redirectUri;
-        this.client = client;
+        this(clientId, clientSecret, "", redirectUri, client);
+    }
+
+    GoogleYoutubeOAuthClient(String clientId, String clientSecret, String redirectUri) {
+        this(clientId, clientSecret, "", redirectUri, RestClient.create());
     }
 
     @Override
@@ -136,6 +137,25 @@ public class GoogleYoutubeOAuthClient implements YoutubeChannelOwnershipClient {
             throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_MISMATCH);
         }
         return new OwnedChannel(selected.id(), selected.snippet().title(), requestedHandle);
+    }
+
+    @Override
+    public String currentChannelId(String handle) {
+        if (apiKey.isBlank()) {
+            throw unavailable();
+        }
+        String url = UriComponentsBuilder.fromUriString(CHANNELS_URL)
+                .queryParam("part", "id").queryParam("forHandle", handle)
+                .queryParam("key", apiKey).build().encode().toUriString();
+        try {
+            ChannelsResponse response = client.get().uri(url).retrieve().body(ChannelsResponse.class);
+            if (response == null || response.items() == null || response.items().size() != 1) {
+                return null;
+            }
+            return response.items().getFirst().id();
+        } catch (RestClientException exception) {
+            throw unavailable();
+        }
     }
 
     private List<Channel> channels(String accessToken, String url) {

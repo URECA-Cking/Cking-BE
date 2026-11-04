@@ -59,7 +59,7 @@
 - 권한: CREATOR, Bearer Access JWT 필수. `memberId`에서 Creator 소유권을 확인한다.
 - 본문: `{ "channelHandle": "@unexpectedfilm" }` (기존 설정 여부와 무관하게 사용 가능)
 - 응답 `data`: `{ "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth?..." }`
-- `cking_youtube_connection` HttpOnly·SameSite=Lax 쿠키를 함께 설정한다. FE는 `credentials: 'include'`로 호출한 뒤 반환된 URL로 브라우저를 이동시킨다.
+- state별 이름의 `cking_youtube_connection_<state>` HttpOnly·SameSite=Lax 쿠키를 함께 설정한다. 여러 탭에서 연결을 시작해도 각 콜백이 자신의 쿠키를 사용한다. FE는 `credentials: 'include'`로 호출한 뒤 반환된 URL로 브라우저를 이동시킨다.
 - 인가 요청은 `youtube.readonly` scope, PKCE S256, 난수 state를 사용한다. Redis에 시작 `memberId`·`creatorId`·입력 handle·verifier를 10분간 보관한다.
 - Google Console에 등록할 개발 콜백은 `https://dev-api.cking.co.kr/login/oauth2/code/youtube`다. `youtube`는 로그인 Provider가 아닌 별도 채널 연결 식별자다.
 
@@ -69,7 +69,9 @@
 - `state`와 브라우저 쿠키로 Redis 요청을 원자적으로 한 번 꺼낸다. 만료·재사용·쿠키 불일치·동의 취소는 연결하지 않는다.
 - 인가 코드를 토큰으로 교환한 뒤 `channels.list(forHandle=<입력 handle>)`의 단일 채널 ID가 `channels.list(mine=true)`의 소유 채널 ID와 일치할 때만 검증한다. `snippet.customUrl`은 현재 handle로 간주하지 않는다.
 - 여러 소유 채널이 있어도 입력 handle에 정확히 대응하는 ID만 사용하며, handle 조회가 0개·다중 결과이거나 ID가 소유 목록에 없으면 실패한다. 대리 운영 권한이 `mine=true`에 나오지 않으면 연결할 수 없다.
-- Google 액세스 토큰은 이 조회에만 사용하고 저장하지 않는다. 외부 호출이 끝난 뒤 짧은 DB 트랜잭션에서 Creator 잠금, 활성 Verification·채널 ID 중복 검사를 거쳐 저장한다.
+- Google 액세스 토큰은 이 조회에만 사용하고 저장하지 않는다. `access_type=online`으로 refresh token도 요청하지 않는다. 외부 호출이 끝난 뒤 짧은 DB 트랜잭션에서 Creator 잠금, 활성 Verification·채널 ID 중복 검사를 거쳐 저장한다.
+- 기존 `PENDING`·`PROCESSING` 인증이 있으면 기존 채널과 같은 handle로 첫 연결을 시도해도 `in_progress`다. 처리 완료 뒤 다시 연결한다.
+- 잠금 대기 초과 등 예상치 못한 서버 오류도 `unavailable`로 FE에 복귀하며 서버 로그에 오류를 남긴다.
 - 완료 후 FE `/my-page?youtubeConnection=<결과>`로 이동한다. 개발 FE는 `https://dev.cking.co.kr/my-page`, 운영 FE는 `https://cking.co.kr/my-page`다. 결과는 `success`(연결 완료), `cancelled`(동의 취소), `invalid`(상태 만료·재사용 등), `mismatch`(handle과 소유 채널 불일치), `conflict`(다른 Creator에 이미 연결), `in_progress`(기존 인증 처리 중), `unavailable`(Provider·Redis 장애) 중 하나이며 토큰·인가 코드·채널 ID는 URL에 넣지 않는다.
 
 ### GET /api/creator/youtube-channel/connection
@@ -106,6 +108,8 @@ image: JPEG 또는 PNG 한 장
 8. 잠금 안에서 읽은 채널명·handle, 서버 생성 `rewardRequestId`, 생성 시각의 UTC 날짜(`yyyy-MM-dd`)인 `rewardPeriodKey`를 동결해 `PENDING` Verification을 저장하고 비동기 처리 이벤트를 발행한다.
 9. Transaction이 실패하거나 잠금 후 기존 멱등 요청을 발견하면 이번 요청이 업로드한 Object를 best-effort delete한다. 기존 멱등 요청이면 그 결과를 반환한다.
 10. DB commit 후 listener가 비동기 처리를 시작하며 HTTP 202를 반환한다.
+
+VLM이 승인 후보를 반환하면 보상 전에 YouTube Data API `channels.list(forHandle)`로 현재 handle이 저장된 검증 채널 ID를 가리키는지 재확인한다. ID가 달라졌거나 handle이 더 이상 존재하지 않으면 `CHANNEL_MISMATCH`로 거절한다. 외부 조회 장애는 처리 lease의 재시도 경로를 따른다. 배포 전 접수된 미검증 채널 요청은 기존 판정 흐름으로 끝낸다.
 
 이미지 처리나 Object Storage 호출 중에는 DB 잠금·Transaction을 유지하지 않는다. 사전 검증은 불필요한 업로드를 줄이는 최적화이며, 정합성 판정은 7단계의 잠금 후 재검증 결과가 최종이다.
 

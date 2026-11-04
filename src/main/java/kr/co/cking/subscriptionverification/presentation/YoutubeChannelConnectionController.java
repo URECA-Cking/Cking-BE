@@ -16,6 +16,7 @@ import kr.co.cking.subscriptionverification.application.YoutubeChannelConnection
 import kr.co.cking.subscriptionverification.domain.CreatorYoutubeChannel;
 import kr.co.cking.subscriptionverification.presentation.dto.CreatorYoutubeChannelResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -28,10 +29,11 @@ import org.springframework.web.util.WebUtils;
 
 @RestController
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Creator YouTube 채널", description = "YouTube OAuth 채널 소유권 검증")
 public class YoutubeChannelConnectionController {
 
-    private static final String BINDING_COOKIE = "cking_youtube_connection";
+    private static final String BINDING_COOKIE_PREFIX = "cking_youtube_connection_";
     private static final String CALLBACK_PATH = "/login/oauth2/code/youtube";
 
     private final YoutubeChannelConnectionService connectionService;
@@ -49,7 +51,7 @@ public class YoutubeChannelConnectionController {
             @Valid @RequestBody StartRequest request, HttpServletResponse response) {
         YoutubeChannelConnectionService.ConnectionStart start =
                 connectionService.start(memberId, request.channelHandle());
-        writeCookie(response, start.browserBinding(), YoutubeChannelConnectionService.TTL);
+        writeCookie(response, start.state(), start.browserBinding(), YoutubeChannelConnectionService.TTL);
         return ApiResponse.success(new StartResponse(start.authorizationUrl()));
     }
 
@@ -69,9 +71,12 @@ public class YoutubeChannelConnectionController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String error,
             HttpServletRequest request, HttpServletResponse response) throws IOException {
-        var cookie = WebUtils.getCookie(request, BINDING_COOKIE);
+        var cookie = state != null && state.matches("[A-Za-z0-9_-]{43}")
+                ? WebUtils.getCookie(request, BINDING_COOKIE_PREFIX + state) : null;
         String binding = cookie == null ? null : cookie.getValue();
-        writeCookie(response, "", Duration.ZERO);
+        if (cookie != null) {
+            writeCookie(response, state, "", Duration.ZERO);
+        }
         String result;
         try {
             if (error != null) {
@@ -89,13 +94,16 @@ public class YoutubeChannelConnectionController {
                 case "INVALID_STATE" -> "in_progress";
                 default -> "invalid";
             };
+        } catch (RuntimeException exception) {
+            log.error("YouTube 채널 연결 콜백 처리에 실패했습니다.", exception);
+            result = "unavailable";
         }
         response.sendRedirect(frontendResultUrl + (frontendResultUrl.contains("?") ? "&" : "?")
                 + "youtubeConnection=" + result);
     }
 
-    private void writeCookie(HttpServletResponse response, String binding, Duration maxAge) {
-        response.addHeader(HttpHeaders.SET_COOKIE, ResponseCookie.from(BINDING_COOKIE, binding)
+    private void writeCookie(HttpServletResponse response, String state, String binding, Duration maxAge) {
+        response.addHeader(HttpHeaders.SET_COOKIE, ResponseCookie.from(BINDING_COOKIE_PREFIX + state, binding)
                 .httpOnly(true).secure(secureCookie).sameSite("Lax")
                 .path(CALLBACK_PATH).maxAge(maxAge).build().toString());
     }

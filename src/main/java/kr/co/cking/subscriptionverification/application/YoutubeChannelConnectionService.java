@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
-/** One-use OAuth state bound to the initiating Creator and browser. */
+/** 연결을 시작한 Creator와 브라우저에 묶인 일회용 OAuth 상태를 관리한다. */
 @Service
 @RequiredArgsConstructor
 public class YoutubeChannelConnectionService {
@@ -48,7 +48,7 @@ public class YoutubeChannelConnectionService {
         } catch (DataAccessException exception) {
             throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_UNAVAILABLE);
         }
-        return new ConnectionStart(url, binding);
+        return new ConnectionStart(url, state, binding);
     }
 
     public void complete(String state, String binding, String authorizationCode) {
@@ -115,6 +115,6 @@ public class YoutubeChannelConnectionService {
     private record PendingConnection(Long memberId, Long creatorId, String handle, String verifier) {
     }
 
-    public record ConnectionStart(String authorizationUrl, String browserBinding) {
+    public record ConnectionStart(String authorizationUrl, String state, String browserBinding) {
     }
 }
