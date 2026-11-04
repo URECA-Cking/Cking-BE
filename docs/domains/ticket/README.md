@@ -50,11 +50,13 @@ Fan Quiz 응시(attempt) 보상은 Mission과 다른 적립 원인이다. 정답
 
 관리자는 `GET /api/admin/tickets/balance`로 CREATOR·COMMON 응모권의 Redis와 MySQL 잔액을 직접 관측할 수 있다. 키·행 미존재와 조회 실패, 차이 계산의 계약은 [Ticket API](api.md#get-apiadminticketsbalance)를 따른다. 조회는 보정을 수행하지 않는다.
 
-`TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고 즉시 warning을 남긴다(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니다). Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
+`TicketBalanceReconciliationScheduler`는 기본 5분마다 DB Balance와 Redis `ticket:balance:{creatorId}:{userId}`를 비교한다. 최초 불일치는 비동기 반영 지연일 수 있으므로 info로 기록하고, 같은 조합이 2회 연속 불일치할 때만 운영자 확인이 필요한 warning을 남긴다. Redis 키가 없는데 DB 잔액이 0보다 크면 키 유실로 보고(DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로 정상 상태가 아니다) 아래 `TicketBalanceKeyLoader`로 DB 값을 적재한다(#793). 적재하지 못하면(미반영 메시지·보정 락) warning을 남기고 다음 주기에 다시 시도한다. 이는 COMPENSATE 보정이 아니라 응모·적립 경로와 같은 키 적재라서, 값이 다른 불일치는 여전히 감지·기록만 한다. Redis 통신 장애면 이번 주기를 중단하며 자동 보정하지 않는다.
 
 ### 키 유실 시 자동 적재(FR-P2-056, 이슈 #275)
 
 SPEND가 `BALANCE_NOT_LOADED`를 받으면(Redis 잔액 키 부재 - 한 번도 받은 적 없는 사용자와 키가 유실된 사용자 모두 포함) `TicketBalanceKeyLoader`가 그 요청 안에서 DB 잔액으로 즉시 적재를 시도하고, 성공하면 같은 요청을 1회만 재실행한다. 적재는 보정 락(`TicketMaintenanceLock`)을 잡고 해당 `(memberId, creatorId)`에 미반영 SPEND·EARN 메시지가 없을 때만 이뤄지며, 락 토큰 확인과 `SET NX`를 원자 처리해 검사 도중 락이 만료돼도 소유권 없이 쓰지 않는다. 다음 중 하나라도 해당하면 적재하지 않고 기존처럼 `BALANCE_NOT_LOADED`(503)로 남아 `TicketCompensationService.resyncRedisToDb`(수동 보정)가 필요하다: 락을 못 잡음(다른 보정 진행 중), 미반영 메시지가 있음, 검사 도중 락 만료, Redis·DB 저장소 오류(이 경우도 응모를 500으로 키우지 않고 503으로 남긴다).
+
+**적립 전 적재(#793)**: 적립 Lua는 잔액 키가 없으면 0에서 시작한다(취합v1.5.4 §2.4 최초 적립 예외). 키가 유실된 사용자가 그대로 적립하면 Redis가 DB보다 작게 굳고, 키가 다시 생겼으므로 위 `SET NX` 적재로도 고칠 수 없다. 그래서 미션 적립(`TicketEarnServiceImpl.earnClaimed`, `CommonTicketEarnServiceImpl`의 미션·1회 적립)은 Lua를 부르기 전에 `TicketBalanceKeyLoader.prepareForEarn()`을 거친다. 키가 있거나 DB 잔액 행이 없으면(최초 적립) 그대로 적립하고, 행이 있는데 키가 없으면 같은 조건으로 DB 값을 먼저 적재한다. 적재하지 못하면 Redis에 아무것도 쓰지 않고 `EARN_PROCESSING_FAILED`(503)로 끝나 같은 `requestId` 재시도가 안전하다. 확인과 Lua 사이에 키가 사라지는 짧은 틈은 정합성 스케줄러가 다음 주기에 적재한다. Quiz 보상은 이 전부터 같은 방식으로 적재해 왔다.
 
 ### 수동 보정의 안전장치
 
