@@ -148,11 +148,11 @@ cking:
       # 약 12.6MiB(개발 힙 460MiB의 2.7%, 운영 힙 1200MiB의 1.0%)에서 멈춘다. 넘치면 밀려난 회원만 다음 응모 때 DB로 다시 검사한다.
       max-size: 100000
     profile-image:
-      # local 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      # local 프로필 이미지는 S3Mock 버킷 주소로, 개발·운영 서버는 application-dev·application-prod의 CloudFront 주소로 읽는다.
       public-base-url: ${MEMBER_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
   creator:
     space-profile-image:
-      # local Creator Space 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.
+      # local Creator Space 프로필 이미지는 S3Mock 버킷 주소로, 개발·운영 서버는 application-dev·application-prod의 CloudFront 주소로 읽는다.
       public-base-url: ${CREATOR_SPACE_PROFILE_IMAGE_PUBLIC_BASE_URL:http://localhost:9090/cking-local-uploads}
   verification:
     youtube-subscription:
