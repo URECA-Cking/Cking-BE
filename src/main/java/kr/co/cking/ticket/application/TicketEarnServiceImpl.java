@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -85,13 +86,6 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
 
     @Override
     public EarnResult earnClaimed(EarnCommand command) {
-        // 잔액 키가 유실된 채 적립하면 0에서 다시 쌓이므로 DB 기준으로 먼저 적재한다(#793). 준비하지 못하면 아무것도 쓰지 않았다.
-        if (balanceKeyLoader != null
-                && !balanceKeyLoader.prepareForEarn(CouponType.CREATOR, command.creatorId(), command.userId())) {
-            log.warn("적립 전 Redis 잔액 키를 준비하지 못해 적립하지 않습니다. requestId={}, userId={}, creatorId={}",
-                    command.requestId(), command.userId(), command.creatorId());
-            return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
-        }
         String requestId = command.requestId().toString();
         String idemKey = idemKeyOf(command);
         String periodKeyGuardFormat = guardKeySegmentOf(command);
@@ -99,7 +93,7 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
         List<?> result;
 
         try {
-            result = redisTemplate.execute(
+            Function<Boolean, List<?>> lua = requireBalance -> redisTemplate.execute(
                     ticketEarnLuaScript,
                     List.of(
                             idemKey,
@@ -121,8 +115,18 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
                     String.valueOf(command.missionId()),
                     command.periodKey(),
                     command.missionKey(),
-                    command.rewardPolicy().name()
+                    command.rewardPolicy().name(),
+                    requireBalance ? "1" : "0"
             );
+            // 잔액 키가 유실된 채 적립하면 0에서 다시 쌓이므로 DB 기준으로 적재한 뒤 적립한다(#793).
+            result = balanceKeyLoader == null
+                    ? lua.apply(false)
+                    : balanceKeyLoader.runEarn(CouponType.CREATOR, command.creatorId(), command.userId(), lua);
+            if (result == null && balanceKeyLoader != null) {
+                log.warn("적립 전 Redis 잔액 키를 준비하지 못해 적립하지 않습니다. requestId={}, userId={}, creatorId={}",
+                        command.requestId(), command.userId(), command.creatorId());
+                return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
+            }
         } catch (QueryTimeoutException e) {
             log.error("EARN Lua 실행이 타임아웃되어 처리 여부를 알 수 없습니다. requestId={}, userId={}",
                     command.requestId(), command.userId(), e);

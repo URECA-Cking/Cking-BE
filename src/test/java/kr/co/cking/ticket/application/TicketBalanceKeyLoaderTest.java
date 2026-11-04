@@ -47,7 +47,7 @@ class TicketBalanceKeyLoaderTest {
     void 적립_전_키가_있으면_적재하지_않고_적립을_허용한다() {
         when(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).thenReturn(true);
 
-        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isTrue();
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.EXISTING);
 
         verify(lock, never()).acquire(CREATOR_ID, MEMBER_ID);
     }
@@ -57,7 +57,7 @@ class TicketBalanceKeyLoaderTest {
         when(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).thenReturn(false);
         when(creatorRepository.findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)).thenReturn(Optional.empty());
 
-        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isTrue();
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.NEW);
 
         verify(lock, never()).acquire(CREATOR_ID, MEMBER_ID);
         verify(checker, never()).exists(MEMBER_ID, CREATOR_ID);
@@ -73,7 +73,7 @@ class TicketBalanceKeyLoaderTest {
         when(checker.exists(MEMBER_ID, CREATOR_ID)).thenReturn(false);
         when(lock.loadBalanceIfHeld(CREATOR_ID, MEMBER_ID, TOKEN, 5L)).thenReturn(true);
 
-        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isTrue();
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.EXISTING);
 
         verify(lock).loadBalanceIfHeld(CREATOR_ID, MEMBER_ID, TOKEN, 5L);
     }
@@ -85,7 +85,7 @@ class TicketBalanceKeyLoaderTest {
         when(lock.acquireCommon(MEMBER_ID)).thenReturn(TOKEN);
         when(checker.existsCommon(MEMBER_ID)).thenReturn(true);
 
-        assertThat(loader.prepareForEarn(CouponType.COMMON, null, MEMBER_ID)).isFalse();
+        assertThat(loader.prepareForEarn(CouponType.COMMON, null, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.NOT_READY);
 
         verify(lock).releaseCommon(MEMBER_ID, TOKEN);
     }
@@ -95,7 +95,7 @@ class TicketBalanceKeyLoaderTest {
         when(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID)))
                 .thenThrow(new QueryTimeoutException("timeout"));
 
-        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isFalse();
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.NOT_READY);
     }
 
     @Test

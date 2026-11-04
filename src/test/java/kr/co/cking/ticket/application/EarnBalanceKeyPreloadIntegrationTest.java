@@ -2,7 +2,10 @@ package kr.co.cking.ticket.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -10,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +23,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import kr.co.cking.stream.application.UnappliedBalanceMessageChecker;
 import kr.co.cking.stream.repository.DeadStreamMessageQueryRepository;
@@ -74,6 +79,7 @@ class EarnBalanceKeyPreloadIntegrationTest {
     private final UserTicketBalanceRepository creatorRepository = mock(UserTicketBalanceRepository.class);
     private final UserCommonTicketBalanceRepository commonRepository = mock(UserCommonTicketBalanceRepository.class);
 
+    private TicketBalanceKeyLoader loader;
     private TicketEarnServiceImpl earnService;
     private CommonTicketEarnServiceImpl commonEarnService;
 
@@ -83,7 +89,7 @@ class EarnBalanceKeyPreloadIntegrationTest {
         UnappliedBalanceMessageChecker checker = new UnappliedBalanceMessageChecker(
                 redisTemplate, deadStreamMessageQueryRepository,
                 SPEND_KEY, SPEND_GROUP, EARN_KEY, EARN_GROUP, COMMON_EARN_KEY, COMMON_EARN_GROUP);
-        TicketBalanceKeyLoader loader = new TicketBalanceKeyLoader(
+        loader = new TicketBalanceKeyLoader(
                 new TicketMaintenanceLock(redisTemplate), checker, creatorRepository, commonRepository, redisTemplate);
         earnService = new TicketEarnServiceImpl(
                 redisTemplate, ticketEarnLuaScript, EARN_KEY, new ObjectMapper(), null, loader);
@@ -142,6 +148,41 @@ class EarnBalanceKeyPreloadIntegrationTest {
         assertThat(redisTemplate.opsForStream().size(EARN_KEY)).isEqualTo(1L);
     }
 
+    // 리뷰 지적 재현: 키 존재 확인을 통과한 직후, Lua 실행 직전에 키가 사라지는 경우.
+    @Test
+    void 키_확인_뒤_Lua_직전에_키가_사라지면_0에서_쌓지_않고_DB_기준으로_적재해_다시_적립한다() {
+        givenCreatorDbBalance(5L);
+        String balanceKey = TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID);
+        redisTemplate.opsForValue().set(balanceKey, "5");
+        TicketEarnServiceImpl racingService = serviceDeletingBeforeFirstLua(balanceKey);
+
+        EarnResult result = racingService.earn(creatorCommand());
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
+        assertThat(redisTemplate.opsForValue().get(balanceKey)).isEqualTo("6");
+        assertThat(redisTemplate.opsForStream().size(EARN_KEY)).isEqualTo(1L);
+    }
+
+    @Test
+    void 키_확인_뒤_Lua_직전에_키가_사라지고_적재할_수_없으면_아무것도_쓰지_않는다() {
+        givenCreatorDbBalance(5L);
+        String balanceKey = TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID);
+        redisTemplate.opsForValue().set(balanceKey, "5");
+        redisTemplate.opsForStream().add(EARN_KEY, Map.of(
+                "userId", String.valueOf(MEMBER_ID), "creatorId", String.valueOf(CREATOR_ID), "amount", "2"));
+        TicketEarnServiceImpl racingService = serviceDeletingBeforeFirstLua(balanceKey);
+        EarnCommand command = creatorCommand();
+
+        EarnResult result = racingService.earn(command);
+
+        assertThat(result.code()).isEqualTo(EarnResultCode.EARN_PROCESSING_FAILED);
+        assertThat(redisTemplate.hasKey(balanceKey)).isFalse();
+        assertThat(redisTemplate.hasKey(TicketRedisKeys.idemMission(command.requestId().toString()))).isFalse();
+        assertThat(redisTemplate.hasKey(
+                TicketRedisKeys.earnGuard(MEMBER_ID, "ATTENDANCE", CREATOR_ID, GUARD_PERIOD))).isFalse();
+        assertThat(redisTemplate.opsForStream().size(EARN_KEY)).isEqualTo(1L);
+    }
+
     @Test
     void 공용_잔액_키가_유실된_뒤_적립해도_DB_잔액_위에_쌓는다() {
         when(commonRepository.existsById(MEMBER_ID)).thenReturn(true);
@@ -153,6 +194,20 @@ class EarnBalanceKeyPreloadIntegrationTest {
 
         assertThat(result.code()).isEqualTo(EarnResultCode.EARN_ACCEPTED);
         assertThat(redisTemplate.opsForValue().get(CommonTicketRedisKeys.balance(MEMBER_ID))).isEqualTo("5");
+    }
+
+    /** 첫 적립 Lua 호출 직전에만 잔액 키를 지우는 Redis로 적립 서비스를 만든다. 키 확인(로더)은 실제 Redis를 쓴다. */
+    @SuppressWarnings("unchecked")
+    private TicketEarnServiceImpl serviceDeletingBeforeFirstLua(String balanceKey) {
+        StringRedisTemplate racingRedis = spy(redisTemplate);
+        AtomicBoolean deleted = new AtomicBoolean();
+        doAnswer(invocation -> {
+            if (deleted.compareAndSet(false, true)) {
+                redisTemplate.delete(balanceKey);
+            }
+            return invocation.callRealMethod();
+        }).when(racingRedis).execute(any(RedisScript.class), anyList(), any(Object[].class));
+        return new TicketEarnServiceImpl(racingRedis, ticketEarnLuaScript, EARN_KEY, new ObjectMapper(), null, loader);
     }
 
     private void givenCreatorDbBalance(long balance) {

@@ -20,10 +20,12 @@
 -- ARGV[10] = periodKey (fingerprint에는 안 쓰이고 Guard 키 구성과 Stream 발행 필드로만 쓰인다)
 -- ARGV[11] = sourceType (미지정이면 기존 MISSION, ONCE는 평생 1회 적립)
 -- ARGV[12] = rewardType (ONCE일 때만 사용)
+-- ARGV[13] = requireBalance ('1'이면 잔액 키가 이미 있어야 적립한다. 생략·'0'이면 없는 키를 0에서 시작, #793)
 --
 -- 반환: { resultCode, ...옵션 필드 }
 --   ALREADY_PROCESSED / REQUEST_ID_CONFLICT / DUPLICATE_MISSION / EARN_STATUS_UNKNOWN /
---   BALANCE_MAINTENANCE / EARN_ACCEPTED { 'EARN_ACCEPTED', streamId, 적립후잔액 }
+--   BALANCE_MAINTENANCE / EARN_ACCEPTED { 'EARN_ACCEPTED', streamId, 적립후잔액 } /
+--   BALANCE_NOT_LOADED(requireBalance인데 키 없음, 아무것도 쓰지 않음. Java가 적재 후 한 번 다시 실행)
 
 local idemKey    = KEYS[1]
 local guardKey   = KEYS[2]
@@ -43,6 +45,7 @@ local periodKey   = ARGV[10]
 local sourceType  = ARGV[11] or 'MISSION'
 local rewardType  = ARGV[12] or ''
 local once        = sourceType == 'ONCE'
+local requireBalance = ARGV[13] == '1'
 
 -- 평생 1회 요청은 Redis 멱등·Guard 키에도 만료를 두지 않는다.
 local function setIdem(value, onlyIfAbsent)
@@ -87,6 +90,11 @@ end
 -- PROCESSING 예약조차 만들지 않고 BALANCE_MAINTENANCE로 종료한다.
 if redis.call('EXISTS', maintenanceLockKey) == 1 then
     return { 'BALANCE_MAINTENANCE' }
+end
+
+-- 잔액이 있던 사용자의 키가 유실됐으면 0에서 다시 쌓지 않는다(#793). 어떤 예약도 만들기 전이라 지울 것이 없다.
+if requireBalance and redis.call('EXISTS', balanceKey) == 0 then
+    return { 'BALANCE_NOT_LOADED' }
 end
 
 -- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.
