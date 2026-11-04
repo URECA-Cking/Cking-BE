@@ -21,6 +21,7 @@ import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.domain.CouponType;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -43,6 +44,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
     private final String streamKey;
     private final ObjectMapper objectMapper;
     private final TicketEarnRequestClaimService requestClaimService;
+    private final TicketBalanceKeyLoader balanceKeyLoader;
 
     /** 기존 공용 Lua와 Redis Stream 설정을 주입한다. */
     public CommonTicketEarnServiceImpl(
@@ -50,13 +52,15 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
             @Qualifier("commonTicketEarnLuaScript") DefaultRedisScript<List> commonTicketEarnLuaScript,
             @Value("${cking.ticket.common-earn-stream-key:stream:common-ticket-earned}") String streamKey,
             ObjectMapper objectMapper,
-            TicketEarnRequestClaimService requestClaimService
+            TicketEarnRequestClaimService requestClaimService,
+            TicketBalanceKeyLoader balanceKeyLoader
     ) {
         this.redisTemplate = redisTemplate;
         this.commonTicketEarnLuaScript = commonTicketEarnLuaScript;
         this.streamKey = streamKey;
         this.objectMapper = objectMapper;
         this.requestClaimService = requestClaimService;
+        this.balanceKeyLoader = balanceKeyLoader;
     }
 
     /** 공용 미션의 일일 EARN 요청을 선점하고 Lua로 승인한다. */
@@ -70,6 +74,9 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         String requestId = command.requestId().toString();
         String periodKeyGuardFormat = toGuardPeriodKey(command.periodKey());
         String fingerprint = command.computeFingerprint();
+        if (!balanceKeyReady(command.userId(), requestId)) {
+            return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
+        }
         List<?> result;
 
         try {
@@ -178,6 +185,9 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
     /** 이미 영속 선점된 공용 평생 1회 적립을 기존 Lua로 실행한다. */
     EarnResult earnOnceClaimed(CommonOnceEarnCommand command) {
         String requestId = command.requestId().toString();
+        if (!balanceKeyReady(command.userId(), requestId)) {
+            return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
+        }
         List<?> result;
         try {
             result = redisTemplate.execute(commonTicketEarnLuaScript, List.of(
@@ -223,6 +233,15 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
             log.error("공용 ONCE EARN 승인 조회에 실패했습니다. requestId={}", requestId, e);
             return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE);
         }
+    }
+
+    /** 잔액 키가 유실된 채 적립하면 0에서 다시 쌓이므로 DB 기준으로 먼저 적재한다(#793). false면 아무것도 쓰지 않았다. */
+    private boolean balanceKeyReady(Long userId, String requestId) {
+        if (balanceKeyLoader.prepareForEarn(CouponType.COMMON, null, userId)) {
+            return true;
+        }
+        log.warn("적립 전 공용 Redis 잔액 키를 준비하지 못해 적립하지 않습니다. requestId={}, userId={}", requestId, userId);
+        return false;
     }
 
     /** 공용 일일 Guard에 사용할 UTC 날짜를 yyyyMMdd로 바꾼다. */

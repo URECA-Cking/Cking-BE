@@ -1,9 +1,12 @@
 package kr.co.cking.ticket.application;
 
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import kr.co.cking.stream.application.UnappliedBalanceMessageChecker;
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
+import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.ticket.domain.UserCommonTicketBalance;
 import kr.co.cking.ticket.domain.UserTicketBalance;
@@ -28,6 +31,43 @@ public class TicketBalanceKeyLoader {
     private final UnappliedBalanceMessageChecker unappliedMessageChecker;
     private final UserTicketBalanceRepository creatorBalanceRepository;
     private final UserCommonTicketBalanceRepository commonBalanceRepository;
+    private final StringRedisTemplate redisTemplate;
+
+    /**
+     * 적립 Lua를 실행하기 전에 잔액 키를 준비한다(#793). 적립 Lua는 키가 없으면 0에서 시작하므로(취합v1.5.4 §2.4
+     * 최초 적립 예외), 키가 유실된 사용자가 그대로 적립하면 Redis 잔액이 DB보다 작게 굳고 {@link #load}의 {@code SET NX}로도
+     * 고칠 수 없다.
+     *
+     * <ul>
+     *   <li>키가 있으면 그대로 적립한다.</li>
+     *   <li>DB 잔액 행이 없으면 받은 적 없는 최초 적립이므로 지금처럼 0에서 시작한다. 첫 미션마다 미반영 메시지를 훑지
+     *       않으려는 것이다.</li>
+     *   <li>DB 행이 있는데 키가 없으면 유실이므로 {@link #load}로 DB 값을 먼저 적재한다.</li>
+     * </ul>
+     *
+     * <p>false면 Redis에 아무것도 쓰지 않은 상태이므로, 호출자는 Lua를 부르지 말고 같은 requestId로 다시 시도할 수 있는
+     * 실패로 끝낸다. 확인과 Lua 사이에 키가 사라지는 짧은 틈은 정합성 스케줄러가 다음 주기에 적재한다.
+     */
+    public boolean prepareForEarn(CouponType couponType, Long creatorId, Long memberId) {
+        boolean common = couponType == CouponType.COMMON;
+        try {
+            String balanceKey = common ? CommonTicketRedisKeys.balance(memberId) : TicketRedisKeys.balance(creatorId, memberId);
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(balanceKey))) {
+                return true;
+            }
+            boolean recorded = common
+                    ? commonBalanceRepository.existsById(memberId)
+                    : creatorBalanceRepository.findByMemberIdAndCreatorId(memberId, creatorId).isPresent();
+            if (!recorded) {
+                return true;
+            }
+        } catch (DataAccessException e) {
+            log.error("적립 전 Redis 잔액 키를 확인하지 못했습니다. couponType={}, memberId={}, creatorId={}",
+                    couponType, memberId, creatorId, e);
+            return false;
+        }
+        return load(couponType, creatorId, memberId);
+    }
 
     /** 키가 존재하게 됐으면 true(이미 있었던 경우 포함). 조건 불충족이면 false. 락은 반환 전에 푼다. */
     public boolean load(CouponType couponType, Long creatorId, Long memberId) {
