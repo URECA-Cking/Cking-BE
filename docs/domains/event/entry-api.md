@@ -66,7 +66,7 @@ Redis 복제는 비동기라, 응모 Lua가 성공한 직후 주 노드가 장�
 | --- | --- |
 | `enabled` | 기본 `false`. 복제 노드가 없는 개발·로컬은 끈다 |
 | `replicas` | 기본 1 |
-| `timeout-ms` | 켤 때 필수, 1 이상. 0은 `WAIT`의 무한 대기라 거부한다. 운영 복제 지연을 잰 뒤 정한다 |
+| `timeout-ms` | 켤 때 필수, 1 이상. 0은 `WAIT`의 무한 대기라 거부한다. 운영은 250ms(운영 부하 테스트 복제 지연 최대 117.7ms의 약 2배) |
 
 운영은 Parameter Store `/cking/prod/ENTRY_REPLICATION_WAIT_ENABLED`·`ENTRY_REPLICATION_WAIT_TIMEOUT_MS`로 켠다. 앱은 기동할 때 읽으므로 값을 바꾼 뒤 서버마다 `deploy.sh`로 다시 띄운다. 켜기 값만 있고 제한 시간이 없으면 0으로 들어가 기동하지 않는다.
 

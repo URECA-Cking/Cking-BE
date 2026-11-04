@@ -41,7 +41,7 @@ case "$PARAM_PATH" in
               GEMINI_API_KEY OPENAI_API_KEY)
     OPTIONAL=(OAUTH_YOUTUBE_CLIENT_ID OAUTH_YOUTUBE_CLIENT_SECRET OAUTH_YOUTUBE_API_KEY
               OAUTH_YOUTUBE_CONNECT_TIMEOUT OAUTH_YOUTUBE_READ_TIMEOUT)
-    # 필터 Lambda와 추천 배치 서버는 개발에만 있다. 같은 이미지·compose·dev 프로필을 쓰는 부하 테스트는
+    # 필터 Lambda와 추천 배치 서버는 부하 테스트 환경에 없다. 같은 이미지·compose·dev 프로필을 쓰는 부하 테스트는
     # 필터와 지급 완료 알림을 끄고, 추천 배치 인증 해시를 넘기지 않아 키 인증이 꺼진다.
     if [ "$PARAM_PATH" = /cking/dev/ ]; then
       REQUIRED+=(COMMENT_FILTER_BASE_URL CKING_RECOMMENDATION_API_KEY_HASHES CKING_CONTENT_TAG_TOKEN_HASH)
