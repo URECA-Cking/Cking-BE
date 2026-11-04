@@ -52,6 +52,7 @@
 - [YouTube 구독 인증 API](domains/subscription-verification/api.md): 채널 설정·Verification 제출 및 상태 조회 계약
 - [YouTube 구독 인증 비동기 처리](domains/subscription-verification/processing.md): VLM 판정, Processing Claim과 Recovery 계약
 - [Creator](domains/creator/README.md): 신청·승인, 승인 시 기본값으로 Creator Space 자동 생성 책임 경계
+- [Creator 신청서·보완 심사 API](domains/creator/application-review-api.md): 신청 본문, 제출 버전, 보완 요청·재제출 계약
 - [Creator 유사 추천 결과](domains/creator/similarity-recommendation.md): LLM 후보 묶음 검증, 세대 이력·현재 포인터와 저장 결과 공개 조회 계약
 - [추천 행동 수집 API](domains/creator/recommendation-events.md): 추천 응답 스냅샷, 노출·클릭 수집, 신규 팔로우 귀속과 FE 지침
 - [추천 행동 운영](operations/creator-recommendation-events.md): 실패 격리, 지표 SQL, 보존과 삭제

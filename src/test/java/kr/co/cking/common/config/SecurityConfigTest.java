@@ -57,6 +57,7 @@ import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.http.HttpHeaders.ORIGIN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -156,6 +157,19 @@ class SecurityConfigTest {
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(put("/api/creator/space/banner-image"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void Creator_신청_상세와_보완_API는_JWT가_필수다() throws Exception {
+        mockMvc.perform(get("/api/creator/applications/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(patch("/api/creator/applications/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/creator/applications/1/resubmit")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/creator-applications/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/admin/creator-applications/1/request-revision"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/creator-applications/1")
+                        .header(AUTHORIZATION, "Bearer " + validAccessToken("USER")))
+                .andExpect(status().isForbidden());
     }
 
     @Test

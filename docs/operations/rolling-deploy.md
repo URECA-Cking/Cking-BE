@@ -39,6 +39,10 @@ PR이 마이그레이션을 바꾸면 `migration-compat` 작업이 `scripts/chec
 scripts/check-migration-compat.sh origin/develop HEAD
 ```
 
+## Creator 신청서·보완 심사 #799
+
+V98은 기존 INSERT와 호환되도록 신청서 컬럼을 nullable로, 제출 버전은 기본값 0으로 추가한다. 신규 테이블은 구 서버가 사용하지 않는다. 새 코드가 모든 서버에 반영되기 전에는 관리자 보완 요청 API를 호출하지 않는다. 구 서버의 `CreatorApplicationStatus`는 `NEEDS_REVISION`을 모르므로, 혼합 운영 중 이 상태를 기록하면 구 서버가 해당 신청을 읽을 때 실패할 수 있다. FE 신청서·보완·관리자 화면은 BE 전체 교체 후 노출한다. 본문 없는 구 FE 신청은 레거시 PENDING으로 접수되지만 신청서 없이 승인할 수 없다. 새 FE에서 같은 회원이 신청서를 제출하면 기존 PENDING에 연결하므로 별도 관리자 보완 요청은 필요하지 않다. 구 FE 호환 접수 중단은 별도 릴리스에서 수행한다. `NEEDS_REVISION` 데이터가 생긴 뒤 구 코드로 롤백하려면 먼저 이 상태를 해석할 수 있는 호환 버전을 배포해야 한다.
+
 ## 여러 서버의 동시 기동
 
 Flyway는 마이그레이션 전에 MySQL 이름 잠금(`GET_LOCK`)을 잡는다(flyway-mysql 12.4.0 `MySQLNamedLockTemplate`). 서버 여러 대가 동시에 기동해도 마이그레이션은 한 서버만 적용하고, 나머지는 잠금이 풀린 뒤 적용할 것이 없음을 확인하고 기동한다.

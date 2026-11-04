@@ -176,7 +176,7 @@ public class SecurityConfig {
                                 "/api/me/winners/**",
                                 "/api/me/calendar/**",
                                 "/api/creator/applications",
-                                "/api/creator/applications/me",
+                                "/api/creator/applications/**",
                                 "/api/creator/profile",
                                 "/api/creator/content-tags",
                                 "/api/creator/content-tags/confirmation",

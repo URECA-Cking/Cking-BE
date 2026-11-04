@@ -32,7 +32,7 @@
 | 27 | 외부 | Drawing | ADMIN | POST | `/api/admin/drawings/{drawingId}/retry` | Retry | 상태 기반 |
 | 28 | 외부 | Drawing | ADMIN | GET | `/api/admin/drawings/{drawingId}/result` | 결과 조회 | - |
 | 29 | 외부 | Winner | PUBLIC | GET | `/api/events/{eventId}/winners` | PUBLIC Drawing의 Winner와 배정 상품 조회 | - |
-| 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | Creator 신청 | 기존 PENDING 재사용 |
+| 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | 신청서 포함 Creator 신청(본문 없는 레거시 PENDING에 사후 제출 가능) | 동일 PENDING 재사용 |
 | 31 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/me` | 내 신청 조회 | - |
 | 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 상태 선택 신청 목록 | `status`, page, size |
 | 33 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/approve` | 승인 | 상태 기반 |
@@ -198,6 +198,11 @@
 | 200 | 외부 | 구독 인증 | CREATOR | GET | `/api/creator/youtube-channel/connection` | [내 채널 검증 상태](domains/subscription-verification/api.md#get-apicreatoryoutube-channelconnection) | - |
 | 201 | 외부 | Image Upload | USER | POST | `/api/uploads` | 이미지 업로드 예약(201). 요청 `purpose`(`MEMBER_PROFILE`·`CREATOR_SPACE_PROFILE`·`CREATOR_SPACE_BANNER`·`EVENT_BANNER`·`POST_IMAGE`)·`contentType`(JPEG/PNG)·`size`(5MB 이하), 응답 `uploadId`·`uploadUrl`(5분 유효 사전 서명 PUT)·`headers`·`expiresAt`. 형식·크기 오류 `INVALID_UPLOAD_REQUEST`, 용도별 권한 확인은 기존 업로드 API와 같다. 결과 큐가 없는 환경은 404 | - |
 | 202 | 외부 | Image Upload | USER | GET | `/api/uploads/{uploadId}` | 이미지 업로드 상태 조회(`PENDING`·`READY`(`imageKey`)·`FAILED`(`failureReason`)). 본인 업로드만, 없으면 `UPLOAD_NOT_FOUND`(404) | - |
+| 203 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/{id}` | [내 신청 상세·초안·제출 이력](domains/creator/application-review-api.md) | - |
+| 204 | 외부 | Creator 승인 | USER | PATCH | `/api/creator/applications/{id}` | [보완 초안 저장](domains/creator/application-review-api.md) | 상태 기반 |
+| 205 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications/{id}/resubmit` | [보완 재제출](domains/creator/application-review-api.md) | 상태 기반 |
+| 206 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications/{id}` | [신청·심사 상세](domains/creator/application-review-api.md) | - |
+| 207 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/request-revision` | [보완 요청](domains/creator/application-review-api.md) | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
 
