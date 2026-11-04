@@ -11,11 +11,15 @@ import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.domain.MissionErrorCode;
 import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -43,6 +47,8 @@ class MissionCompletionConcurrencyIntegrationTest {
     private CreatorRepository creatorRepository;
     @Autowired
     private MissionRepository missionRepository;
+    @Autowired
+    private StringRedisTemplate redis;
 
     @Test
     void 동일_business_key로_동시_요청해도_EARN_ACCEPTED와_DUPLICATE_MISSION이_정확히_하나씩_나온다() throws Exception {
@@ -51,6 +57,7 @@ class MissionCompletionConcurrencyIntegrationTest {
         Creator creator = creatorRepository.saveAndFlush(new Creator(creatorOwner.getMemberId(), creatorOwner.getName()));
         Mission mission = missionRepository.saveAndFlush(
                 new Mission(creator.getCreatorId(), MissionType.LIKE, 1, null, null));
+        clearPreviousRedisState(member.getMemberId(), creator.getCreatorId());
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -82,6 +89,7 @@ class MissionCompletionConcurrencyIntegrationTest {
         Instant activeTo = Instant.now().plusMillis(1500);
         Mission mission = missionRepository.saveAndFlush(
                 new Mission(creator.getCreatorId(), MissionType.LIKE, 1, null, activeTo));
+        clearPreviousRedisState(member.getMemberId(), creator.getCreatorId());
 
         UUID requestId = UUID.randomUUID();
         MissionCompleteCommand command = new MissionCompleteCommand(member.getMemberId(), requestId);
@@ -108,5 +116,13 @@ class MissionCompletionConcurrencyIntegrationTest {
         } catch (BusinessException e) {
             return e.getErrorCode().code();
         }
+    }
+
+    /** 다른 로컬 DB 실행에서 같은 자동 증가 ID로 남긴 Redis 값은 이 테스트의 신규 회원 상태가 아니다. */
+    private void clearPreviousRedisState(Long memberId, Long creatorId) {
+        String today = Instant.now().atZone(ZoneOffset.UTC).toLocalDate()
+                .format(DateTimeFormatter.BASIC_ISO_DATE);
+        redis.delete(List.of(TicketRedisKeys.balance(creatorId, memberId),
+                TicketRedisKeys.earnGuard(memberId, MissionType.LIKE.name(), creatorId, today)));
     }
 }

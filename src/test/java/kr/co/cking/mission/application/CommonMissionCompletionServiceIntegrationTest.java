@@ -8,12 +8,17 @@ import kr.co.cking.mission.application.dto.MissionCompleteCommand;
 import kr.co.cking.mission.application.dto.MissionCompleteOutcome;
 import kr.co.cking.mission.domain.CommonMissionType;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.domain.UserCommonTicketBalance;
 import kr.co.cking.ticket.repository.UserCommonTicketBalanceRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,10 +44,16 @@ class CommonMissionCompletionServiceIntegrationTest {
     private CommonMissionRepository commonMissionRepository;
     @Autowired
     private UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
+    @Autowired
+    private StringRedisTemplate redis;
 
     @Test
     void 공용_미션_완료는_실제_공용_잔액에_적립되고_같은_날_재시도는_재적립하지_않는다() {
         Member member = memberRepository.saveAndFlush(new Member("공용미션통합테스트유저", null, null, MemberRole.USER));
+        String today = Instant.now().atZone(ZoneOffset.UTC).toLocalDate()
+                .format(DateTimeFormatter.BASIC_ISO_DATE);
+        redis.delete(List.of(CommonTicketRedisKeys.balance(member.getMemberId()),
+                CommonTicketRedisKeys.earnGuard(member.getMemberId(), "ATTENDANCE", today)));
         Long missionId = commonMissionRepository.findByTypeIn(List.of(CommonMissionType.ATTENDANCE))
                 .get(0).getMissionId();
         UUID requestId = UUID.randomUUID();

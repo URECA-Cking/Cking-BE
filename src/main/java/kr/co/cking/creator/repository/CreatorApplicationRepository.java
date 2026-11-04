@@ -7,12 +7,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
+import java.util.Collection;
 
 public interface CreatorApplicationRepository extends JpaRepository<CreatorApplication, Long> {
 
-    Optional<CreatorApplication> findFirstByMemberIdAndStatusOrderByIdDesc(
-            Long memberId,
-            CreatorApplicationStatus status
+    Optional<CreatorApplication> findFirstByMemberIdAndStatusInOrderByIdDesc(
+            Long memberId, Collection<CreatorApplicationStatus> statuses
     );
 
     Page<CreatorApplication> findByMemberIdOrderByRequestedAtDescIdDesc(Long memberId, Pageable pageable);

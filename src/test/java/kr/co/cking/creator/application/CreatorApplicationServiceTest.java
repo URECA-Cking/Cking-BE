@@ -55,7 +55,9 @@ class CreatorApplicationServiceTest {
         given(memberRepository.findByMemberIdIn(List.of(10L))).willReturn(List.of(applicant));
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
-                creatorSpaceService, activityNameService
+                creatorSpaceService, activityNameService, formValidator(),
+                mock(kr.co.cking.creator.repository.CreatorApplicationSubmissionRepository.class),
+                mock(kr.co.cking.creator.repository.CreatorApplicationReviewHistoryRepository.class)
         );
 
         var result = service.findAllForAdmin(1L, null, PageRequest.of(0, 20));
@@ -82,7 +84,9 @@ class CreatorApplicationServiceTest {
         given(memberRepository.findByMemberIdIn(List.of(10L))).willReturn(List.of());
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
-                creatorSpaceService, activityNameService
+                creatorSpaceService, activityNameService, formValidator(),
+                mock(kr.co.cking.creator.repository.CreatorApplicationSubmissionRepository.class),
+                mock(kr.co.cking.creator.repository.CreatorApplicationReviewHistoryRepository.class)
         );
 
         var result = service.findAllForAdmin(1L, CreatorApplicationStatus.PENDING, pageable);
@@ -107,11 +111,13 @@ class CreatorApplicationServiceTest {
         applicant.setInitialNickname(MemberNickname.of("신청자"));
         given(memberRepository.findById(10L)).willReturn(Optional.of(applicant));
         given(creatorRepository.existsByMemberId(10L)).willReturn(false);
-        given(applicationRepository.findFirstByMemberIdAndStatusOrderByIdDesc(10L, CreatorApplicationStatus.PENDING))
+        given(applicationRepository.findFirstByMemberIdAndStatusInOrderByIdDesc(10L, List.of(CreatorApplicationStatus.PENDING, CreatorApplicationStatus.NEEDS_REVISION)))
                 .willReturn(Optional.of(existing));
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
-                creatorSpaceService, activityNameService
+                creatorSpaceService, activityNameService, formValidator(),
+                mock(kr.co.cking.creator.repository.CreatorApplicationSubmissionRepository.class),
+                mock(kr.co.cking.creator.repository.CreatorApplicationReviewHistoryRepository.class)
         );
 
         CreatorApplicationService.ApplyResult result = service.apply(10L);
@@ -133,7 +139,9 @@ class CreatorApplicationServiceTest {
         given(memberRepository.findById(10L)).willReturn(Optional.of(new Member("신청자", null, null, MemberRole.USER)));
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
-                creatorSpaceService, activityNameService);
+                creatorSpaceService, activityNameService, formValidator(),
+                mock(kr.co.cking.creator.repository.CreatorApplicationSubmissionRepository.class),
+                mock(kr.co.cking.creator.repository.CreatorApplicationReviewHistoryRepository.class));
 
         assertThatThrownBy(() -> service.apply(10L))
                 .isInstanceOf(BusinessException.class)
@@ -154,7 +162,7 @@ class CreatorApplicationServiceTest {
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Member applicant = new Member("신청자", null, null, MemberRole.USER);
         applicant.setInitialNickname(MemberNickname.of("신청자닉네임"));
-        CreatorApplication application = new CreatorApplication(10L);
+        CreatorApplication application = new CreatorApplication(10L, kr.co.cking.creator.CreatorApplicationTestForm.form("신청자닉네임"));
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         given(memberRepository.findById(10L)).willReturn(Optional.of(applicant));
         given(applicationRepository.findById(100L)).willReturn(Optional.of(application));
@@ -166,7 +174,9 @@ class CreatorApplicationServiceTest {
         given(creatorRepository.save(any(Creator.class))).willReturn(creator);
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
-                creatorSpaceService, activityNameService
+                creatorSpaceService, activityNameService, formValidator(),
+                mock(kr.co.cking.creator.repository.CreatorApplicationSubmissionRepository.class),
+                mock(kr.co.cking.creator.repository.CreatorApplicationReviewHistoryRepository.class)
         );
 
         service.approve(1L, 100L);
@@ -196,7 +206,7 @@ class CreatorApplicationServiceTest {
         Member admin = new Member("관리자", null, null, MemberRole.ADMIN);
         Member applicant = new Member("신청자", null, null, MemberRole.USER);
         applicant.setInitialNickname(MemberNickname.of("신청자닉네임"));
-        CreatorApplication application = new CreatorApplication(10L);
+        CreatorApplication application = new CreatorApplication(10L, kr.co.cking.creator.CreatorApplicationTestForm.form("신청자닉네임"));
         given(memberRepository.findById(1L)).willReturn(Optional.of(admin));
         given(memberRepository.findById(10L)).willReturn(Optional.of(applicant));
         given(applicationRepository.findById(100L)).willReturn(Optional.of(application));
@@ -210,7 +220,9 @@ class CreatorApplicationServiceTest {
                 .when(creatorSpaceService).createIfAbsent(20L);
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
-                creatorSpaceService, activityNameService
+                creatorSpaceService, activityNameService, formValidator(),
+                mock(kr.co.cking.creator.repository.CreatorApplicationSubmissionRepository.class),
+                mock(kr.co.cking.creator.repository.CreatorApplicationReviewHistoryRepository.class)
         );
 
         assertThatThrownBy(() -> service.approve(1L, 100L))
@@ -233,13 +245,21 @@ class CreatorApplicationServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(user));
         CreatorApplicationService service = new CreatorApplicationService(
                 memberRepository, creatorRepository, applicationRepository, lockManager, missionInitializationService,
-                creatorSpaceService, activityNameService
+                creatorSpaceService, activityNameService, formValidator(),
+                mock(kr.co.cking.creator.repository.CreatorApplicationSubmissionRepository.class),
+                mock(kr.co.cking.creator.repository.CreatorApplicationReviewHistoryRepository.class)
         );
 
         assertThatThrownBy(() -> service.reject(1L, 100L, "사유"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(CommonErrorCode.FORBIDDEN);
+    }
+
+    private CreatorApplicationFormValidator formValidator() {
+        CreatorApplicationFormValidator validator = mock(CreatorApplicationFormValidator.class);
+        given(validator.validate(any())).willAnswer(invocation -> invocation.getArgument(0));
+        return validator;
     }
 
     private void runCommands(CreatorApplicationLockManager lockManager) {

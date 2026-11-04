@@ -67,6 +67,10 @@ class CreatorApprovalSpaceCreationIntegrationTest {
             );
             jdbcTemplate.update("DELETE FROM creator WHERE member_id = ?", memberId);
         });
+        applicationIds.forEach(applicationId -> {
+            jdbcTemplate.update("DELETE FROM creator_application_review_history WHERE application_id = ?", applicationId);
+            jdbcTemplate.update("DELETE FROM creator_application_submission WHERE application_id = ?", applicationId);
+        });
         applicationIds.forEach(applicationId -> jdbcTemplate.update(
                 "DELETE FROM creator_application WHERE id = ?", applicationId));
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId));
@@ -158,7 +162,8 @@ class CreatorApprovalSpaceCreationIntegrationTest {
     }
 
     private CreatorApplication createApplication(Long applicantId) {
-        CreatorApplication application = creatorApplicationRepository.saveAndFlush(new CreatorApplication(applicantId));
+        CreatorApplication application = creatorApplicationRepository.saveAndFlush(new CreatorApplication(applicantId, kr.co.cking.creator.CreatorApplicationTestForm.form(
+                memberRepository.findById(applicantId).orElseThrow().getName())));
         applicationIds.add(application.getId());
         return application;
     }

@@ -10,7 +10,7 @@ class CreatorApplicationTest {
 
     @Test
     void pendingApplicationRecordsReviewerWhenApproved() {
-        CreatorApplication application = new CreatorApplication(10L);
+        CreatorApplication application = new CreatorApplication(10L, kr.co.cking.creator.CreatorApplicationTestForm.form("신청자"));
 
         application.approve(1L);
 
@@ -21,7 +21,7 @@ class CreatorApplicationTest {
 
     @Test
     void reviewedApplicationCannotBeApprovedAgain() {
-        CreatorApplication application = new CreatorApplication(10L);
+        CreatorApplication application = new CreatorApplication(10L, kr.co.cking.creator.CreatorApplicationTestForm.form("신청자"));
         application.approve(1L);
 
         assertThatThrownBy(() -> application.approve(2L))
@@ -40,5 +40,23 @@ class CreatorApplicationTest {
         assertThat(application.getRejectReason()).isEqualTo("활동 정보가 부족합니다.");
         assertThat(application.getReviewedBy()).isEqualTo(1L);
         assertThat(application.getReviewedAt()).isNotNull();
+    }
+
+    @Test
+    void onlyRevisionStateAcceptsDraftAndResubmission() {
+        CreatorApplication application = new CreatorApplication(10L,
+                kr.co.cking.creator.CreatorApplicationTestForm.form("신청자"));
+        var revised = kr.co.cking.creator.CreatorApplicationTestForm.form("새활동명");
+
+        assertThatThrownBy(() -> application.updateDraft(revised)).isInstanceOf(BusinessException.class);
+        application.requestRevision("소개 보완");
+        assertThatThrownBy(application::resubmit).isInstanceOf(BusinessException.class);
+        application.updateDraft(revised);
+        application.resubmit();
+
+        assertThat(application.getStatus()).isEqualTo(CreatorApplicationStatus.PENDING);
+        assertThat(application.getSubmissionVersion()).isEqualTo(2);
+        assertThat(application.getSubmittedForm()).isEqualTo(revised);
+        assertThatThrownBy(() -> application.updateDraft(revised)).isInstanceOf(BusinessException.class);
     }
 }
