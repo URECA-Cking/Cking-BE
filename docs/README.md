@@ -6,6 +6,7 @@
 - [공통 API 규약](common/api.md): 응답 형식, 사용자 식별, 멱등성, 오류 코드 배치 원칙과 공통 API를 확인한다.
 - [Swagger UI 문서화 기준](common/api.md#swagger-ui-문서화): Controller 어노테이션으로 Swagger UI 설명을 작성하는 기준을 확인한다.
 - [이미지 검증·정규화 공통 규칙](common/image.md): 업로드 이미지 형식·크기·정규화 공통 규칙과 도메인별 정책을 확인한다.
+- [이미지 업로드 파이프라인](common/image-upload-pipeline.md): 사전 서명 업로드·정규화 Lambda·결과 큐로 이어지는 업로드 흐름, 켜는 조건, 상태와 정리 기준을 확인한다.
 - [통합 작업단위 관리표](management/work-items.csv): 작업 배정·진척을 확인한다.
 - [통합 RTM](management/rtm.csv): 요구사항 추적·릴리스 점검에 사용한다.
 - [더미 데이터·운영 검증](operations/dummy-data-and-verification.md): 시딩 실행 조건과 Event·Ticket 운영 검증 범위를 확인한다.
