@@ -2,10 +2,12 @@ package kr.co.cking.event.application;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.domain.DrawMethod;
@@ -149,7 +151,12 @@ class ManualEventCloseServiceTest {
 
     private ManualEventCloseService service(MemberRepository memberRepository, CreatorRepository creatorRepository,
             EventRepository eventRepository, EventClosingService eventClosingService) {
-        return new ManualEventCloseService(memberRepository, creatorRepository, eventRepository, eventClosingService);
+        CreatorActivityPolicy policy = mock(CreatorActivityPolicy.class);
+        given(policy.executeActiveOutsideTransaction(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.<Supplier<EventClosingService.ClosingResult>>any()))
+                .willAnswer(invocation -> ((Supplier<?>) invocation.getArgument(1)).get());
+        return new ManualEventCloseService(memberRepository, creatorRepository, eventRepository, eventClosingService,
+                policy);
     }
 
     private Member member(Long memberId, MemberRole role) {

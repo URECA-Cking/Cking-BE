@@ -74,7 +74,8 @@ class CreatorPostCommentServiceTest {
     private final CreatorPostCommentService service = new CreatorPostCommentService(
             new PostAccessPolicy(creatorRepository, postRepository, followQueryService),
             commentRepository, memberRepository, creatorPublicProfileQueryService, creatorQueryService, profileImageUrlResolver,
-            Clock.fixed(LATER, ZoneOffset.UTC), mock(ApplicationEventPublisher.class), sanctionQueryService);
+            Clock.fixed(LATER, ZoneOffset.UTC), mock(ApplicationEventPublisher.class), sanctionQueryService,
+            mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
     @BeforeEach
     void setUp() {

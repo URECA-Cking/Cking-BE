@@ -3,6 +3,7 @@ package kr.co.cking.quiz.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.quiz.application.dto.QuizDecisionView;
 import kr.co.cking.quiz.application.dto.QuizPublicationView;
 import kr.co.cking.quiz.domain.Quiz;
@@ -46,6 +47,7 @@ public class CreatorQuizCommandService {
     private final QuizRevisionReader revisionReader;
     private final QuizApprovalPolicy approvalPolicy;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     public QuizDecisionView approve(Long memberId, Long quizId, Long revisionId) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
@@ -168,6 +170,7 @@ public class CreatorQuizCommandService {
     /** 없는 Quiz는 404, 다른 Creator의 Quiz는 403 — 존재 여부와 소유권을 구분한다. */
     private Quiz requireOwnedQuizForUpdate(Long memberId, Long quizId) {
         Creator creator = creatorLookup.requireCreator(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         Quiz quiz = quizRepository.findByIdForUpdate(quizId)
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_NOT_FOUND));
         if (!quiz.isOwnedBy(creator.getCreatorId())) {

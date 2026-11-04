@@ -1,6 +1,7 @@
 package kr.co.cking.quiz.application;
 
 import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.quiz.application.config.QuizGenerationProperties;
 import kr.co.cking.quiz.application.dto.QuizDraft;
 import kr.co.cking.quiz.application.dto.QuizDraftCommand;
@@ -33,6 +34,7 @@ public class QuizGenerationStore {
     private final QuizGenerationRepository repository;
     private final QuizDraftService draftService;
     private final QuizGenerationProperties properties;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /** 원문 확정 결과. REPLAYED는 같은 원문으로 이미 확정한 작업이라 아무것도 바꾸지 않았다는 뜻이다. */
     public enum Confirmation {
@@ -67,6 +69,7 @@ public class QuizGenerationStore {
     /** requestId·진행 중 작업 고유 제약을 어기면 커밋 전에 {@code DataIntegrityViolationException}이 난다. */
     @Transactional
     public QuizGeneration create(QuizGeneration generation) {
+        creatorActivityPolicy.requireActiveByCreatorId(generation.getCreatorId());
         return repository.saveAndFlush(generation);
     }
 
@@ -143,6 +146,7 @@ public class QuizGenerationStore {
      */
     @Transactional
     public Confirmation confirmContent(Long generationId, Long memberId, String contentText, Instant now) {
+        creatorActivityPolicy.requireActiveByMemberId(memberId);
         QuizGeneration generation = lock(generationId);
         String contentTextSha256 = QuizRevisionFingerprint.contentTextSha256(contentText);
         if (generation.isAwaitingReview()) {

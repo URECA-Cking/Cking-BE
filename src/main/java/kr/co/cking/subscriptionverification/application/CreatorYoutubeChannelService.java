@@ -3,6 +3,7 @@ package kr.co.cking.subscriptionverification.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.application.YoutubeSubscriptionMissionProvisioningService;
@@ -36,6 +37,7 @@ public class CreatorYoutubeChannelService {
     private final SubscriptionVerificationRepository verificationRepository;
     private final YoutubeSubscriptionMissionProvisioningService missionProvisioningService;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     @Transactional(readOnly = true)
     public CreatorYoutubeChannel getPublic(Long creatorId) {
@@ -63,7 +65,9 @@ public class CreatorYoutubeChannelService {
 
     @Transactional(readOnly = true)
     public Long creatorIdForConnection(Long memberId) {
-        return requireCreator(memberId).getCreatorId();
+        Creator creator = requireCreator(memberId);
+        creator.requireActive();
+        return creator.getCreatorId();
     }
 
     /** Creator 행을 잠그고 채널 설정·미션 provisioning을 하나의 Transaction으로 처리한다. */
@@ -71,8 +75,7 @@ public class CreatorYoutubeChannelService {
     public CreatorYoutubeChannelUpsertResult put(Long memberId, CreatorYoutubeChannelCommand command) {
         Creator creator = requireCreator(memberId);
         Long creatorId = creator.getCreatorId();
-        creatorRepository.findByIdForUpdate(creatorId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
 
         String channelName = normalizeName(command);
         String channelHandle = normalizeHandle(command);
@@ -112,8 +115,7 @@ public class CreatorYoutubeChannelService {
         if (!creatorId.equals(expectedCreatorId)) {
             throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_INVALID);
         }
-        creatorRepository.findByIdForUpdate(creatorId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
         CreatorYoutubeChannel existing = channelRepository.findById(creatorId).orElse(null);
         if (existing != null && verificationRepository.existsByCreatorIdAndStatusIn(creatorId, ACTIVE_STATUSES)
                 && (!channelId.equals(existing.getYoutubeChannelId())

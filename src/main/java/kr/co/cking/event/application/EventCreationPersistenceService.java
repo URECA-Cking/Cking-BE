@@ -3,6 +3,7 @@ package kr.co.cking.event.application;
 import kr.co.cking.event.application.dto.CreateEventCommand;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 class EventCreationPersistenceService {
     private final EventRepository eventRepository;
     private final EventBannerImageManager bannerImageManager;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /**
      * requestId UNIQUE 제약 위반을 즉시 확정하도록 Event를 flush한다. 배너는 그 뒤에 연결해서, 같은 requestId 동시 요청의
@@ -21,6 +23,7 @@ class EventCreationPersistenceService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Event create(CreateEventCommand command, Long creatorId) {
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
         Event event = eventRepository.saveAndFlush(new Event(creatorId, command.title().trim(), command.description(),
                 command.startAt(), command.endAt(), command.winnerCount(), command.drawMethod(), command.userId(),
                 command.requestId(), command.prizes(), command.prizeAlgorithmVersion()));

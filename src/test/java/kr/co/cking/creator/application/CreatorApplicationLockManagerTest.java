@@ -22,7 +22,8 @@ class CreatorApplicationLockManagerTest {
                 .willReturn(1L);
         given(jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Long.class, "creator-application:test"))
                 .willReturn(0L);
-        CreatorApplicationLockManager lockManager = new CreatorApplicationLockManager(jdbcTemplate);
+        CreatorApplicationLockManager lockManager = new CreatorApplicationLockManager(jdbcTemplate,
+                org.mockito.Mockito.mock(javax.sql.DataSource.class));
 
         assertThatThrownBy(() -> lockManager.execute("creator-application:test", () -> "ignored"))
                 .isInstanceOf(IllegalStateException.class);

@@ -2,6 +2,13 @@ package kr.co.cking.creator.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.CreatorErrorCode;
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,8 +25,50 @@ class CreatorApplicationLockManager {
 
     private static final String ACTIVITY_NAME_ALLOCATION_LOCK = "creator-activity-name:allocation";
     private static final int ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS = 15;
+    private static final ReentrantLock[] LOCAL_REWARD_LOCKS = IntStream.range(0, 256)
+            .mapToObj(ignored -> new ReentrantLock()).toArray(ReentrantLock[]::new);
 
     private final JdbcTemplate jdbcTemplate;
+    private final DataSource dataSource;
+
+    /** 별도 DB 트랜잭션을 여는 보상 서비스가 사용할, 연결 소유권이 명확한 세션 잠금. */
+    <T> T executeWithoutTransaction(String key, int waitSeconds, Supplier<T> command) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Reward admission lock must not join a transaction");
+        }
+        // 대기 중인 동일 Creator 요청이 커넥션 풀을 모두 점유하면 선행 요청의
+        // REQUIRES_NEW 보상 트랜잭션도 커넥션을 얻지 못한다. 로컬 대기는 연결 밖에서 한다.
+        ReentrantLock localLock = LOCAL_REWARD_LOCKS[Math.floorMod(key.hashCode(), LOCAL_REWARD_LOCKS.length)];
+        localLock.lock();
+        try {
+            try (Connection connection = dataSource.getConnection()) {
+                if (namedLock(connection, "SELECT GET_LOCK(?, ?)", key, waitSeconds) != 1L) {
+                    throw new BusinessException(CreatorErrorCode.CONCURRENT_COMMAND);
+                }
+                try {
+                    return command.get();
+                } finally {
+                    if (namedLock(connection, "SELECT RELEASE_LOCK(?)", key, null) != 1L) {
+                        log.warn("Failed to release creator reward advisory lock: key={}", key);
+                    }
+                }
+            } catch (SQLException exception) {
+                throw new IllegalStateException("Creator reward advisory lock failed", exception);
+            }
+        } finally {
+            localLock.unlock();
+        }
+    }
+
+    private long namedLock(Connection connection, String sql, String key, Integer waitSeconds) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, key);
+            if (waitSeconds != null) statement.setInt(2, waitSeconds);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getLong(1) : 0L;
+            }
+        }
+    }
 
     <T> T execute(String key, Supplier<T> command) {
         return execute(key, 0, "SELECT GET_LOCK(?, 0)", command);

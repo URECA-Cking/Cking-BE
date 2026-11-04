@@ -41,7 +41,7 @@ class CreatorSpaceProfileImageLinkServiceTest {
                 images, new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
                 Clock.fixed(NOW, ZoneOffset.UTC));
         CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(
-                creators, spaces, manager);
+                creators, org.mockito.Mockito.mock(CreatorActivityPolicy.class), spaces, manager);
 
         service.link(7L, "creator-space-profile-images/42/new.jpg");
 
@@ -62,7 +62,7 @@ class CreatorSpaceProfileImageLinkServiceTest {
                 images, new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
                 Clock.fixed(NOW, ZoneOffset.UTC));
         CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(
-                creators, spaces, manager);
+                creators, org.mockito.Mockito.mock(CreatorActivityPolicy.class), spaces, manager);
 
         assertThatThrownBy(() -> service.link(7L, "creator-space-profile-images/99/other.jpg"))
                 .isInstanceOf(BusinessException.class)

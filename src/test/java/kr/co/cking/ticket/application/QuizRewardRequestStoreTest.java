@@ -45,7 +45,8 @@ class QuizRewardRequestStoreTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final QuizRewardRequestStore store = new QuizRewardRequestStore(quizRepository, earnRequestRepository,
-            memberRepository, creatorRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+            memberRepository, creatorRepository, Clock.fixed(NOW, ZoneOffset.UTC),
+            mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
     private final QuizRewardCommand command = new QuizRewardCommand(100L, 7L, 10L, 3, REQUEST_ID);
 
     @BeforeEach

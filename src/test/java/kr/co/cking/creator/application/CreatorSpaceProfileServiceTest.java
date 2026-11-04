@@ -57,7 +57,7 @@ class CreatorSpaceProfileServiceTest {
     private final CreatorContentOutbox contentOutbox = mock(CreatorContentOutbox.class);
     private final CreatorSpaceService spaceService = mock(CreatorSpaceService.class);
     private final CreatorSpaceProfileService service = new CreatorSpaceProfileService(
-            creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
+            creatorRepository, mock(CreatorActivityPolicy.class), spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
             profileImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), contentOutbox, spaceService);
 
     private Creator creator;
@@ -347,7 +347,7 @@ class CreatorSpaceProfileServiceTest {
                 new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
-                creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
+                creatorRepository, mock(CreatorActivityPolicy.class), spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
                 realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), contentOutbox, spaceService);
 
         serviceWithRealImageManager.updateMine(7L, new CreatorSpaceProfileFields(
@@ -383,7 +383,7 @@ class CreatorSpaceProfileServiceTest {
                 new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
                 Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         CreatorSpaceProfileService serviceWithRealImageManager = new CreatorSpaceProfileService(
-                creatorRepository, spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
+                creatorRepository, mock(CreatorActivityPolicy.class), spaceRepository, new CreatorSpaceSlugRegistry(spaceRepository, reservationRepository),
                 realImageManager, Clock.fixed(NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), followQueryService, mock(EventQueryService.class), contentOutbox, spaceService);
 
         // 클라이언트가 현재 배너 URL(업로드 이미지)을 그대로 보내도 기본 배너로 저장되지 않아야 한다.

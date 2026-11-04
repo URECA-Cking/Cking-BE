@@ -15,6 +15,7 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.winner.domain.WinnerManagementStatus;
 import kr.co.cking.winner.repository.WinnerManagementRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class EventReviewService {
     private final EventCommandService eventCommandService;
     private final CreatorRepository creatorRepository;
     private final WinnerManagementRepository winnerManagementRepository;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     @Value("${cking.event.archive.allow-pending-winners:false}")
     private boolean allowArchiveWithPendingWinners;
@@ -49,6 +51,9 @@ public class EventReviewService {
     /** 만료되지 않은 승인 대기 Event와 현재 요청을 승인 처리한다. */
     public EventApprovalRequest approve(Long adminId, Long eventId) {
         requireAdmin(adminId);
+        Long creatorId = eventRepository.findCreatorIdByEventId(eventId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
         return eventCommandService.approve(eventId, event -> {
             if (!event.getEndAt().isAfter(Instant.now())) {
                 throw new BusinessException(EventErrorCode.INVALID_STATE);

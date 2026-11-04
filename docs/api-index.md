@@ -203,6 +203,13 @@
 | 205 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications/{id}/resubmit` | [보완 재제출](domains/creator/application-review-api.md) | 상태 기반 |
 | 206 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications/{id}` | [신청·심사 상세](domains/creator/application-review-api.md) | - |
 | 207 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/request-revision` | [보완 요청](domains/creator/application-review-api.md) | 상태 기반 |
+| 208 | 외부 | Creator 자격 | ADMIN | GET | `/api/admin/creators` | [상태별 Creator 자격 목록](domains/creator/status-api.md) | - |
+| 209 | 외부 | Creator 자격 | ADMIN | GET | `/api/admin/creators/{creatorId}` | [Creator 자격 상세](domains/creator/status-api.md) | - |
+| 210 | 외부 | Creator 자격 | ADMIN | GET | `/api/admin/creators/{creatorId}/status-history` | [자격 변경 이력](domains/creator/status-api.md) | - |
+| 211 | 외부 | Creator 자격 | ADMIN | POST | `/api/admin/creators/{creatorId}/suspend` | [자격 정지](domains/creator/status-api.md) | `requestId` |
+| 212 | 외부 | Creator 자격 | ADMIN | POST | `/api/admin/creators/{creatorId}/reactivate` | [정지 해제](domains/creator/status-api.md) | `requestId` |
+| 213 | 외부 | Creator 자격 | ADMIN | POST | `/api/admin/creators/{creatorId}/revoke` | [자격 박탈](domains/creator/status-api.md) | `requestId` |
+| 214 | 외부 | Creator 자격 | CREATOR | GET | `/api/creator/me/status` | [내 자격 상태·공개 안내](domains/creator/status-api.md) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
 

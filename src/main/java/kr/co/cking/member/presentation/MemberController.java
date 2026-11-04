@@ -48,7 +48,8 @@ public class MemberController {
     public ApiResponse<MyProfileResponse> getMyProfile(@CurrentMemberId Long memberId) {
         var profile = memberQueryService.getProfile(memberId);
         boolean creator = creatorQueryService.isCreatorMember(memberId);
-        return ApiResponse.success(MyProfileResponse.from(profile, creator));
+        return ApiResponse.success(MyProfileResponse.from(profile, creator,
+                creatorQueryService.findStatusByMemberId(memberId).orElse(null)));
     }
 
     /** 온보딩 완료(또는 건너뛰기)를 기록한다. 여러 번 호출해도 결과가 같다. */
@@ -82,7 +83,8 @@ public class MemberController {
         memberProfileUpdateService.update(memberId, request.toFields());
         var profile = memberQueryService.getProfile(memberId);
         boolean creator = creatorQueryService.isCreatorMember(memberId);
-        return ApiResponse.success(MyProfileResponse.from(profile, creator));
+        return ApiResponse.success(MyProfileResponse.from(profile, creator,
+                creatorQueryService.findStatusByMemberId(memberId).orElse(null)));
     }
 
     private byte[] readBytes(MultipartFile image) {

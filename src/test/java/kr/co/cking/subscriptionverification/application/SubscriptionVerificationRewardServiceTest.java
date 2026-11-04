@@ -30,8 +30,15 @@ class SubscriptionVerificationRewardServiceTest {
     private final SubscriptionVerificationRewardCompletionService completionService =
             mock(SubscriptionVerificationRewardCompletionService.class);
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    private final kr.co.cking.creator.application.CreatorRewardAdmissionService admission =
+            mock(kr.co.cking.creator.application.CreatorRewardAdmissionService.class);
     private final SubscriptionVerificationRewardService service =
-            new SubscriptionVerificationRewardService(ticketOnceEarnService, completionService, clock);
+            new SubscriptionVerificationRewardService(ticketOnceEarnService, completionService, clock, admission);
+
+    @org.junit.jupiter.api.BeforeEach
+    void noExistingReward() {
+        given(admission.earnOnce(any())).willAnswer(invocation -> ticketOnceEarnService.earn(invocation.getArgument(0)));
+    }
 
     @ParameterizedTest
     @EnumSource(value = EarnResultCode.class, names = {"EARN_ACCEPTED", "ALREADY_PROCESSED"})
@@ -88,6 +95,15 @@ class SubscriptionVerificationRewardServiceTest {
 
         assertThat(service.reward(claim()))
                 .isEqualTo(SubscriptionVerificationRewardAttemptResult.RETRY_REQUIRED);
+    }
+
+    @Test
+    void 정지된_Creator의_새_보상은_지급하지_않고_보류를_확정한다() {
+        var inactive = new kr.co.cking.common.exception.BusinessException(
+                kr.co.cking.creator.domain.CreatorErrorCode.CREATOR_NOT_ACTIVE);
+        org.mockito.Mockito.doThrow(inactive).when(ticketOnceEarnService).earn(any());
+        assertThat(service.reward(claim())).isEqualTo(SubscriptionVerificationRewardAttemptResult.WITHHELD);
+        then(completionService).should().withhold(123L, NOW);
     }
 
     private static SubscriptionVerificationProcessingClaim claim() {

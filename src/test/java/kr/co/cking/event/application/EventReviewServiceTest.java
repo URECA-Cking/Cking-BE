@@ -58,7 +58,8 @@ class EventReviewServiceTest {
         given(creatorRepository.findByCreatorIdIn(org.mockito.ArgumentMatchers.anyCollection()))
                 .willReturn(List.of(firstCreator, secondCreator));
         EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
-                eventCommandService, creatorRepository, winnerManagementRepository);
+                eventCommandService, creatorRepository, winnerManagementRepository,
+                org.mockito.Mockito.mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
         var result = service.findPending(1L, PageRequest.of(0, 20));
 
@@ -90,7 +91,8 @@ class EventReviewServiceTest {
                 .willReturn(new PageImpl<>(List.of(openEvent), pageable, 1));
         given(creatorRepository.findByCreatorIdIn(List.of(100L))).willReturn(List.of(creator));
         EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
-                eventCommandService, creatorRepository, winnerManagementRepository);
+                eventCommandService, creatorRepository, winnerManagementRepository,
+                org.mockito.Mockito.mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
         var result = service.findManagedEvents(1L, kr.co.cking.event.domain.EventStatus.OPEN, pageable);
 
@@ -124,7 +126,8 @@ class EventReviewServiceTest {
                 org.mockito.ArgumentMatchers.eq(1L),
                 org.mockito.ArgumentMatchers.any());
         EventReviewService service = new EventReviewService(memberRepository, eventRepository, approvalRequestRepository,
-                eventCommandService, creatorRepository, winnerManagementRepository);
+                eventCommandService, creatorRepository, winnerManagementRepository,
+                org.mockito.Mockito.mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
         assertThat(org.assertj.core.api.ThrowableAssert.catchThrowable(() -> service.archive(1L, 10L)))
                 .isInstanceOf(BusinessException.class)

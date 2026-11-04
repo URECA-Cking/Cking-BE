@@ -9,6 +9,7 @@ import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -36,9 +37,11 @@ public class CreatorScheduleService {
     private final CreatorRepository creatorRepository;
     private final CreatorScheduleRepository scheduleRepository;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     public CreatorSchedule create(Long memberId, CreatorScheduleFields fields) {
         Creator creator = requireCreator(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         String timeZone = validateAndNormalize(fields);
         validateAllDay(fields, timeZone);
         return scheduleRepository.save(new CreatorSchedule(
@@ -49,6 +52,7 @@ public class CreatorScheduleService {
 
     public CreatorSchedule update(Long memberId, Long scheduleId, CreatorScheduleFields fields) {
         Creator creator = requireCreator(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         String timeZone = validateAndNormalize(fields);
         validateAllDay(fields, timeZone);
         CreatorSchedule schedule = requireOwnedSchedule(scheduleId, creator.getCreatorId());
@@ -60,6 +64,7 @@ public class CreatorScheduleService {
 
     public void delete(Long memberId, Long scheduleId) {
         Creator creator = requireCreator(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         CreatorSchedule schedule = requireOwnedSchedule(scheduleId, creator.getCreatorId());
         scheduleRepository.delete(schedule);
     }

@@ -177,6 +177,7 @@ public class SecurityConfig {
                                 "/api/me/calendar/**",
                                 "/api/creator/applications",
                                 "/api/creator/applications/**",
+                                "/api/creator/me/status",
                                 "/api/creator/profile",
                                 "/api/creator/content-tags",
                                 "/api/creator/content-tags/confirmation",

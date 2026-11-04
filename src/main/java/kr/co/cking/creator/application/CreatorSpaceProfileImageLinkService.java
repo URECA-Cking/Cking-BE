@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service @RequiredArgsConstructor
 public class CreatorSpaceProfileImageLinkService {
     private final CreatorRepository creatorRepository;
+    private final CreatorActivityPolicy creatorActivityPolicy;
     private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceProfileImageManager imageManager;
 
@@ -21,6 +22,7 @@ public class CreatorSpaceProfileImageLinkService {
     public void link(Long memberId, String imageKey) {
         Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         CreatorSpace space = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         imageManager.apply(creator, space, imageKey, true);
@@ -31,6 +33,7 @@ public class CreatorSpaceProfileImageLinkService {
     public void linkBanner(Long memberId, String imageKey) {
         Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         CreatorSpace space = spaceRepository.findByCreatorIdForUpdate(creator.getCreatorId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         imageManager.applyBanner(creator, space, imageKey, true);

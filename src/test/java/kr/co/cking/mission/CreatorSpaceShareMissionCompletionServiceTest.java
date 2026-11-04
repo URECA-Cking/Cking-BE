@@ -50,8 +50,12 @@ class CreatorSpaceShareMissionCompletionServiceTest {
 
     /** 고정 시각을 적용한 공유 미션 완료 서비스를 만든다. */
     private CreatorSpaceShareMissionCompletionService serviceWith(Clock clock) {
+        var admission = mock(kr.co.cking.creator.application.CreatorRewardAdmissionService.class);
+        when(admission.earnOnce(any())).thenAnswer(invocation ->
+                ticketOnceEarnService.earn(invocation.getArgument(0)));
         return new CreatorSpaceShareMissionCompletionService(
-                memberRepository, creatorRepository, missionRepository, ticketOnceEarnService, clock, abuseObserver);
+                memberRepository, creatorRepository, missionRepository, ticketOnceEarnService, clock, abuseObserver,
+                admission);
     }
 
     /** 공유 대상 Creator에 속한 기본 SHARE 미션을 만든다. */

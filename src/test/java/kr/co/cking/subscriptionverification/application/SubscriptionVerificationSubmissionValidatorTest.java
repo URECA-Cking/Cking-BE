@@ -13,6 +13,8 @@ import java.util.Optional;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.domain.CreatorStatus;
+import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.Mission;
@@ -92,6 +94,16 @@ class SubscriptionVerificationSubmissionValidatorTest {
 
         assertError(() -> validator.validateSourceForUpdate(MEMBER_ID, CREATOR_ID, MISSION_ID, NOW),
                 SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+    }
+
+    @Test
+    void 정지된_Creator의_새_인증_제출은_잠금_후_거부한다() {
+        Creator creator = new Creator(MEMBER_ID, "Creator");
+        creator.changeStatus(CreatorStatus.SUSPENDED, "활동 제한");
+        given(creatorRepository.findByIdForUpdate(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        assertError(() -> validator.validateSourceForUpdate(MEMBER_ID, CREATOR_ID, MISSION_ID, NOW),
+                CreatorErrorCode.CREATOR_NOT_ACTIVE);
     }
 
     @Test

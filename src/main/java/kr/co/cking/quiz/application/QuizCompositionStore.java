@@ -2,6 +2,7 @@ package kr.co.cking.quiz.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.quiz.application.dto.QuizCompositionCommand;
 import kr.co.cking.quiz.application.dto.QuizQuestionContent;
 import kr.co.cking.quiz.domain.*;
@@ -26,10 +27,12 @@ public class QuizCompositionStore {
     private final QuizCompositionRequestRepository requests;
     private final QuizRevisionReader reader;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
     public record Admission(Long revisionId, boolean created) {}
     private record Selected(QuizQuestionContent content, QuizQuestionChangeType type, Long origin, Long previous) {}
 
     public Admission compose(Long memberId, Long quizId, QuizCompositionCommand command) {
+        creatorActivityPolicy.requireActiveByMemberId(memberId);
         var quiz = owned(memberId, quizId, true);
         var existing = replay(quiz, command);
         if (existing.isPresent()) return existing.get();

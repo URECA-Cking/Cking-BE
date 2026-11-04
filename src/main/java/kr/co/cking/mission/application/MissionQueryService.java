@@ -46,8 +46,10 @@ public class MissionQueryService {
         if (!memberRepository.existsById(userId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
-        if (!creatorRepository.existsById(creatorId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        var creator = creatorRepository.findById(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (!creator.canOperate()) {
+            return List.of();
         }
 
         var now = clock.instant();

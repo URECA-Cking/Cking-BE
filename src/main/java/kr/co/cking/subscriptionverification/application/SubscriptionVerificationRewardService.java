@@ -3,6 +3,9 @@ package kr.co.cking.subscriptionverification.application;
 import java.time.Clock;
 import java.util.Locale;
 import java.util.UUID;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.creator.application.CreatorRewardAdmissionService;
+import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.ticket.application.TicketOnceEarnService;
 import kr.co.cking.ticket.application.dto.EarnCommand;
@@ -24,6 +27,7 @@ public class SubscriptionVerificationRewardService {
     private final TicketOnceEarnService ticketOnceEarnService;
     private final SubscriptionVerificationRewardCompletionService rewardCompletionService;
     private final Clock clock;
+    private final CreatorRewardAdmissionService creatorRewardAdmissionService;
 
     /** 실패 시 APPROVED + PENDING을 유지해 같은 요청 정보로 Recovery가 재시도하게 한다. */
     public SubscriptionVerificationRewardAttemptResult reward(
@@ -37,7 +41,21 @@ public class SubscriptionVerificationRewardService {
         EarnCommand command = commandOf(rewardCommand);
         EarnResult result;
         try {
-            result = ticketOnceEarnService.earn(command);
+            result = creatorRewardAdmissionService.earnOnce(command);
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() == CreatorErrorCode.CREATOR_NOT_ACTIVE) {
+                try {
+                    rewardCompletionService.withhold(rewardCommand.verificationId(), clock.instant());
+                    return SubscriptionVerificationRewardAttemptResult.WITHHELD;
+                } catch (RuntimeException persistenceFailure) {
+                    log.warn("구독 인증 보상 보류 상태 저장에 실패했습니다. verificationId={}",
+                            rewardCommand.verificationId(), persistenceFailure);
+                    return SubscriptionVerificationRewardAttemptResult.RETRY_REQUIRED;
+                }
+            }
+            log.warn("구독 인증 ONCE 보상 요청에 실패해 Recovery에 맡깁니다. verificationId={}",
+                    rewardCommand.verificationId(), exception);
+            return SubscriptionVerificationRewardAttemptResult.RETRY_REQUIRED;
         } catch (RuntimeException exception) {
             log.warn("구독 인증 ONCE 보상 요청에 실패해 Recovery에 맡깁니다. verificationId={}",
                     rewardCommand.verificationId(), exception);

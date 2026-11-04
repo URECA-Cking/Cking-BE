@@ -207,6 +207,8 @@ class AbuseObservationEndToEndIntegrationTest {
     void LIKE_완료와_replay는_실제_Feature와_Detection에서_구분된다() {
         when(ticketEarnService.findExisting(any())).thenReturn(
                 new EarnLookupResult(EarnLookupStatus.NOT_FOUND),
+                new EarnLookupResult(EarnLookupStatus.NOT_FOUND),
+                new EarnLookupResult(EarnLookupStatus.NOT_FOUND),
                 new EarnLookupResult(EarnLookupStatus.ALREADY_PROCESSED),
                 new EarnLookupResult(EarnLookupStatus.NOT_FOUND));
         when(ticketEarnService.earn(any())).thenReturn(new EarnResult(EarnResultCode.EARN_ACCEPTED));
