@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,7 @@ import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.domain.CouponType;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -43,6 +45,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
     private final String streamKey;
     private final ObjectMapper objectMapper;
     private final TicketEarnRequestClaimService requestClaimService;
+    private final TicketBalanceKeyLoader balanceKeyLoader;
 
     /** 기존 공용 Lua와 Redis Stream 설정을 주입한다. */
     public CommonTicketEarnServiceImpl(
@@ -50,13 +53,15 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
             @Qualifier("commonTicketEarnLuaScript") DefaultRedisScript<List> commonTicketEarnLuaScript,
             @Value("${cking.ticket.common-earn-stream-key:stream:common-ticket-earned}") String streamKey,
             ObjectMapper objectMapper,
-            TicketEarnRequestClaimService requestClaimService
+            TicketEarnRequestClaimService requestClaimService,
+            TicketBalanceKeyLoader balanceKeyLoader
     ) {
         this.redisTemplate = redisTemplate;
         this.commonTicketEarnLuaScript = commonTicketEarnLuaScript;
         this.streamKey = streamKey;
         this.objectMapper = objectMapper;
         this.requestClaimService = requestClaimService;
+        this.balanceKeyLoader = balanceKeyLoader;
     }
 
     /** 공용 미션의 일일 EARN 요청을 선점하고 Lua로 승인한다. */
@@ -73,7 +78,7 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         List<?> result;
 
         try {
-            result = redisTemplate.execute(
+            result = runEarn(command.userId(), requestId, requireBalance -> redisTemplate.execute(
                     commonTicketEarnLuaScript,
                     List.of(
                             CommonTicketRedisKeys.idemMission(requestId),
@@ -90,8 +95,14 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
                     String.valueOf(command.userId()),
                     command.missionType(),
                     String.valueOf(command.missionId()),
-                    command.periodKey()
-            );
+                    command.periodKey(),
+                    "MISSION",
+                    "",
+                    requireBalance ? "1" : "0"
+            ));
+            if (result == null) {
+                return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
+            }
         } catch (QueryTimeoutException e) {
             log.error("공용 EARN Lua 실행이 타임아웃되어 처리 여부를 알 수 없습니다. requestId={}, userId={}",
                     command.requestId(), command.userId(), e);
@@ -180,14 +191,18 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
         String requestId = command.requestId().toString();
         List<?> result;
         try {
-            result = redisTemplate.execute(commonTicketEarnLuaScript, List.of(
+            result = runEarn(command.userId(), requestId, requireBalance -> redisTemplate.execute(
+                    commonTicketEarnLuaScript, List.of(
                             CommonTicketRedisKeys.idemOnce(requestId),
                             CommonTicketRedisKeys.onceGuard(command.userId(), command.rewardType()),
                             CommonTicketRedisKeys.balance(command.userId()),
                             CommonTicketRedisKeys.maintenance(command.userId())),
                     String.valueOf(command.amount()), command.computeFingerprint(), streamKey,
                     "0", "0", requestId, String.valueOf(command.userId()), command.rewardType(),
-                    "0", "ONCE", "ONCE", command.rewardType());
+                    "0", "ONCE", "ONCE", command.rewardType(), requireBalance ? "1" : "0"));
+            if (result == null) {
+                return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
+            }
         } catch (QueryTimeoutException e) {
             log.error("공용 ONCE EARN 결과를 확인할 수 없습니다. requestId={}", requestId, e);
             return new EarnResult(EarnResultCode.EARN_STATUS_UNKNOWN);
@@ -223,6 +238,18 @@ public class CommonTicketEarnServiceImpl implements CommonTicketEarnService {
             log.error("공용 ONCE EARN 승인 조회에 실패했습니다. requestId={}", requestId, e);
             return new EarnLookupResult(EarnLookupStatus.UNAVAILABLE);
         }
+    }
+
+    /**
+     * 잔액 키가 유실된 채 적립하면 0에서 다시 쌓이므로 DB 기준으로 적재한 뒤 적립한다(#793).
+     * null이면 키를 준비하지 못해 아무것도 쓰지 않았다.
+     */
+    private List<?> runEarn(Long userId, String requestId, Function<Boolean, List<?>> lua) {
+        List<?> result = balanceKeyLoader.runEarn(CouponType.COMMON, null, userId, lua);
+        if (result == null) {
+            log.warn("적립 전 공용 Redis 잔액 키를 준비하지 못해 적립하지 않습니다. requestId={}, userId={}", requestId, userId);
+        }
+        return result;
     }
 
     /** 공용 일일 Guard에 사용할 UTC 날짜를 yyyyMMdd로 바꾼다. */
