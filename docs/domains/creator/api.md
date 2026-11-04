@@ -79,7 +79,7 @@ Bearer Access JWT와 ADMIN 역할이 필수이며 Controller는 `@CurrentMemberI
 
 ## POST /api/admin/creator-applications/{id}/approve
 
-Request Body는 없다. 인증된 관리자만 PENDING 신청을 승인할 수 있다. 제출된 신청서가 없거나 현재 분야·활동명 정책에 맞지 않으면 `APPLICATION_FORM_REQUIRED` 또는 `VALIDATION_FAILED`로 거절한다. 승인, Creator 생성, 기본 미션(ATTENDANCE·LIKE) 초기화, Creator Space 생성은 하나의 DB transaction으로 처리한다. 미션 초기화 또는 Creator Space 생성이 실패하면 승인과 Creator 생성도 함께 롤백되며, Member당 Creator는 하나만 존재해야 한다. Creator Space 생성 계약(기본값, slug 생성, 트랜잭션 경계)은 [creator/README.md](README.md#creator-space-자동-생성이슈-270-754)를 따른다.
+Request Body는 없다. 인증된 관리자만 PENDING 신청을 승인할 수 있다. 제출된 신청서가 없거나 제출 뒤 현재 분야·활동명 정책에 맞지 않으면 `APPLICATION_FORM_REQUIRED`로 보완 필요를 알린다. 승인, Creator 생성, 기본 미션(ATTENDANCE·LIKE) 초기화, Creator Space 생성은 하나의 DB transaction으로 처리한다. 미션 초기화 또는 Creator Space 생성이 실패하면 승인과 Creator 생성도 함께 롤백되며, Member당 Creator는 하나만 존재해야 한다. Creator Space 생성 계약(기본값, slug 생성, 트랜잭션 경계)은 [creator/README.md](README.md#creator-space-자동-생성이슈-270-754)를 따른다.
 
 ```json
 { "applicationId": 1, "status": "APPROVED" }
@@ -94,6 +94,7 @@ Request Body는 없다. 인증된 관리자만 PENDING 신청을 승인할 수 �
 ```
 
 - `rejectReason`은 필수이며 null, blank, trim 후 빈 문자열을 허용하지 않는다.
+- PENDING 또는 NEEDS_REVISION 신청을 거절할 수 있다. 보완 대기 중 거절하면 미제출 초안은 비운다.
 - 심사자와 심사 시각, 거절 사유를 기록한다.
 - 성공은 200이며 응답은 `{ "applicationId": 1, "status": "REJECTED" }`다.
 - 권한·상태·경합 오류는 승인 API와 같다. 유효하지 않은 거절 사유는 `VALIDATION_FAILED`다.

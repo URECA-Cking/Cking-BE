@@ -72,6 +72,15 @@ public class CreatorApplication {
         submit(form);
     }
 
+    /** 본문 없이 접수된 PENDING 신청에만 첫 제출 버전을 연결한다. */
+    public void submitLegacyForm(CreatorApplicationForm form) {
+        requirePending();
+        if (submittedForm != null) {
+            throw new BusinessException(CreatorErrorCode.APPLICATION_CONTENT_CONFLICT);
+        }
+        submit(form);
+    }
+
     public void requestRevision(String reason) {
         requirePending();
         status = CreatorApplicationStatus.NEEDS_REVISION;
@@ -115,9 +124,13 @@ public class CreatorApplication {
     }
 
     public void reject(Long reviewerId, String reason) {
-        requirePending();
+        if (status != CreatorApplicationStatus.PENDING && status != CreatorApplicationStatus.NEEDS_REVISION) {
+            throw new BusinessException(CreatorErrorCode.INVALID_STATE);
+        }
         status = CreatorApplicationStatus.REJECTED;
         rejectReason = reason;
+        revisionReason = null;
+        draftForm = null;
         reviewedBy = reviewerId;
         reviewedAt = LocalDateTime.now(ZoneOffset.UTC);
     }

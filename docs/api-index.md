@@ -32,7 +32,7 @@
 | 27 | 외부 | Drawing | ADMIN | POST | `/api/admin/drawings/{drawingId}/retry` | Retry | 상태 기반 |
 | 28 | 외부 | Drawing | ADMIN | GET | `/api/admin/drawings/{drawingId}/result` | 결과 조회 | - |
 | 29 | 외부 | Winner | PUBLIC | GET | `/api/events/{eventId}/winners` | PUBLIC Drawing의 Winner와 배정 상품 조회 | - |
-| 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | 신청서 포함 Creator 신청(본문 없는 레거시 호환) | 동일 PENDING 재사용 |
+| 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | 신청서 포함 Creator 신청(본문 없는 레거시 PENDING에 사후 제출 가능) | 동일 PENDING 재사용 |
 | 31 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/me` | 내 신청 조회 | - |
 | 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 상태 선택 신청 목록 | `status`, page, size |
 | 33 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/approve` | 승인 | 상태 기반 |

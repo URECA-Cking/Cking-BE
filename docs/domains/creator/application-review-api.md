@@ -26,12 +26,12 @@
 - URL은 서버에서 요청하지 않는다. HTTPS 및 host가 필요하고 사용자 정보가 포함된 URL은 거부한다.
 - FE는 URL·자유 입력 텍스트를 HTML로 해석하지 않고 이스케이프해 표시한다. 링크는 허용된 HTTPS URL만 이동 대상으로 사용한다.
 - 증빙 URL은 참고 자료이지 채널 소유권 증명이 아니다. 주민등록번호·신분증·계좌번호를 제출받지 않는다.
-- 성공은 신규 201, 같은 내용의 기존 PENDING 재요청 200이다. 본문이 다른 중복 신청이나 NEEDS_REVISION 중 새 신청은 `APPLICATION_CONTENT_CONFLICT`(409)다.
-- 이행 기간 동안 본문 없는 구 FE 요청은 `submissionVersion=0`인 레거시 PENDING을 만든다. 승인 시 `APPLICATION_FORM_REQUIRED`(409)이며 관리자가 보완을 요청해야 한다.
+- 성공은 신규 201, 같은 내용의 기존 PENDING 재요청 200이다. 본문이 다른 중복 신청이나 NEEDS_REVISION 중 새 신청은 `APPLICATION_CONTENT_CONFLICT`(409)다. 동일 요청 비교는 저장된 활동명·소개·활동 계획의 앞뒤 공백을 정규화한다.
+- 이행 기간 동안 본문 없는 구 FE 요청은 `submissionVersion=0`인 레거시 PENDING을 만든다. 신청서 없이 승인하면 `APPLICATION_FORM_REQUIRED`(409)다. 새 FE가 같은 회원의 신청서를 제출하면 기존 PENDING에 첫 제출 버전을 연결하고 200을 반환한다. 별도 관리자 보완 요청은 필요하지 않다.
 
 ## 상태 전이와 보완
 
-`PENDING → NEEDS_REVISION → PENDING → APPROVED/REJECTED` 순서다. 최종 처리된 신청은 수정·재심사할 수 없다.
+`PENDING → NEEDS_REVISION → PENDING → APPROVED/REJECTED` 흐름이며, 관리자는 NEEDS_REVISION에서도 거절할 수 있다. 최종 처리된 신청은 수정·재심사할 수 없다.
 동일 회원의 PENDING·NEEDS_REVISION 중복 생성은 막고 REJECTED 이후 새 신청은 허용한다. 기존 Creator가 있는 회원은 새 신청이 불가하다.
 
 ### POST /api/admin/creator-applications/{id}/request-revision
@@ -76,8 +76,8 @@ PENDING만 가능하다. 요청 `{ "revisionReason": "증빙을 보완해 주세
 
 ## 승인·거절 및 데이터 보존
 
-승인은 제출 Form과 현재 분야 정책을 재검증하고, 희망 활동명을 최종 할당한다. 승인·Creator·기본 Mission·Space·심사 이력 저장은 한 DB 트랜잭션이다.
-거절은 기존 API를 유지하며 이력에도 사유를 남긴다. 이전 제출 Form은 `creator_application_submission`에 버전별로 보존한다.
+승인은 제출 Form과 현재 분야 정책을 재검증하고, 희망 활동명을 최종 할당한다. 제출 뒤 분야가 비활성화되거나 정책이 바뀌어 재검증에 실패하면 `APPLICATION_FORM_REQUIRED`(409)로 보완 필요를 알린다. 승인·Creator·기본 Mission·Space·심사 이력 저장은 한 DB 트랜잭션이다.
+거절은 PENDING·NEEDS_REVISION에서 기존 API를 유지하며 이력에도 사유를 남긴다. 보완 대기 중 거절하면 미제출 초안·현재 보완 사유는 비우되 이전 제출 Form과 보완·거절 이력은 보존한다.
 `creator_application_review_history`에는 보완 요청·재제출·승인·거절의 행위자·시각·당시 제출 버전을 기록한다.
 
 ## 배포

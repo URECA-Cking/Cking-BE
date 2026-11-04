@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,6 +41,9 @@ class CreatorApplicationServiceIntegrationTest {
 
     @Autowired
     private CreatorSpaceRepository creatorSpaceRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void rejectedApplicantCanSubmitANewApplication() {
@@ -90,6 +94,62 @@ class CreatorApplicationServiceIntegrationTest {
                 .extracting(error -> ((BusinessException) error).getErrorCode())
                 .isEqualTo(CreatorErrorCode.APPLICATION_FORM_REQUIRED);
         assertThat(legacy.getStatus()).isEqualTo(CreatorApplicationStatus.PENDING);
+        assertThat(creatorRepository.existsByMemberId(applicant.getMemberId())).isFalse();
+    }
+
+    @Test
+    void legacyPendingAcceptsFirstFormWithoutCreatingAnotherApplication() {
+        Member applicant = memberRepository.save(configuredApplicant());
+        Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
+        CreatorApplication legacy = creatorApplicationService.apply(applicant.getMemberId()).application();
+        var form = kr.co.cking.creator.CreatorApplicationTestForm.form("신청자닉네임");
+
+        var completed = creatorApplicationService.apply(applicant.getMemberId(), form);
+
+        assertThat(completed.created()).isFalse();
+        assertThat(completed.application().getId()).isEqualTo(legacy.getId());
+        assertThat(legacy.getSubmissionVersion()).isEqualTo(1);
+        assertThat(creatorApplicationService.findDetail(admin.getMemberId(), legacy.getId(), true).submissions())
+                .hasSize(1);
+        creatorApplicationService.approve(admin.getMemberId(), legacy.getId());
+        assertThat(legacy.getStatus()).isEqualTo(CreatorApplicationStatus.APPROVED);
+    }
+
+    @Test
+    void needsRevisionCanBeRejectedAndApplicantCanApplyAgain() {
+        Member applicant = memberRepository.save(configuredApplicant());
+        Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
+        CreatorApplication application = creatorApplicationService.apply(applicant.getMemberId(),
+                kr.co.cking.creator.CreatorApplicationTestForm.form("신청자닉네임")).application();
+        creatorApplicationService.requestRevision(admin.getMemberId(), application.getId(), "증빙 보완");
+        creatorApplicationService.updateDraft(applicant.getMemberId(), application.getId(),
+                kr.co.cking.creator.CreatorApplicationTestForm.form("새활동명"));
+
+        creatorApplicationService.reject(admin.getMemberId(), application.getId(), "보완 불가");
+
+        assertThat(application.getStatus()).isEqualTo(CreatorApplicationStatus.REJECTED);
+        assertThat(application.getDraftForm()).isNull();
+        assertThat(application.getReviewedAt()).isNotNull();
+        assertThat(creatorApplicationService.findDetail(admin.getMemberId(), application.getId(), true).reviews())
+                .extracting(item -> item.getAction()).containsExactly("NEEDS_REVISION", "REJECTED");
+        assertThat(creatorApplicationService.apply(applicant.getMemberId()).application().getId())
+                .isNotEqualTo(application.getId());
+    }
+
+    @Test
+    void approvalExplainsRevisionWhenSubmittedCategoryWasDeactivated() {
+        Member applicant = memberRepository.save(configuredApplicant());
+        Member admin = memberRepository.save(new Member("관리자", null, null, MemberRole.ADMIN));
+        CreatorApplication application = creatorApplicationService.apply(applicant.getMemberId(),
+                kr.co.cking.creator.CreatorApplicationTestForm.form("신청자닉네임")).application();
+        jdbcTemplate.update("UPDATE interest_category SET active = FALSE "
+                + "WHERE taxonomy_version = ? AND interest_code = ?", "v0.2", "FOOD");
+
+        assertThatThrownBy(() -> creatorApplicationService.approve(admin.getMemberId(), application.getId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(CreatorErrorCode.APPLICATION_FORM_REQUIRED);
+        assertThat(application.getStatus()).isEqualTo(CreatorApplicationStatus.PENDING);
         assertThat(creatorRepository.existsByMemberId(applicant.getMemberId())).isFalse();
     }
 
@@ -150,6 +210,8 @@ class CreatorApplicationServiceIntegrationTest {
         var replay = creatorApplicationService.apply(applicant.getMemberId(), form);
         assertThat(replay.created()).isFalse();
         assertThat(replay.application().getId()).isEqualTo(original.getId());
+        var padded = kr.co.cking.creator.CreatorApplicationTestForm.form(" 신청자닉네임 ");
+        assertThat(creatorApplicationService.apply(applicant.getMemberId(), padded).created()).isFalse();
         var different = kr.co.cking.creator.CreatorApplicationTestForm.form("다른활동명");
         assertThatThrownBy(() -> creatorApplicationService.apply(applicant.getMemberId(), different))
                 .isInstanceOf(BusinessException.class)

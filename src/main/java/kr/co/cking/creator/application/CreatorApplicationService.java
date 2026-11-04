@@ -1,5 +1,8 @@
 package kr.co.cking.creator.application;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
@@ -45,6 +48,9 @@ public class CreatorApplicationService {
     private final CreatorApplicationSubmissionRepository submissionRepository;
     private final CreatorApplicationReviewHistoryRepository reviewHistoryRepository;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     public ApplyResult apply(Long memberId) {
         return apply(memberId, null);
     }
@@ -63,11 +69,31 @@ public class CreatorApplicationService {
         Optional<CreatorApplication> existing = applicationRepository.findFirstByMemberIdAndStatusInOrderByIdDesc(
                 memberId, List.of(CreatorApplicationStatus.PENDING, CreatorApplicationStatus.NEEDS_REVISION));
         if (existing.isPresent()) {
-            if (existing.get().getStatus() == CreatorApplicationStatus.NEEDS_REVISION
-                    || form != null && !sameSubmittedForm(form, existing.get().getSubmittedForm())) {
+            CreatorApplication application = existing.get();
+            if (form != null && application.getStatus() == CreatorApplicationStatus.PENDING
+                    && application.getSubmittedForm() == null) {
+                return lockManager.execute("creator-application:review:" + application.getId(), () -> {
+                    // 관리자 상태 변경과 경쟁했다면 잠금 획득 후 DB의 최신 상태를 확인한다.
+                    entityManager.refresh(application, LockModeType.PESSIMISTIC_WRITE);
+                    if (application.getStatus() != CreatorApplicationStatus.PENDING) {
+                        throw new BusinessException(CreatorErrorCode.APPLICATION_CONTENT_CONFLICT);
+                    }
+                    if (application.getSubmittedForm() == null) {
+                        CreatorApplicationForm validated = formValidator.validate(form);
+                        application.submitLegacyForm(validated);
+                        submissionRepository.save(new CreatorApplicationSubmission(
+                                application.getId(), application.getSubmissionVersion(), validated));
+                    } else if (!sameSubmittedForm(form, application.getSubmittedForm())) {
+                        throw new BusinessException(CreatorErrorCode.APPLICATION_CONTENT_CONFLICT);
+                    }
+                    return new ApplyResult(application, false);
+                });
+            }
+            if (application.getStatus() == CreatorApplicationStatus.NEEDS_REVISION
+                    || form != null && !sameSubmittedForm(form, application.getSubmittedForm())) {
                 throw new BusinessException(CreatorErrorCode.APPLICATION_CONTENT_CONFLICT);
             }
-            return new ApplyResult(existing.get(), false);
+            return new ApplyResult(application, false);
         }
         CreatorApplicationForm validated = form == null ? null : formValidator.validate(form);
         CreatorApplication application = applicationRepository.save(validated == null
@@ -82,7 +108,8 @@ public class CreatorApplicationService {
     /** 이미 접수한 동일 요청은 taxonomy 교체 후에도 원래 결과를 반환한다. */
     private boolean sameSubmittedForm(CreatorApplicationForm requested, CreatorApplicationForm submitted) {
         return submitted != null
-                && Objects.equals(requested.preferredActivityName(), submitted.preferredActivityName())
+                && Objects.equals(requested.preferredActivityName() == null ? null
+                        : requested.preferredActivityName().trim(), submitted.preferredActivityName())
                 && Objects.equals(requested.categoryCodes(), submitted.categoryCodes())
                 && Objects.equals(requested.introduction() == null ? null : requested.introduction().trim(),
                         submitted.introduction())
@@ -136,7 +163,15 @@ public class CreatorApplicationService {
         if (submitted == null) {
             throw new BusinessException(CreatorErrorCode.APPLICATION_FORM_REQUIRED);
         }
-        CreatorApplicationForm current = formValidator.validate(submitted);
+        CreatorApplicationForm current;
+        try {
+            current = formValidator.validate(submitted);
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() == CommonErrorCode.VALIDATION_FAILED) {
+                throw new BusinessException(CreatorErrorCode.APPLICATION_FORM_REQUIRED);
+            }
+            throw exception;
+        }
         if (!submitted.taxonomyVersion().equals(current.taxonomyVersion())) {
             throw new BusinessException(CreatorErrorCode.APPLICATION_FORM_REQUIRED);
         }
