@@ -159,6 +159,20 @@ class SecurityConfigTest {
     }
 
     @Test
+    void YouTube_채널_연결_시작과_상태_조회는_JWT가_필수다() throws Exception {
+        mockMvc.perform(post("/api/creator/youtube-channel/connections"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/creator/youtube-channel/connection"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void YouTube_콜백은_로그인_필터를_거치지_않는_공개_경로다() throws Exception {
+        mockMvc.perform(get("/login/oauth2/code/youtube"))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
     void 인증_전환_전_API는_인증_없이_호출할_수_있다() throws Exception {
         mockMvc.perform(get("/api/events"))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));

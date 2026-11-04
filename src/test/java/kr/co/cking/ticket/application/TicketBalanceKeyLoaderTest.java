@@ -12,8 +12,11 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import kr.co.cking.stream.application.UnappliedBalanceMessageChecker;
+import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
+import kr.co.cking.ticket.application.config.TicketRedisKeys;
 import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.ticket.domain.UserCommonTicketBalance;
 import kr.co.cking.ticket.domain.UserTicketBalance;
@@ -30,12 +33,69 @@ class TicketBalanceKeyLoaderTest {
     private final UnappliedBalanceMessageChecker checker = mock(UnappliedBalanceMessageChecker.class);
     private final UserTicketBalanceRepository creatorRepository = mock(UserTicketBalanceRepository.class);
     private final UserCommonTicketBalanceRepository commonRepository = mock(UserCommonTicketBalanceRepository.class);
+    private final StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
 
     private TicketBalanceKeyLoader loader;
 
     @BeforeEach
     void setUp() {
-        loader = new TicketBalanceKeyLoader(lock, checker, creatorRepository, commonRepository);
+        loader = new TicketBalanceKeyLoader(lock, checker, creatorRepository, commonRepository, redisTemplate);
+    }
+
+    // #793: 적립 전 준비. 키가 있거나 최초 적립이면 적재하지 않고, 유실일 때만 DB 기준으로 적재한다.
+    @Test
+    void 적립_전_키가_있으면_적재하지_않고_적립을_허용한다() {
+        when(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).thenReturn(true);
+
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.EXISTING);
+
+        verify(lock, never()).acquire(CREATOR_ID, MEMBER_ID);
+    }
+
+    @Test
+    void 적립_전_키도_DB_행도_없으면_최초_적립으로_보고_적재하지_않는다() {
+        when(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).thenReturn(false);
+        when(creatorRepository.findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)).thenReturn(Optional.empty());
+
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.NEW);
+
+        verify(lock, never()).acquire(CREATOR_ID, MEMBER_ID);
+        verify(checker, never()).exists(MEMBER_ID, CREATOR_ID);
+    }
+
+    @Test
+    void 적립_전_키가_없고_DB_행이_있으면_DB_잔액으로_적재한다() {
+        when(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID))).thenReturn(false);
+        when(creatorRepository.findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)).thenReturn(Optional.of(
+                UserTicketBalance.builder().memberId(MEMBER_ID).creatorId(CREATOR_ID).balance(5L)
+                        .updatedAt(Instant.now()).build()));
+        when(lock.acquire(CREATOR_ID, MEMBER_ID)).thenReturn(TOKEN);
+        when(checker.exists(MEMBER_ID, CREATOR_ID)).thenReturn(false);
+        when(lock.loadBalanceIfHeld(CREATOR_ID, MEMBER_ID, TOKEN, 5L)).thenReturn(true);
+
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.EXISTING);
+
+        verify(lock).loadBalanceIfHeld(CREATOR_ID, MEMBER_ID, TOKEN, 5L);
+    }
+
+    @Test
+    void 적립_전_유실인데_미반영_메시지가_있으면_적립을_막는다() {
+        when(redisTemplate.hasKey(CommonTicketRedisKeys.balance(MEMBER_ID))).thenReturn(false);
+        when(commonRepository.existsById(MEMBER_ID)).thenReturn(true);
+        when(lock.acquireCommon(MEMBER_ID)).thenReturn(TOKEN);
+        when(checker.existsCommon(MEMBER_ID)).thenReturn(true);
+
+        assertThat(loader.prepareForEarn(CouponType.COMMON, null, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.NOT_READY);
+
+        verify(lock).releaseCommon(MEMBER_ID, TOKEN);
+    }
+
+    @Test
+    void 적립_전_Redis_확인이_실패하면_적립을_막는다() {
+        when(redisTemplate.hasKey(TicketRedisKeys.balance(CREATOR_ID, MEMBER_ID)))
+                .thenThrow(new QueryTimeoutException("timeout"));
+
+        assertThat(loader.prepareForEarn(CouponType.CREATOR, CREATOR_ID, MEMBER_ID)).isEqualTo(TicketBalanceKeyLoader.EarnBalance.NOT_READY);
     }
 
     @Test

@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,6 +22,7 @@ import kr.co.cking.ticket.application.dto.EarnLookupResult;
 import kr.co.cking.ticket.application.dto.EarnLookupStatus;
 import kr.co.cking.ticket.application.dto.EarnResult;
 import kr.co.cking.ticket.application.dto.EarnResultCode;
+import kr.co.cking.ticket.domain.CouponType;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -44,6 +46,7 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
     private final String streamKey;
     private final ObjectMapper objectMapper;
     private final TicketEarnRequestClaimService requestClaimService;
+    private final TicketBalanceKeyLoader balanceKeyLoader;
 
     public TicketEarnServiceImpl(
             StringRedisTemplate redisTemplate,
@@ -51,7 +54,7 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
             @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String streamKey,
             ObjectMapper objectMapper
     ) {
-        this(redisTemplate, ticketEarnLuaScript, streamKey, objectMapper, null);
+        this(redisTemplate, ticketEarnLuaScript, streamKey, objectMapper, null, null);
     }
 
     @Autowired
@@ -60,13 +63,15 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
             @Qualifier("ticketEarnLuaScript") DefaultRedisScript<List> ticketEarnLuaScript,
             @Value("${cking.ticket.earn-stream-key:stream:ticket-earned}") String streamKey,
             ObjectMapper objectMapper,
-            TicketEarnRequestClaimService requestClaimService
+            TicketEarnRequestClaimService requestClaimService,
+            TicketBalanceKeyLoader balanceKeyLoader
     ) {
         this.redisTemplate = redisTemplate;
         this.ticketEarnLuaScript = ticketEarnLuaScript;
         this.streamKey = streamKey;
         this.objectMapper = objectMapper;
         this.requestClaimService = requestClaimService;
+        this.balanceKeyLoader = balanceKeyLoader;
     }
 
     @Override
@@ -88,7 +93,7 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
         List<?> result;
 
         try {
-            result = redisTemplate.execute(
+            Function<Boolean, List<?>> lua = requireBalance -> redisTemplate.execute(
                     ticketEarnLuaScript,
                     List.of(
                             idemKey,
@@ -110,8 +115,18 @@ public class TicketEarnServiceImpl implements TicketEarnService, TicketEarnClaim
                     String.valueOf(command.missionId()),
                     command.periodKey(),
                     command.missionKey(),
-                    command.rewardPolicy().name()
+                    command.rewardPolicy().name(),
+                    requireBalance ? "1" : "0"
             );
+            // 잔액 키가 유실된 채 적립하면 0에서 다시 쌓이므로 DB 기준으로 적재한 뒤 적립한다(#793).
+            result = balanceKeyLoader == null
+                    ? lua.apply(false)
+                    : balanceKeyLoader.runEarn(CouponType.CREATOR, command.creatorId(), command.userId(), lua);
+            if (result == null && balanceKeyLoader != null) {
+                log.warn("적립 전 Redis 잔액 키를 준비하지 못해 적립하지 않습니다. requestId={}, userId={}, creatorId={}",
+                        command.requestId(), command.userId(), command.creatorId());
+                return new EarnResult(EarnResultCode.EARN_PROCESSING_FAILED);
+            }
         } catch (QueryTimeoutException e) {
             log.error("EARN Lua 실행이 타임아웃되어 처리 여부를 알 수 없습니다. requestId={}, userId={}",
                     command.requestId(), command.userId(), e);

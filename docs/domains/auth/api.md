@@ -15,6 +15,9 @@
 - 권한: `PUBLIC`
 - Spring Security OAuth2 Client의 기본 authorization endpoint를 사용해 각 Provider 인증 화면으로 redirect한다.
 - Provider callback은 Spring Security OAuth2 Client가 처리한다. 별도 Controller API로 만들지 않는다.
+- 이 규칙은 **로그인**의 Google·Kakao에만 적용한다. YouTube 채널 연결은 Creator JWT로 시작하는
+  [별도 계약](../subscription-verification/api.md#post-apicreatoryoutube-channelconnections)이며
+  `/login/oauth2/code/youtube` 콜백에서 로그인용 Member·OAuthAccount·Login Code를 생성하지 않는다.
 
 성공하면 서버는 Frontend callback으로 Login Code만 전달한다.
 

@@ -97,11 +97,14 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
                 new Creator(owner.getMemberId(), "subscription-creator-" + suffix));
         mission = missionRepository.saveAndFlush(new Mission(
                 creator.getCreatorId(), MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null));
-        channelRepository.saveAndFlush(new CreatorYoutubeChannel(
+        CreatorYoutubeChannel channel = new CreatorYoutubeChannel(
                 creator.getCreatorId(),
                 "구독 인증 채널",
                 "@subscription_" + suffix,
-                java.time.Instant.now()));
+                java.time.Instant.now());
+        channel.verify("UC" + suffix + "0000000000", "구독 인증 채널",
+                "@subscription_" + suffix, java.time.Instant.now());
+        channelRepository.saveAndFlush(channel);
         otherOwner = memberRepository.saveAndFlush(
                 new Member("subscription-other-owner-" + suffix, null, null, MemberRole.USER));
         otherParticipant = memberRepository.saveAndFlush(
@@ -110,11 +113,14 @@ class SubscriptionVerificationSubmissionConcurrencyIntegrationTest {
                 new Creator(otherOwner.getMemberId(), "subscription-other-creator-" + suffix));
         otherMission = missionRepository.saveAndFlush(new Mission(
                 otherCreator.getCreatorId(), MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null));
-        channelRepository.saveAndFlush(new CreatorYoutubeChannel(
+        CreatorYoutubeChannel otherChannel = new CreatorYoutubeChannel(
                 otherCreator.getCreatorId(),
                 "다른 구독 인증 채널",
                 "@subscription_other_" + suffix,
-                java.time.Instant.now()));
+                java.time.Instant.now());
+        otherChannel.verify("UC" + suffix + "1111111111", "다른 구독 인증 채널",
+                "@subscription_other_" + suffix, java.time.Instant.now());
+        channelRepository.saveAndFlush(otherChannel);
         image = validImage(suffix.hashCode());
     }
 

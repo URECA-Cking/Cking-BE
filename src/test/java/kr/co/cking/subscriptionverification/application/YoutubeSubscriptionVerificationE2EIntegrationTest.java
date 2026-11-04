@@ -2,6 +2,9 @@ package kr.co.cking.subscriptionverification.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -65,6 +68,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /** 채널 설정부터 VLM 판정과 Ticket Stream DB 반영까지 구독 인증의 최종 사용자 흐름을 검증한다. */
 @SpringBootTest(properties = {
@@ -102,6 +106,7 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private MutableClock clock;
     @Autowired private ControllableVisionAnalysisPort visionAnalysisPort;
+    @MockitoBean private SubscriptionVerificationChannelIdentityService channelIdentityService;
 
     private final List<Long> memberIds = new ArrayList<>();
     private final List<Long> creatorIds = new ArrayList<>();
@@ -115,6 +120,7 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
     void setUp() {
         clock.set(BASE_TIME);
         visionAnalysisPort.reset();
+        given(channelIdentityService.matchesCurrentChannel(anyLong(), anyString())).willReturn(true);
     }
 
     @AfterEach
@@ -281,6 +287,9 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
 
         assertThat(channel.created()).isTrue();
         assertThat(channel.channel().getChannelHandle()).isEqualTo("@unexpectedfilm_" + suffix);
+        channelService.connectVerified(owner.getMemberId(), creator.getCreatorId(),
+                "UC" + suffix + "0000000000",
+                "예상치 못한 필름", "@unexpectedfilm_" + suffix);
         assertThat(mission.getRewardAmount()).isEqualTo(1);
         return new CreatorFixture(creator.getCreatorId(), mission.getMissionId());
     }

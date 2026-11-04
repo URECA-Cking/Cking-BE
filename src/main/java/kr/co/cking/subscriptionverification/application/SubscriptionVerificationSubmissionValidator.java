@@ -52,7 +52,7 @@ class SubscriptionVerificationSubmissionValidator {
         if (!creatorRepository.existsById(creatorId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
-        return validateMissionAndChannel(creatorId, missionId, now);
+        return validateMissionAndChannel(creatorId, missionId, now, false);
     }
 
     SubscriptionVerificationSubmissionSource validateSourceForUpdate(
@@ -64,7 +64,7 @@ class SubscriptionVerificationSubmissionValidator {
         requireMember(memberId);
         creatorRepository.findByIdForUpdate(creatorId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return validateMissionAndChannel(creatorId, missionId, now);
+        return validateMissionAndChannel(creatorId, missionId, now, true);
     }
 
     Optional<SubscriptionVerification> validateRequest(
@@ -117,7 +117,8 @@ class SubscriptionVerificationSubmissionValidator {
     private SubscriptionVerificationSubmissionSource validateMissionAndChannel(
             Long creatorId,
             Long missionId,
-            Instant now
+            Instant now,
+            boolean forUpdate
     ) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
@@ -127,9 +128,14 @@ class SubscriptionVerificationSubmissionValidator {
         if (!mission.isActiveAt(now)) {
             throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
         }
-        CreatorYoutubeChannel channel = channelRepository.findById(creatorId)
+        CreatorYoutubeChannel channel = (forUpdate
+                ? channelRepository.findByCreatorIdForUpdate(creatorId)
+                : channelRepository.findById(creatorId))
                 .orElseThrow(() -> new BusinessException(
                         SubscriptionVerificationErrorCode.CREATOR_CHANNEL_NOT_CONFIGURED));
+        if (!channel.isVerified()) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+        }
         return new SubscriptionVerificationSubmissionSource(mission, channel);
     }
 

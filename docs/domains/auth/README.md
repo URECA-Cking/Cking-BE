@@ -34,6 +34,10 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
 - Google OAuth2와 Kakao OAuth2를 지원하며, 별도 `AdminAccount`가 연결된 ADMIN Member는 ID/PW 로그인을 지원한다.
   네이버 OAuth와 일반 사용자의 로컬 ID/PW 회원가입·로그인은 지원하지 않는다.
 - OAuth 최초 로그인 시 Cking `Member`를 자동 생성한다.
+- YouTube 채널 소유권 검증은 로그인과 별도 흐름이다. JWT 인증 Creator의 채널 연결은
+  `/api/creator/youtube-channel/connections`에서 시작하며 `/login/oauth2/code/youtube` 콜백은
+  전용 Security 체인과 Controller가 처리한다. Member·OAuthAccount를 만들거나 Login Code를 발급하지 않는다.
+  계약은 [구독 인증 API](../subscription-verification/api.md#post-apicreatoryoutube-channelconnections)를 따른다.
 - `Member.role`은 현재처럼 `USER`, `ADMIN`만 사용한다. Creator는 Member Role이 아니다.
   Creator 여부는 `creator.member_id` 존재로 판단하며, Creator 자격과 Event 소유권은 기존
   Application/Domain 정책이 판단한다.

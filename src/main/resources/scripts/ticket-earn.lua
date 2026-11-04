@@ -24,6 +24,8 @@
 --                             Guard 키 구성과 Stream 발행 필드로만 쓰인다)
 -- ARGV[12] = missionKey
 -- ARGV[13] = rewardPolicy    (DAILY, ONCE)
+-- ARGV[14] = requireBalance  ('1'이면 잔액 키가 이미 있어야 적립한다. 생략·'0'이면 기존처럼 없는 키를 0에서 시작 -
+--                             취합v1.5.4 §2.4 최초 적립 예외. Java가 DB 잔액 행이 있는 사용자에게 '1'을 넘긴다, #793)
 --
 -- 반환: { resultCode, ...옵션 필드 } (EarnResultCode 6종 + BALANCE_MAINTENANCE 중
 -- 이 스크립트가 직접 반환하는 코드)
@@ -35,6 +37,8 @@
 --   BALANCE_MAINTENANCE -- 수동 보정 락(ticket:maint:{creatorId}:{userId})이 걸린
 --                           신규 요청(issue #172, HTTP 503, SPEND의 BALANCE_MAINTENANCE와 동일 계약)
 --   EARN_ACCEPTED       -- { 'EARN_ACCEPTED', streamId, 적립후잔액 }
+--   BALANCE_NOT_LOADED  -- requireBalance='1'인데 잔액 키가 없음. 아무것도 쓰지 않으며 Java가 DB 기준으로 적재한 뒤
+--                           한 번 다시 실행한다(외부로 노출하지 않는다, #793)
 -- (EARN_PROCESSING_FAILED는 스크립트가 아니라 호출측 Java가 매핑한다)
 --
 -- periodKey는 서버 파생값이다. 자정 이후 재시도도 같은 요청으로 판정하도록
@@ -60,6 +64,7 @@ local missionId   = ARGV[10]
 local periodKey   = ARGV[11]
 local missionKey  = ARGV[12]
 local rewardPolicy = ARGV[13]
+local requireBalance = ARGV[14] == '1'
 
 local function setIdem(key, value, ttl, nx)
     if ttl > 0 then
@@ -114,6 +119,11 @@ end
 -- 보정하는 동안에는 PROCESSING 예약조차 만들지 않고 BALANCE_MAINTENANCE로 종료한다.
 if redis.call('EXISTS', maintenanceLockKey) == 1 then
     return { 'BALANCE_MAINTENANCE' }
+end
+
+-- 잔액이 있던 사용자의 키가 유실됐으면 0에서 다시 쌓지 않는다(#793). 어떤 예약도 만들기 전이라 지울 것이 없다.
+if requireBalance and redis.call('EXISTS', balanceKey) == 0 then
+    return { 'BALANCE_NOT_LOADED' }
 end
 
 -- 신규 요청은 PROCESSING과 실제 Guard 키를 함께 기록한다.
