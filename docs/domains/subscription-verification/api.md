@@ -109,7 +109,7 @@ image: JPEG 또는 PNG 한 장
 9. Transaction이 실패하거나 잠금 후 기존 멱등 요청을 발견하면 이번 요청이 업로드한 Object를 best-effort delete한다. 기존 멱등 요청이면 그 결과를 반환한다.
 10. DB commit 후 listener가 비동기 처리를 시작하며 HTTP 202를 반환한다.
 
-VLM이 승인 후보를 반환하면 보상 전에 YouTube Data API `channels.list(forHandle)`로 현재 handle이 저장된 검증 채널 ID를 가리키는지 재확인한다. ID가 달라졌거나 handle이 더 이상 존재하지 않으면 `CHANNEL_MISMATCH`로 거절한다. 외부 조회 장애는 처리 lease의 재시도 경로를 따른다. 배포 전 접수된 미검증 채널 요청은 기존 판정 흐름으로 끝낸다.
+비동기 Worker는 이미지·VLM 처리 전에 YouTube Data API `channels.list(forHandle)`로 현재 handle이 저장된 검증 채널 ID를 가리키는지 재확인한다. ID가 달라졌거나 handle이 더 이상 존재하지 않으면 `CHANNEL_MISMATCH`로 거절하고 VLM을 호출하지 않는다. API key 누락·외부 조회 장애는 처리 lease의 재시도 경로를 따르며 VLM을 호출하지 않는다. 배포 전 접수된 미검증 채널 요청은 기존 판정 흐름으로 끝낸다.
 
 이미지 처리나 Object Storage 호출 중에는 DB 잠금·Transaction을 유지하지 않는다. 사전 검증은 불필요한 업로드를 줄이는 최적화이며, 정합성 판정은 7단계의 잠금 후 재검증 결과가 최종이다.
 

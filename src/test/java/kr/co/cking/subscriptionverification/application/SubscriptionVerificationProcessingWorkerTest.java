@@ -27,6 +27,8 @@ import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRes
 import kr.co.cking.subscriptionverification.application.vision.VisionPlatform;
 import kr.co.cking.subscriptionverification.application.vision.VisionProviderErrorDetails;
 import kr.co.cking.subscriptionverification.application.vision.VisionSubscriptionState;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 import kr.co.cking.subscriptionverification.infrastructure.async.SubscriptionVerificationProcessingExecutorProperties;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -120,6 +122,25 @@ class SubscriptionVerificationProcessingWorkerTest {
                 eq(claim.verificationId()), eq(claim.processingToken()),
                 eq(SubscriptionVerificationProcessingOutcome.REJECTED), eq("CHANNEL_MISMATCH"),
                 eq(fixture.clock.instant()));
+        then(fixture.objectStorage).shouldHaveNoInteractions();
+        then(fixture.visionAnalysisPort).shouldHaveNoInteractions();
+        then(fixture.rewardService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 채널_조회_장애는_유료_VLM_호출_전에_복구_대상으로_남긴다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        willThrow(new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_UNAVAILABLE))
+                .given(fixture.channelIdentityService).matchesCurrentChannel(42L, "@channel");
+
+        fixture.worker.process(123L);
+
+        then(fixture.objectStorage).shouldHaveNoInteractions();
+        then(fixture.visionAnalysisPort).shouldHaveNoInteractions();
+        then(fixture.completionService).shouldHaveNoInteractions();
         then(fixture.rewardService).shouldHaveNoInteractions();
     }
 

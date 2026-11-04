@@ -5,7 +5,7 @@ import kr.co.cking.subscriptionverification.repository.CreatorYoutubeChannelRepo
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-/** 승인 직전에 현재 YouTube 핸들이 검증된 채널 ID를 가리키는지 확인한다. */
+/** VLM 처리 전에 현재 YouTube 핸들이 검증된 채널 ID를 가리키는지 확인한다. */
 @Service
 @RequiredArgsConstructor
 public class SubscriptionVerificationChannelIdentityService {

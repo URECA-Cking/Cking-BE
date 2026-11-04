@@ -19,6 +19,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
@@ -171,12 +172,24 @@ class GoogleYoutubeOAuthClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         GoogleYoutubeOAuthClient real = new GoogleYoutubeOAuthClient("id", "secret", "api-key", "redirect",
                 builder.build());
-        server.expect(requestTo("https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=@official&key=api-key"))
+        server.expect(requestTo("https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=@official"))
+                .andExpect(header("X-Goog-Api-Key", "api-key"))
                 .andRespond(withSuccess("{\"items\":[{\"id\":\"UCabcdefghijklmnopqrstuv\"}]}",
                         MediaType.APPLICATION_JSON));
 
         assertThat(real.currentChannelId("@official")).isEqualTo("UCabcdefghijklmnopqrstuv");
         server.verify();
+    }
+
+    @Test
+    void 공개_API_key가_없으면_채널_조회_전에_중단한다() {
+        GoogleYoutubeOAuthClient withoutKey = new GoogleYoutubeOAuthClient(
+                "id", "secret", "redirect", RestClient.create());
+
+        assertThatThrownBy(() -> withoutKey.currentChannelId("@official"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_UNAVAILABLE);
     }
 
     private GoogleYoutubeOAuthClient.Channel channel(String id, String title) {

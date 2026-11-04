@@ -146,9 +146,11 @@ public class GoogleYoutubeOAuthClient implements YoutubeChannelOwnershipClient {
         }
         String url = UriComponentsBuilder.fromUriString(CHANNELS_URL)
                 .queryParam("part", "id").queryParam("forHandle", handle)
-                .queryParam("key", apiKey).build().encode().toUriString();
+                .build().encode().toUriString();
         try {
-            ChannelsResponse response = client.get().uri(url).retrieve().body(ChannelsResponse.class);
+            ChannelsResponse response = client.get().uri(url)
+                    .headers(headers -> headers.add("X-Goog-Api-Key", apiKey))
+                    .retrieve().body(ChannelsResponse.class);
             if (response == null || response.items() == null || response.items().size() != 1) {
                 return null;
             }

@@ -30,7 +30,7 @@
 
 - Google Cloud Console에 `https://dev-api.cking.co.kr/login/oauth2/code/youtube`를 Authorized redirect URI로 등록하고 `youtube.readonly` 동의 화면의 Testing 사용자 목록에 검증 계정을 추가한다.
 - 서울 리전 AWS Systems Manager Parameter Store의 `/cking/dev/OAUTH_YOUTUBE_CLIENT_ID`(String), `/cking/dev/OAUTH_YOUTUBE_CLIENT_SECRET`(SecureString)에 별도 YouTube OAuth 클라이언트 자격 증명을 입력한다. `deploy.sh`는 값이 등록된 경우에만 읽어 컨테이너에 전달한다. 값을 바꾸면 재배포한다. 실제 값은 저장소·Issue·PR·로그에 넣지 않는다.
-- 같은 Google Cloud 프로젝트에서 YouTube Data API v3를 활성화하고 제한된 API key를 `/cking/dev/OAUTH_YOUTUBE_API_KEY`(SecureString)에 저장한다. 검증된 채널의 구독 인증을 최종 승인할 때 현재 handle의 채널 ID를 다시 조회한다. key가 없거나 조회가 실패하면 승인·보상을 진행하지 않고 Recovery에 맡긴다.
+- 같은 Google Cloud 프로젝트에서 YouTube Data API v3를 활성화하고 제한된 API key를 `/cking/dev/OAUTH_YOUTUBE_API_KEY`(SecureString)에 저장한다. 검증된 채널의 이미지·VLM 처리 전에 현재 handle의 채널 ID를 다시 조회한다. key가 없거나 조회가 실패하면 유료 VLM 호출 없이 Recovery에 맡긴다.
 - OAuth·채널 조회의 기본 connect/read timeout은 각각 `PT5S`·`PT10S`다. 운영상 조정이 필요하면 `OAUTH_YOUTUBE_CONNECT_TIMEOUT`·`OAUTH_YOUTUBE_READ_TIMEOUT`을 Parameter Store에 넣고 재배포한다.
 - 소유권 연결 API가 503이면 두 환경변수 주입과 Google API 접근을 확인한다. 기존 Google 로그인 클라이언트 자격 증명과 혼용하지 않는다.
 - 운영에 연결 기능을 열 때는 별도 운영 OAuth 클라이언트에 `https://api.cking.co.kr/login/oauth2/code/youtube`를 등록하고 `/cking/prod/OAUTH_YOUTUBE_CLIENT_ID`·`/cking/prod/OAUTH_YOUTUBE_CLIENT_SECRET`·`/cking/prod/OAUTH_YOUTUBE_API_KEY`를 설정한 뒤 배포한다. OAuth 자격 증명이 없으면 연결 시작 API는 503이고, API key가 없으면 새 채널의 구독 인증은 승인되지 않는다.

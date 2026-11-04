@@ -73,13 +73,13 @@ public class SubscriptionVerificationProcessingWorker {
     private void processClaimedVerification(SubscriptionVerificationProcessingClaim claim) {
         SubscriptionVerificationDecision decision;
         try {
-            byte[] image = objectStorage.get(claim.imageObjectKey());
-            decision = analyzeWithProviderLimit(claim, image);
-            if (decision.status() == SubscriptionVerificationDecisionStatus.APPROVED
-                    && !channelIdentityService.matchesCurrentChannel(
-                            claim.creatorId(), claim.targetChannelHandle())) {
+            if (!channelIdentityService.matchesCurrentChannel(
+                    claim.creatorId(), claim.targetChannelHandle())) {
                 decision = SubscriptionVerificationDecision.rejected(
                         SubscriptionVerificationDecisionReason.CHANNEL_MISMATCH);
+            } else {
+                byte[] image = objectStorage.get(claim.imageObjectKey());
+                decision = analyzeWithProviderLimit(claim, image);
             }
         } catch (ProcessingInterruptedException exception) {
             leaveClaimForRecoveryAfterInterrupt(claim);
