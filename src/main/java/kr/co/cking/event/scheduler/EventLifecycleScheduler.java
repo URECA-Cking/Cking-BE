@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -70,6 +72,9 @@ public class EventLifecycleScheduler {
 
     @Value("${cking.event.drain-error-after-ticks:180}")
     private int drainErrorAfterTicks = 180;
+
+    /** Redis Stream ID 형식({@code 밀리초-시퀀스}, 둘 다 음이 아닌 정수). */
+    private static final Pattern STREAM_ID = Pattern.compile("(\\d{1,18})-(\\d{1,19})");
 
     /** eventId별로 마지막으로 경고한 구간 번호. 같은 구간 중복 경고만 막는다(경과 시간의 기준은 아니다). */
     private final Map<Long, Long> lastWarnedPeriod = new ConcurrentHashMap<>();
@@ -199,20 +204,21 @@ public class EventLifecycleScheduler {
      * 한 번 남기므로(예: 31분 경과면 즉시 ERROR) 경과 시간은 이어진다. 인스턴스가 여러 대면 각자 남긴다.
      */
     private void warnIfDrainDelayed(Long eventId, String cutoffStreamId) {
-        long cutoffMillis;
-        try {
-            cutoffMillis = Long.parseLong(cutoffStreamId.substring(0, cutoffStreamId.indexOf('-')));
-        } catch (RuntimeException e) {
+        Matcher streamId = STREAM_ID.matcher(cutoffStreamId);
+        if (!streamId.matches()) {
             // Drain 판정은 EventDrainChecker가 따로 하므로 경고만 건너뛴다.
             log.debug("cutoffStreamId에서 마감 시작 시각을 읽지 못해 지연 경고를 건너뜁니다. eventId={}, cutoffStreamId={}",
                     eventId, cutoffStreamId);
             return;
         }
+        long cutoffMillis = Long.parseLong(streamId.group(1));
         long warnEveryMs = drainWarnEveryTicks * lifecycleIntervalMs;
         if (warnEveryMs <= 0) {
             return;
         }
-        // Redis와 앱 서버 시계가 조금 어긋나 음수가 되면 막 시작한 것으로 본다.
+        // cutoff 밀리초는 Redis 시계, 현재 시각은 앱 서버 시계다. 둘 다 NTP(AWS Time Sync)로 맞춰져 차이가 밀리초 수준이라는
+        // 전제로 그대로 뺀다. 조금 어긋나 음수가 되면 막 시작한 것으로 본다.
+        // ponytail: 시계 차이가 분 단위로 커질 수 있는 환경이면 현재 시각도 Redis TIME으로 읽는다.
         long elapsedMs = Math.max(0L, clock.instant().toEpochMilli() - cutoffMillis);
         long period = elapsedMs / warnEveryMs;
         if (period == 0 || period <= lastWarnedPeriod.getOrDefault(eventId, 0L)) {
@@ -232,7 +238,7 @@ public class EventLifecycleScheduler {
     /**
      * CLOSED 확정 뒤 실패해도 CLOSED를 되돌리지 않는다. 이 스케줄러는 CLOSING만 조회하므로 여기서는
      * 재시도되지 않는다. CLOSED인데 Snapshot이 없는 Event는 시스템3 누락 복구 스케줄러(FR-P3-034,
-     * {@code SnapshotRecoverySchedulingConfig})가 복구한다.
+     * {@code SnapshotRecoveryScheduler})가 주기적으로 복구한다.
      */
     private void createSnapshot(Long eventId) {
         try {

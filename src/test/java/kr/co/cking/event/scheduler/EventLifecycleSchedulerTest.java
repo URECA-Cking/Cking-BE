@@ -16,6 +16,8 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -210,20 +212,22 @@ class EventLifecycleSchedulerTest {
         assertThat(output.getAll()).contains("15분 넘게");
     }
 
-    @Test
-    void cutoff_형식이_이상하면_경고만_건너뛰고_Drain_판정은_그대로_한다(CapturedOutput output) {
+    // 숫자로 시작하지만 형식이 틀린 값도 오래된 cutoff로 오인해 즉시 ERROR를 남기지 않아야 한다(리뷰 반영).
+    @ParameterizedTest
+    @ValueSource(strings = {"not-a-stream-id", "123-", "123-invalid", "123-0-extra", "-1-0", "123"})
+    void cutoff_형식이_이상하면_경고만_건너뛰고_Drain_판정은_그대로_한다(String cutoffStreamId, CapturedOutput output) {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
-        when(event.getCutoffStreamId()).thenReturn("not-a-stream-id");
+        when(event.getCutoffStreamId()).thenReturn(cutoffStreamId);
         when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
         when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
-        when(eventDrainChecker.isDrained(1L, "not-a-stream-id")).thenReturn(false);
+        when(eventDrainChecker.isDrained(1L, cutoffStreamId)).thenReturn(false);
 
         assertThatCode(() -> scheduler.run()).doesNotThrowAnyException();
 
-        verify(eventDrainChecker).isDrained(1L, "not-a-stream-id");
+        verify(eventDrainChecker).isDrained(1L, cutoffStreamId);
         assertThat(countWarnings(output)).isZero();
-        assertThat(output.getAll()).doesNotContain("확인에 실패했습니다");
+        assertThat(output.getAll()).doesNotContain("분 넘게").doesNotContain("확인에 실패했습니다");
     }
 
     /** 마감 시작(cutoff)이 지금보다 elapsed만큼 앞선 CLOSING 이벤트 하나를 준비하고, Drain은 끝나지 않은 상태로 둔다. */
