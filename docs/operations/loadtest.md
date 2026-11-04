@@ -91,24 +91,24 @@ mkdir -p results
 | --- | --- | --- |
 | 예열 | `k6 run warmup.js` | 응답 코드가 `SUCCESS`인지, 대시보드에 지표가 잡히는지 확인. 지표가 안정되는 시간과 흔들림 폭을 기록 |
 | 응모 한계 측정 | 넓게: `START_RATE=50 STEP_RATE=50 STEPS=20 HOLD=1m k6 run entry-limit.js`(1,000까지. 500에서 무너지면 그 자리에서 멈춘다) → 좁게: 무너진 구간을 작은 간격·`HOLD=3m`으로 | 계획의 한계 판단 기준(p95 급증, 실패율, 자원 포화) 직전 단계가 한계. 1,000에서도 버티면 "1,000 이상"으로 기록 |
-| SLO v0 | | 응모 한계 측정 결과로 확정. DB 반영 지연·마감 시간·처리량은 팀 확인 |
+| SLO v0 | | 응모 한계 측정 결과로 확정: 응모 API p95 1초 이하, 성공률 99.9% 이상, 처리량 초당 80, DB 반영 p95 1초 이하, 마감 시각 → CLOSED 15초 이내 |
 | 응모 지속 측정 | `RATE=<SLO 처리량> DURATION=<예열 + 관찰 구간> SLO_P95_MS=1000 SLO_FAIL_RATE=0.001 k6 run entry-sustain.js` | 관찰 구간 최소 15분(잔액 대조 주기 5분 × 3) |
 | 마감 직전 몰림 | 테스트 앱 서버에서 `seed-closing.sql` 실행(`SET @closing_creator = 1, @closing_minutes = 5;`) → 출력의 `closing_event_id`, `end_at_ms`로 `CLOSING_EVENT_ID=… END_AT_MS=… RATE=… DURATION=… k6 run closing-burst.js` | 종료 시각 전에 시작해 종료 뒤까지 이어지게 DURATION을 정한다 |
 | 추첨 | 이벤트가 CLOSED가 된 뒤 `CLOSING_EVENT_ID=… ADMIN_MEMBER_ID=… k6 run draw.js` | `verify.sh <이벤트 ID>`의 status로 CLOSED 확인 |
 | 동시 요청 | `RACE_FIRST_MEMBER_ID=… ROUNDS=20 CONCURRENCY=50 k6 run race.js` | 회원마다 예열 1건 뒤, 라운드마다 모든 VU가 같은 시각에 보낸다(`ROUND_GAP_MS`, 기본 1초) |
-| 이미지 업로드 | `MODE=legacy RATE=2 k6 run image-upload.js` → 도착률 4·8·16, 파이프라인을 켠 뒤 `MODE=pipeline`으로 같은 도착률 | 아래 [이미지 업로드](#이미지-업로드) |
+| 이미지 업로드 | `MODE=legacy RATE=2 k6 run image-upload.js` → 도착률 4·8·16, 파이프라인을 켠 뒤 `MODE=pipeline`으로 같은 도착률 | `MODE=pipeline`은 운영에서만. 아래 [이미지 업로드](#이미지-업로드) |
 
-k6가 목표 도착률을 못 맞추면(`dropped_iterations`) 실행이 멈춘다. 부하 발생기 한계이므로 k6 서버 크기를 올린다.
+응모 시나리오(`entry-limit.js`·`entry-sustain.js`·`closing-burst.js`)는 k6가 목표 도착률을 못 맞추면(`dropped_iterations`) 실행이 멈춘다. 부하 발생기 한계이므로 k6 서버 크기를 올린다. `image-upload.js`는 멈추지 않으므로 요약의 `dropped_iterations`로 확인한다.
 
 #### 이미지 업로드
 
-파이프라인(#780)을 켜기 전·후를 같은 도착률로 비교한다. 응모 시나리오와 별개로 돌린다.
+파이프라인(#780)을 켜기 전·후를 같은 도착률로 비교한다. 응모 시나리오와 별개로 돌린다. `MODE=pipeline`은 결과 큐가 있는 운영에서만 잰다. `lib/api.js`가 대상을 부하 테스트 환경과 운영으로 제한하고, 부하 테스트 환경은 `deploy.sh`가 결과 큐 주소(`IMAGE_PIPELINE_RESULTS_QUEUE_URL`)를 넘기지 않는다.
 
 - 원본 이미지 두 장을 k6 서버 `/opt/loadtest/images/`에 둔다: `img-12mp.jpg`(약 3.9MB), `img-20mp.jpg`(약 5.1MB, `LARGE_RATIO` 기본 0.2 비율). 경로는 `IMAGE_SMALL`·`IMAGE_LARGE`로 바꿀 수 있다
-- 원본은 `k6/experimental/fs`로 한 번만 읽어 VU끼리 나눠 쓴다. VU마다 사본을 두면(`open(…, 'b')`) 원본 약 9MB × VU 수라 k6 서버 메모리가 먼저 찬다(개발 측정에서 c7g.large가 16건/초에 종료됨)
+- 원본은 `k6/experimental/fs`로 한 번만 읽어 VU끼리 나눠 쓰고, 요청 본문은 반복마다 그 원본에서 새로 읽은 사본이다. VU마다 원본 사본을 두면(`open(…, 'b')`) 원본 약 9MB × VU 수라 k6 서버 메모리가 먼저 찬다(개발 측정에서 c7g.large가 16건/초에 종료됨)
 - 환경 변수: `MODE`(필수), `RATE`(필수, 업로드 건/초), `DURATION`(기본 2m), `PROBE_RATE`(조회 건/초, 기본 10), `PRE_VUS`(기본 RATE × 6), `MAX_VUS`(기본 RATE × 40)
 - 업로드 회원은 시딩한 일반 회원을 순서대로 쓴다. 올린 이미지는 프로필에 연결하지 않아 정리 스케줄러가 지운다
-- 파이프라인 모드는 FE와 같은 간격(3초까지 0.5초, 6초까지 1초, 그 뒤 2초)으로 상태를 확인하고 30초가 넘으면 `timeout`으로 센다. 파이프라인이 꺼져 있으면 예약이 404라 모두 `reserve_fail`이 된다
+- 파이프라인 모드는 FE와 같은 간격(3초까지 0.5초, 6초까지 1초, 그 뒤 2초)으로 상태를 확인하고 30초가 넘으면 `timeout`으로 센다. 결과 큐 주소가 없는 환경(부하 테스트 환경, 파이프라인을 켜기 전 운영)은 예약이 404라 모두 `reserve_fail`이 된다
 - 결과: `upload_results{result:…}`(파이프라인 `ready`·`failed`·`timeout`·`reserve_fail`·`put_fail`, 기존 `created`·`rejected`), `upload_end_to_end`(예약부터 READY까지), 조회 `http_req_duration{name:probe}`·`http_req_failed{name:probe}`
 - 함께 볼 것: 앱 컨테이너 재시작·OOM(`docker events --filter event=oom`), 정규화 Lambda 동시 실행·스로틀, 작업 큐 가장 오래된 메시지, 두 DLQ
 

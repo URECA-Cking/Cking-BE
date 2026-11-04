@@ -54,9 +54,9 @@ Spring Boot 4.1.1은 `server.shutdown` 기본값이 `graceful`이다. 종료 신
 | 단계 | 단계 번호 | 기다리는 것 |
 | --- | --- | --- |
 | 웹 요청 마무리 (`WebServerGracefulShutdownLifecycle`) | 2147482623 | 처리 중인 HTTP 요청 |
-| 작업 큐 정리 (`ExecutorConfigurationSupport`) | 1073741823 | 구독 인증·퀴즈 생성·퀴즈 채점·댓글 필터 Executor의 남은 작업(`await-termination-seconds: 30`) |
+| 작업 큐 정리 (`ExecutorConfigurationSupport`) | 1073741823 | 구독 인증·퀴즈 생성·퀴즈 채점·댓글 필터 Executor의 남은 작업(`await-termination-seconds: 30`), 추천 기록 Executor(10초) |
 
 - 작업 자체는 종료 신호 뒤에도 각 스레드에서 계속 돌고, 기다리는 확인만 단계 순서를 따른다. 보통은 둘 중 오래 걸리는 쪽만큼 걸리고, 최악은 30초 + 30초 = 60초다
 - 같은 단계의 Executor는 동시에 기다린다. Spring Framework 7.0.9에서 Executor 2개에 5초 작업을 하나씩 넣고 종료하면 5,017ms 걸렸다
-- 컨테이너 강제 종료까지의 시간은 `docker-compose.dev.yml`의 `stop_grace_period: 90s`다. 최악 60초에 연결 종료 등 나머지 종료 단계의 여유 30초를 더했다. 여유는 측정한 값이 아니며, 종료가 잘리는 로그(`Graceful shutdown aborted with one or more requests still active`, `Timed out while waiting for executor … to terminate`)가 보이거나 컨테이너가 강제 종료(종료 코드 137)되면 늘린다
+- 컨테이너 강제 종료까지의 시간은 `docker-compose.dev.yml`·`docker-compose.prod.yml`의 `stop_grace_period: 90s`다. 최악 60초에 연결 종료 등 나머지 종료 단계의 여유 30초를 더했다. 여유는 측정한 값이 아니며, 종료가 잘리는 로그(`Graceful shutdown aborted with one or more requests still active`, `Timed out while waiting for executor … to terminate`)가 보이거나 컨테이너가 강제 종료(종료 코드 137)되면 늘린다
 - 값은 최대치라 앱이 일찍 끝나면 그때 종료된다. 늘려서 생기는 비용은 앱이 멈춰 끝나지 않을 때 배포가 그만큼 늦어지는 것이다

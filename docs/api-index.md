@@ -196,11 +196,13 @@
 | 198 | 외부 | 구독 인증 | CREATOR | POST | `/api/creator/youtube-channel/connections` | [YouTube 소유권 검증 시작](domains/subscription-verification/api.md#post-apicreatoryoutube-channelconnections) | state·브라우저 바인딩 |
 | 199 | 외부 | 구독 인증 | PUBLIC | GET | `/login/oauth2/code/youtube` | [Google 채널 연결 콜백](domains/subscription-verification/api.md#get-loginoauth2codeyoutube) | 일회성 state |
 | 200 | 외부 | 구독 인증 | CREATOR | GET | `/api/creator/youtube-channel/connection` | [내 채널 검증 상태](domains/subscription-verification/api.md#get-apicreatoryoutube-channelconnection) | - |
-| 201 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/{id}` | [내 신청 상세·초안·제출 이력](domains/creator/application-review-api.md) | - |
-| 202 | 외부 | Creator 승인 | USER | PATCH | `/api/creator/applications/{id}` | [보완 초안 저장](domains/creator/application-review-api.md) | 상태 기반 |
-| 203 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications/{id}/resubmit` | [보완 재제출](domains/creator/application-review-api.md) | 상태 기반 |
-| 204 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications/{id}` | [신청·심사 상세](domains/creator/application-review-api.md) | - |
-| 205 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/request-revision` | [보완 요청](domains/creator/application-review-api.md) | 상태 기반 |
+| 201 | 외부 | Image Upload | USER | POST | `/api/uploads` | 이미지 업로드 예약(201). 요청 `purpose`(`MEMBER_PROFILE`·`CREATOR_SPACE_PROFILE`·`CREATOR_SPACE_BANNER`·`EVENT_BANNER`·`POST_IMAGE`)·`contentType`(JPEG/PNG)·`size`(5MB 이하), 응답 `uploadId`·`uploadUrl`(5분 유효 사전 서명 PUT)·`headers`·`expiresAt`. 형식·크기 오류 `INVALID_UPLOAD_REQUEST`, 용도별 권한 확인은 기존 업로드 API와 같다. 결과 큐가 없는 환경은 404 | - |
+| 202 | 외부 | Image Upload | USER | GET | `/api/uploads/{uploadId}` | 이미지 업로드 상태 조회(`PENDING`·`READY`(`imageKey`)·`FAILED`(`failureReason`)). 본인 업로드만, 없으면 `UPLOAD_NOT_FOUND`(404) | - |
+| 203 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/{id}` | [내 신청 상세·초안·제출 이력](domains/creator/application-review-api.md) | - |
+| 204 | 외부 | Creator 승인 | USER | PATCH | `/api/creator/applications/{id}` | [보완 초안 저장](domains/creator/application-review-api.md) | 상태 기반 |
+| 205 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications/{id}/resubmit` | [보완 재제출](domains/creator/application-review-api.md) | 상태 기반 |
+| 206 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications/{id}` | [신청·심사 상세](domains/creator/application-review-api.md) | - |
+| 207 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/request-revision` | [보완 요청](domains/creator/application-review-api.md) | 상태 기반 |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
 

@@ -6,11 +6,12 @@
 - [공통 API 규약](common/api.md): 응답 형식, 사용자 식별, 멱등성, 오류 코드 배치 원칙과 공통 API를 확인한다.
 - [Swagger UI 문서화 기준](common/api.md#swagger-ui-문서화): Controller 어노테이션으로 Swagger UI 설명을 작성하는 기준을 확인한다.
 - [이미지 검증·정규화 공통 규칙](common/image.md): 업로드 이미지 형식·크기·정규화 공통 규칙과 도메인별 정책을 확인한다.
+- [이미지 업로드 파이프라인](common/image-upload-pipeline.md): 사전 서명 업로드·정규화 Lambda·결과 큐로 이어지는 업로드 흐름, 켜는 조건, 상태와 정리 기준을 확인한다.
 - [통합 작업단위 관리표](management/work-items.csv): 작업 배정·진척을 확인한다.
 - [통합 RTM](management/rtm.csv): 요구사항 추적·릴리스 점검에 사용한다.
 - [더미 데이터·운영 검증](operations/dummy-data-and-verification.md): 시딩 실행 조건과 Event·Ticket 운영 검증 범위를 확인한다.
 - [YouTube 구독 인증 운영 검증](operations/youtube-subscription-verification.md): 결정론적 E2E와 실제 Gemini·S3 smoke 및 기능 활성화 기준을 확인한다.
-- [부하 테스트 실행](operations/loadtest.md): 부하 테스트 환경에서 시딩·시나리오(예열·응모 한계·응모 지속·마감 직전 몰림·추첨)·정합성 검증 순서와 시작 잔액 계산을 확인한다.
+- [부하 테스트 실행](operations/loadtest.md): 부하 테스트 환경·운영에서 시딩·시나리오(예열·응모 한계·응모 지속·마감 직전 몰림·추첨·동시 요청·이미지 업로드)·정합성 검증 순서, 시작 잔액 계산, 운영 데이터 되돌리기를 확인한다.
 - [롤링 배포와 마이그레이션 호환](operations/rolling-deploy.md): 옛 버전과 새 버전이 함께 도는 동안 지켜야 할 마이그레이션 규칙, CI 호환 검사, Flyway 잠금과 종료 설정을 확인한다.
 
 ## 정본
