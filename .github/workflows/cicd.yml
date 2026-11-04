@@ -196,7 +196,8 @@ jobs:
     # develop만 배포한다. 다른 브랜치의 수동 실행은 이미지 빌드까지만 하고 이 job은 건너뛴다.
     # 실제 차단은 IAM 신뢰 정책(sub = develop)이 한다. 이 조건은 워크플로를 고치면 우회되므로
     # 방어선이 아니라, 배포 대상이 아님을 실패가 아닌 skipped로 드러내기 위한 것이다.
-    if: github.ref == 'refs/heads/develop'
+    # 저장소 변수 DEPLOY_ENABLED가 true일 때만 배포한다. 배포할 서버가 없을 때는 변수를 지워 검사만 돌린다.
+    if: github.ref == 'refs/heads/develop' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -325,7 +326,7 @@ jobs:
   deploy-prod:
     name: Deploy to prod
     needs: build-and-push
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write
