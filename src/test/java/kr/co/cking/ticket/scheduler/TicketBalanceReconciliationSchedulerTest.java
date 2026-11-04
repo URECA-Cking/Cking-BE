@@ -35,7 +35,9 @@ import ch.qos.logback.core.read.ListAppender;
 import io.lettuce.core.RedisCommandExecutionException;
 import io.lettuce.core.RedisException;
 import kr.co.cking.common.config.SchedulingConfig;
+import kr.co.cking.ticket.application.TicketBalanceKeyLoader;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.domain.UserCommonTicketBalance;
@@ -52,6 +54,7 @@ class TicketBalanceReconciliationSchedulerTest {
     private final UserCommonTicketBalanceRepository userCommonTicketBalanceRepository =
             mock(UserCommonTicketBalanceRepository.class);
     private final StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+    private final TicketBalanceKeyLoader balanceKeyLoader = mock(TicketBalanceKeyLoader.class);
     @SuppressWarnings("unchecked")
     private final ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
 
@@ -62,7 +65,7 @@ class TicketBalanceReconciliationSchedulerTest {
     void setUp() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         scheduler = new TicketBalanceReconciliationScheduler(
-                userTicketBalanceRepository, userCommonTicketBalanceRepository, redisTemplate);
+                userTicketBalanceRepository, userCommonTicketBalanceRepository, redisTemplate, balanceKeyLoader);
 
         logAppender = new ListAppender<>();
         logAppender.start();
@@ -104,15 +107,15 @@ class TicketBalanceReconciliationSchedulerTest {
     }
 
     @Test
-    void 공용_Redis_키가_없고_DB_잔액이_있으면_유실로_WARN을_남긴다() {
+    void 공용_Redis_키가_없고_DB_잔액이_있으면_공용_키로_적재한다() {
         givenCommonBalance(1L, 5L);
         when(valueOperations.get(CommonTicketRedisKeys.balance(1L))).thenReturn(null);
+        when(balanceKeyLoader.load(CouponType.COMMON, null, 1L)).thenReturn(true);
 
         scheduler.reconcile();
 
-        assertThat(logAppender.list).hasSize(1)
-                .allMatch(event -> event.getLevel() == Level.WARN
-                        && event.getFormattedMessage().contains("Redis Balance 키가 없습니다"));
+        verify(balanceKeyLoader).load(CouponType.COMMON, null, 1L);
+        assertThat(logAppender.list).isEmpty();
     }
 
     @Test
@@ -155,25 +158,40 @@ class TicketBalanceReconciliationSchedulerTest {
         assertThat(logAppender.list).anyMatch(event -> event.getLevel() == Level.WARN);
     }
 
+    // #793: 키가 없고 DB 잔액이 있으면 유실이므로 응모·적립 경로와 같은 안전 조건으로 미리 적재한다.
     @Test
-    void Redis_키가_없고_DB_잔액이_있으면_유실로_보고_즉시_WARN을_남긴다() {
+    void Redis_키가_없고_DB_잔액이_있으면_DB_기준으로_적재하고_경고하지_않는다() {
         givenBalance(1L, 10L, 5L);
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn(null);
+        when(balanceKeyLoader.load(CouponType.CREATOR, 10L, 1L)).thenReturn(true);
+
+        scheduler.reconcile();
+
+        verify(balanceKeyLoader).load(CouponType.CREATOR, 10L, 1L);
+        assertThat(logAppender.list).isEmpty();
+    }
+
+    @Test
+    void Redis_키가_없고_적재하지_못하면_다음_주기_재시도를_알리는_WARN을_남긴다() {
+        givenBalance(1L, 10L, 5L);
+        when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn(null);
+        when(balanceKeyLoader.load(CouponType.CREATOR, 10L, 1L)).thenReturn(false);
 
         scheduler.reconcile();
 
         assertThat(logAppender.list).hasSize(1)
                 .allMatch(event -> event.getLevel() == Level.WARN
-                        && event.getFormattedMessage().contains("Redis Balance 키가 없습니다"));
+                        && event.getFormattedMessage().contains("이번 주기에 적재하지 못했습니다"));
     }
 
     @Test
-    void Redis_키가_없어도_DB_잔액이_0이면_로그를_남기지_않는다() {
+    void Redis_키가_없어도_DB_잔액이_0이면_적재하지_않고_로그도_남기지_않는다() {
         givenBalance(1L, 10L, 0L);
         when(valueOperations.get(TicketRedisKeys.balance(10L, 1L))).thenReturn(null);
 
         scheduler.reconcile();
 
+        verify(balanceKeyLoader, never()).load(any(), any(), any());
         assertThat(logAppender.list).isEmpty();
     }
 
