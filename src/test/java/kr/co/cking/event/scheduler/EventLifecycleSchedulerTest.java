@@ -9,12 +9,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -138,100 +141,113 @@ class EventLifecycleSchedulerTest {
         inOrder.verify(officialSnapshotService).createIfAbsent(1L);
     }
 
+    // #797: 지연 경고의 경과 시간은 메모리 틱 카운터가 아니라 cutoffStreamId(마감 barrier의 Stream ID)의 밀리초로 계산한다.
     @Test
-    void Drain이_30틱_연속_끝나지_않으면_그때_한번_경고한다(CapturedOutput output) {
-        Event event = org.mockito.Mockito.mock(Event.class);
-        when(event.getEventId()).thenReturn(1L);
-        when(event.getCutoffStreamId()).thenReturn("123-0");
-        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
-        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
-
-        for (int i = 0; i < 29; i++) {
-            scheduler.run();
-        }
-        assertThat(output.getAll()).doesNotContain("Drain을 끝내지 못하고");
-
+    void 마감_시작_후_5분이_되기_전에는_경고하지_않고_5분이_되면_한번_경고한다(CapturedOutput output) {
+        givenClosingEventStartedBefore(Duration.ofMinutes(4).plusSeconds(59));
         scheduler.run();
-        assertThat(output.getAll()).contains("Drain을 끝내지 못하고").contains("연속 미완료 틱=30");
-    }
-
-    @Test
-    void Drain_경고는_30틱마다_반복된다(CapturedOutput output) {
-        givenClosingEvent();
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
-
-        runTicks(60);
-
-        assertThat(countWarnings(output)).isEqualTo(2);
-        assertThat(output.getAll()).contains("연속 미완료 틱=60");
-    }
-
-    @Test
-    void Drain이_완료되면_카운터를_비워_이후_미완료는_다시_30틱부터_센다(CapturedOutput output) {
-        givenClosingEvent();
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
-        runTicks(20);
-
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(true);
-        scheduler.run();
-
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
-        runTicks(29);
         assertThat(countWarnings(output)).isZero();
 
+        when(clock.instant()).thenReturn(NOW.plusSeconds(1));
         scheduler.run();
         assertThat(countWarnings(output)).isEqualTo(1);
-        assertThat(output.getAll()).contains("연속 미완료 틱=30");
-    }
-
-    /** FR-11b: 180틱(약 30분)부터는 같은 30틱 주기로 WARN 대신 ERROR를 남긴다. */
-    @Test
-    void Drain이_180틱_연속_끝나지_않으면_경고가_ERROR로_올라간다(CapturedOutput output) {
-        givenClosingEvent();
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
-
-        runTicks(170);
-        assertThat(output.getAll()).doesNotContain("30분 넘게");
-
-        runTicks(10);
-        assertThat(output.getAll()).contains("30분 넘게").contains("연속 미완료 틱=180");
+        assertThat(output.getAll()).contains("마감 시작 후 5분 경과");
     }
 
     @Test
-    void Drain_ERROR도_30틱마다_반복된다(CapturedOutput output) {
-        givenClosingEvent();
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+    void 같은_5분_구간에서는_틱이_여러번_돌아도_한번만_경고한다(CapturedOutput output) {
+        givenClosingEventStartedBefore(Duration.ofMinutes(5));
 
-        runTicks(210);
+        runTicksAdvancing(29, Duration.ofSeconds(10));
 
-        assertThat(output.getAll().split("분 넘게", -1).length - 1).isEqualTo(2);
-        assertThat(output.getAll()).contains("30분 넘게").contains("35분 넘게");
+        assertThat(countWarnings(output)).isEqualTo(1);
     }
 
-    /** 리뷰 반영: tick 간격이 기본값(10초)이 아니면 "N분 넘게" 문구도 그 간격 기준으로 달라져야 한다. */
     @Test
-    void ERROR_로그의_경과시간은_고정문구가_아니라_실제_tick_간격_기준으로_계산된다(CapturedOutput output) {
+    void 경고는_5분마다_반복되고_틱_간격이_밀려도_구간을_놓치지_않는다(CapturedOutput output) {
+        givenClosingEventStartedBefore(Duration.ofMinutes(4).plusSeconds(55));
+
+        // fixedDelay라 실제 틱 간격은 10초보다 길어질 수 있다. 12초씩 밀려도 5분·10분 구간을 하나씩 남긴다.
+        runTicksAdvancing(27, Duration.ofSeconds(12));
+
+        assertThat(countWarnings(output)).isEqualTo(2);
+        assertThat(output.getAll()).contains("마감 시작 후 10분 경과");
+    }
+
+    /** FR-11b: 30분(180틱)부터는 같은 5분 주기로 WARN 대신 ERROR를 남긴다. */
+    @Test
+    void 마감_시작_후_30분부터는_ERROR로_올리고_5분마다_반복한다(CapturedOutput output) {
+        givenClosingEventStartedBefore(Duration.ofMinutes(29).plusSeconds(59));
+        scheduler.run();
+        assertThat(output.getAll()).doesNotContain("분 넘게");
+
+        when(clock.instant()).thenReturn(NOW.plusSeconds(1));
+        scheduler.run();
+        assertThat(output.getAll()).contains("30분 넘게");
+
+        when(clock.instant()).thenReturn(NOW.plus(Duration.ofMinutes(5)).plusSeconds(1));
+        scheduler.run();
+        assertThat(output.getAll()).contains("35분 넘게");
+    }
+
+    @Test
+    void 재기동해도_경과시간이_이어져_30분이_지났으면_첫_틱에_바로_ERROR를_남긴다(CapturedOutput output) {
+        givenClosingEventStartedBefore(Duration.ofMinutes(31));
+        EventLifecycleScheduler restarted = new EventLifecycleScheduler(eventRepository, eventCommandService,
+                eventClosingService, eventDrainChecker, eventGateLoader, officialSnapshotService, clock);
+
+        restarted.run();
+
+        assertThat(output.getAll()).contains("31분 넘게");
+    }
+
+    /** tick 간격이 기본값(10초)이 아니면 임계값도 "틱 수 × 간격"으로 달라진다. */
+    @Test
+    void ERROR_기준은_틱_수와_실제_tick_간격으로_계산한다(CapturedOutput output) {
         ReflectionTestUtils.setField(scheduler, "lifecycleIntervalMs", 5_000L);
-        givenClosingEvent();
-        when(eventDrainChecker.isDrained(1L, "123-0")).thenReturn(false);
+        givenClosingEventStartedBefore(Duration.ofMinutes(15));
 
-        runTicks(180);
+        scheduler.run();
 
-        assertThat(output.getAll()).contains("15분 넘게").doesNotContain("30분 넘게");
+        assertThat(output.getAll()).contains("15분 넘게");
     }
 
-    private void givenClosingEvent() {
+    // 숫자로 시작하지만 형식이 틀린 값도 오래된 cutoff로 오인해 즉시 ERROR를 남기지 않아야 한다(리뷰 반영).
+    @ParameterizedTest
+    @ValueSource(strings = {"not-a-stream-id", "123-", "123-invalid", "123-0-extra", "-1-0", "123"})
+    void cutoff_형식이_이상하면_경고만_건너뛰고_Drain_판정은_그대로_한다(String cutoffStreamId, CapturedOutput output) {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
-        when(event.getCutoffStreamId()).thenReturn("123-0");
+        when(event.getCutoffStreamId()).thenReturn(cutoffStreamId);
         when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
         when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
+        when(eventDrainChecker.isDrained(1L, cutoffStreamId)).thenReturn(false);
+
+        assertThatCode(() -> scheduler.run()).doesNotThrowAnyException();
+
+        verify(eventDrainChecker).isDrained(1L, cutoffStreamId);
+        assertThat(countWarnings(output)).isZero();
+        assertThat(output.getAll()).doesNotContain("분 넘게").doesNotContain("확인에 실패했습니다");
     }
 
-    private void runTicks(int count) {
+    /** 마감 시작(cutoff)이 지금보다 elapsed만큼 앞선 CLOSING 이벤트 하나를 준비하고, Drain은 끝나지 않은 상태로 둔다. */
+    private void givenClosingEventStartedBefore(Duration elapsed) {
+        String cutoffStreamId = NOW.minus(elapsed).toEpochMilli() + "-0";
+        Event event = org.mockito.Mockito.mock(Event.class);
+        when(event.getEventId()).thenReturn(1L);
+        when(event.getCutoffStreamId()).thenReturn(cutoffStreamId);
+        when(eventRepository.findByStatus(EventStatus.OPEN)).thenReturn(List.of());
+        when(eventRepository.findByStatus(EventStatus.CLOSING)).thenReturn(List.of(event));
+        when(eventDrainChecker.isDrained(1L, cutoffStreamId)).thenReturn(false);
+        when(clock.instant()).thenReturn(NOW);
+    }
+
+    private void runTicksAdvancing(int count, Duration step) {
+        Instant now = NOW;
         for (int i = 0; i < count; i++) {
+            when(clock.instant()).thenReturn(now);
             scheduler.run();
+            now = now.plus(step);
         }
     }
 

@@ -2,8 +2,11 @@ package kr.co.cking.event.scheduler;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -47,7 +50,7 @@ public class EventLifecycleScheduler {
     private final Clock clock;
 
     /**
-     * Drain이 연속으로 끝나지 않은 틱 수(eventId별). 10초 틱 기준 30틱(약 5분)마다 WARN을 남기고,
+     * Drain이 끝나지 않은 CLOSING 이벤트는 마감 시작 후 30틱(10초 틱 기준 약 5분)마다 WARN을 남기고,
      * 180틱(약 30분)부터는 같은 주기로 ERROR로 올려 "정상 지연"과 "사실상 멈춘 상태"를 로그 레벨로
      * 구분한다. Drain을 강제로 끝내거나 CLOSED로 전환하지는 않는다(FR-11b, 취합v1.5.4 §6.8 원칙
      * 유지) — 그건 여전히 수동 개입(Dead Stream 확인·replay 등) 영역이다.
@@ -55,9 +58,11 @@ public class EventLifecycleScheduler {
      * <p>FR-11b는 이 구체값을 시스템2가 자율 결정하도록 위임했다. MVP concurrency=1 Consumer
      * 기준 정상 지연은 5분 WARN 안에서 대부분 해소된다고 보고, 30분을 넘기면 실측 부하 테스트
      * (NFR-06) 이전에도 운영자가 봐야 할 이상 신호로 잡았다. 실측 이후 재조정할 수 있는 잠정값이라
-     * tick 간격과 마찬가지로 프로퍼티로 뺐다 — 로그의 경과 시간도 고정 문구가 아니라 실제 tick
-     * 간격(`lifecycleIntervalMs`) 기준으로 계산한다.
-     * ponytail: 인스턴스 메모리라 재기동하면 0부터 다시 센다, 영속 기준이 필요해지면 CLOSING 진입 시각을 저장.
+     * tick 간격과 마찬가지로 프로퍼티로 뺐고, "틱 수 × tick 간격"을 시간 임계값으로 쓴다.
+     *
+     * <p>경과 시간은 인스턴스 메모리가 아니라 DB의 {@code cutoffStreamId}에서 계산한다(#797). cutoff는 마감 barrier를
+     * {@code XADD *}로 넣고 받은 Stream ID({@code 밀리초-시퀀스})라 앞부분이 곧 마감 시작 시각이다. 그래서 재배포·
+     * 인스턴스 교체 뒤에도 경과 시간이 이어진다.
      */
     @Value("${cking.event.lifecycle-interval-ms:10000}")
     private long lifecycleIntervalMs = 10_000L;
@@ -68,7 +73,11 @@ public class EventLifecycleScheduler {
     @Value("${cking.event.drain-error-after-ticks:180}")
     private int drainErrorAfterTicks = 180;
 
-    private final Map<Long, Integer> undrainedTicks = new ConcurrentHashMap<>();
+    /** Redis Stream ID 형식({@code 밀리초-시퀀스}, 둘 다 음이 아닌 정수). */
+    private static final Pattern STREAM_ID = Pattern.compile("(\\d{1,18})-(\\d{1,19})");
+
+    /** eventId별로 마지막으로 경고한 구간 번호. 같은 구간 중복 경고만 막는다(경과 시간의 기준은 아니다). */
+    private final Map<Long, Long> lastWarnedPeriod = new ConcurrentHashMap<>();
 
     /** 예약 시작, 마감 시작, Drain 완료 처리를 순서대로 한 번 실행한다. */
     @Scheduled(fixedDelayString = "${cking.event.lifecycle-interval-ms:10000}")
@@ -145,9 +154,12 @@ public class EventLifecycleScheduler {
 
     /** cutoff까지 Drain된 CLOSING Event를 CLOSED로 확정하고 공식 Snapshot 생성을 요청한다. */
     private void completeDrainedEvents() {
-        for (Event event : eventRepository.findByStatus(EventStatus.CLOSING)) {
+        List<Event> closing = eventRepository.findByStatus(EventStatus.CLOSING);
+        for (Event event : closing) {
             completeDrainedEvent(event);
         }
+        // 이 인스턴스나 다른 인스턴스가 CLOSED로 넘긴 이벤트의 경고 기록을 지운다.
+        lastWarnedPeriod.keySet().retainAll(closing.stream().map(Event::getEventId).toList());
     }
 
     private void processEvent(Event event) {
@@ -176,32 +188,57 @@ public class EventLifecycleScheduler {
         }
         try {
             if (eventDrainChecker.isDrained(eventId, cutoffStreamId)) {
-                undrainedTicks.remove(eventId);
                 eventCommandService.completeClosing(eventId);
                 createSnapshot(eventId);
                 return;
             }
-            int ticks = undrainedTicks.merge(eventId, 1, Integer::sum);
-            if (ticks % drainWarnEveryTicks == 0) {
-                if (ticks >= drainErrorAfterTicks) {
-                    long elapsedMinutes = ticks * lifecycleIntervalMs / 60_000L;
-                    log.error("이벤트가 CLOSING에서 Drain을 {}분 넘게 끝내지 못하고 있습니다(운영자 확인 필요). "
-                                    + "eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
-                            elapsedMinutes, eventId, cutoffStreamId, ticks);
-                } else {
-                    log.warn("이벤트가 CLOSING에서 Drain을 끝내지 못하고 있습니다. eventId={}, cutoffStreamId={}, 연속 미완료 틱={}",
-                            eventId, cutoffStreamId, ticks);
-                }
-            }
+            warnIfDrainDelayed(eventId, cutoffStreamId);
         } catch (RuntimeException e) {
             log.error("이벤트 마감 완료(CLOSING→CLOSED) 확인에 실패했습니다. eventId={}", eventId, e);
         }
     }
 
     /**
+     * 마감 시작 후 경고 주기(기본 5분)의 새 구간에 들어섰을 때 한 번 로그를 남긴다. 구간 번호는 경과 시간으로 계산하고,
+     * {@link #lastWarnedPeriod}는 같은 구간에서 틱마다 반복하지 않게 막는 용도일 뿐이다. 재기동으로 비면 현재 구간을 바로
+     * 한 번 남기므로(예: 31분 경과면 즉시 ERROR) 경과 시간은 이어진다. 인스턴스가 여러 대면 각자 남긴다.
+     */
+    private void warnIfDrainDelayed(Long eventId, String cutoffStreamId) {
+        Matcher streamId = STREAM_ID.matcher(cutoffStreamId);
+        if (!streamId.matches()) {
+            // Drain 판정은 EventDrainChecker가 따로 하므로 경고만 건너뛴다.
+            log.debug("cutoffStreamId에서 마감 시작 시각을 읽지 못해 지연 경고를 건너뜁니다. eventId={}, cutoffStreamId={}",
+                    eventId, cutoffStreamId);
+            return;
+        }
+        long cutoffMillis = Long.parseLong(streamId.group(1));
+        long warnEveryMs = drainWarnEveryTicks * lifecycleIntervalMs;
+        if (warnEveryMs <= 0) {
+            return;
+        }
+        // cutoff 밀리초는 Redis 시계, 현재 시각은 앱 서버 시계다. 둘 다 NTP(AWS Time Sync)로 맞춰져 차이가 밀리초 수준이라는
+        // 전제로 그대로 뺀다. 조금 어긋나 음수가 되면 막 시작한 것으로 본다.
+        // ponytail: 시계 차이가 분 단위로 커질 수 있는 환경이면 현재 시각도 Redis TIME으로 읽는다.
+        long elapsedMs = Math.max(0L, clock.instant().toEpochMilli() - cutoffMillis);
+        long period = elapsedMs / warnEveryMs;
+        if (period == 0 || period <= lastWarnedPeriod.getOrDefault(eventId, 0L)) {
+            return;
+        }
+        lastWarnedPeriod.put(eventId, period);
+        long elapsedMinutes = elapsedMs / 60_000L;
+        if (elapsedMs >= drainErrorAfterTicks * lifecycleIntervalMs) {
+            log.error("이벤트가 CLOSING에서 Drain을 {}분 넘게 끝내지 못하고 있습니다(운영자 확인 필요). eventId={}, cutoffStreamId={}",
+                    elapsedMinutes, eventId, cutoffStreamId);
+        } else {
+            log.warn("이벤트가 CLOSING에서 Drain을 끝내지 못하고 있습니다(마감 시작 후 {}분 경과). eventId={}, cutoffStreamId={}",
+                    elapsedMinutes, eventId, cutoffStreamId);
+        }
+    }
+
+    /**
      * CLOSED 확정 뒤 실패해도 CLOSED를 되돌리지 않는다. 이 스케줄러는 CLOSING만 조회하므로 여기서는
-     * 재시도되지 않는다. CLOSED인데 Snapshot이 없는 Event의 복구는 시스템3 누락 복구 스케줄러(FR-P3-034,
-     * T3-02)의 몫이며 아직 구현되지 않았다.
+     * 재시도되지 않는다. CLOSED인데 Snapshot이 없는 Event는 시스템3 누락 복구 스케줄러(FR-P3-034,
+     * {@code SnapshotRecoveryScheduler})가 주기적으로 복구한다.
      */
     private void createSnapshot(Long eventId) {
         try {
