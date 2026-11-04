@@ -101,7 +101,6 @@ public class CreatorEventService {
     /** Creator 소유의 초안 Event를 논리 삭제한다. 연결된 배너는 같은 트랜잭션에서 삭제 대기로 돌려 정리 작업이 회수한다. */
     public void delete(Long userId, Long eventId) {
         Creator creator = requireCreator(userId);
-        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         String[] bannerImageKey = new String[1];
         eventCommandService.delete(eventId, event -> {
             requireOwnership(creator, event);

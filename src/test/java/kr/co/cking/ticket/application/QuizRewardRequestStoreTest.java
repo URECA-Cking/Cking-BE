@@ -45,14 +45,13 @@ class QuizRewardRequestStoreTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorRepository creatorRepository = mock(CreatorRepository.class);
     private final QuizRewardRequestStore store = new QuizRewardRequestStore(quizRepository, earnRequestRepository,
-            memberRepository, creatorRepository, Clock.fixed(NOW, ZoneOffset.UTC),
-            mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
+            memberRepository, creatorRepository, Clock.fixed(NOW, ZoneOffset.UTC));
     private final QuizRewardCommand command = new QuizRewardCommand(100L, 7L, 10L, 3, REQUEST_ID);
 
     @BeforeEach
     void setUp() {
         given(memberRepository.existsById(7L)).willReturn(true);
-        given(creatorRepository.existsById(10L)).willReturn(true);
+        given(creatorRepository.findById(10L)).willReturn(java.util.Optional.of(mock(kr.co.cking.creator.domain.Creator.class)));
         given(quizRepository.saveAndFlush(any(TicketQuizRewardRequest.class))).willAnswer(invocation -> {
             TicketQuizRewardRequest request = invocation.getArgument(0);
             ReflectionTestUtils.setField(request, "quizRewardRequestId", 1L);
@@ -78,7 +77,7 @@ class QuizRewardRequestStoreTest {
 
         InOrder order = inOrder(memberRepository, creatorRepository, earnRequestRepository, quizRepository);
         order.verify(memberRepository).existsById(7L);
-        order.verify(creatorRepository).existsById(10L);
+        order.verify(creatorRepository).findById(10L);
         order.verify(earnRequestRepository).insertPending(REQUEST_ID.toString(), command.computeFingerprint(),
                 "QUIZ", NOW);
         order.verify(quizRepository).saveAndFlush(any(TicketQuizRewardRequest.class));
@@ -99,7 +98,7 @@ class QuizRewardRequestStoreTest {
         assertThatThrownBy(() -> store.insert(command)).isInstanceOf(IllegalArgumentException.class);
 
         given(memberRepository.existsById(7L)).willReturn(true);
-        given(creatorRepository.existsById(10L)).willReturn(false);
+        given(creatorRepository.findById(10L)).willReturn(Optional.empty());
         assertThatThrownBy(() -> store.insert(command)).isInstanceOf(IllegalArgumentException.class);
 
         verify(earnRequestRepository, never()).insertPending(anyString(), anyString(), anyString(), any());

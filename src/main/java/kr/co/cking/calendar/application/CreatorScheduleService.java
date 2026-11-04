@@ -64,7 +64,6 @@ public class CreatorScheduleService {
 
     public void delete(Long memberId, Long scheduleId) {
         Creator creator = requireCreator(memberId);
-        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         CreatorSchedule schedule = requireOwnedSchedule(scheduleId, creator.getCreatorId());
         scheduleRepository.delete(schedule);
     }

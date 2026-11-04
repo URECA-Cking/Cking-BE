@@ -75,7 +75,7 @@ class QuizQueryServiceTest {
         Creator creator = new Creator(MEMBER_ID, "creator");
         ReflectionTestUtils.setField(creator, "creatorId", CREATOR_ID);
         given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(creator));
-        given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
         quiz = QuizFixtures.quiz(QUIZ_ID, CREATOR_ID);
         given(quizRepository.findById(QUIZ_ID)).willReturn(Optional.of(quiz));
         given(questionRepository.findByRevisionIdOrderByQuestionNoAsc(100L)).willReturn(QuizFixtures.questionRows(100L));
@@ -221,13 +221,15 @@ class QuizQueryServiceTest {
         assertError(() -> publicQueryService.findPublishedDetail(CREATOR_ID, QUIZ_ID), QuizErrorCode.QUIZ_NOT_FOUND);
 
         quiz.publish(100L, QuizFixtures.revisionSha256(), QuizFixtures.NOW);
-        given(creatorRepository.existsById(11L)).willReturn(true);
+        Creator otherCreator = new Creator(8L, "other");
+        ReflectionTestUtils.setField(otherCreator, "creatorId", 11L);
+        given(creatorRepository.findById(11L)).willReturn(Optional.of(otherCreator));
         assertError(() -> publicQueryService.findPublishedDetail(11L, QUIZ_ID), QuizErrorCode.QUIZ_NOT_FOUND);
     }
 
     @Test
     void 없는_Creator의_공개_조회는_RESOURCE_NOT_FOUND다() {
-        given(creatorRepository.existsById(12L)).willReturn(false);
+        given(creatorRepository.findById(12L)).willReturn(Optional.empty());
 
         assertError(() -> publicQueryService.findPublished(12L, PageRequest.of(0, 20)), CommonErrorCode.RESOURCE_NOT_FOUND);
         assertError(() -> publicQueryService.findPublishedDetail(12L, QUIZ_ID), CommonErrorCode.RESOURCE_NOT_FOUND);

@@ -3,7 +3,6 @@ package kr.co.cking.quiz.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
-import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.quiz.application.dto.QuizDecisionView;
 import kr.co.cking.quiz.application.dto.QuizPublicationView;
 import kr.co.cking.quiz.domain.Quiz;
@@ -47,7 +46,6 @@ public class CreatorQuizCommandService {
     private final QuizRevisionReader revisionReader;
     private final QuizApprovalPolicy approvalPolicy;
     private final Clock clock;
-    private final CreatorActivityPolicy creatorActivityPolicy;
 
     public QuizDecisionView approve(Long memberId, Long quizId, Long revisionId) {
         Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
@@ -153,7 +151,7 @@ public class CreatorQuizCommandService {
 
     /** Judge 상태와 무관하게 게시를 취소한다. revision과 결정 기록은 그대로 둔다. */
     public QuizPublicationView unpublish(Long memberId, Long quizId) {
-        Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId, false);
         quiz.requireNotClosed();
         if (quiz.isPublished()) {
             quiz.unpublish(clock.instant());
@@ -162,15 +160,21 @@ public class CreatorQuizCommandService {
     }
 
     public QuizPublicationView close(Long memberId, Long quizId) {
-        Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId);
+        Quiz quiz = requireOwnedQuizForUpdate(memberId, quizId, false);
         quiz.close(clock.instant());
         return QuizPublicationView.of(quiz);
     }
 
     /** 없는 Quiz는 404, 다른 Creator의 Quiz는 403 — 존재 여부와 소유권을 구분한다. */
     private Quiz requireOwnedQuizForUpdate(Long memberId, Long quizId) {
+        return requireOwnedQuizForUpdate(memberId, quizId, true);
+    }
+
+    private Quiz requireOwnedQuizForUpdate(Long memberId, Long quizId, boolean requireActive) {
         Creator creator = creatorLookup.requireCreator(memberId);
-        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
+        if (requireActive) {
+            creator.requireActive();
+        }
         Quiz quiz = quizRepository.findByIdForUpdate(quizId)
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_NOT_FOUND));
         if (!quiz.isOwnedBy(creator.getCreatorId())) {

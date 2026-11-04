@@ -47,6 +47,6 @@
 
 `GET /api/creator/me/status`는 Access JWT가 필요하다. `data`는 `creatorId`, `status`, `canOperate`, `publicNotice`만 반환한다. Creator가 아니면 `FORBIDDEN`(403). `GET /api/me`의 `creator`는 자격 상태와 무관하게 행 존재 여부이므로 정지·박탈 후에도 `true`이며, `creatorStatus`와 `creatorCanOperate`로 활동 가능 여부를 구분한다. 일반 회원의 두 필드는 각각 `null`, `false`다.
 
-정지·박탈 시 기존 Space·게시글·캘린더·Quiz·Event와 로그인·팬 기능은 남긴다. 새 Creator 콘텐츠 저장, Event 승인 요청·관리자 승인, 새 Creator 미션/Quiz 보상 접수와 추천 목록 노출은 막는다. 팬에게 보여 주는 새 미션 목록은 비운다. 이미 접수된 보상 요청의 동일 UUID 재전송과 Stream/Ledger 후속 반영은 기존 멱등 규칙대로 처리한다. 기존 Event의 자동 마감·추첨·알림도 유지한다.
+정지·박탈 시 기존 Space·게시글·캘린더·Quiz·Event와 로그인·팬 기능은 남긴다. 새 Creator 콘텐츠 저장, Event 승인 요청·관리자 승인, 예약 Event의 자동 시작, 공개 Quiz 노출·새 응시, 새 Creator 미션/Quiz 보상 접수와 추천 목록 노출은 막는다. 팬에게 보여 주는 새 미션 목록은 비운다. 삭제·비공개·마감·차단 해제처럼 기존 공개 활동을 줄이는 명령은 상태와 무관하게 허용한다. 기존 Event의 자동 마감·추첨·알림도 유지한다.
 
-Creator 자격 행의 MySQL 쓰기 잠금은 콘텐츠 최종 저장과 관리자 상태 변경을 직렬화한다. 이미지 업로드·OAuth 외부 호출은 잠금을 길게 잡지 않고 최종 연결·DB 저장에서 다시 검사한다. 새 보상 접수와 자격 변경은 Creator별 MySQL advisory lock으로 직렬화한다. 같은 서버에서 대기하는 보상 요청은 로컬 잠금으로 먼저 줄 세워 커넥션 풀을 점유하지 않는다. ONCE 보상은 별도 트랜잭션으로 요청 행을 저장하므로 보상 처리 중 Creator 행 쓰기 잠금을 유지하지 않는다. MySQL과 Redis의 단일 원자 커밋은 제공하지 않으며, 장애 시 기존 requestId 멱등 처리와 Stream 복구 규칙을 따른다.
+새 보상은 Redis 처리 직전에 Creator 상태를 확인한다. 이미 수락된 동일 UUID 재전송과 Stream/Ledger 후속 반영은 기존 멱등 규칙대로 처리한다. 구독 인증이 비활성 Creator 때문에 `WITHHELD`가 되면 재활성화돼도 자동 지급하지 않으며, 예외 보상 필요 여부는 운영자가 이력을 기준으로 별도 판단한다. 보상·상태 변경을 MySQL advisory lock으로 장시간 직렬화하지 않으므로, 보상 급증이 DB 커넥션 풀이나 관리자 상태 변경을 막지 않는다. MySQL과 Redis의 단일 원자 커밋은 제공하지 않으며, 장애 시 기존 requestId 멱등 처리와 Stream 복구 규칙을 따른다.

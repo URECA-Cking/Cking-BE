@@ -85,7 +85,6 @@ public class CreatorPostService {
 
     public void delete(Long memberId, Long postId) {
         Creator creator = authorLookup.requireCreator(memberId);
-        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         CreatorPost post = requireOwnedPostForUpdate(postId, creator.getCreatorId());
         release(postId, List.copyOf(currentImageKeys(postId)), clock.instant());
         commentRepository.deleteByPostId(postId);

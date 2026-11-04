@@ -156,7 +156,6 @@ public class CreatorPostCommentService {
     /** 팔로우와 공개 범위를 보지 않는다. 팔로우를 끊은 작성자도 자기 댓글은 지울 수 있어야 하기 때문이다. */
     public void delete(Long memberId, Long creatorId, Long postId, Long commentId) {
         Creator creator = accessPolicy.requireCreator(creatorId);
-        requireActiveOwner(creator, memberId);
         accessPolicy.requirePostOfForCommentWrite(creator, postId);
         CreatorPostComment comment = requireCommentForUpdate(postId, commentId);
         if (!comment.isWrittenBy(memberId) && !creator.getMemberId().equals(memberId)) {

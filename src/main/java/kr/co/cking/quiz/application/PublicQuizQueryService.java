@@ -36,7 +36,7 @@ public class PublicQuizQueryService {
     private final QuizRevisionRepository revisionRepository;
     private final QuizRevisionReader revisionReader;
 
-    /** 최근 게시 순(publishedAt 내림차순, quizId 내림차순). 없는 Creator는 {@code RESOURCE_NOT_FOUND}. */
+    /** 최근 게시 순(publishedAt 내림차순, quizId 내림차순). 활동 중이 아닌 Creator의 Quiz는 노출하지 않는다. */
     public Page<PublicQuizViews.Summary> findPublished(Long creatorId, Pageable pageable) {
         requireCreator(creatorId);
         Page<PublishedQuizSummary> quizzes = quizRepository.findPublishedByCreatorId(creatorId, pageable);
@@ -72,8 +72,8 @@ public class PublicQuizQueryService {
     }
 
     private void requireCreator(Long creatorId) {
-        if (!creatorRepository.existsById(creatorId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
-        }
+        creatorRepository.findById(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .requireActive();
     }
 }

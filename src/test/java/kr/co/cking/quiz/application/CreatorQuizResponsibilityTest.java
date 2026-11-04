@@ -22,7 +22,7 @@ class CreatorQuizResponsibilityTest {
         ReflectionTestUtils.setField(revision,"revisionId",101L);when(revisions.findById(101L)).thenReturn(Optional.of(revision));
         when(revisions.findTopByQuizIdOrderByRevisionNoDesc(1L)).thenReturn(Optional.of(revision));
         when(decisions.save(any())).thenAnswer(i->i.getArgument(0));
-        var service=new CreatorQuizCommandService(lookup,quizzes,revisions,decisions,reader,policy,Clock.fixed(QuizFixtures.NOW,ZoneOffset.UTC),mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
+        var service=new CreatorQuizCommandService(lookup,quizzes,revisions,decisions,reader,policy,Clock.fixed(QuizFixtures.NOW,ZoneOffset.UTC));
         assertThatThrownBy(()->service.approveByCreator(7L,1L,101L,"a".repeat(64),true)).isInstanceOf(BusinessException.class);
         assertThatThrownBy(()->service.approveByCreator(7L,1L,101L,"b".repeat(64),false)).isInstanceOf(BusinessException.class);
         service.approveByCreator(7L,1L,101L,"b".repeat(64),true);

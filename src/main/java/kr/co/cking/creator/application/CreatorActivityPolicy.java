@@ -3,7 +3,6 @@ package kr.co.cking.creator.application;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
-import java.util.function.Supplier;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
@@ -18,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CreatorActivityPolicy {
     private final CreatorRepository creators;
-    private final CreatorApplicationLockManager lockManager;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -43,13 +41,4 @@ public class CreatorActivityPolicy {
         return creator;
     }
 
-    /** Redis 작업과 별도 DB 트랜잭션을 여는 명령은 Creator별 세션 잠금으로 상태 변경과 직렬화한다. */
-    public <T> T executeActiveOutsideTransaction(Long creatorId, Supplier<T> command) {
-        return lockManager.executeWithoutTransaction(CreatorRewardAdmissionService.lockKey(creatorId), 15, () -> {
-            creators.findById(creatorId)
-                    .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
-                    .requireActive();
-            return command.get();
-        });
-    }
 }

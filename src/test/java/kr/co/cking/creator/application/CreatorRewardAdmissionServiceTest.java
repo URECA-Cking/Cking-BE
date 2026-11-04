@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import java.util.UUID;
 import java.util.Optional;
-import java.util.function.Supplier;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.domain.CreatorErrorCode;
@@ -25,10 +24,9 @@ import org.junit.jupiter.api.Test;
 
 class CreatorRewardAdmissionServiceTest {
     private final CreatorRepository creators = mock(CreatorRepository.class);
-    private final CreatorApplicationLockManager lockManager = mock(CreatorApplicationLockManager.class);
     private final TicketEarnService daily = mock(TicketEarnService.class);
     private final TicketOnceEarnService once = mock(TicketOnceEarnService.class);
-    private final CreatorRewardAdmissionService service = new CreatorRewardAdmissionService(creators, lockManager, daily, once);
+    private final CreatorRewardAdmissionService service = new CreatorRewardAdmissionService(creators, daily, once);
 
     @Test
     void 정지_이후_새_보상은_거부하고_이미_수락된_요청만_재현한다() {
@@ -38,9 +36,6 @@ class CreatorRewardAdmissionServiceTest {
         org.mockito.Mockito.doThrow(new BusinessException(CreatorErrorCode.CREATOR_NOT_ACTIVE))
                 .when(creator).requireActive();
         when(creators.findById(2L)).thenReturn(Optional.of(creator));
-        when(lockManager.executeWithoutTransaction(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.<Supplier<EarnResult>>any()))
-                .thenAnswer(invocation -> ((Supplier<EarnResult>) invocation.getArgument(2)).get());
         when(daily.findExisting(command)).thenReturn(new EarnLookupResult(EarnLookupStatus.NOT_FOUND));
         assertThatThrownBy(() -> service.earnDaily(command))
                 .isInstanceOf(BusinessException.class)

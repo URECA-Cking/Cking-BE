@@ -350,8 +350,7 @@ class CreatorQuizCommandServiceTest {
                 decisionRepository,
                 new QuizRevisionReader(questionRepository, optionRepository, revisionRepository),
                 policy,
-                Clock.fixed(QuizFixtures.NOW, ZoneOffset.UTC),
-                mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
+                Clock.fixed(QuizFixtures.NOW, ZoneOffset.UTC));
     }
 
     private static Creator creator(Long creatorId) {

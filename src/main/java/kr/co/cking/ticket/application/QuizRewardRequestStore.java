@@ -1,7 +1,6 @@
 package kr.co.cking.ticket.application;
 
 import kr.co.cking.creator.repository.CreatorRepository;
-import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.application.dto.QuizRewardCommand;
 import kr.co.cking.ticket.domain.QuizRewardRequestStatus;
@@ -34,7 +33,6 @@ public class QuizRewardRequestStore {
     private final MemberRepository memberRepository;
     private final CreatorRepository creatorRepository;
     private final Clock clock;
-    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /**
      * 이미 접수된 요청과 비교한 결과. 처음 보는 요청이면 빈 값이다.
@@ -91,10 +89,9 @@ public class QuizRewardRequestStore {
         if (!memberRepository.existsById(command.memberId())) {
             throw new IllegalArgumentException("Quiz 보상 대상 회원이 없습니다. memberId=" + command.memberId());
         }
-        if (!creatorRepository.existsById(command.creatorId())) {
-            throw new IllegalArgumentException("Quiz 보상 Creator가 없습니다. creatorId=" + command.creatorId());
-        }
-        creatorActivityPolicy.requireActiveByCreatorId(command.creatorId());
+        creatorRepository.findById(command.creatorId())
+                .orElseThrow(() -> new IllegalArgumentException("Quiz 보상 Creator가 없습니다. creatorId=" + command.creatorId()))
+                .requireActive();
         Instant now = clock.instant();
         String rewardRequestId = command.rewardRequestId().toString();
         String fingerprint = command.computeFingerprint();

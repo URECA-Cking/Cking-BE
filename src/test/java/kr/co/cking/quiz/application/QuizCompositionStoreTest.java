@@ -27,8 +27,7 @@ class QuizCompositionStoreTest {
     final QuizQuestion original=new QuizQuestion(100L,0,"Q",1,"E","evidence");
     final List<String> choices=List.of("A","B","C","D");
     final QuizCompositionStore store=new QuizCompositionStore(lookup,quizzes,revisions,questions,options,requests,reader,
-            Clock.fixed(QuizFixtures.NOW, ZoneOffset.UTC),
-            mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
+            Clock.fixed(QuizFixtures.NOW, ZoneOffset.UTC));
     @BeforeEach void setup() {
         var creator=mock(Creator.class); when(creator.getCreatorId()).thenReturn(10L); when(lookup.requireCreator(7L)).thenReturn(creator);
         when(quizzes.findByIdForUpdate(1L)).thenReturn(Optional.of(quiz));

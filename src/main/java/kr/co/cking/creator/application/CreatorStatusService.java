@@ -55,14 +55,12 @@ public class CreatorStatusService {
             }
             return prior;
         }
-        return lockManager.executeWaiting(CreatorRewardAdmissionService.lockKey(creatorId), 15, () -> {
-            Creator creator = creators.findByIdForUpdate(creatorId)
-                    .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-            CreatorStatus previous = creator.getStatus();
-            creator.changeStatus(next, command.publicNotice().trim());
-            return histories.save(new CreatorStatusHistory(creatorId, previous, next, command.reasonCode().name(),
-                    command.detailReason().trim(), command.publicNotice().trim(), adminId, requestId));
-        });
+        Creator creator = creators.findByIdForUpdate(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        CreatorStatus previous = creator.getStatus();
+        creator.changeStatus(next, command.publicNotice().trim());
+        return histories.save(new CreatorStatusHistory(creatorId, previous, next, command.reasonCode().name(),
+                command.detailReason().trim(), command.publicNotice().trim(), adminId, requestId));
     }
 
     @Transactional(readOnly = true)

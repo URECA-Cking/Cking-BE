@@ -3,7 +3,6 @@ package kr.co.cking.event.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
-import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.event.application.service.EventClosingService;
 import kr.co.cking.event.domain.Event;
@@ -31,7 +30,6 @@ public class ManualEventCloseService {
     private final CreatorRepository creatorRepository;
     private final EventRepository eventRepository;
     private final EventClosingService eventClosingService;
-    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /** ADMIN 또는 Event 소유 Creator의 마감 가능 Event 요청만 시스템2로 위임한다. */
     public EventClosingService.ClosingResult close(Long userId, Long eventId) {
@@ -41,28 +39,24 @@ public class ManualEventCloseService {
                 .filter(candidate -> candidate.getDeletedAt() == null)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
-        Long creatorId = authorize(member, event);
+        authorize(member, event);
         if (event.getStatus() != EventStatus.OPEN
                 && event.getStatus() != EventStatus.CLOSING
                 && event.getStatus() != EventStatus.CLOSED) {
             throw new BusinessException(EventErrorCode.INVALID_STATE);
         }
-        return creatorId == null ? eventClosingService.startClosing(eventId)
-                : creatorActivityPolicy.executeActiveOutsideTransaction(creatorId,
-                        () -> eventClosingService.startClosing(eventId));
+        return eventClosingService.startClosing(eventId);
     }
 
     /** 관리자 전체 권한 또는 Creator의 Event 소유권을 검증한다. */
-    private Long authorize(Member member, Event event) {
+    private void authorize(Member member, Event event) {
         if (member.getRole() == MemberRole.ADMIN) {
-            return null;
+            return;
         }
         Creator creator = creatorRepository.findByMemberId(member.getMemberId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
         if (!creator.getCreatorId().equals(event.getCreatorId())) {
             throw new BusinessException(CommonErrorCode.FORBIDDEN);
         }
-        creator.requireActive();
-        return creator.getCreatorId();
     }
 }

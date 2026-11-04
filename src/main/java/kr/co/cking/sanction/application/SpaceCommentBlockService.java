@@ -169,9 +169,6 @@ public class SpaceCommentBlockService {
     private SpaceCommentBlockView releaseLocked(
             MemberSanction block, Creator creator, Long releasedByMemberId, boolean lockActorRow) {
         lockMembers(releasedByMemberId, lockActorRow, block.getMemberId());
-        if (lockActorRow) {
-            creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
-        }
         Instant now = clock.instant();
         boolean wasActive = block.isActiveAt(now);
         block.release(releasedByMemberId, now);

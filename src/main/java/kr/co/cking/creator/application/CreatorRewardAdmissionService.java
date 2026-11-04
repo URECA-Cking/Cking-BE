@@ -12,12 +12,11 @@ import kr.co.cking.ticket.application.dto.EarnResultCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-/** Creator 보상의 신규 Redis 수락을 자격 상태 변경과 직렬화한다. */
+/** Creator 보상의 신규 Redis 수락 직전에 Creator 자격을 확인한다. */
 @Service
 @RequiredArgsConstructor
 public class CreatorRewardAdmissionService {
     private final CreatorRepository creators;
-    private final CreatorApplicationLockManager lockManager;
     private final TicketEarnService dailyEarn;
     private final TicketOnceEarnService onceEarn;
 
@@ -25,30 +24,16 @@ public class CreatorRewardAdmissionService {
         if (dailyEarn.findExisting(command).status() == EarnLookupStatus.ALREADY_PROCESSED) {
             return new EarnResult(EarnResultCode.ALREADY_PROCESSED);
         }
-        return lockManager.executeWithoutTransaction(lockKey(command.creatorId()), 15, () -> {
-            if (dailyEarn.findExisting(command).status() == EarnLookupStatus.ALREADY_PROCESSED) {
-                return new EarnResult(EarnResultCode.ALREADY_PROCESSED);
-            }
-            requireActive(command.creatorId());
-            return dailyEarn.earn(command);
-        });
+        requireActive(command.creatorId());
+        return dailyEarn.earn(command);
     }
 
     public EarnResult earnOnce(EarnCommand command) {
         if (onceEarn.findExisting(command).status() == EarnLookupStatus.ALREADY_PROCESSED) {
             return new EarnResult(EarnResultCode.ALREADY_PROCESSED);
         }
-        return lockManager.executeWithoutTransaction(lockKey(command.creatorId()), 15, () -> {
-            if (onceEarn.findExisting(command).status() == EarnLookupStatus.ALREADY_PROCESSED) {
-                return new EarnResult(EarnResultCode.ALREADY_PROCESSED);
-            }
-            requireActive(command.creatorId());
-            return onceEarn.earn(command);
-        });
-    }
-
-    static String lockKey(Long creatorId) {
-        return "creator-reward-admission:" + creatorId;
+        requireActive(command.creatorId());
+        return onceEarn.earn(command);
     }
 
     private void requireActive(Long creatorId) {
