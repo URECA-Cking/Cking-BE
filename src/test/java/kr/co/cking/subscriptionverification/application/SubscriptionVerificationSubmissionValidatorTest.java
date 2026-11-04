@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.Mission;
 import kr.co.cking.mission.MissionRepository;
@@ -57,8 +58,10 @@ class SubscriptionVerificationSubmissionValidatorTest {
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         given(missionRepository.findById(MISSION_ID)).willReturn(Optional.of(
                 new Mission(CREATOR_ID, MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null)));
-        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(
-                new CreatorYoutubeChannel(CREATOR_ID, "예상치 못한 필름", "@unexpectedfilm", NOW)));
+        CreatorYoutubeChannel channel = new CreatorYoutubeChannel(
+                CREATOR_ID, "예상치 못한 필름", "@unexpectedfilm", NOW);
+        channel.verify("UCabcdefghijklmnopqrstuv", "예상치 못한 필름", "@unexpectedfilm", NOW);
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(channel));
         given(verificationRepository.findByRequestId(REQUEST_ID)).willReturn(Optional.empty());
     }
 
@@ -69,6 +72,26 @@ class SubscriptionVerificationSubmissionValidatorTest {
 
         assertThat(source.mission().getType()).isEqualTo(MissionType.YOUTUBE_SUBSCRIPTION);
         assertThat(source.channel().getChannelHandle()).isEqualTo("@unexpectedfilm");
+    }
+
+    @Test
+    void 미검증_채널의_구독_인증_제출을_거부한다() {
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(
+                new CreatorYoutubeChannel(CREATOR_ID, "채널", "@channel", NOW)));
+
+        assertError(() -> validator.validateSource(MEMBER_ID, CREATOR_ID, MISSION_ID, NOW),
+                SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+    }
+
+    @Test
+    void 잠금_후_최종_검사에서도_현재_미검증_채널을_거부한다() {
+        given(creatorRepository.findByIdForUpdate(CREATOR_ID))
+                .willReturn(Optional.of(new Creator(MEMBER_ID, "Creator")));
+        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID)).willReturn(Optional.of(
+                new CreatorYoutubeChannel(CREATOR_ID, "채널", "@channel", NOW)));
+
+        assertError(() -> validator.validateSourceForUpdate(MEMBER_ID, CREATOR_ID, MISSION_ID, NOW),
+                SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
     }
 
     @Test

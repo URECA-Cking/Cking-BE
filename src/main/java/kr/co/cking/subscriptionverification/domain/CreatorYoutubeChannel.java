@@ -2,6 +2,8 @@ package kr.co.cking.subscriptionverification.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -29,8 +31,21 @@ public class CreatorYoutubeChannel {
     @Column(name = "channel_name", nullable = false, length = MAX_NAME_LENGTH)
     private String channelName;
 
-    @Column(name = "channel_handle", nullable = false, length = MAX_HANDLE_LENGTH, unique = true)
+    @Column(name = "channel_handle", nullable = false, length = MAX_HANDLE_LENGTH)
     private String channelHandle;
+
+    @Column(name = "youtube_channel_id", length = 100, unique = true)
+    private String youtubeChannelId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false, length = 20)
+    private YoutubeChannelVerificationStatus verificationStatus = YoutubeChannelVerificationStatus.UNVERIFIED;
+
+    @Column(name = "verification_method", length = 20)
+    private String verificationMethod;
+
+    @Column(name = "verified_at")
+    private Instant verifiedAt;
 
     @Column(name = "channel_url", nullable = false, length = 500)
     private String channelUrl;
@@ -55,6 +70,28 @@ public class CreatorYoutubeChannel {
             throw new IllegalArgumentException("updatedAt은 필수입니다.");
         }
         apply(channelName, channelHandle, now);
+        this.youtubeChannelId = null;
+        this.verificationStatus = YoutubeChannelVerificationStatus.UNVERIFIED;
+        this.verificationMethod = null;
+        this.verifiedAt = null;
+    }
+
+    /** OAuth ownership and public handle lookup must resolve to the same channel ID before this call. */
+    public void verify(String channelId, String channelName, String channelHandle, Instant now) {
+        if (channelId == null || !channelId.matches("UC[A-Za-z0-9_-]{22}") || now == null) {
+            throw new IllegalArgumentException("YouTube 채널 ID가 유효하지 않습니다.");
+        }
+        apply(channelName, channelHandle, now);
+        this.youtubeChannelId = channelId;
+        this.channelUrl = "https://www.youtube.com/channel/" + channelId;
+        this.verificationStatus = YoutubeChannelVerificationStatus.VERIFIED;
+        this.verificationMethod = "OAUTH";
+        this.verifiedAt = now;
+    }
+
+    public boolean isVerified() {
+        return verificationStatus == YoutubeChannelVerificationStatus.VERIFIED
+                && youtubeChannelId != null;
     }
 
     public boolean hasSameConfiguration(String channelName, String channelHandle) {

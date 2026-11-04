@@ -111,9 +111,20 @@ public class SecurityConfig {
                 .build();
     }
 
-    /** 인증 전환 API와 기존 공개 API의 접근 범위를 함께 보장하는 기본 보안 체인을 구성한다. */
+    /** Channel ownership callback has its own public route and cannot enter the login filter. */
     @Bean
     @Order(3)
+    public SecurityFilterChain youtubeConnectionCallbackSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http.securityMatcher("/login/oauth2/code/youtube")
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
+                .build();
+    }
+
+    /** 인증 전환 API와 기존 공개 API의 접근 범위를 함께 보장하는 기본 보안 체인을 구성한다. */
+    @Bean
+    @Order(4)
     public SecurityFilterChain applicationSecurityFilterChain(HttpSecurity http) throws Exception {
         configureOAuth2LoginIfRegistered(http);
         return http
@@ -127,6 +138,8 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/creator/youtube-channel/connections").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/creator/youtube-channel/connection").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/events/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/creators/*/quizzes/*/attempts").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/creators/*/quizzes/*/my-attempt").authenticated()

@@ -32,16 +32,22 @@ class CreatorYoutubeChannelRepositoryJpaTest {
     private CreatorYoutubeChannelRepository channelRepository;
 
     @Test
-    void Creator당_채널은_하나이고_handle은_전체_Creator에서_유일하다() {
+    void 미검증_handle은_중복_가능하지만_검증된_채널_ID는_유일하다() {
         Creator first = creator("채널 소유자 1");
         Creator second = creator("채널 소유자 2");
         Instant now = Instant.parse("2026-09-28T03:00:00Z");
 
-        channelRepository.saveAndFlush(new CreatorYoutubeChannel(
-                first.getCreatorId(), "채널 1", "@same", now));
+        CreatorYoutubeChannel firstChannel = new CreatorYoutubeChannel(
+                first.getCreatorId(), "채널 1", "@same", now);
+        firstChannel.verify("UCabcdefghijklmnopqrstuv", "채널 1", "@same", now);
+        channelRepository.saveAndFlush(firstChannel);
 
-        assertThatThrownBy(() -> channelRepository.saveAndFlush(new CreatorYoutubeChannel(
-                second.getCreatorId(), "채널 2", "@same", now)))
+        CreatorYoutubeChannel secondChannel = channelRepository.saveAndFlush(new CreatorYoutubeChannel(
+                second.getCreatorId(), "채널 2", "@same", now));
+        assertThat(secondChannel.isVerified()).isFalse();
+
+        secondChannel.verify("UCabcdefghijklmnopqrstuv", "채널 2", "@same", now);
+        assertThatThrownBy(() -> channelRepository.saveAndFlush(secondChannel))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 

@@ -20,7 +20,7 @@
 - Mission 정의 저장: Mission 도메인의 내부 Service를 호출한다.
 - Ticket Balance·Ledger·Completion 변경: Ticket 도메인의 ONCE 적립 Service만 호출한다.
 - 이미지 저장 구현: 공통 Object Storage port를 사용한다.
-- YouTube OAuth, YouTube Data API, 채널 소유권 검증
+- 대리 운영자의 채널 권한 검증(`mine=true`로 확인되지 않는 경우)
 - 관리자 수동 심사, pHash 기반 유사 이미지 판정
 
 다른 도메인의 Entity·Repository를 직접 변경하지 않는다.
@@ -40,10 +40,11 @@ Mission 생성은 `mission.application`의 내부 Service, Ticket 보상은 `Tic
 ## 핵심 흐름
 
 ```text
-Creator가 YouTube 채널 최초 설정
+Creator가 YouTube 채널 수동 설정(UNVERIFIED)
+→ 별도 Google OAuth로 채널 ID와 입력 handle을 대조해 VERIFIED
 → YOUTUBE_SUBSCRIPTION Mission이 없으면 같은 Transaction에서 생성
 
-사용자 이미지 제출
+VERIFIED 채널의 사용자 이미지 제출
 → 동기 검증·정규화·SHA-256
 → 멱등성·재제출 규칙 검증
 → Private Object Storage 저장
@@ -69,11 +70,15 @@ APPROVED
 | --- | --- |
 | `creator_id` | PK/FK, Java `Long` |
 | `channel_name` | 표시명, 최대 100자 |
-| `channel_handle` | 정규화된 비교 식별자, 최대 100자, UNIQUE |
-| `channel_url` | 정규화된 handle로 서버가 만든 URL, 최대 500자 |
+| `channel_handle` | 정규화된 비교 식별자, 최대 100자 |
+| `youtube_channel_id` | OAuth 소유권 검증으로 확인한 YouTube ID, UNIQUE, 미검증은 NULL |
+| `verification_status`, `verification_method`, `verified_at` | 소유권 검증 상태·방법·UTC 시각 |
+| `channel_url` | 검증 후 채널 ID로 서버가 만든 URL, 최대 500자 |
 | `created_at`, `updated_at` | UTC Instant |
 
-채널명은 동일성의 최종 기준이 아니다. handle은 trim 후 앞의 `@`를 하나만 두고 `Locale.ROOT` 기준으로 소문자화한다. handle 본문은 Unicode 문자·숫자와 `.`, `_`, `-`만 허용하며 공백·URL 구분자는 거부한다. 같은 정규화 handle을 여러 Creator가 등록할 수 없다. MVP는 Creator가 등록한 값을 인증 대상으로 사용할 뿐 실제 채널 소유권은 검증하지 않는다.
+채널명은 동일성의 최종 기준이 아니다. handle은 trim 후 앞의 `@`를 하나만 두고 `Locale.ROOT` 기준으로 소문자화한다. handle 본문은 Unicode 문자·숫자와 `.`, `_`, `-`만 허용하며 공백·URL 구분자는 거부한다. 소유권의 최종 식별자는 `youtube_channel_id`다. 기존 수동 등록 채널은 V97에서 모두 `UNVERIFIED`로 이관하고 인증·보상 이력은 유지한다.
+
+채널 연결은 기존 Google·Kakao 로그인과 분리한다. JWT로 Creator를 확인한 뒤 Redis에 시작 회원·Creator·handle·PKCE verifier를 10분간 저장하고 state와 브라우저 쿠키를 결합해 한 번 소비한다. Google `mine=true`와 입력 handle의 `forHandle`이 동일 채널 ID를 가리켜야 한다. 토큰은 조회 후 폐기하고 DB 잠금은 Provider 호출 뒤에만 획득한다. 처리 중 Verification은 동결된 기존 채널 정보로 완료한다. 신규 제출은 잠금 안에서 VERIFIED를 재검사한다.
 
 Creator 본인만 채널을 생성·수정한다. Creator는 JWT role이 아니므로 인증된 `memberId`로 `creator.member_id`를 조회해 소유권을 확인한다. 삭제 API는 제공하지 않는다.
 
@@ -98,7 +103,7 @@ activeTo = null
 - 정규화 결과가 현재 설정과 같은 PUT 재요청은 실제 수정이 아니므로 기존 설정을 그대로 반환한다.
 - 제출 시 채널명과 정규화 handle을 Verification에 복사해 판정 입력을 동결한다.
 - Processor와 Recovery는 현재 채널 설정이 아니라 Verification의 동결 값을 사용한다.
-- 과거 `APPROVED`가 있어도 채널 수정은 허용하며 보상을 회수하지 않는다.
+- 과거 `APPROVED`가 있어도 새 OAuth 연결로 채널을 변경할 수 있으며 보상은 회수하지 않는다. 검증된 채널은 수동 PUT으로 교체할 수 없다.
 
 이미지 CPU 처리, Object Storage 및 VLM 호출 중에는 이 잠금이나 DB Transaction을 유지하지 않는다. 제출 저장의 짧은 Transaction에서만 Creator 단위 잠금을 획득하고 채널·멱등성·활성 요청을 다시 검증한다.
 

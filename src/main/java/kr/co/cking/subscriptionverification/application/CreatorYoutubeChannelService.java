@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -41,7 +42,11 @@ public class CreatorYoutubeChannelService {
         if (!creatorRepository.existsById(creatorId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
-        return requireChannel(creatorId);
+        CreatorYoutubeChannel channel = requireChannel(creatorId);
+        if (!channel.isVerified()) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+        }
+        return channel;
     }
 
     @Transactional(readOnly = true)
@@ -50,8 +55,19 @@ public class CreatorYoutubeChannelService {
         return requireChannel(creator.getCreatorId());
     }
 
+    @Transactional(readOnly = true)
+    public CreatorYoutubeChannel getMineOrNull(Long memberId) {
+        Creator creator = requireCreator(memberId);
+        return channelRepository.findById(creator.getCreatorId()).orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public Long creatorIdForConnection(Long memberId) {
+        return requireCreator(memberId).getCreatorId();
+    }
+
     /** Creator 행을 잠그고 채널 설정·미션 provisioning을 하나의 Transaction으로 처리한다. */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CreatorYoutubeChannelUpsertResult put(Long memberId, CreatorYoutubeChannelCommand command) {
         Creator creator = requireCreator(memberId);
         Long creatorId = creator.getCreatorId();
@@ -60,29 +76,61 @@ public class CreatorYoutubeChannelService {
 
         String channelName = normalizeName(command);
         String channelHandle = normalizeHandle(command);
-        CreatorYoutubeChannel existing = channelRepository.findByCreatorIdForUpdate(creatorId).orElse(null);
+        // Creator row is the shared lock for channel writes and verification submissions.
+        // Avoid SELECT FOR UPDATE on an absent channel row: its gap lock can deadlock cross-Creator inserts.
+        CreatorYoutubeChannel existing = channelRepository.findById(creatorId).orElse(null);
 
         if (existing != null && existing.hasSameConfiguration(channelName, channelHandle)) {
             return new CreatorYoutubeChannelUpsertResult(existing, false);
         }
+        if (existing != null && existing.isVerified()) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_REQUIRED);
+        }
         if (existing != null && verificationRepository.existsByCreatorIdAndStatusIn(creatorId, ACTIVE_STATUSES)) {
             throw new BusinessException(SubscriptionVerificationErrorCode.INVALID_STATE);
         }
-        if (channelRepository.existsByChannelHandleAndCreatorIdNot(channelHandle, creatorId)) {
-            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_HANDLE_CONFLICT);
-        }
-
         Instant now = Instant.now(clock);
         if (existing != null) {
             existing.update(channelName, channelHandle, now);
-            flushOrThrowHandleConflict(existing);
+            channelRepository.saveAndFlush(existing);
             return new CreatorYoutubeChannelUpsertResult(existing, false);
         }
 
         CreatorYoutubeChannel created = new CreatorYoutubeChannel(creatorId, channelName, channelHandle, now);
-        flushOrThrowHandleConflict(created);
+        channelRepository.saveAndFlush(created);
         missionProvisioningService.provision(creatorId);
         return new CreatorYoutubeChannelUpsertResult(created, true);
+    }
+
+    /** The OAuth request is checked outside this transaction; the Creator lock serializes channel changes and submissions. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public CreatorYoutubeChannel connectVerified(Long memberId, Long expectedCreatorId,
+            String channelId, String channelName,
+            String channelHandle) {
+        Creator creator = requireCreator(memberId);
+        Long creatorId = creator.getCreatorId();
+        if (!creatorId.equals(expectedCreatorId)) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_INVALID);
+        }
+        creatorRepository.findByIdForUpdate(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        CreatorYoutubeChannel existing = channelRepository.findById(creatorId).orElse(null);
+        if (existing != null && verificationRepository.existsByCreatorIdAndStatusIn(creatorId, ACTIVE_STATUSES)
+                && (!channelId.equals(existing.getYoutubeChannelId())
+                        || !existing.hasSameConfiguration(channelName, channelHandle))) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.INVALID_STATE);
+        }
+        Instant now = Instant.now(clock);
+        CreatorYoutubeChannel channel = existing == null
+                ? new CreatorYoutubeChannel(creatorId, channelName, channelHandle, now) : existing;
+        channel.verify(channelId, channelName, channelHandle, now);
+        try {
+            channelRepository.saveAndFlush(channel);
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_ALREADY_CONNECTED);
+        }
+        missionProvisioningService.provision(creatorId);
+        return channel;
     }
 
     private Creator requireCreator(Long memberId) {
@@ -117,11 +165,4 @@ public class CreatorYoutubeChannelService {
         }
     }
 
-    private void flushOrThrowHandleConflict(CreatorYoutubeChannel channel) {
-        try {
-            channelRepository.saveAndFlush(channel);
-        } catch (DataIntegrityViolationException exception) {
-            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_HANDLE_CONFLICT);
-        }
-    }
 }

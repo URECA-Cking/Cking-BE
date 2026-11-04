@@ -281,6 +281,9 @@ class YoutubeSubscriptionVerificationE2EIntegrationTest {
 
         assertThat(channel.created()).isTrue();
         assertThat(channel.channel().getChannelHandle()).isEqualTo("@unexpectedfilm_" + suffix);
+        channelService.connectVerified(owner.getMemberId(), creator.getCreatorId(),
+                "UC" + suffix + "0000000000",
+                "예상치 못한 필름", "@unexpectedfilm_" + suffix);
         assertThat(mission.getRewardAmount()).isEqualTo(1);
         return new CreatorFixture(creator.getCreatorId(), mission.getMissionId());
     }

@@ -9,6 +9,9 @@ public record CreatorYoutubeChannelResponse(
         String channelName,
         String channelHandle,
         String channelUrl,
+        String youtubeChannelId,
+        String verificationStatus,
+        Instant verifiedAt,
         Instant updatedAt
 ) {
     public static CreatorYoutubeChannelResponse from(CreatorYoutubeChannel channel) {
@@ -17,6 +20,9 @@ public record CreatorYoutubeChannelResponse(
                 channel.getChannelName(),
                 channel.getChannelHandle(),
                 channel.getChannelUrl(),
+                channel.getYoutubeChannelId(),
+                channel.getVerificationStatus().name(),
+                channel.getVerifiedAt(),
                 channel.getUpdatedAt());
     }
 }

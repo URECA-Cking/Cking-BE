@@ -24,3 +24,9 @@ spring:
             token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
+
+cking:
+  youtube-oauth:
+    # Separate from the Google sign-in client. Blank values leave channel connection unavailable.
+    client-id: ${OAUTH_YOUTUBE_CLIENT_ID:}
+    client-secret: ${OAUTH_YOUTUBE_CLIENT_SECRET:}

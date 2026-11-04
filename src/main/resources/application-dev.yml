@@ -19,6 +19,9 @@ server:
 
 # 개발 서버 전용 기능값은 이 파일을 수정해 재배포한다.
 cking:
+  youtube-oauth:
+    redirect-uri: https://dev-api.cking.co.kr/login/oauth2/code/youtube
+    frontend-result-url: https://dev.cking.co.kr/my-page
   event:
     approval-request:
       # 퀴즈·시연 Event를 즉시 승인·개설할 수 있게 한다. 운영 정책 검증이 필요하면 PT48H로 바꿔 재배포한다.
