@@ -27,6 +27,9 @@ springdoc:
     enabled: false
 
 cking:
+  youtube-oauth:
+    redirect-uri: https://api.cking.co.kr/login/oauth2/code/youtube
+    frontend-result-url: https://cking.co.kr/my-page
   event:
     approval-request:
       # 시연 Event를 바로 개설할 수 있게 한다. 운영 정책 검증이 필요하면 PT48H로 바꿔 재배포한다.

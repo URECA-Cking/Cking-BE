@@ -7,6 +7,7 @@ import kr.co.cking.abuse.application.SubscriptionVerificationAbuseObserver;
 import kr.co.cking.common.storage.ObjectStorage;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecision;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionPolicy;
+import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionReason;
 import kr.co.cking.subscriptionverification.application.vision.SubscriptionVerificationDecisionStatus;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisException;
 import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisPort;
@@ -33,6 +34,7 @@ public class SubscriptionVerificationProcessingWorker {
     private final SubscriptionVerificationProcessingExecutorProperties properties;
     private final Clock clock;
     private final SubscriptionVerificationAbuseObserver abuseObserver;
+    private final SubscriptionVerificationChannelIdentityService channelIdentityService;
     private final Semaphore providerCalls;
 
     /** Claim·완료 Service와 Provider 호출 제한기를 조립한다. */
@@ -44,7 +46,8 @@ public class SubscriptionVerificationProcessingWorker {
             VisionAnalysisPort visionAnalysisPort,
             SubscriptionVerificationProcessingExecutorProperties properties,
             Clock clock,
-            SubscriptionVerificationAbuseObserver abuseObserver) {
+            SubscriptionVerificationAbuseObserver abuseObserver,
+            SubscriptionVerificationChannelIdentityService channelIdentityService) {
         this.claimService = claimService;
         this.completionService = completionService;
         this.rewardService = rewardService;
@@ -54,6 +57,7 @@ public class SubscriptionVerificationProcessingWorker {
         this.properties = properties;
         this.clock = clock;
         this.abuseObserver = abuseObserver;
+        this.channelIdentityService = channelIdentityService;
         this.providerCalls = new Semaphore(properties.getProviderMaxConcurrentCalls(), true);
     }
 
@@ -69,8 +73,14 @@ public class SubscriptionVerificationProcessingWorker {
     private void processClaimedVerification(SubscriptionVerificationProcessingClaim claim) {
         SubscriptionVerificationDecision decision;
         try {
-            byte[] image = objectStorage.get(claim.imageObjectKey());
-            decision = analyzeWithProviderLimit(claim, image);
+            if (!channelIdentityService.matchesCurrentChannel(
+                    claim.creatorId(), claim.targetChannelHandle())) {
+                decision = SubscriptionVerificationDecision.rejected(
+                        SubscriptionVerificationDecisionReason.CHANNEL_MISMATCH);
+            } else {
+                byte[] image = objectStorage.get(claim.imageObjectKey());
+                decision = analyzeWithProviderLimit(claim, image);
+            }
         } catch (ProcessingInterruptedException exception) {
             leaveClaimForRecoveryAfterInterrupt(claim);
             return;

@@ -63,7 +63,7 @@ class CreatorYoutubeChannelServiceTest {
 
     @Test
     void 최초_설정은_채널과_구독_미션을_생성한다() {
-        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID)).willReturn(Optional.empty());
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.empty());
         given(channelRepository.saveAndFlush(any())).willAnswer(invocation -> invocation.getArgument(0));
 
         CreatorYoutubeChannelUpsertResult result = service.put(
@@ -77,7 +77,7 @@ class CreatorYoutubeChannelServiceTest {
     @Test
     void 정규화_결과가_같으면_활성_인증이_있어도_기존_설정을_반환한다() {
         CreatorYoutubeChannel existing = channel("@unexpectedfilm");
-        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID)).willReturn(Optional.of(existing));
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(existing));
 
         CreatorYoutubeChannelUpsertResult result = service.put(
                 MEMBER_ID, new CreatorYoutubeChannelCommand(" 예상치 못한 필름 ", "@@UnexpectedFilm"));
@@ -91,7 +91,7 @@ class CreatorYoutubeChannelServiceTest {
 
     @Test
     void 활성_인증이_있으면_다른_채널로_수정할_수_없다() {
-        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID))
+        given(channelRepository.findById(CREATOR_ID))
                 .willReturn(Optional.of(channel("@old")));
         given(verificationRepository.existsByCreatorIdAndStatusIn(eq(CREATOR_ID), any()))
                 .willReturn(true);
@@ -105,7 +105,7 @@ class CreatorYoutubeChannelServiceTest {
     @Test
     void APPROVED만_있으면_채널을_수정할_수_있다() {
         CreatorYoutubeChannel existing = channel("@old");
-        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID)).willReturn(Optional.of(existing));
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(existing));
         given(verificationRepository.existsByCreatorIdAndStatusIn(eq(CREATOR_ID), any()))
                 .willReturn(false);
         given(channelRepository.saveAndFlush(existing)).willReturn(existing);
@@ -119,24 +119,13 @@ class CreatorYoutubeChannelServiceTest {
     }
 
     @Test
-    void 다른_Creator의_handle은_사용할_수_없다() {
-        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID)).willReturn(Optional.empty());
-        given(channelRepository.existsByChannelHandleAndCreatorIdNot("@taken", CREATOR_ID)).willReturn(true);
+    void 수동_설정은_소유권_증명이_아니므로_같은_handle을_입력할_수_있다() {
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.empty());
+        given(channelRepository.saveAndFlush(any())).willAnswer(invocation -> invocation.getArgument(0));
 
-        assertError(
-                () -> service.put(MEMBER_ID, new CreatorYoutubeChannelCommand("채널", "@TAKEN")),
-                SubscriptionVerificationErrorCode.CHANNEL_HANDLE_CONFLICT);
-    }
-
-    @Test
-    void DB_UNIQUE_경쟁도_handle_충돌로_변환한다() {
-        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID)).willReturn(Optional.empty());
-        given(channelRepository.saveAndFlush(any()))
-                .willThrow(new DataIntegrityViolationException("uk_creator_youtube_channel_handle"));
-
-        assertError(
-                () -> service.put(MEMBER_ID, new CreatorYoutubeChannelCommand("채널", "@race")),
-                SubscriptionVerificationErrorCode.CHANNEL_HANDLE_CONFLICT);
+        CreatorYoutubeChannelUpsertResult result = service.put(
+                MEMBER_ID, new CreatorYoutubeChannelCommand("채널", "@TAKEN"));
+        assertThat(result.channel().isVerified()).isFalse();
     }
 
     @Test
@@ -160,6 +149,9 @@ class CreatorYoutubeChannelServiceTest {
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(channel));
 
+        assertError(() -> service.getPublic(CREATOR_ID),
+                SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+        channel.verify("UCabcdefghijklmnopqrstuv", "예상치 못한 필름", "@sample", NOW);
         assertThat(service.getPublic(CREATOR_ID)).isSameAs(channel);
 
         given(creatorRepository.existsById(100L)).willReturn(false);
@@ -171,6 +163,56 @@ class CreatorYoutubeChannelServiceTest {
         assertError(
                 () -> service.put(MEMBER_ID, new CreatorYoutubeChannelCommand("채널", "bad handle")),
                 CommonErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
+    void OAuth로_확인한_채널_ID와_표시명을_저장하고_미션을_준비한다() {
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.empty());
+        given(channelRepository.saveAndFlush(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+        CreatorYoutubeChannel connected = service.connectVerified(MEMBER_ID, CREATOR_ID,
+                "UCabcdefghijklmnopqrstuv", "공식 채널", "@official");
+
+        assertThat(connected.isVerified()).isTrue();
+        assertThat(connected.getChannelName()).isEqualTo("공식 채널");
+        assertThat(connected.getChannelUrl()).isEqualTo(
+                "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv");
+        then(missionProvisioningService).should().provision(CREATOR_ID);
+    }
+
+    @Test
+    void 다른_Creator가_이미_확인한_채널_ID는_연결할_수_없다() {
+        given(channelRepository.saveAndFlush(any())).willThrow(
+                new DataIntegrityViolationException("uk_creator_youtube_channel_id"));
+
+        assertError(() -> service.connectVerified(MEMBER_ID, CREATOR_ID,
+                "UCabcdefghijklmnopqrstuv", "공식 채널", "@official"),
+                SubscriptionVerificationErrorCode.CHANNEL_ALREADY_CONNECTED);
+    }
+
+    @Test
+    void 인증된_채널은_수동_PUT으로_교체할_수_없다() {
+        CreatorYoutubeChannel existing = channel("@old");
+        existing.verify("UCabcdefghijklmnopqrstuv", "공식 채널", "@old", NOW);
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(existing));
+
+        assertError(() -> service.put(MEMBER_ID,
+                new CreatorYoutubeChannelCommand("다른 채널", "@new")),
+                SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_REQUIRED);
+    }
+
+    @Test
+    void 기존_인증이_처리_중일_때_채널_연결_변경을_거부한다() {
+        CreatorYoutubeChannel existing = channel("@old");
+        existing.verify("UCabcdefghijklmnopqrstuv", "기존 채널", "@old", NOW);
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(existing));
+        given(verificationRepository.existsByCreatorIdAndStatusIn(eq(CREATOR_ID), any()))
+                .willReturn(true);
+
+        assertError(() -> service.connectVerified(MEMBER_ID, CREATOR_ID,
+                "UC0000000000000000000000", "새 채널", "@new"),
+                SubscriptionVerificationErrorCode.INVALID_STATE);
+        then(channelRepository).should(never()).saveAndFlush(any());
     }
 
     private CreatorYoutubeChannel channel(String handle) {

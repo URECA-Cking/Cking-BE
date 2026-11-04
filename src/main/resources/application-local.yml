@@ -10,6 +10,9 @@ spring:
       port: 6379
 
 cking:
+  youtube-oauth:
+    redirect-uri: http://localhost:8080/login/oauth2/code/youtube
+    frontend-result-url: http://localhost:5173/my-page
   cors:
     allowed-origins: http://localhost:5173,http://localhost:5174
     allow-credentials: true

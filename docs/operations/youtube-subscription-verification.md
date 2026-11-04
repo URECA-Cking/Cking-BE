@@ -4,11 +4,11 @@
 
 ## 자동 E2E
 
-`YoutubeSubscriptionVerificationE2EIntegrationTest`는 외부 모델의 비용·장애·비결정성을 제외하기 위해 `VisionAnalysisPort`만 결정론적 테스트 구현으로 교체한다. 나머지는 실제 Spring Bean, MySQL, Redis Lua, EARN Stream Consumer를 사용한다.
+`YoutubeSubscriptionVerificationE2EIntegrationTest`는 외부 모델과 YouTube Data API의 비용·장애·비결정성을 제외하기 위해 `VisionAnalysisPort`와 채널 ID 재확인 Service를 결정론적 테스트 구현으로 교체한다. 나머지는 실제 Spring Bean, MySQL, Redis Lua, EARN Stream Consumer를 사용한다.
 
 검증 범위:
 
-- Creator 채널 최초 설정과 `YOUTUBE_SUBSCRIPTION` 미션 자동 생성
+- Creator 채널 수동 설정, 테스트에서 검증 상태 연결, `YOUTUBE_SUBSCRIPTION` 미션 자동 생성
 - 사용자 Creator 미션 목록에서 `YOUTUBE_SUBSCRIPTION` 미션과 `missionId` 조회
 - PNG 입력의 JPEG 정규화·SHA-256·Object Storage 저장
 - `PENDING` commit 뒤 AFTER_COMMIT 비동기 처리
@@ -28,6 +28,15 @@
 
 ## 개발 환경 활성화 전 점검
 
+- Google Cloud Console에 `https://dev-api.cking.co.kr/login/oauth2/code/youtube`를 Authorized redirect URI로 등록하고 `youtube.readonly` 동의 화면의 Testing 사용자 목록에 검증 계정을 추가한다.
+- 서울 리전 AWS Systems Manager Parameter Store의 `/cking/dev/OAUTH_YOUTUBE_CLIENT_ID`(String), `/cking/dev/OAUTH_YOUTUBE_CLIENT_SECRET`(SecureString)에 별도 YouTube OAuth 클라이언트 자격 증명을 입력한다. `deploy.sh`는 값이 등록된 경우에만 읽어 컨테이너에 전달한다. 값을 바꾸면 재배포한다. 실제 값은 저장소·Issue·PR·로그에 넣지 않는다.
+- 같은 Google Cloud 프로젝트에서 YouTube Data API v3를 활성화하고 제한된 API key를 `/cking/dev/OAUTH_YOUTUBE_API_KEY`(SecureString)에 저장한다. 검증된 채널의 이미지·VLM 처리 전에 현재 handle의 채널 ID를 다시 조회한다. key가 없거나 조회가 실패하면 유료 VLM 호출 없이 Recovery에 맡긴다.
+- OAuth·채널 조회의 기본 connect/read timeout은 각각 `PT5S`·`PT10S`다. 운영상 조정이 필요하면 `OAUTH_YOUTUBE_CONNECT_TIMEOUT`·`OAUTH_YOUTUBE_READ_TIMEOUT`을 Parameter Store에 넣고 재배포한다.
+- 소유권 연결 API가 503이면 두 환경변수 주입과 Google API 접근을 확인한다. 기존 Google 로그인 클라이언트 자격 증명과 혼용하지 않는다.
+- 운영에 연결 기능을 열 때는 별도 운영 OAuth 클라이언트에 `https://api.cking.co.kr/login/oauth2/code/youtube`를 등록하고 `/cking/prod/OAUTH_YOUTUBE_CLIENT_ID`·`/cking/prod/OAUTH_YOUTUBE_CLIENT_SECRET`·`/cking/prod/OAUTH_YOUTUBE_API_KEY`를 설정한 뒤 배포한다. OAuth 자격 증명이 없으면 연결 시작 API는 503이고, API key가 없으면 새 채널의 구독 인증은 승인되지 않는다.
+- 기존 수동 채널은 V97에서 `UNVERIFIED`가 되어 미션 노출과 신규 이미지 제출이 중단된다. Creator가 채널을 OAuth로 다시 연결한 뒤 재개한다. 기존 접수·보상 이력은 유지한다.
+- 이 변경을 포함한 BE를 먼저 `develop`에 머지하면 개발 서버에서 미검증 구독 미션이 즉시 숨겨진다. FE 연결 화면·결과 처리 PR이 준비된 뒤 머지·배포 순서를 맞춘다. 처리 중인 기존 인증이 끝나야 해당 Creator의 첫 OAuth 연결을 완료할 수 있다.
+
 - `application-dev.yml`의 `cking.storage.type: s3`, 버킷·리전과 EC2 IAM Role 권한을 확인한다.
 - S3 `subscription-verifications/` prefix에 30일 Lifecycle 만료 규칙을 적용한다.
 - 개발 서버의 제출 기능 플래그는 `application-dev.yml`의 `cking.verification.youtube-subscription.submission-enabled`다. smoke 전까지 `false`로 두고, 켤 때는 `true`로 바꾸는 PR을 머지해 배포한다.
@@ -44,7 +53,7 @@
 
 1. 제출 기능 플래그를 끈 상태에서 POST가 `503 VERIFICATION_UNAVAILABLE`인지 확인한다.
 2. `application-dev.yml`의 `submission-enabled`를 `true`로 바꾸는 PR을 머지해 배포한다. Gemini Key는 Parameter Store에서 항상 주입된다.
-3. Creator 채널을 설정하고 자동 생성된 구독 미션을 조회한다.
+3. Creator 채널을 입력하고 별도 YouTube OAuth 연결을 완료한 뒤 `VERIFIED` 상태와 구독 미션 노출을 조회한다. 미검증 상태에서는 미션 목록에서 빠지고 새 이미지 제출이 409인지 확인한다.
 4. 구독 상태와 대상 handle이 명확한 테스트 이미지를 한 장 제출한다.
 5. 응답의 `verificationId`로 상태를 polling해 `VERIFIED`까지 전이되는지 확인한다.
 6. S3 Object가 private이고 key가 `subscription-verifications/{yyyy}/{MM}/{uuid}/image.jpg`인지 확인한다.

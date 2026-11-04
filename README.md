@@ -194,6 +194,9 @@ $env:OAUTH_GOOGLE_CLIENT_ID="..."
 $env:OAUTH_GOOGLE_CLIENT_SECRET="..."
 $env:OAUTH_KAKAO_CLIENT_ID="..."
 $env:OAUTH_KAKAO_CLIENT_SECRET="..."
+$env:OAUTH_YOUTUBE_CLIENT_ID="..."      # YouTube 채널 연결 시
+$env:OAUTH_YOUTUBE_CLIENT_SECRET="..."  # YouTube 채널 연결 시
+$env:OAUTH_YOUTUBE_API_KEY="..."       # 검증된 채널의 현재 핸들 확인 시
 
 # AI 퀴즈 생성을 사용할 때만
 $env:GEMINI_API_KEY="..."
@@ -216,6 +219,9 @@ export OAUTH_GOOGLE_CLIENT_ID=...
 export OAUTH_GOOGLE_CLIENT_SECRET=...
 export OAUTH_KAKAO_CLIENT_ID=...
 export OAUTH_KAKAO_CLIENT_SECRET=...
+export OAUTH_YOUTUBE_CLIENT_ID=...      # YouTube 채널 연결 시
+export OAUTH_YOUTUBE_CLIENT_SECRET=...  # YouTube 채널 연결 시
+export OAUTH_YOUTUBE_API_KEY=...       # 검증된 채널의 현재 핸들 확인 시
 
 # AI 퀴즈 생성을 사용할 때만
 export GEMINI_API_KEY=...

@@ -14,6 +14,4 @@ public interface CreatorYoutubeChannelRepository extends JpaRepository<CreatorYo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from CreatorYoutubeChannel c where c.creatorId = :creatorId")
     Optional<CreatorYoutubeChannel> findByCreatorIdForUpdate(@Param("creatorId") Long creatorId);
-
-    boolean existsByChannelHandleAndCreatorIdNot(String channelHandle, Long creatorId);
 }

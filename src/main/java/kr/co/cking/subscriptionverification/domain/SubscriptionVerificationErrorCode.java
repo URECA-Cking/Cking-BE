@@ -20,7 +20,12 @@ public enum SubscriptionVerificationErrorCode implements ErrorCode {
     VERIFICATION_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE,
             "구독 인증 제출을 일시적으로 이용할 수 없습니다."),
-    CHANNEL_HANDLE_CONFLICT(HttpStatus.CONFLICT, "이미 사용 중인 YouTube 채널 handle입니다."),
+    CHANNEL_NOT_VERIFIED(HttpStatus.CONFLICT, "크리에이터의 YouTube 채널 인증이 필요합니다."),
+    CHANNEL_ALREADY_CONNECTED(HttpStatus.CONFLICT, "다른 크리에이터가 이미 연결한 YouTube 채널입니다."),
+    CHANNEL_CONNECTION_REQUIRED(HttpStatus.CONFLICT, "인증된 YouTube 채널은 채널 연결로만 변경할 수 있습니다."),
+    CHANNEL_CONNECTION_INVALID(HttpStatus.BAD_REQUEST, "YouTube 채널 연결 요청이 만료되었거나 유효하지 않습니다."),
+    CHANNEL_CONNECTION_MISMATCH(HttpStatus.BAD_REQUEST, "선택한 YouTube 채널과 입력한 핸들이 일치하지 않습니다."),
+    CHANNEL_CONNECTION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "YouTube 채널 연결을 잠시 이용할 수 없습니다."),
     INVALID_STATE(HttpStatus.CONFLICT, "현재 상태에서 허용되지 않는 작업입니다.");
 
     private final HttpStatus status;

@@ -11,6 +11,7 @@ import kr.co.cking.mission.MissionRepository;
 import kr.co.cking.mission.application.dto.MissionQueryItem;
 import kr.co.cking.mission.domain.MissionType;
 import kr.co.cking.ticket.application.dto.EarnRewardPolicy;
+import kr.co.cking.subscriptionverification.repository.CreatorYoutubeChannelRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,7 @@ public class MissionQueryService {
     private final CreatorRepository creatorRepository;
     private final MissionRepository missionRepository;
     private final MissionCompletionRepository completionRepository;
+    private final CreatorYoutubeChannelRepository youtubeChannelRepository;
     private final Clock clock;
 
     /** 인증된 사용자를 기준으로 Creator의 활성 미션과 DAILY·ONCE 정책별 완료 여부를 조회한다. */
@@ -49,9 +51,15 @@ public class MissionQueryService {
         }
 
         var now = clock.instant();
-        List<Mission> activeMissions = missionRepository.findByCreatorIdAndTypeIn(creatorId, SUPPORTED_TYPES)
+        List<Mission> candidates = missionRepository.findByCreatorIdAndTypeIn(creatorId, SUPPORTED_TYPES)
                 .stream()
                 .filter(mission -> mission.isActiveAt(now))
+                .toList();
+        boolean youtubeVerified = candidates.stream().noneMatch(mission ->
+                mission.getType() == MissionType.YOUTUBE_SUBSCRIPTION)
+                || youtubeChannelRepository.findById(creatorId).map(channel -> channel.isVerified()).orElse(false);
+        List<Mission> activeMissions = candidates.stream()
+                .filter(mission -> mission.getType() != MissionType.YOUTUBE_SUBSCRIPTION || youtubeVerified)
                 .toList();
 
         if (activeMissions.isEmpty()) {

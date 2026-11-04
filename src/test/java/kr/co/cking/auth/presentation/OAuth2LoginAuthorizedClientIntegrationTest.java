@@ -99,6 +99,16 @@ class OAuth2LoginAuthorizedClientIntegrationTest {
         assertThat((Object) authorizedClientService.loadAuthorizedClient("kakao", String.valueOf(KAKAO_USER_ID))).isNull();
     }
 
+    @Test
+    void YouTube_채널_콜백은_로그인_처리기가_아닌_별도_흐름으로_돌아간다() throws Exception {
+        mockMvc.perform(get("/login/oauth2/code/youtube")
+                        .param(OAuth2ParameterNames.CODE, "unused-code")
+                        .param(OAuth2ParameterNames.STATE, "invalid-state"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(result -> assertThat(result.getResponse().getRedirectedUrl())
+                        .isEqualTo("http://localhost:5173/my-page?youtubeConnection=invalid"));
+    }
+
     private static void respond(HttpExchange exchange, String json) throws IOException {
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add(HttpHeaders.CONTENT_TYPE, "application/json");
