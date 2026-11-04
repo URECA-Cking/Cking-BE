@@ -74,7 +74,7 @@ management:
       # 서버끼리 합칠 수 있는 구간별 개수로 p95/p99를 계산한다. 기본 히스토그램은 구간이 수십 개라 경계를 직접 둔다.
       slo:
         "[http.server.requests]": 10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s
-        # 응모 승인 → DB 반영. SLO 초안(p95 5초)을 판정하도록 5s 경계를 둔다.
+        # 응모 승인 → DB 반영. SLO(p95 1초)는 1s 경계로 판정한다.
         "[cking.stream.apply.delay]": 100ms,250ms,500ms,1s,2500ms,5s,10s,30s,60s
 
 cking:
@@ -145,7 +145,7 @@ cking:
   member:
     profile-guard:
       # 응모 프로필 검사를 통과한 회원을 기억하는 최대 수(#706). Caffeine에서 회원 1명당 107~132B를 써서 10만 명이면
-      # 약 12.6MiB(힙 460MiB의 2.7%)에서 멈춘다. 넘치면 밀려난 회원만 다음 응모 때 DB로 다시 검사한다.
+      # 약 12.6MiB(개발 힙 460MiB의 2.7%, 운영 힙 1200MiB의 1.0%)에서 멈춘다. 넘치면 밀려난 회원만 다음 응모 때 DB로 다시 검사한다.
       max-size: 100000
     profile-image:
       # local 프로필 이미지는 S3Mock 버킷 주소로, 개발 서버는 application-dev의 CloudFront 주소로 읽는다.

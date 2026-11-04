@@ -10,7 +10,7 @@
 - [통합 RTM](management/rtm.csv): 요구사항 추적·릴리스 점검에 사용한다.
 - [더미 데이터·운영 검증](operations/dummy-data-and-verification.md): 시딩 실행 조건과 Event·Ticket 운영 검증 범위를 확인한다.
 - [YouTube 구독 인증 운영 검증](operations/youtube-subscription-verification.md): 결정론적 E2E와 실제 Gemini·S3 smoke 및 기능 활성화 기준을 확인한다.
-- [부하 테스트 실행](operations/loadtest.md): 부하 테스트 환경에서 시딩·시나리오(예열·응모 한계·응모 지속·마감 직전 몰림·추첨)·정합성 검증 순서와 시작 잔액 계산을 확인한다.
+- [부하 테스트 실행](operations/loadtest.md): 부하 테스트 환경·운영에서 시딩·시나리오(예열·응모 한계·응모 지속·마감 직전 몰림·추첨·동시 요청·이미지 업로드)·정합성 검증 순서, 시작 잔액 계산, 운영 데이터 되돌리기를 확인한다.
 - [롤링 배포와 마이그레이션 호환](operations/rolling-deploy.md): 옛 버전과 새 버전이 함께 도는 동안 지켜야 할 마이그레이션 규칙, CI 호환 검사, Flyway 잠금과 종료 설정을 확인한다.
 
 ## 정본
