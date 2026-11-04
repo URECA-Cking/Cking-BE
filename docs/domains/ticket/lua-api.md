@@ -35,7 +35,9 @@ idem:mission:{requestId} 조회
 ├─ 있고 fingerprint 같음 + PROCESSING, Guard 불일치/부재               → EARN_STATUS_UNKNOWN
 └─ 있고 status 필드 자체가 없음        → ALREADY_PROCESSED (legacy 호환, 아래 참고)
 
-(신규 요청만) 수동 보정 락 확인 (issue #172) → BALANCE_MAINTENANCE 또는 계속 진행 → 일일 Guard 검사·선점 → INCRBY → XADD → idem을 COMPLETED로 확정
+(신규 요청만) 수동 보정 락 확인 (issue #172) → BALANCE_MAINTENANCE 또는 계속 진행
+→ requireBalance='1'인데 잔액 키 없음이면 BALANCE_NOT_LOADED (#793, 아무것도 쓰지 않음)
+→ 일일 Guard 검사·선점 → INCRBY → XADD → idem을 COMPLETED로 확정
 ```
 
 ## fingerprint는 periodKey를 제외한다 (issue #125)
@@ -97,6 +99,9 @@ Guard 자체가 idem보다 먼저 만료되는 경우는 없다 — 같은 `EX` 
 | `EARN_STATUS_UNKNOWN` | idem이 PROCESSING이고 Guard로도 성사 여부를 확인 못함 — Lua가 직접 반환. Redis 타임아웃 등 Java 예외 매핑 시에도 동일 코드 사용. (Guard가 이 requestId:fingerprint와 일치하면 `ALREADY_PROCESSED`로 복구되므로 이 코드는 안 나온다, issue #148) |
 | `EARN_PROCESSING_FAILED` | 스크립트 실행 자체가 예외를 던졌을 때 Java가 매핑(스크립트가 직접 반환하는 코드 아님) |
 | `BALANCE_MAINTENANCE` | 수동 보정 락(`ticket:maint:{creatorId}:{userId}`)이 걸린 신규 요청(issue #172, HTTP 503, `MissionErrorCode.BALANCE_MAINTENANCE`, SPEND의 `BALANCE_MAINTENANCE`와 동일 계약) |
+| `BALANCE_NOT_LOADED` | 마지막 인자 `requireBalance`가 `'1'`인데 잔액 키가 없는 신규 요청(#793). 예약·가드·잔액을 하나도 쓰지 않는다. `TicketBalanceKeyLoader.runEarn()`이 DB 기준으로 적재한 뒤 한 번만 다시 실행하고, 그래도 안 되면 `EARN_PROCESSING_FAILED`로 바꾼다 - `EarnResultCode`로는 노출하지 않는다 |
+
+**requireBalance(#793)**: `ticket-earn.lua`는 `ARGV[14]`, `common-ticket-earn.lua`는 `ARGV[13]`. Java는 DB 잔액 행이 있거나 확인 시점에 키가 있던 사용자에게 `'1'`을 넘기고, 키도 DB 행도 없는 최초 적립에만 `'0'`(생략과 같음)을 넘긴다. 그래서 최초 적립 예외(취합v1.5.4 §2.4)는 유지하면서, Java가 키를 확인한 뒤 Lua 실행 전에 키가 사라져도 0에서 다시 쌓지 않는다. 공용 미션 경로는 이 인자를 넘기기 위해 `sourceType='MISSION'`, `rewardType=''`를 명시한다.
 
 ## 수동 보정 락 (issue #172)
 
