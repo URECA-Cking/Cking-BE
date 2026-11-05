@@ -184,8 +184,11 @@
     {
       "commentId": 500,
       "postId": 100,
+      "postPreview": "오늘 라이브 공지입니다",
       "creatorId": 1,
+      "creatorName": "활동명",
       "authorMemberId": 7,
+      "authorName": "닉네임",
       "content": "신고된 댓글",
       "blocked": false,
       "filterReasons": [],
@@ -194,7 +197,10 @@
       "status": "PENDING",
       "reportCount": 3,
       "pendingReportCount": 2,
-      "reasonCounts": { "ABUSE": 2, "SPAM": 1 },
+      "reasonCounts": { "ABUSE": 2, "OTHER": 1 },
+      "reportDetails": ["위협으로 느껴집니다"],
+      "handledBy": null,
+      "handledAt": null,
       "latestReportedAt": "2026-10-07T00:00:00Z"
     }
   ],
@@ -204,6 +210,9 @@
 
 - `content`는 필터 차단 여부와 관계없이 원문이다(관리자 전용). `blocked`는 필터가 가장 최근에 차단(BLOCK)한 댓글이면 true다.
 - `filterReasons`는 가장 최근 `BLOCK` 판정의 사유이고 차단되지 않은 댓글은 빈 배열이다(이슈 #809). 값의 규칙은 [관리자 필터 차단 댓글 API](admin-filtered-comment-api.md)와 같다. 차단된 댓글의 `filterStatus`가 `DONE`이 아니면 본문을 고쳐 재판정 전이라 사유가 이전 본문의 것이다.
+- `postPreview`, `creatorName`, `authorName`은 [필터 차단 댓글 목록](admin-filtered-comment-api.md)과 같은 규칙이다(이슈 #811).
+- `reportDetails`는 기타(`OTHER`) 신고 설명을 최근 신고 순으로 20건까지 담는다. 누가 쓴 설명인지는 담지 않는다. 전체 건수는 `reasonCounts.OTHER`로 알 수 있다.
+- `handledBy`, `handledAt`은 그 댓글의 가장 최근 처리다. 처리한 적 없으면 `null`이고, 반려 뒤 새 신고가 접수돼 `status`가 `PENDING`이어도 이전 처리를 그대로 담는다.
 - `reasonCounts`에는 신고가 있는 사유만 담는다. 처리 완료·반려된 신고도 센다.
 - `hiddenByAdmin`은 관리자가 숨긴 댓글이면 true다. `blocked`(필터 차단)와 별개다.
 - 댓글 단위 `status`는 `pendingReportCount`가 0보다 크면 `PENDING`, 0이면 숨겼는지에 따라 `RESOLVED`(숨김)와 `REJECTED`(반려)다. `reportCount`는 처리 여부와 관계없는 전체 신고 수다.
