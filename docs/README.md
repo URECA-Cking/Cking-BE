@@ -72,6 +72,7 @@
 - [Post](domains/post/README.md): Creator Space 게시글 공개 범위, 이미지 업로드 기록 상태와 정리 규칙
 - [Post API](domains/post/api.md): 게시글 작성·수정·삭제, 이미지 업로드, 공개 조회 API 계약
 - [Post Comment API](domains/post/comment-api.md): 게시글 댓글 조회·작성·수정·삭제 API 계약
+- [관리자 필터 차단 댓글 API](domains/post/admin-filtered-comment-api.md): 필터가 차단한 댓글과 차단 사유 조회 API 계약
 - [AI Quiz](domains/quiz/README.md): 비동기 생성·GPT Judge 평가, 불변 revision·결과, Creator 승인·게시와 해시 검증
 - [AI Quiz API](domains/quiz/api.md): Creator Quiz 조회·승인·거절·게시·게시 취소와 공개 조회 API 계약
 - [Creator 문항 구성](domains/quiz/composition-api.md): 선택·수동 편집·책임 승인, 멱등성·계보 계약
