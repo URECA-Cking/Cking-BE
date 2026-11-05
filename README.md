@@ -160,32 +160,40 @@
 ```text
 CKing-BE/
 ├── src/main/java/kr/co/cking/
-│   ├── auth/                   # OAuth2 · JWT 인증
-│   ├── member/                 # 회원 및 프로필
-│   ├── creator/                # 크리에이터 신청 · 자격 · Space
-│   ├── follow/ · interest/     # 팔로우 · 관심 분야
-│   ├── post/ · calendar/       # 게시물 · 댓글 · 일정
-│   ├── mission/ · ticket/      # 미션 · 응모권 · 원장
-│   ├── event/ · stream/        # 이벤트 · Redis Stream 연동
-│   ├── snapshot/ · drawing/    # Snapshot · 추첨
-│   ├── redraw/ · winner/       # 재추첨 · 당첨 관리
-│   ├── quiz/                   # AI Quiz 생성 · 심사 · 응시
-│   ├── subscriptionverification/  # YouTube 구독 인증
-│   ├── recommendation/ · abuse/   # 추천 · 비정상 행동 탐지
-│   ├── notification/ · sanction/  # 알림 · 제재
-│   ├── upload/                 # 이미지 업로드 파이프라인
-│   ├── common/                 # 공통 설정 · 보안 · 저장소 · 예외
-│   └── support/                # 지원 기능
+│   ├── abuse/                  # 비정상 행동 탐지
+│   ├── auth/                   # 인증 · OAuth2 · JWT
+│   ├── calendar/               # 일정 · 개인 캘린더
+│   ├── common/                 # 공통 보안 · 설정 · 응답 · 저장소
+│   ├── creator/                # Creator 신청 · 자격 · Space
+│   ├── drawing/                # 가중 추첨
+│   ├── event/                  # 이벤트 · 응모 · 마감
+│   ├── follow/                 # 도킹 · 팔로우
+│   ├── interest/               # 관심 분야
+│   ├── member/                 # 회원 · 프로필
+│   ├── mission/                # 미션 · 완료 판정
+│   ├── notification/           # 알림
+│   ├── post/                   # 게시물 · 댓글
+│   ├── quiz/                   # AI Quiz 생성 · 평가 · 응시
+│   ├── recommendation/         # 추천 조회 로직
+│   ├── redraw/                 # 재추첨 요청 · 실행
+│   ├── sanction/               # 댓글 제재
+│   ├── snapshot/               # 공식 추첨 후보 확정
+│   ├── stream/                 # Stream Consumer · 재처리
+│   ├── subscriptionverification/  # 구독 인증
+│   ├── support/                # 지원 기능
+│   ├── ticket/                 # 응모권 · Ledger
+│   ├── upload/                 # 이미지 업로드
+│   └── winner/                 # 당첨 결과 · 수령 관리
 ├── src/main/resources/
-│   ├── db/migration/           # Flyway DB 마이그레이션
-│   ├── scripts/                # Redis Lua 스크립트
+│   ├── db/migration/           # Flyway
+│   ├── scripts/                # Redis Lua
 │   └── application-*.yml       # 환경별 설정
 ├── src/test/                   # 단위 · 통합 테스트
-├── docs/                       # 도메인 API · 설계 · 운영 문서
+├── docs/                       # API · 설계 · 운영 문서
 └── .github/workflows/          # CI/CD
 ```
 
-주요 도메인은 `presentation → application → domain → repository` 계층을 기준으로 구성되며, 스케줄러·외부 AI 연동 등은 필요에 따라 별도 패키지로 분리합니다.
+도메인은 주로 `presentation → application → domain → repository` 계층으로 구성되며, 스케줄러·외부 AI 연동은 필요에 따라 별도 패키지로 분리합니다.
 
 <br />
 
