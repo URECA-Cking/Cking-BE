@@ -87,7 +87,11 @@
   <img src="./docs/assets/readme/service-flow.png" alt="팬·크리에이터·관리자의 서비스 전체 동작 흐름" width="1000" />
 </p>
 
-관리자는 크리에이터 전환 신청과 이벤트를 심사하고, 크리에이터는 Creator Space에서 게시물·일정·미션·퀴즈·이벤트를 운영합니다. 팬은 관심 있는 크리에이터를 도킹하고 미션으로 응모권을 획득해 승인된 이벤트에 응모합니다. 마감 시 Redis Gate와 Stream cutoff로 신규 접수를 차단하고 처리 중인 응모의 DB 반영(Drain)을 기다린 뒤 공식 Snapshot을 확정합니다. 이후 저장된 Seed로 가중 추첨을 실행하고 Hash로 입력과 결과를 검증해 당첨 결과를 공개하고 알림을 전달합니다.
+| 구분 | 주요 흐름 |
+|:---:|---|
+| **팬** | 크리에이터 탐색·도킹 → 미션 수행 및 응모권 획득 → 이벤트 응모·당첨 확인 |
+| **크리에이터** | Creator Space에서 콘텐츠·일정·미션·퀴즈 운영 → 이벤트 개설·승인 요청 → 진행 현황 및 결과 확인 |
+| **관리자** | 크리에이터·이벤트 심사 및 운영 → 마감·Snapshot·추첨·결과 공개 관리 |
 
 <br />
 
@@ -105,6 +109,8 @@
 
 <sub>관련 문서: [Ticket](docs/domains/ticket/README.md) · [Mission](docs/domains/mission/README.md) · [Stream](docs/domains/stream/README.md)</sub>
 
+<br />
+
 ### 2. 이벤트 응모 — 동시 요청에서도 잔액 정합성 유지
 
 - **원자적 접수:** Redis Lua에서 이벤트 Gate·종료 시각·응모권 잔액을 검증하고, 차감 및 SPEND Stream 발행을 한 번에 처리합니다.
@@ -112,6 +118,8 @@
 - **비동기 이력 반영:** Consumer가 응모 내역·차감 Ledger·DB 잔액을 함께 확정하고, 마감 시에는 cutoff 이전에 승인된 응모의 반영 완료를 기다립니다.
 
 <sub>관련 문서: [Event](docs/domains/event/README.md) · [Ticket](docs/domains/ticket/README.md)</sub>
+
+<br />
 
 ### 3. 이벤트 마감·추첨 — 입력과 결과를 검증 가능한 형태로 확정
 
