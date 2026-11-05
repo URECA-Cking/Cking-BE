@@ -8,10 +8,10 @@
 
   <br />
 
-  <a href="https://cking.co.kr"><img alt="서비스 바로가기" src="https://img.shields.io/badge/LIVE_SERVICE-cking.co.kr-E84383?style=for-the-badge&logo=googlechrome&logoColor=white" /></a>
-  <a href="https://github.com/URECA-Cking/Cking-FE"><img alt="프론트엔드 저장소" src="https://img.shields.io/badge/FRONTEND-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://github.com/URECA-Cking/Cking-Infra"><img alt="인프라 저장소" src="https://img.shields.io/badge/INFRASTRUCTURE-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://youtu.be/WEKKLaadHcM"><img alt="서비스 시연 영상" src="https://img.shields.io/badge/DEMO-YouTube-D62D52?style=for-the-badge&logo=youtube&logoColor=white" /></a>
+  <p><a href="https://cking.co.kr"><img alt="서비스 바로가기" src="https://img.shields.io/badge/LIVE_SERVICE-cking.co.kr-E84383?style=for-the-badge&logo=googlechrome&logoColor=white" /></a></p>
+  <p><a href="https://github.com/URECA-Cking/Cking-FE"><img alt="프론트엔드 저장소" src="https://img.shields.io/badge/FRONTEND-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a></p>
+  <p><a href="https://github.com/URECA-Cking/Cking-Infra"><img alt="인프라 저장소" src="https://img.shields.io/badge/INFRASTRUCTURE-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a></p>
+  <p><a href="https://youtu.be/WEKKLaadHcM"><img alt="서비스 시연 영상" src="https://img.shields.io/badge/DEMO-YouTube-D62D52?style=for-the-badge&logo=youtube&logoColor=white" /></a></p>
 </div>
 
 ---
@@ -25,16 +25,16 @@
 
   <br />
 
-  <img src="./docs/assets/readme/cking-name-meaning.png" alt="Creator + King, Creator + Docking을 표현한 CKing 캐릭터" width="860" />
-
-  <br />
-
-  <p><strong>Creator + King</strong> — 좋아하는 크리에이터가 중심이 되는 공간<br /><strong>Creator + Docking</strong> — 크리에이터와 팬을 한 발짝 더 가까이 연결</p>
-
-  <br />
-
-  <img src="./docs/assets/readme/service-overview.png" alt="CKing 서비스 소개 및 AI 확장 기능 개요" width="980" />
+  <img src="./docs/assets/readme/cking-name-meaning.png" alt="Creator + King, Creator + Docking을 표현한 CKing 캐릭터" width="650" />
 </div>
+
+<br />
+
+## 서비스 한눈에 보기
+
+<p>
+  <img src="./docs/assets/readme/service-overview.png" alt="CKing 서비스 소개 및 AI 확장 기능 개요" width="980" />
+</p>
 
 <br />
 
@@ -43,8 +43,6 @@
 <p>
   <img src="./docs/assets/readme/system-architecture.png" alt="CKing 시스템 아키텍처" width="1000" />
 </p>
-
-<br />
 
 - **실시간 처리:** Spring Boot API와 Redis Lua로 응모권 적립·차감, 중복 요청 검증, 이벤트 Gate 검사를 원자적으로 처리합니다.
 
@@ -59,8 +57,6 @@
 <p>
   <img src="./docs/assets/readme/infrastructure-architecture.png" alt="CKing AWS 인프라 아키텍처" width="1000" />
 </p>
-
-<br />
 
 - **서비스 운영:** AWS ALB/WAF 및 다중 애플리케이션 인스턴스, RDS MySQL, ElastiCache(Valkey)를 활용합니다.
 
@@ -92,9 +88,7 @@
   <img src="./docs/assets/readme/service-flow.png" alt="팬·크리에이터·관리자의 서비스 전체 동작 흐름" width="1000" />
 </p>
 
-<br />
-
-<p><sub>크리에이터 승인 및 콘텐츠 운영 → 팬의 미션 수행·응모 → 마감 입력 확정 → 추첨·검증·결과 공개</sub></p>
+관리자는 크리에이터 전환 신청과 이벤트를 심사하고, 크리에이터는 Creator Space에서 게시물·일정·미션·퀴즈·이벤트를 운영합니다. 팬은 관심 있는 크리에이터를 도킹하고 미션으로 응모권을 획득해 승인된 이벤트에 응모합니다. 마감 시 Redis Gate와 Stream cutoff로 신규 접수를 차단하고 처리 중인 응모의 DB 반영(Drain)을 기다린 뒤 공식 Snapshot을 확정합니다. 이후 저장된 Seed로 가중 추첨을 실행하고 Hash로 입력과 결과를 검증해 당첨 결과를 공개하고 알림을 전달합니다.
 
 <br />
 
@@ -104,45 +98,32 @@
   <img src="./docs/assets/readme/core-features-ui.png" alt="응모권 획득, 이벤트 응모, 당첨 결과 알림 UI" width="900" />
 </p>
 
-<br />
-
-<br />
-
 ### 1. 응모권 획득 — 중복 없는 적립과 장애 복구
 
 - **두 겹의 중복 방지:** `requestId`와 요청 fingerprint로 재전송을 판별하고, 사용자·미션·보상 기간 단위 Guard로 서로 다른 요청 ID의 중복 보상도 차단합니다.
-
 - **Redis Lua 원자성:** Guard 확인, Redis 잔액 증가, EARN Stream 발행을 하나의 Lua 실행에 묶습니다. XADD가 실패하면 변경한 잔액과 예약 상태를 되돌립니다.
 
 - **DB 확정 및 재처리:** Consumer가 완료 이력·Ledger·잔액을 하나의 트랜잭션으로 저장하고 커밋 후 XACK합니다. 실패 메시지는 PEL 회수·재처리 및 Dead Stream으로 추적합니다.
 
 <sub>관련 문서: [Ticket](docs/domains/ticket/README.md) · [Mission](docs/domains/mission/README.md) · [Stream](docs/domains/stream/README.md)</sub>
 
-<br />
-
 ### 2. 이벤트 응모 — 동시 요청에서도 잔액 정합성 유지
 
 - **원자적 접수:** Redis Lua에서 이벤트 Gate·종료 시각·응모권 잔액을 검증하고, 차감 및 SPEND Stream 발행을 한 번에 처리합니다.
-
 - **안전한 재시도:** 동일한 `requestId`와 동일한 요청은 기존 결과로 처리해 추가 차감을 방지하고, 요청 내용이 달라지면 충돌로 거절합니다.
 
 - **비동기 이력 반영:** Consumer가 응모 내역·차감 Ledger·DB 잔액을 함께 확정하고, 마감 시에는 cutoff 이전에 승인된 응모의 반영 완료를 기다립니다.
 
 <sub>관련 문서: [Event](docs/domains/event/README.md) · [Ticket](docs/domains/ticket/README.md)</sub>
 
-<br />
-
 ### 3. 이벤트 마감·추첨 — 입력과 결과를 검증 가능한 형태로 확정
 
 - **마감 경계:** `OPEN → CLOSING → CLOSED` 전이에서 Gate 차단과 Stream cutoff를 확정하고, Drain 완료 후 공식 Snapshot을 생성합니다.
-
 - **재현 가능한 추첨:** 후보·상품을 고정한 Snapshot과 Seed를 저장합니다. 응모권 비례 가중 추첨에는 Fenwick Tree를 사용하며, 당첨자는 비복원 방식으로 선정합니다.
 
 - **무결성 및 공개:** Snapshot·Input·Result Hash로 입력과 결과를 검증하고, 결과 공개와 당첨 알림을 같은 트랜잭션으로 처리합니다. 재추첨은 기존 Snapshot과 새로운 Seed를 사용합니다.
 
 <sub>관련 문서: [Snapshot](docs/domains/snapshot/README.md) · [Drawing](docs/domains/drawing/README.md) · [Redraw](docs/domains/redraw/README.md)</sub>
-
-<br />
 
 ### 핵심 기능 검증 결과
 
@@ -155,7 +136,7 @@
 | 데이터 정합성 | 음수 잔액·중복 차감·마감 후 신규 응모·Redis/DB 잔액 불일치 0건 |
 | 가중 추첨 비교 | 후보 10,000명·당첨자 950명 조건: 티켓 배열 770.14ms → Fenwick Tree 5.62ms |
 
-<sub>2026년 프로젝트 발표 자료의 검증 환경·시나리오 기준 수치이며, 모든 운영 상황의 성능을 보장하는 값은 아닙니다. [부하 테스트 가이드](docs/operations/loadtest.md) · [추첨 벤치마크](docs/domains/drawing/weighted-random-benchmark.md)</sub>
+<sub>관련 문서: [부하 테스트 가이드](docs/operations/loadtest.md) · [추첨 벤치마크](docs/domains/drawing/weighted-random-benchmark.md)</sub>
 
 <br />
 
@@ -164,8 +145,6 @@
 <p>
   <img src="./docs/assets/readme/extended-features-ui.png" alt="맞춤 추천, 댓글 필터링, YouTube 구독 인증, AI 퀴즈 UI" width="1000" />
 </p>
-
-<br />
 
 | 기능 | 주요 설계 및 구현 |
 |---|---|
@@ -238,13 +217,9 @@
 
 ## 로컬 실행 및 개발 가이드
 
-<details>
-<summary><strong>환경 준비 · 실행 · 테스트 · 협업 규칙 펼치기</strong></summary>
-
 ### 사전 준비
 
 - Git, **JDK 21**, Docker Desktop 설치
-
 - IDE 및 터미널에서 `git --version`, `java -version`, `docker compose version` 확인
 
 ### 프로젝트 준비
@@ -290,7 +265,6 @@ $env:JWT_SECRET='...'
 ### API 및 테스트
 
 - 로컬 Swagger UI: <http://localhost:8080/swagger-ui/index.html>
-
 - 개발 Swagger UI: <https://dev-api.cking.co.kr/swagger-ui/index.html>
 
 ```bash
@@ -314,8 +288,6 @@ docker compose down -v    # 로컬 DB·S3Mock 볼륨까지 삭제
 도메인별로 `presentation / application / domain / repository` 계층을 사용하며, 상태 변경은 소유 도메인의 서비스를 통해 수행합니다. API·설계 문서는 [문서 인덱스](docs/README.md), 커밋·브랜치·PR 규칙은 [CONTRIBUTING.md](https://github.com/URECA-Cking/.github/blob/main/CONTRIBUTING.md)를 참고하세요.
 
 작업은 `develop`에서 `<타입>/<이슈번호>-<요약>` 브랜치를 생성하고, 리뷰 후 `develop`에 Squash and merge하는 절차를 따릅니다. `main`과 `develop`에는 직접 push하지 않습니다.
-
-</details>
 
 <br />
 
