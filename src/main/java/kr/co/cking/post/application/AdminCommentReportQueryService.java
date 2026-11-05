@@ -68,6 +68,8 @@ public class AdminCommentReportQueryService {
                     comment.getMemberId(),
                     comment.getContent(),
                     comment.isBlocked(),
+                    comment.blockReasons(),
+                    comment.getFilterStatus(),
                     comment.isHiddenByAdmin(),
                     statusOf(pendingCount, comment),
                     summary.reportCount(),

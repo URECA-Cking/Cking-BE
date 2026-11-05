@@ -1,6 +1,7 @@
 package kr.co.cking.post.repository;
 
 import jakarta.persistence.LockModeType;
+import kr.co.cking.post.domain.CommentFilterAction;
 import kr.co.cking.post.domain.CommentFilterStatus;
 import kr.co.cking.post.domain.CreatorPostComment;
 import org.springframework.data.domain.Page;
@@ -44,6 +45,15 @@ public interface CreatorPostCommentRepository extends JpaRepository<CreatorPostC
              order by c.createdAt asc, c.commentId asc
             """)
     Page<CreatorPostComment> findByPostIdOldestFirst(@Param("postId") Long postId, Pageable pageable);
+
+    /** 해당 판정의 댓글을 최근 판정 순으로 읽는다(이슈 #809). 재판정 전인 댓글은 이전 판정 시각으로 정렬된다. */
+    @Query("""
+            select c from CreatorPostComment c
+             where c.filterAction = :action
+             order by c.filteredAt desc, c.commentId desc
+            """)
+    Page<CreatorPostComment> findByFilterActionLatestFirst(
+            @Param("action") CommentFilterAction action, Pageable pageable);
 
     /**
      * 다시 필터에 제출할 댓글. 재시도한 적 없는 댓글({@code filterNextAttemptAt}이 NULL)은 마지막 수정·작성 뒤
