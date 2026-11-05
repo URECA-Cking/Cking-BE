@@ -236,6 +236,19 @@ class QuizQueryServiceTest {
     }
 
     @Test
+    void 정지된_Creator의_공개_Quiz_목록은_빈_페이지이고_상세는_차단한다() {
+        Creator suspended = new Creator(MEMBER_ID, "creator");
+        ReflectionTestUtils.setField(suspended, "creatorId", CREATOR_ID);
+        suspended.changeStatus(kr.co.cking.creator.domain.CreatorStatus.SUSPENDED, "운영 제한");
+        given(creatorRepository.findById(CREATOR_ID)).willReturn(Optional.of(suspended));
+
+        assertThat(publicQueryService.findPublished(CREATOR_ID, PageRequest.of(0, 20))).isEmpty();
+        assertError(() -> publicQueryService.findPublishedDetail(CREATOR_ID, QUIZ_ID),
+                kr.co.cking.creator.domain.CreatorErrorCode.CREATOR_NOT_ACTIVE);
+        then(quizRepository).should(never()).findPublishedByCreatorId(anyLong(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void 공개_목록은_게시_revision의_제목과_문항_수를_보여준다() {
         PageRequest pageable = PageRequest.of(1, 1);
         given(quizRepository.findPublishedByCreatorId(CREATOR_ID, pageable)).willReturn(new PageImpl<>(
