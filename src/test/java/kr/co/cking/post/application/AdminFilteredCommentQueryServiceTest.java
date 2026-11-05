@@ -44,7 +44,9 @@ class AdminFilteredCommentQueryServiceTest {
     private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final CreatorPostRepository postRepository = mock(CreatorPostRepository.class);
     private final AdminFilteredCommentQueryService service = new AdminFilteredCommentQueryService(
-            memberQueryService, creatorProfileService, commentRepository, postRepository);
+            memberQueryService,
+            new AdminCommentDisplayReader(memberQueryService, creatorProfileService, postRepository),
+            commentRepository);
 
     @Test
     void 차단_댓글을_사유와_표시_이름과_함께_돌려준다() {
