@@ -34,7 +34,7 @@ public class AdminCommentReportController {
     @Operation(
             summary = "신고된 게시글 댓글 목록",
             description = "ADMIN 권한의 인증된 관리자가 신고된 댓글을 댓글별로 모아 가장 최근에 신고된 순서로 페이지 조회합니다. "
-                    + "댓글 원문, 필터 차단 여부, 관리자 숨김 여부, 처리 상태, 신고 수, 접수 신고 수, 사유별 신고 수를 포함하며 "
+                    + "댓글 원문, 필터 차단 여부와 차단 사유, 관리자 숨김 여부, 처리 상태, 신고 수, 접수 신고 수, 사유별 신고 수를 포함하며 "
                     + "신고자 정보는 포함하지 않습니다. status(PENDING·RESOLVED·REJECTED)로 거를 수 있습니다."
     )
     @GetMapping("/api/admin/comment-reports")
