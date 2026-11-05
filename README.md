@@ -47,7 +47,9 @@
 <br />
 
 - **실시간 처리:** Spring Boot API와 Redis Lua로 응모권 적립·차감, 중복 요청 검증, 이벤트 Gate 검사를 원자적으로 처리합니다.
+
 - **비동기 영속화:** Redis Streams의 EARN·SPEND 이벤트를 Consumer가 처리하고, DB 커밋 후 XACK하여 실패 시 재처리할 수 있도록 설계했습니다.
+
 - **운영 및 확장:** 마감·Snapshot·추첨·정합성 복구를 도메인별로 분리하고, Python 기반 추천 배치 및 비동기 AI 처리 파이프라인을 연동했습니다.
 
 <br />
@@ -61,7 +63,9 @@
 <br />
 
 - **서비스 운영:** AWS ALB/WAF 및 다중 애플리케이션 인스턴스, RDS MySQL, ElastiCache(Valkey)를 활용합니다.
+
 - **배포:** GitHub Actions 기반 CI/CD와 컨테이너 이미지 관리, S3·CloudFront 기반 프론트엔드 배포를 구성했습니다.
+
 - **관측:** Prometheus·Grafana·Loki·CloudWatch 기반 지표·로그 수집과 알림을 연계했습니다.
 
 <br />
@@ -107,7 +111,9 @@
 ### 1. 응모권 획득 — 중복 없는 적립과 장애 복구
 
 - **두 겹의 중복 방지:** `requestId`와 요청 fingerprint로 재전송을 판별하고, 사용자·미션·보상 기간 단위 Guard로 서로 다른 요청 ID의 중복 보상도 차단합니다.
+
 - **Redis Lua 원자성:** Guard 확인, Redis 잔액 증가, EARN Stream 발행을 하나의 Lua 실행에 묶습니다. XADD가 실패하면 변경한 잔액과 예약 상태를 되돌립니다.
+
 - **DB 확정 및 재처리:** Consumer가 완료 이력·Ledger·잔액을 하나의 트랜잭션으로 저장하고 커밋 후 XACK합니다. 실패 메시지는 PEL 회수·재처리 및 Dead Stream으로 추적합니다.
 
 <sub>관련 문서: [Ticket](docs/domains/ticket/README.md) · [Mission](docs/domains/mission/README.md) · [Stream](docs/domains/stream/README.md)</sub>
@@ -117,7 +123,9 @@
 ### 2. 이벤트 응모 — 동시 요청에서도 잔액 정합성 유지
 
 - **원자적 접수:** Redis Lua에서 이벤트 Gate·종료 시각·응모권 잔액을 검증하고, 차감 및 SPEND Stream 발행을 한 번에 처리합니다.
+
 - **안전한 재시도:** 동일한 `requestId`와 동일한 요청은 기존 결과로 처리해 추가 차감을 방지하고, 요청 내용이 달라지면 충돌로 거절합니다.
+
 - **비동기 이력 반영:** Consumer가 응모 내역·차감 Ledger·DB 잔액을 함께 확정하고, 마감 시에는 cutoff 이전에 승인된 응모의 반영 완료를 기다립니다.
 
 <sub>관련 문서: [Event](docs/domains/event/README.md) · [Ticket](docs/domains/ticket/README.md)</sub>
@@ -127,7 +135,9 @@
 ### 3. 이벤트 마감·추첨 — 입력과 결과를 검증 가능한 형태로 확정
 
 - **마감 경계:** `OPEN → CLOSING → CLOSED` 전이에서 Gate 차단과 Stream cutoff를 확정하고, Drain 완료 후 공식 Snapshot을 생성합니다.
+
 - **재현 가능한 추첨:** 후보·상품을 고정한 Snapshot과 Seed를 저장합니다. 응모권 비례 가중 추첨에는 Fenwick Tree를 사용하며, 당첨자는 비복원 방식으로 선정합니다.
+
 - **무결성 및 공개:** Snapshot·Input·Result Hash로 입력과 결과를 검증하고, 결과 공개와 당첨 알림을 같은 트랜잭션으로 처리합니다. 재추첨은 기존 Snapshot과 새로운 Seed를 사용합니다.
 
 <sub>관련 문서: [Snapshot](docs/domains/snapshot/README.md) · [Drawing](docs/domains/drawing/README.md) · [Redraw](docs/domains/redraw/README.md)</sub>
@@ -189,6 +199,7 @@
 | JavaScript 오류 | 201세션 중 1세션 |
 
 - **로그인 보안 피드백:** 로그인 코드 발급 브라우저와 교환 브라우저를 바인딩하지 않았던 문제를 전용 쿠키와 Lua 검증으로 개선했습니다.
+
 - **캘린더 UX 피드백:** 날짜만 있는 일정을 표현할 수 있도록 종일 일정 입력·표시를 추가했습니다.
 
 </details>
@@ -199,8 +210,11 @@
 <summary><strong>트러블슈팅 01 — 조기 마감 이벤트가 다시 응모를 받던 문제</strong></summary>
 
 - **문제:** 조기 마감 직후 Redis 접수 상태 키가 유실되면, 복원 작업이 DB의 이전 `OPEN` 상태를 읽어 이벤트 접수를 다시 열 수 있었습니다.
+
 - **원인:** Redis Gate 차단과 DB의 `CLOSING` 반영 사이의 시간차 및 키 복원의 비원자적 확인·적재가 경합했습니다.
+
 - **해결:** 복원 검증·적재를 Lua 원자 처리로 변경하고 cutoff 존재 여부로 마감 중인 이벤트의 재개방을 방지했습니다. cutoff 유실 시에도 마감 상태를 재확인해 차단합니다.
+
 - **검증:** 마감·복원 경합을 통합 테스트 4건으로 재현하고, cutoff가 유지된 상황에서 재개방되지 않음을 확인했습니다.
 
 </details>
@@ -211,8 +225,11 @@
 <summary><strong>트러블슈팅 02 — 매 정각 응모 응답이 지연되던 문제</strong></summary>
 
 - **문제:** 정각마다 응모 응답이 최대 1.5~3초 지연되고, 1초 내 DB 반영률은 91.9%에 머물렀습니다.
+
 - **원인:** 버스터블 애플리케이션 인스턴스에서 정각 CPU steal(빼앗긴 CPU 시간)이 최대 79%로 관찰되었습니다.
+
 - **해결:** 서버를 `c6g.large`로 변경하고 1초 단위 지표로 재측정하여 서버 종류의 영향을 분리했습니다.
+
 - **결과:** CPU steal 79% → 0%, 정각 응답 지연 1.5~3초 → 0.25~1초, 1초 내 DB 반영률 91.9% → 99.78%로 개선되었습니다.
 
 </details>
@@ -227,6 +244,7 @@
 ### 사전 준비
 
 - Git, **JDK 21**, Docker Desktop 설치
+
 - IDE 및 터미널에서 `git --version`, `java -version`, `docker compose version` 확인
 
 ### 프로젝트 준비
@@ -272,6 +290,7 @@ $env:JWT_SECRET='...'
 ### API 및 테스트
 
 - 로컬 Swagger UI: <http://localhost:8080/swagger-ui/index.html>
+
 - 개발 Swagger UI: <https://dev-api.cking.co.kr/swagger-ui/index.html>
 
 ```bash
