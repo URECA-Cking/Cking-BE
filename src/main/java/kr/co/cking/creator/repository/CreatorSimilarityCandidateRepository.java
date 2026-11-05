@@ -31,11 +31,13 @@ public interface CreatorSimilarityCandidateRepository extends JpaRepository<Crea
                 s.creatorId, c.similarCreatorId, g.method, c.score, c.rank, g.generationId, g.modelVersion
             )
             from CreatorSimilarityState s, CreatorSimilarityGeneration g,
-                 CreatorSimilarityCandidate c, CreatorSpace space
+                 CreatorSimilarityCandidate c, CreatorSpace space, Creator candidateCreator
             where s.creatorId in :seedCreatorIds
               and g.generationId = s.currentGenerationId
               and c.generationId = g.generationId
               and space.creatorId = c.similarCreatorId
+              and candidateCreator.creatorId = c.similarCreatorId
+              and candidateCreator.status = kr.co.cking.creator.domain.CreatorStatus.ACTIVE
             order by s.creatorId asc, c.rank asc, c.similarCreatorId asc
             """)
     List<ActiveCreatorRecommendationCandidate> findActiveCandidatesBySeedCreatorIds(

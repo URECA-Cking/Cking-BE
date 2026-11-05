@@ -372,6 +372,18 @@ class QuizJudgeEvaluationServiceTest {
     }
 
     @Test
+    void 정지된_Creator는_Judge_작업을_접수하거나_Provider에_제출할_수_없다() {
+        Creator suspended = creator(CREATOR_ID);
+        suspended.changeStatus(kr.co.cking.creator.domain.CreatorStatus.SUSPENDED, "운영 제한");
+        given(creatorRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(suspended));
+
+        assertError(() -> service.request(MEMBER_ID, QUIZ_ID, REVISION_ID, REQUEST_ID),
+                kr.co.cking.creator.domain.CreatorErrorCode.CREATOR_NOT_ACTIVE);
+        verify(store, never()).create(anyLong(), anyLong(), anyLong(), anyLong(), anyString(), any());
+        verify(dispatcher, never()).dispatch(anyLong());
+    }
+
+    @Test
     void Job_조회_직후_완료_commit이_일어나면_상태를_다시_읽어_결과를_반환한다() {
         QuizJudgeJob pending = job(1L, QuizJudgeJobStatus.RUNNING, 1);
         QuizJudgeJob succeeded = job(1L, QuizJudgeJobStatus.SUCCEEDED, 1);

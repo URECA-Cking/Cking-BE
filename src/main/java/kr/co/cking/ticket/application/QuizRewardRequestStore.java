@@ -89,9 +89,9 @@ public class QuizRewardRequestStore {
         if (!memberRepository.existsById(command.memberId())) {
             throw new IllegalArgumentException("Quiz 보상 대상 회원이 없습니다. memberId=" + command.memberId());
         }
-        if (!creatorRepository.existsById(command.creatorId())) {
-            throw new IllegalArgumentException("Quiz 보상 Creator가 없습니다. creatorId=" + command.creatorId());
-        }
+        creatorRepository.findById(command.creatorId())
+                .orElseThrow(() -> new IllegalArgumentException("Quiz 보상 Creator가 없습니다. creatorId=" + command.creatorId()))
+                .requireActive();
         Instant now = clock.instant();
         String rewardRequestId = command.rewardRequestId().toString();
         String fingerprint = command.computeFingerprint();

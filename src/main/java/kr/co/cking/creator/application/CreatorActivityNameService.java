@@ -42,6 +42,7 @@ public class CreatorActivityNameService {
     private ActivityNameProfile updateMineLocked(Long memberId, CreatorActivityName requested) {
         Creator creator = creatorRepository.findByMemberIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        creator.requireActive();
         LocalDateTime now = LocalDateTime.now(clock);
         if (!creator.isActivityNameConfigured()) {
             // 이관된 Creator가 임시값 creator-{id}를 그대로 확정할 수 있어야 한다.

@@ -47,7 +47,8 @@ class CreatorYoutubeChannelServiceTest {
             mock(YoutubeSubscriptionMissionProvisioningService.class);
     private final CreatorYoutubeChannelService service = new CreatorYoutubeChannelService(
             memberRepository, creatorRepository, channelRepository, verificationRepository,
-            missionProvisioningService, Clock.fixed(NOW, ZoneOffset.UTC));
+            missionProvisioningService, Clock.fixed(NOW, ZoneOffset.UTC),
+            mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
     private Creator creator;
 

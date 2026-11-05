@@ -64,7 +64,7 @@ class CreatorPostServiceTest {
             authorLookup, postRepository, imageRepository, commentRepository, eventPublisher,
             new CreatorPostViewAssembler(objectStorage),
             new PostEngagementReader(mock(CreatorPostLikeRepository.class), commentRepository),
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            Clock.fixed(NOW, ZoneOffset.UTC), mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
     @BeforeEach
     void setUp() {

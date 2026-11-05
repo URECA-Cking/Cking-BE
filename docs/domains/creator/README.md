@@ -6,6 +6,7 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 - [Creator 신청 API](api.md): 신청·심사 기본 계약
 - [Creator 신청서·보완 API](application-review-api.md): 신청 본문, 보완·재제출, 제출 스냅샷과 응답 필드
+- [Creator 자격 상태 관리 API](status-api.md): 정지·해제·박탈, 감사 이력, 본인 상태와 활동 제한
 - [Creator Space API](space-api.md): 공개 Creator 목록, Space 공개 조회(creatorId·slug), Creator 본인 조회·수정·커스텀 slug 변경 외부 API 계약
 - [Creator Space slug 정책](space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 - [Creator 유사 추천 결과](similarity-recommendation.md): Cking-LLM 후보 묶음 검증, 세대 보존, 원자 교체와 공개 조회 계약

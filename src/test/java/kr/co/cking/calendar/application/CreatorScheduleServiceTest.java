@@ -41,7 +41,8 @@ class CreatorScheduleServiceTest {
     private final CreatorScheduleRepository scheduleRepository = mock(CreatorScheduleRepository.class);
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     private final CreatorScheduleService service =
-            new CreatorScheduleService(memberRepository, creatorRepository, scheduleRepository, clock);
+            new CreatorScheduleService(memberRepository, creatorRepository, scheduleRepository, clock,
+                    mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
     @BeforeEach
     void setUpMember() {

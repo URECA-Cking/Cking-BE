@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.application.CreatorPublicProfileQueryService;
 import kr.co.cking.creator.application.CreatorQueryService;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.creator.application.dto.CreatorPublicProfile;
 import kr.co.cking.member.application.ProfileImageUrlResolver;
 import kr.co.cking.member.domain.Member;
@@ -63,6 +64,7 @@ public class CreatorPostCommentService {
     private final Clock clock;
     private final ApplicationEventPublisher eventPublisher;
     private final SanctionQueryService sanctionQueryService;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /** @param viewerMemberId 비로그인이면 null */
     @Transactional(readOnly = true)
@@ -122,6 +124,7 @@ public class CreatorPostCommentService {
         requireCommentProfileConfigured(author, memberId);
         sanctionQueryService.requireCommentWriteAllowed(memberId, creatorId);
         Creator creator = accessPolicy.requireCreator(creatorId);
+        requireActiveOwner(creator, memberId);
         accessPolicy.requireViewablePostForCommentWrite(creator, postId, memberId);
         requireCanComment(creator, memberId);
 
@@ -137,6 +140,7 @@ public class CreatorPostCommentService {
         requireCommentProfileConfigured(author, memberId);
         sanctionQueryService.requireCommentWriteAllowed(memberId, creatorId);
         Creator creator = accessPolicy.requireCreator(creatorId);
+        requireActiveOwner(creator, memberId);
         accessPolicy.requireViewablePostForCommentWrite(creator, postId, memberId);
         CreatorPostComment comment = requireCommentForUpdate(postId, commentId);
         if (!comment.isWrittenBy(memberId)) {
@@ -158,6 +162,12 @@ public class CreatorPostCommentService {
             throw new BusinessException(CommonErrorCode.FORBIDDEN);
         }
         commentRepository.delete(comment);
+    }
+
+    private void requireActiveOwner(Creator creator, Long memberId) {
+        if (creator.getMemberId().equals(memberId)) {
+            creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
+        }
     }
 
     /**

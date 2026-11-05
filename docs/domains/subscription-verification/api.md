@@ -179,12 +179,16 @@ image: JPEG 또는 PNG 한 장
 | `PENDING`, `PROCESSING` | 불가 | `VERIFYING` |
 | `APPROVED`, reward `NOT_REQUESTED` 또는 `PENDING` | 불가 | `VERIFYING` |
 | `APPROVED`, reward `ACCEPTED` | 불가 | `VERIFIED` |
+| `APPROVED`, reward `WITHHELD` | 불가 | `REWARD_WITHHELD` |
 | `APPROVED`, reward `RETRY_REQUIRED` | 불가 | `TEMPORARY_ERROR` |
 | `REJECTED` | 가능 | `REJECTED` |
 | `RETRY_REQUIRED` | 가능 | `RETRY_REQUIRED` |
 | `FAILED` | 가능 | `TEMPORARY_ERROR` |
 
 동일 사용자·Mission은 제출 사이 30초 cooldown과 UTC 하루 최대 5회를 적용한다. 활성 요청이 있거나 이미 승인됐다면 횟수와 무관하게 신규 제출을 차단한다.
+
+Creator 자격이 정지·박탈된 뒤에는 새 구독 인증 보상을 적립하지 않는다. 이미 수락된 ONCE 요청은 동일 결과를 재현하며, 아직 수락되지 않은 승인 건은 `WITHHELD`로 확정해 Recovery 재시도를 중단한다. `WITHHELD`는 Creator가 재활성화되어도 자동 지급되지 않는다.
+새 이미지 인증 제출도 최종 Creator 잠금 안에서 활성 자격을 확인해 거부한다. 이미 접수된 동일 `requestId` 재요청은 기존 멱등 결과를 우선 반환한다.
 
 ## SecurityConfig
 

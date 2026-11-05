@@ -8,6 +8,10 @@ import org.springframework.http.HttpStatus;
 public enum CreatorErrorCode implements ErrorCode {
     INVALID_STATE(HttpStatus.CONFLICT, "현재 상태에서는 수행할 수 없습니다."),
     CONCURRENT_COMMAND(HttpStatus.CONFLICT, "동일 대상에 대한 명령이 충돌했습니다."),
+    CREATOR_NOT_ACTIVE(HttpStatus.FORBIDDEN, "현재 크리에이터 활동이 제한되어 있습니다."),
+    INVALID_CREATOR_STATUS_TRANSITION(HttpStatus.CONFLICT, "현재 자격 상태에서 변경할 수 없습니다."),
+    CREATOR_STATUS_REQUEST_CONFLICT(HttpStatus.CONFLICT, "같은 요청 ID에 다른 자격 변경 내용이 전달되었습니다."),
+    CREATOR_STATUS_MANAGEMENT_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "크리에이터 자격 변경 기능을 준비 중입니다."),
     APPLICATION_FORM_REQUIRED(HttpStatus.CONFLICT, "신청 정보를 보완한 뒤 다시 제출해 주세요."),
     APPLICATION_NOT_EDITABLE(HttpStatus.CONFLICT, "현재 상태에서는 신청서를 수정할 수 없습니다."),
     APPLICATION_CONTENT_CONFLICT(HttpStatus.CONFLICT, "진행 중인 신청과 다른 내용입니다. 보완 절차를 이용해 주세요."),

@@ -50,6 +50,7 @@ public class QuizJudgeEvaluationService {
 
     public QuizJudgeEvaluationView request(Long memberId, Long quizId, Long revisionId, UUID requestId) {
         Creator creator = creatorLookup.requireCreator(memberId);
+        creator.requireActive();
         if (requestId == null) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }

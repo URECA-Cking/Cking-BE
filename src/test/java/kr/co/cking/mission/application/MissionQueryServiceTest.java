@@ -3,6 +3,8 @@ package kr.co.cking.mission.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorStatus;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.Mission;
 import kr.co.cking.mission.MissionCompletion;
@@ -54,7 +56,7 @@ class MissionQueryServiceTest {
         service = new MissionQueryService(
                 memberRepository, creatorRepository, missionRepository, completionRepository, channelRepository, clock);
         when(memberRepository.existsById(USER_ID)).thenReturn(true);
-        when(creatorRepository.existsById(CREATOR_ID)).thenReturn(true);
+        when(creatorRepository.findById(CREATOR_ID)).thenReturn(Optional.of(new Creator(USER_ID, "크리에이터")));
         CreatorYoutubeChannel channel = new CreatorYoutubeChannel(CREATOR_ID, "채널", "@channel", NOW);
         channel.verify("UCabcdefghijklmnopqrstuv", "채널", "@channel", NOW);
         when(channelRepository.findById(CREATOR_ID)).thenReturn(Optional.of(channel));
@@ -102,13 +104,13 @@ class MissionQueryServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
 
-        verify(creatorRepository, never()).existsById(CREATOR_ID);
+        verify(creatorRepository, never()).findById(CREATOR_ID);
         verify(missionRepository, never()).findByCreatorIdAndTypeIn(eq(CREATOR_ID), org.mockito.ArgumentMatchers.anyCollection());
     }
 
     @Test
     void 존재하지_않는_creator는_공통_RESOURCE_NOT_FOUND다() {
-        when(creatorRepository.existsById(CREATOR_ID)).thenReturn(false);
+        when(creatorRepository.findById(CREATOR_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.findMissions(CREATOR_ID, USER_ID))
                 .isInstanceOf(BusinessException.class)
@@ -116,6 +118,17 @@ class MissionQueryServiceTest {
                 .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
 
         verify(missionRepository, never()).findByCreatorIdAndTypeIn(eq(CREATOR_ID), org.mockito.ArgumentMatchers.anyCollection());
+    }
+
+    @Test
+    void 정지된_Creator의_새_미션은_목록에_노출하지_않는다() {
+        Creator creator = new Creator(USER_ID, "크리에이터");
+        creator.changeStatus(CreatorStatus.SUSPENDED, "활동 제한");
+        when(creatorRepository.findById(CREATOR_ID)).thenReturn(Optional.of(creator));
+
+        assertThat(service.findMissions(CREATOR_ID, USER_ID)).isEmpty();
+        verify(missionRepository, never()).findByCreatorIdAndTypeIn(eq(CREATOR_ID),
+                org.mockito.ArgumentMatchers.anyCollection());
     }
 
     @Test

@@ -37,6 +37,7 @@ import java.util.stream.Collectors;
 public class CreatorSpaceProfileService {
 
     private final CreatorRepository creatorRepository;
+    private final CreatorActivityPolicy creatorActivityPolicy;
     private final CreatorSpaceRepository spaceRepository;
     private final CreatorSpaceSlugRegistry slugRegistry;
     private final CreatorSpaceProfileImageManager profileImageManager;
@@ -106,6 +107,7 @@ public class CreatorSpaceProfileService {
     @Transactional
     public CreatorSpaceView updateMine(Long memberId, CreatorSpaceProfileFields fields) {
         Creator creator = requireCreator(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         // Space가 없는 행을 먼저 FOR UPDATE로 조회하면 MySQL 갭 락을 잡을 수 있다.
         // 모든 첫 저장 요청이 Creator 행을 먼저 잠근 뒤 Space를 조회하도록 락 순서를 통일한다.
         creatorRepository.findByIdForUpdate(creator.getCreatorId())
@@ -141,6 +143,7 @@ public class CreatorSpaceProfileService {
     public CreatorSpaceView changeSlug(Long memberId, String slug) {
         Creator creator = requireCreator(memberId);
         Long creatorId = creator.getCreatorId();
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
         CreatorSpace space = requireSpaceForUpdate(creatorId);
         if (space.getSlug().equals(slug)) {
             return new CreatorSpaceView(space, creator.publicDisplayName());

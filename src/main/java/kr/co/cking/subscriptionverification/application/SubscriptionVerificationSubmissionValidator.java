@@ -63,7 +63,8 @@ class SubscriptionVerificationSubmissionValidator {
     ) {
         requireMember(memberId);
         creatorRepository.findByIdForUpdate(creatorId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .requireActive();
         return validateMissionAndChannel(creatorId, missionId, now, true);
     }
 
