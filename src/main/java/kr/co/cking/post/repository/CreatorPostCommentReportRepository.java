@@ -91,4 +91,32 @@ public interface CreatorPostCommentReportRepository extends JpaRepository<Creato
              group by r.commentId, r.reason
             """)
     List<CommentReportReasonCount> countReasons(@Param("commentIds") Collection<Long> commentIds);
+
+    /**
+     * 목록에 나온 댓글들의 기타 신고 설명을 댓글별로 최근 {@code limit}건까지 읽는다(이슈 #811). 신고가 몰린 댓글의 설명을
+     * 전부 서버로 가져오지 않도록 DB에서 자른다. 신고자는 읽지 않는다.
+     */
+    @Query(value = """
+            select ranked.comment_id as commentId, ranked.detail as detail
+              from (select r.comment_id, r.detail, r.created_at, r.report_id,
+                           row_number() over (partition by r.comment_id
+                                              order by r.created_at desc, r.report_id desc) as row_num
+                      from creator_post_comment_report r
+                     where r.comment_id in (:commentIds)
+                       and r.detail is not null) ranked
+             where ranked.row_num <= :limit
+             order by ranked.created_at desc, ranked.report_id desc
+            """, nativeQuery = true)
+    List<CommentReportDetail> findDetails(
+            @Param("commentIds") Collection<Long> commentIds, @Param("limit") int limit);
+
+    /** 목록에 나온 댓글들을 처리한 관리자별 마지막 처리 시각을 읽는다(이슈 #811). */
+    @Query("""
+            select new kr.co.cking.post.repository.CommentReportHandling(r.commentId, r.handledBy, max(r.handledAt))
+              from CreatorPostCommentReport r
+             where r.commentId in :commentIds
+               and r.handledAt is not null
+             group by r.commentId, r.handledBy
+            """)
+    List<CommentReportHandling> findHandlings(@Param("commentIds") Collection<Long> commentIds);
 }
