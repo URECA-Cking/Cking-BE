@@ -1,8 +1,12 @@
 <div align="center">
   <img src="./docs/assets/readme/cking-logo.png" alt="CKing 로고" width="430" />
 
+  <br />
+
   <h3>크리에이터와 팬을 잇는 팬 참여형 이벤트 플랫폼</h3>
   <p>좋아하는 크리에이터를 발견하고, 미션으로 응모권을 획득하며,<br />이벤트 응모부터 검증 가능한 추첨과 당첨 결과 확인까지 하나의 흐름으로 연결합니다.</p>
+
+  <br />
 
   <a href="https://cking.co.kr"><img alt="서비스 바로가기" src="https://img.shields.io/badge/LIVE_SERVICE-cking.co.kr-E84383?style=for-the-badge&logo=googlechrome&logoColor=white" /></a>
   <a href="https://github.com/URECA-Cking/Cking-FE"><img alt="프론트엔드 저장소" src="https://img.shields.io/badge/FRONTEND-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a>
@@ -14,35 +18,55 @@
 
 <h2 align="center">프로젝트 소개</h2>
 
-CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한곳에서 탐색하고, 팬의 참여를 미션·응모권·추첨으로 연결하는 플랫폼입니다. 크리에이터는 전용 Space에서 콘텐츠와 일정을 운영하고 이벤트를 개최하며, 팬은 관심 있는 크리에이터를 도킹하고 미션을 수행해 이벤트에 참여합니다.
-
 <div align="center">
+  <p>CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한곳에서 탐색하고,<br />팬의 참여를 미션·응모권·추첨으로 연결하는 플랫폼입니다.</p>
+
+  <p>크리에이터는 전용 Space에서 콘텐츠와 일정을 운영하고 이벤트를 개최하며,<br />팬은 관심 있는 크리에이터를 도킹하고 미션을 수행해 이벤트에 참여합니다.</p>
+
+  <br />
+
   <img src="./docs/assets/readme/cking-name-meaning.png" alt="Creator + King, Creator + Docking을 표현한 CKing 캐릭터" width="860" />
+
+  <br />
+
   <p><strong>Creator + King</strong> — 좋아하는 크리에이터가 중심이 되는 공간<br /><strong>Creator + Docking</strong> — 크리에이터와 팬을 한 발짝 더 가까이 연결</p>
+
+  <br />
+
   <img src="./docs/assets/readme/service-overview.png" alt="CKing 서비스 소개 및 AI 확장 기능 개요" width="980" />
 </div>
 
-<h2 align="center">시스템 아키텍처</h2>
+<br />
 
-<div align="center">
+## 시스템 아키텍처
+
+<p>
   <img src="./docs/assets/readme/system-architecture.png" alt="CKing 시스템 아키텍처" width="1000" />
-</div>
+</p>
+
+<br />
 
 - **실시간 처리:** Spring Boot API와 Redis Lua로 응모권 적립·차감, 중복 요청 검증, 이벤트 Gate 검사를 원자적으로 처리합니다.
 - **비동기 영속화:** Redis Streams의 EARN·SPEND 이벤트를 Consumer가 처리하고, DB 커밋 후 XACK하여 실패 시 재처리할 수 있도록 설계했습니다.
 - **운영 및 확장:** 마감·Snapshot·추첨·정합성 복구를 도메인별로 분리하고, Python 기반 추천 배치 및 비동기 AI 처리 파이프라인을 연동했습니다.
 
-<h2 align="center">인프라 아키텍처</h2>
+<br />
 
-<div align="center">
+## 인프라 아키텍처
+
+<p>
   <img src="./docs/assets/readme/infrastructure-architecture.png" alt="CKing AWS 인프라 아키텍처" width="1000" />
-</div>
+</p>
+
+<br />
 
 - **서비스 운영:** AWS ALB/WAF 및 다중 애플리케이션 인스턴스, RDS MySQL, ElastiCache(Valkey)를 활용합니다.
 - **배포:** GitHub Actions 기반 CI/CD와 컨테이너 이미지 관리, S3·CloudFront 기반 프론트엔드 배포를 구성했습니다.
 - **관측:** Prometheus·Grafana·Loki·CloudWatch 기반 지표·로그 수집과 알림을 연계했습니다.
 
-<h2 align="center">개발 환경 및 기술 스택</h2>
+<br />
+
+## 개발 환경 및 기술 스택
 
 | 구분 | 사용 기술 |
 |:---:|---|
@@ -56,18 +80,29 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 | Testing / Quality | JUnit 5, Testcontainers, k6, Playwright, oxlint, node --test, actionlint |
 | CI/CD | GitHub Actions, GHCR, Dependabot, S3·CloudFront 배포 |
 
-<h2 align="center">서비스 전체 동작 흐름</h2>
+<br />
 
-<div align="center">
+## 서비스 전체 동작 흐름
+
+<p>
   <img src="./docs/assets/readme/service-flow.png" alt="팬·크리에이터·관리자의 서비스 전체 동작 흐름" width="1000" />
-  <p><sub>크리에이터 승인 및 콘텐츠 운영 → 팬의 미션 수행·응모 → 마감 입력 확정 → 추첨·검증·결과 공개</sub></p>
-</div>
+</p>
 
-<h2 align="center">핵심 기능 및 설계</h2>
+<br />
 
-<div align="center">
+<p><sub>크리에이터 승인 및 콘텐츠 운영 → 팬의 미션 수행·응모 → 마감 입력 확정 → 추첨·검증·결과 공개</sub></p>
+
+<br />
+
+## 핵심 기능 및 설계
+
+<p>
   <img src="./docs/assets/readme/core-features-ui.png" alt="응모권 획득, 이벤트 응모, 당첨 결과 알림 UI" width="900" />
-</div>
+</p>
+
+<br />
+
+<br />
 
 ### 1. 응모권 획득 — 중복 없는 적립과 장애 복구
 
@@ -77,6 +112,8 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 
 <sub>관련 문서: [Ticket](docs/domains/ticket/README.md) · [Mission](docs/domains/mission/README.md) · [Stream](docs/domains/stream/README.md)</sub>
 
+<br />
+
 ### 2. 이벤트 응모 — 동시 요청에서도 잔액 정합성 유지
 
 - **원자적 접수:** Redis Lua에서 이벤트 Gate·종료 시각·응모권 잔액을 검증하고, 차감 및 SPEND Stream 발행을 한 번에 처리합니다.
@@ -85,6 +122,8 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 
 <sub>관련 문서: [Event](docs/domains/event/README.md) · [Ticket](docs/domains/ticket/README.md)</sub>
 
+<br />
+
 ### 3. 이벤트 마감·추첨 — 입력과 결과를 검증 가능한 형태로 확정
 
 - **마감 경계:** `OPEN → CLOSING → CLOSED` 전이에서 Gate 차단과 Stream cutoff를 확정하고, Drain 완료 후 공식 Snapshot을 생성합니다.
@@ -92,6 +131,8 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 - **무결성 및 공개:** Snapshot·Input·Result Hash로 입력과 결과를 검증하고, 결과 공개와 당첨 알림을 같은 트랜잭션으로 처리합니다. 재추첨은 기존 Snapshot과 새로운 Seed를 사용합니다.
 
 <sub>관련 문서: [Snapshot](docs/domains/snapshot/README.md) · [Drawing](docs/domains/drawing/README.md) · [Redraw](docs/domains/redraw/README.md)</sub>
+
+<br />
 
 ### 핵심 기능 검증 결과
 
@@ -106,11 +147,15 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 
 <sub>2026년 프로젝트 발표 자료의 검증 환경·시나리오 기준 수치이며, 모든 운영 상황의 성능을 보장하는 값은 아닙니다. [부하 테스트 가이드](docs/operations/loadtest.md) · [추첨 벤치마크](docs/domains/drawing/weighted-random-benchmark.md)</sub>
 
-<h2 align="center">추가 기능 및 서비스 확장</h2>
+<br />
 
-<div align="center">
+## 추가 기능 및 서비스 확장
+
+<p>
   <img src="./docs/assets/readme/extended-features-ui.png" alt="맞춤 추천, 댓글 필터링, YouTube 구독 인증, AI 퀴즈 UI" width="1000" />
-</div>
+</p>
+
+<br />
 
 | 기능 | 주요 설계 및 구현 |
 |---|---|
@@ -123,7 +168,9 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 
 <sub>관련 문서: [추천](docs/domains/creator/similarity-recommendation.md) · [댓글](docs/domains/post/README.md) · [구독 인증](docs/domains/subscription-verification/README.md) · [AI Quiz](docs/domains/quiz/README.md) · [이상 탐지](docs/domains/abuse-detection/README.md)</sub>
 
-<h2 align="center">베타 테스트 및 트러블슈팅</h2>
+<br />
+
+## 베타 테스트 및 트러블슈팅
 
 <details>
 <summary><strong>베타 테스트 결과 및 피드백</strong></summary>
@@ -146,6 +193,8 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 
 </details>
 
+<br />
+
 <details>
 <summary><strong>트러블슈팅 01 — 조기 마감 이벤트가 다시 응모를 받던 문제</strong></summary>
 
@@ -155,6 +204,8 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 - **검증:** 마감·복원 경합을 통합 테스트 4건으로 재현하고, cutoff가 유지된 상황에서 재개방되지 않음을 확인했습니다.
 
 </details>
+
+<br />
 
 <details>
 <summary><strong>트러블슈팅 02 — 매 정각 응모 응답이 지연되던 문제</strong></summary>
@@ -166,7 +217,9 @@ CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한�
 
 </details>
 
-<h2 align="center">로컬 실행 및 개발 가이드</h2>
+<br />
+
+## 로컬 실행 및 개발 가이드
 
 <details>
 <summary><strong>환경 준비 · 실행 · 테스트 · 협업 규칙 펼치기</strong></summary>
@@ -245,7 +298,9 @@ docker compose down -v    # 로컬 DB·S3Mock 볼륨까지 삭제
 
 </details>
 
-<h2 align="center">팀원</h2>
+<br />
+
+## 팀원
 
 | 이름 | 담당 영역 | 핵심 기여 |
 |:---:|---|---|
