@@ -9,7 +9,8 @@ public enum SubscriptionVerificationPublicStatus {
     VERIFIED,
     REJECTED,
     RETRY_REQUIRED,
-    TEMPORARY_ERROR;
+    TEMPORARY_ERROR,
+    REWARD_WITHHELD;
 
     public static SubscriptionVerificationPublicStatus from(
             SubscriptionVerificationStatus status,
@@ -20,6 +21,7 @@ public enum SubscriptionVerificationPublicStatus {
             case APPROVED -> switch (rewardStatus) {
                 case ACCEPTED -> VERIFIED;
                 case RETRY_REQUIRED -> TEMPORARY_ERROR;
+                case WITHHELD -> REWARD_WITHHELD;
                 case NOT_REQUESTED, PENDING -> VERIFYING;
             };
             case REJECTED -> REJECTED;

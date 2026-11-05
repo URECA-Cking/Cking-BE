@@ -56,7 +56,6 @@ public class CreatorSimilarityQueryService {
         Set<RecommendationEligibilityService.Ref> eligible = eligibility.valid("SIMILAR", refs);
         List<CreatorSimilarityCandidate> candidates = stored.stream()
                 .filter(candidate -> eligible.contains(toRef(generationId, creatorId, candidate)))
-                .limit(size)
                 .toList();
         Map<Long, Creator> creators = creatorRepository.findByCreatorIdIn(candidates.stream()
                         .map(candidate -> candidate.getSimilarCreatorId())
@@ -65,6 +64,10 @@ public class CreatorSimilarityQueryService {
         if (creators.size() != candidates.size()) {
             throw new BusinessException(CommonErrorCode.SYSTEM_ERROR);
         }
+        candidates = candidates.stream()
+                .filter(candidate -> creators.get(candidate.getSimilarCreatorId()).canOperate())
+                .limit(size)
+                .toList();
         return new CreatorSimilarityView(
                 creatorId,
                 generation.getMethod(),

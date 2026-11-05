@@ -5,6 +5,7 @@ import kr.co.cking.abuse.application.MissionObservationContext;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.application.CreatorRewardAdmissionService;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.Mission;
 import kr.co.cking.mission.MissionRepository;
@@ -40,6 +41,7 @@ public class CreatorSpaceShareMissionCompletionService {
     private final TicketOnceEarnService ticketOnceEarnService;
     private final Clock clock;
     private final MissionAbuseObserver abuseObserver;
+    private final CreatorRewardAdmissionService creatorRewardAdmissionService;
 
     /** Creator Space 공유를 검증하고 SHARE 미션 보상을 멱등하게 요청한다. */
     public MissionCompleteOutcome complete(Long creatorId, MissionCompleteCommand command) {
@@ -93,7 +95,7 @@ public class CreatorSpaceShareMissionCompletionService {
             throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
         }
 
-        EarnResult result = ticketOnceEarnService.earn(earnCommand);
+        EarnResult result = creatorRewardAdmissionService.earnOnce(earnCommand);
         if (result.code() == EarnResultCode.EARN_ACCEPTED || result.code() == EarnResultCode.ALREADY_PROCESSED) {
             return outcomeOf(result.code(), mission, now);
         }

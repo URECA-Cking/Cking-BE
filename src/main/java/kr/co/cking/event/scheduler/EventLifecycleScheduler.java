@@ -19,6 +19,7 @@ import kr.co.cking.event.application.service.EventGateLoader;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.snapshot.application.OfficialSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +43,7 @@ import lombok.extern.slf4j.Slf4j;
 public class EventLifecycleScheduler {
 
     private final EventRepository eventRepository;
+    private final CreatorRepository creatorRepository;
     private final EventCommandService eventCommandService;
     private final EventClosingService eventClosingService;
     private final EventDrainChecker eventDrainChecker;
@@ -102,6 +104,10 @@ public class EventLifecycleScheduler {
                 now
         )) {
             Long eventId = event.getEventId();
+            if (!creatorRepository.findById(event.getCreatorId()).map(creator -> creator.canOperate()).orElse(false)) {
+                log.info("비활성 Creator의 예약 이벤트 자동 시작을 건너뜁니다. eventId={}", eventId);
+                continue;
+            }
             try {
                 eventCommandService.open(eventId);
             } catch (RuntimeException e) {

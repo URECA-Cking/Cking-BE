@@ -64,7 +64,9 @@ public class EventBannerImageUploadService {
     }
 
     private Creator requireCreator(Long memberId) {
-        return creatorRepository.findByMemberId(memberId)
+        Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        creator.requireActive();
+        return creator;
     }
 }

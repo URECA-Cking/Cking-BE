@@ -26,6 +26,8 @@ class SubscriptionVerificationPublicStatusTest {
                 .isEqualTo(SubscriptionVerificationPublicStatus.VERIFIED);
         assertThat(status(SubscriptionVerificationStatus.APPROVED, VerificationRewardStatus.RETRY_REQUIRED))
                 .isEqualTo(SubscriptionVerificationPublicStatus.TEMPORARY_ERROR);
+        assertThat(status(SubscriptionVerificationStatus.APPROVED, VerificationRewardStatus.WITHHELD))
+                .isEqualTo(SubscriptionVerificationPublicStatus.REWARD_WITHHELD);
     }
 
     @Test

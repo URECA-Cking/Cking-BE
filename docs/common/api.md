@@ -148,6 +148,8 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
     "email": "hong@example.com",
     "role": "USER",
     "creator": false,
+    "creatorStatus": null,
+    "creatorCanOperate": false,
     "onboardingCompleted": true,
     "profileConfigured": true,
     "nicknameChangeableAt": null,
@@ -158,6 +160,7 @@ Application/Service의 비즈니스 수행 주체 ID로 전달한다. Applicatio
 ```
 
 - `creator`는 JWT role이 아니라 `creator.member_id` 존재 여부다.
+- Creator 자격이 정지·박탈돼도 `creator`는 `true`다. `creatorStatus`(`ACTIVE`·`SUSPENDED`·`REVOKED`)와 `creatorCanOperate`로 활동 가능 여부를 읽는다. 일반 회원은 각각 `null`·`false`다. 상세는 [Creator 자격 상태 API](../domains/creator/status-api.md)를 따른다.
 - JWT의 Member가 존재하지 않으면 `RESOURCE_NOT_FOUND`를 반환한다.
 - `name`은 OAuth 제공자 원본 이름이고 본인 조회에서만 반환한다. 팬 공개 응답은 닉네임·Member 사진을, 승인된 Creator
   공개 응답은 활동명·Creator Space 사진을 사용한다. `profileConfigured`가 `false`인 팬 회원은 댓글 작성·수정,

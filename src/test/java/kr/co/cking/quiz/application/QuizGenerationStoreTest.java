@@ -36,7 +36,8 @@ class QuizGenerationStoreTest {
     private final QuizGenerationRepository repository = mock(QuizGenerationRepository.class);
     private final QuizDraftService draftService = mock(QuizDraftService.class);
     private final QuizGenerationProperties properties = new QuizGenerationProperties();
-    private final QuizGenerationStore store = new QuizGenerationStore(repository, draftService, properties);
+    private final QuizGenerationStore store = new QuizGenerationStore(repository, draftService, properties,
+            mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
     private final QuizDraftCommand command = new QuizDraftCommand(10L, QuizGenerationFixtures.VIDEO_ID, "제목",
             new QuizGenerationInput(QuizGenerationFixtures.CONTENT_TEXT, 3, 4), QuizGenerationFixtures.generated(3));
 

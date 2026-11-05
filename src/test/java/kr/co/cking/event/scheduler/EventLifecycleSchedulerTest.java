@@ -33,6 +33,8 @@ import kr.co.cking.event.application.service.EventGateLoader;
 import kr.co.cking.event.domain.Event;
 import kr.co.cking.event.domain.EventStatus;
 import kr.co.cking.event.repository.EventRepository;
+import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.snapshot.application.OfficialSnapshotService;
 
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
@@ -42,6 +44,9 @@ class EventLifecycleSchedulerTest {
 
     @Mock
     private EventRepository eventRepository;
+
+    @Mock
+    private CreatorRepository creatorRepository;
 
     @Mock
     private EventCommandService eventCommandService;
@@ -68,6 +73,8 @@ class EventLifecycleSchedulerTest {
     void 시작시각이_지난_SCHEDULED_이벤트를_OPEN으로_전이한다() {
         Event event = org.mockito.Mockito.mock(Event.class);
         when(event.getEventId()).thenReturn(1L);
+        when(event.getCreatorId()).thenReturn(2L);
+        when(creatorRepository.findById(2L)).thenReturn(Optional.of(new Creator(3L, "creator")));
         when(clock.instant()).thenReturn(NOW);
         when(eventRepository.findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
                 EventStatus.SCHEDULED,
@@ -78,6 +85,23 @@ class EventLifecycleSchedulerTest {
         scheduler.run();
 
         verify(eventCommandService).open(1L);
+    }
+
+    @Test
+    void 정지된_Creator의_SCHEDULED_Event는_자동_시작하지_않는다() {
+        Event event = org.mockito.Mockito.mock(Event.class);
+        Creator creator = new Creator(3L, "creator");
+        creator.changeStatus(kr.co.cking.creator.domain.CreatorStatus.SUSPENDED, "운영 제한");
+        when(event.getEventId()).thenReturn(1L);
+        when(event.getCreatorId()).thenReturn(2L);
+        when(clock.instant()).thenReturn(NOW);
+        when(eventRepository.findByStatusAndStartAtLessThanEqualAndEndAtGreaterThan(
+                EventStatus.SCHEDULED, NOW, NOW)).thenReturn(List.of(event));
+        when(creatorRepository.findById(2L)).thenReturn(Optional.of(creator));
+
+        scheduler.run();
+
+        org.mockito.Mockito.verifyNoInteractions(eventCommandService);
     }
 
     @Test
@@ -193,7 +217,7 @@ class EventLifecycleSchedulerTest {
     @Test
     void 재기동해도_경과시간이_이어져_30분이_지났으면_첫_틱에_바로_ERROR를_남긴다(CapturedOutput output) {
         givenClosingEventStartedBefore(Duration.ofMinutes(31));
-        EventLifecycleScheduler restarted = new EventLifecycleScheduler(eventRepository, eventCommandService,
+        EventLifecycleScheduler restarted = new EventLifecycleScheduler(eventRepository, creatorRepository, eventCommandService,
                 eventClosingService, eventDrainChecker, eventGateLoader, officialSnapshotService, clock);
 
         restarted.run();

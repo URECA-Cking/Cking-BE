@@ -35,6 +35,7 @@ public class ContentTagService {
     private final CreatorSpaceRepository spaces;
     private final CreatorRepository creators;
     private final PlatformTransactionManager transactionManager;
+    private final CreatorActivityPolicy creatorActivityPolicy;
     private static final ObjectMapper JSON = new ObjectMapper(JsonFactory.builder().disable(JsonWriteFeature.WRITE_HEX_UPPER_CASE).build()).enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     public static String encode(Object value) {
@@ -115,6 +116,7 @@ public class ContentTagService {
             if (existing.getFirst().creatorId()!=creatorId || !payloadHash.equals(existing.getFirst().payloadHash())) throw new BusinessException(CONTENT_PAYLOAD_CONFLICT);
             return Map.of("status","idempotent","automaticRevision",automatic);
         }
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
         CreatorSpace space = lock(creatorId);
         // Recheck with a current read after the Space lock: another delivery may have committed.
         existing = repo.automatic(automatic,true);
@@ -237,7 +239,9 @@ public class ContentTagService {
                 "automaticResult",JSON.convertValue(payload.path("record").path("result"),Map.class));
     }
     public Map<String,Object> confirm(long memberId, Map<String,Object> body) {
-        long creatorId = owner(memberId); CreatorSpace space = lock(creatorId); var tax = taxonomy(); JsonNode p = node(body);
+        long creatorId = owner(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
+        CreatorSpace space = lock(creatorId); var tax = taxonomy(); JsonNode p = node(body);
         var states = repo.state(creatorId);
         String automatic = text(p,"automaticRevision"), hash = text(p,"inputHash");
         if (states.isEmpty() || !automatic.equals(states.getFirst().automaticRevision()) || !hash.equals(ContentIntro.hash(space.getIntroText())))

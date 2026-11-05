@@ -37,6 +37,10 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     /** 관리자 운영 조회에서 논리 삭제되지 않은 Event 한 건을 읽는다. */
     Optional<Event> findByEventIdAndDeletedAtIsNull(Long eventId);
 
+    /** 승인 전 Creator 자격 잠금에 필요한 ID만 읽어 Event Entity를 영속성 컨텍스트에 올리지 않는다. */
+    @Query("select e.creatorId from Event e where e.eventId = :eventId and e.deletedAt is null")
+    Optional<Long> findCreatorIdByEventId(@Param("eventId") Long eventId);
+
     List<Event> findByEventIdIn(Collection<Long> eventIds);
 
     Page<Event> findByCreatorIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByCreatedAtDescEventIdDesc(Long creatorId, Pageable pageable);

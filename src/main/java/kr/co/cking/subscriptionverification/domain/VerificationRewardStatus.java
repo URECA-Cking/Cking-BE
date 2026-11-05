@@ -5,5 +5,6 @@ public enum VerificationRewardStatus {
     NOT_REQUESTED,
     PENDING,
     ACCEPTED,
-    RETRY_REQUIRED
+    RETRY_REQUIRED,
+    WITHHELD
 }

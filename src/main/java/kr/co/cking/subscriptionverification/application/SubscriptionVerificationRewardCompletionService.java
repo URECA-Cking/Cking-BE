@@ -37,4 +37,13 @@ public class SubscriptionVerificationRewardCompletionService {
                 acceptedAt
         ) == 1;
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean withhold(Long verificationId, Instant decidedAt) {
+        requirePositive(verificationId, "verificationId");
+        Objects.requireNonNull(decidedAt, "decidedAt은 필수입니다.");
+        return verificationRepository.acceptReward(
+                verificationId, SubscriptionVerificationStatus.APPROVED, ACCEPTABLE_STATUSES,
+                VerificationRewardStatus.WITHHELD, decidedAt) == 1;
+    }
 }

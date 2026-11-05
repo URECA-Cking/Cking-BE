@@ -64,6 +64,7 @@ public class QuizAttemptStore {
         if (replay.isPresent()) return replay.get();
         var creator = creators.findById(quiz.getCreatorId())
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_NOT_FOUND));
+        creator.requireActive();
         if (creator.getMemberId().equals(command.memberId())) throw new BusinessException(CommonErrorCode.FORBIDDEN);
         quiz.requireNotClosed();
         if (!quiz.isPublished()) throw new BusinessException(QuizErrorCode.QUIZ_NOT_FOUND);

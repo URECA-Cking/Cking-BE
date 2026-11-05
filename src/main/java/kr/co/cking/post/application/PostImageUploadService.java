@@ -34,6 +34,7 @@ public class PostImageUploadService {
     /** @return 게시글 작성·수정 때 전달할 이미지 key */
     public String upload(Long memberId, byte[] imageBytes) {
         Creator creator = authorLookup.requireConfiguredCreator(memberId);
+        creator.requireActive();
         NormalizedImage image = imageProcessor.process(imageBytes);
         String objectKey = objectKey(creator.getCreatorId());
 
@@ -46,6 +47,7 @@ public class PostImageUploadService {
     /** 정규화를 앱 밖 파이프라인에 맡길 때 권한 확인과 업로드 기록만 먼저 만든다(#780). */
     public String reserve(Long memberId) {
         Creator creator = authorLookup.requireConfiguredCreator(memberId);
+        creator.requireActive();
         String objectKey = objectKey(creator.getCreatorId());
         imageRepository.save(CreatorPostImage.uploading(objectKey, creator.getCreatorId(), clock.instant()));
         return objectKey;

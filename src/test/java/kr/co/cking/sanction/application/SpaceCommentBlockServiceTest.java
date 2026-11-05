@@ -65,7 +65,8 @@ class SpaceCommentBlockServiceTest {
     private final SanctionNotificationService notificationService = mock(SanctionNotificationService.class);
     private final SpaceCommentBlockService service = new SpaceCommentBlockService(
             creatorRepository, memberQueryService, sanctionRepository, memberRepository, notificationService,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
 
     private final Creator creator = creator(CREATOR_ID, CREATOR_MEMBER_ID);
 

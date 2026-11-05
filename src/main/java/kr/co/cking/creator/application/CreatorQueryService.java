@@ -2,6 +2,7 @@ package kr.co.cking.creator.application;
 
 import java.util.Optional;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.domain.CreatorStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,10 @@ public class CreatorQueryService {
 
     public boolean isCreatorMember(Long memberId) {
         return creatorRepository.existsByMemberId(memberId);
+    }
+
+    public Optional<CreatorStatus> findStatusByMemberId(Long memberId) {
+        return creatorRepository.findByMemberId(memberId).map(creator -> creator.getStatus());
     }
 
     /** Event 캐시 적재 시 Creator의 소유 회원 ID만 조회한다. */

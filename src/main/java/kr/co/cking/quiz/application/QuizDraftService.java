@@ -3,6 +3,7 @@ package kr.co.cking.quiz.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.quiz.application.dto.QuizDraft;
 import kr.co.cking.quiz.application.dto.QuizDraftCommand;
 import kr.co.cking.quiz.application.dto.QuizQuestionContent;
@@ -50,9 +51,11 @@ public class QuizDraftService {
     private final QuizOptionRepository optionRepository;
     private final QuizGenerationValidator generationValidator;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     public QuizDraft create(QuizDraftCommand command) {
         validate(command);
+        creatorActivityPolicy.requireActiveByCreatorId(command.creatorId());
         GeneratedQuiz generated = command.generated();
         List<QuizQuestionContent> questions = toContents(generated.questions());
         Instant now = clock.instant();

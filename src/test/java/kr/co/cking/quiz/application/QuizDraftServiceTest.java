@@ -60,7 +60,8 @@ class QuizDraftServiceTest {
     @BeforeEach
     void setUp() {
         service = new QuizDraftService(creatorRepository, quizRepository, revisionRepository, questionRepository,
-                optionRepository, new QuizGenerationValidator(), Clock.fixed(QuizFixtures.NOW, ZoneOffset.UTC));
+                optionRepository, new QuizGenerationValidator(), Clock.fixed(QuizFixtures.NOW, ZoneOffset.UTC),
+                mock(kr.co.cking.creator.application.CreatorActivityPolicy.class));
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         given(quizRepository.save(any(Quiz.class))).willAnswer(withId("quizId"));
         given(revisionRepository.save(any(QuizRevision.class))).willAnswer(withId("revisionId"));
