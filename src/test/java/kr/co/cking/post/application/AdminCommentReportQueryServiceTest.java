@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.post.application.dto.AdminCommentReportView;
 import kr.co.cking.post.domain.CommentFilterAction;
+import kr.co.cking.post.domain.CommentFilterStatus;
 import kr.co.cking.post.domain.CommentReportReason;
 import kr.co.cking.post.domain.CommentReportStatus;
 import kr.co.cking.post.domain.CreatorPostComment;
@@ -71,6 +72,8 @@ class AdminCommentReportQueryServiceTest {
         assertThat(first.authorMemberId()).isEqualTo(20L);
         assertThat(first.content()).isEqualTo("차단된 댓글");
         assertThat(first.blocked()).isTrue();
+        assertThat(first.filterReasons()).containsExactly("profanity:test");
+        assertThat(first.filterStatus()).isEqualTo(CommentFilterStatus.DONE);
         assertThat(first.reportCount()).isEqualTo(3L);
         assertThat(first.pendingReportCount()).isEqualTo(2L);
         assertThat(first.status()).isEqualTo(CommentReportStatus.PENDING);
@@ -78,6 +81,7 @@ class AdminCommentReportQueryServiceTest {
         assertThat(first.reasonCounts()).isEqualTo(Map.of(CommentReportReason.ABUSE, 2L, CommentReportReason.SPAM, 1L));
         assertThat(first.latestReportedAt()).isEqualTo(latest);
         assertThat(views.get(1).blocked()).isFalse();
+        assertThat(views.get(1).filterReasons()).isEmpty();
         assertThat(views.get(1).creatorId()).isEqualTo(1L);
         assertThat(views.get(1).status()).isEqualTo(CommentReportStatus.REJECTED);
     }

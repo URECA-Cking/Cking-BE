@@ -8,6 +8,7 @@ import kr.co.cking.post.application.AdminCommentReportCommandService;
 import kr.co.cking.post.application.AdminCommentReportQueryService;
 import kr.co.cking.post.application.dto.AdminCommentReportActionView;
 import kr.co.cking.post.application.dto.AdminCommentReportView;
+import kr.co.cking.post.domain.CommentFilterStatus;
 import kr.co.cking.post.domain.CommentReportReason;
 import kr.co.cking.post.domain.CommentReportStatus;
 import kr.co.cking.post.domain.PostErrorCode;
@@ -52,7 +53,8 @@ class AdminCommentReportControllerTest {
     void 신고된_댓글_목록을_공통_페이지_형식으로_돌려주고_신고자를_담지_않는다() throws Exception {
         PageRequest pageable = PageRequest.of(1, 10);
         given(queryService.findReportedComments(1L, null, pageable)).willReturn(new PageImpl<>(List.of(
-                new AdminCommentReportView(500L, 100L, 1L, 20L, "신고된 댓글", true, false,
+                new AdminCommentReportView(500L, 100L, 1L, 20L, "신고된 댓글", true,
+                        List.of("spam:link"), CommentFilterStatus.DONE, false,
                         CommentReportStatus.PENDING, 3L, 2L,
                         Map.of(CommentReportReason.ABUSE, 2L, CommentReportReason.SPAM, 1L),
                         Instant.parse("2026-10-07T00:00:00Z"))), pageable, 11));
@@ -64,6 +66,8 @@ class AdminCommentReportControllerTest {
                 .andExpect(jsonPath("$.data.items[0].creatorId").value(1))
                 .andExpect(jsonPath("$.data.items[0].content").value("신고된 댓글"))
                 .andExpect(jsonPath("$.data.items[0].blocked").value(true))
+                .andExpect(jsonPath("$.data.items[0].filterReasons[0]").value("spam:link"))
+                .andExpect(jsonPath("$.data.items[0].filterStatus").value("DONE"))
                 .andExpect(jsonPath("$.data.items[0].hiddenByAdmin").value(false))
                 .andExpect(jsonPath("$.data.items[0].status").value("PENDING"))
                 .andExpect(jsonPath("$.data.items[0].reportCount").value(3))
