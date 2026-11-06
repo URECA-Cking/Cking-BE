@@ -138,11 +138,14 @@ public class ImageNormalizer {
         }
     }
 
-    /** 잘린 JPEG는 ImageIO가 예외 없이 경고만 내고 빈 부분을 채워 돌려준다. */
+    /**
+     * 잘린 JPEG는 ImageIO가 예외 없이 경고만 내고 빈 부분을 채워 돌려준다. 중간 세그먼트 손상 경고는 끝이 있는 파일에도
+     * 나와 Lambda가 받아들이므로 잘림 경고만 본다.
+     */
     private boolean isTruncated(List<String> warnings) {
         return warnings.stream()
                 .map(warning -> warning.toLowerCase(Locale.ROOT))
-                .anyMatch(warning -> warning.contains("truncated") || warning.contains("premature end"));
+                .anyMatch(warning -> warning.contains("truncated file") || warning.contains("missing eoi"));
     }
 
     /** 최소 해상도는 EXIF Orientation을 반영한 최종 표시 방향 기준으로 검증한다. */
@@ -222,8 +225,8 @@ public class ImageNormalizer {
         }
         int width = image.getWidth();
         int height = image.getHeight();
-        int grayMax = (1 << model.getComponentSize(0)) - 1;
-        int alphaMax = (1 << model.getComponentSize(1)) - 1;
+        int graySize = model.getComponentSize(0);
+        int alphaSize = model.getComponentSize(1);
         Raster raster = image.getRaster();
         BufferedImage argb = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         int[] gray = new int[width];
@@ -233,13 +236,21 @@ public class ImageNormalizer {
             raster.getSamples(0, y, width, 1, 0, gray);
             raster.getSamples(0, y, width, 1, 1, alpha);
             for (int x = 0; x < width; x++) {
-                int g = Math.round(gray[x] * 255.0F / grayMax);
-                int a = Math.round(alpha[x] * 255.0F / alphaMax);
+                int g = toEightBits(gray[x], graySize);
+                int a = toEightBits(alpha[x], alphaSize);
                 row[x] = (a << 24) | (g << 16) | (g << 8) | g;
             }
             argb.setRGB(0, y, width, 1, row, 0, width);
         }
         return argb;
+    }
+
+    /** 16비트는 알파 없는 회색 경로와 Pillow처럼 상위 바이트를 쓴다. */
+    private int toEightBits(int value, int bits) {
+        if (bits >= 8) {
+            return value >> (bits - 8);
+        }
+        return Math.round(value * 255.0F / ((1 << bits) - 1));
     }
 
     private boolean swapsAxes(int orientation) {
