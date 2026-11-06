@@ -7,12 +7,17 @@ import com.drew.metadata.exif.ExifIFD0Directory;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.color.ColorSpace;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.awt.image.ColorModel;
+import java.awt.image.Raster;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import javax.imageio.IIOImage;
@@ -120,8 +125,10 @@ public class ImageNormalizer {
                 int height = reader.getHeight(0);
                 validateDimensions(width, height, orientation, policy);
 
+                List<String> warnings = new ArrayList<>();
+                reader.addIIOReadWarningListener((source, warning) -> warnings.add(warning));
                 BufferedImage image = reader.read(0);
-                if (image == null) {
+                if (image == null || isTruncated(warnings)) {
                     throw new InvalidImageException();
                 }
                 return new DecodedImage(image);
@@ -129,6 +136,16 @@ public class ImageNormalizer {
                 reader.dispose();
             }
         }
+    }
+
+    /**
+     * 잘린 JPEG는 ImageIO가 예외 없이 경고만 내고 빈 부분을 채워 돌려준다. 중간 세그먼트 손상 경고는 끝이 있는 파일에도
+     * 나와 Lambda가 받아들이므로 잘림 경고만 본다.
+     */
+    private boolean isTruncated(List<String> warnings) {
+        return warnings.stream()
+                .map(warning -> warning.toLowerCase(Locale.ROOT))
+                .anyMatch(warning -> warning.contains("truncated file") || warning.contains("missing eoi"));
     }
 
     /** 최소 해상도는 EXIF Orientation을 반영한 최종 표시 방향 기준으로 검증한다. */
@@ -159,7 +176,8 @@ public class ImageNormalizer {
         return orientation;
     }
 
-    private BufferedImage normalize(BufferedImage source, int orientation, ImagePolicy policy) {
+    private BufferedImage normalize(BufferedImage decoded, int orientation, ImagePolicy policy) {
+        BufferedImage source = grayAlphaAsArgb(decoded);
         int sourceWidth = source.getWidth();
         int sourceHeight = source.getHeight();
         boolean swapsAxes = swapsAxes(orientation);
@@ -194,6 +212,45 @@ public class ImageNormalizer {
             graphics.dispose();
         }
         return result;
+    }
+
+    /**
+     * 알파가 있는 회색 이미지는 Java2D가 선형 회색으로 보고 그릴 때 밝게 바꾼다. 알파 없는 회색처럼 값을 그대로 쓰도록
+     * ARGB로 옮긴다.
+     */
+    private BufferedImage grayAlphaAsArgb(BufferedImage image) {
+        ColorModel model = image.getColorModel();
+        if (model.getColorSpace().getType() != ColorSpace.TYPE_GRAY || !model.hasAlpha()) {
+            return image;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+        int graySize = model.getComponentSize(0);
+        int alphaSize = model.getComponentSize(1);
+        Raster raster = image.getRaster();
+        BufferedImage argb = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        int[] gray = new int[width];
+        int[] alpha = new int[width];
+        int[] row = new int[width];
+        for (int y = 0; y < height; y++) {
+            raster.getSamples(0, y, width, 1, 0, gray);
+            raster.getSamples(0, y, width, 1, 1, alpha);
+            for (int x = 0; x < width; x++) {
+                int g = toEightBits(gray[x], graySize);
+                int a = toEightBits(alpha[x], alphaSize);
+                row[x] = (a << 24) | (g << 16) | (g << 8) | g;
+            }
+            argb.setRGB(0, y, width, 1, row, 0, width);
+        }
+        return argb;
+    }
+
+    /** 16비트는 알파 없는 회색 경로와 Pillow처럼 상위 바이트를 쓴다. */
+    private int toEightBits(int value, int bits) {
+        if (bits >= 8) {
+            return value >> (bits - 8);
+        }
+        return Math.round(value * 255.0F / ((1 << bits) - 1));
     }
 
     private boolean swapsAxes(int orientation) {
