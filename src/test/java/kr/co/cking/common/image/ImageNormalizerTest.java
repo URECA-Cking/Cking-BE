@@ -5,11 +5,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Transparency;
+import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
+import java.awt.image.ComponentColorModel;
+import java.awt.image.DataBuffer;
+import java.awt.image.WritableRaster;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
@@ -109,6 +118,48 @@ class ImageNormalizerTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new ImagePolicy(480, 480, 479))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 회색_투명_PNG는_알파_없는_회색과_같은_밝기로_흰_배경에_합성한다() throws IOException {
+        ComponentColorModel model = new ComponentColorModel(
+                ColorSpace.getInstance(ColorSpace.CS_GRAY), true, false, Transparency.TRANSLUCENT, DataBuffer.TYPE_BYTE);
+        WritableRaster raster = model.createCompatibleWritableRaster(400, 300);
+        for (int y = 0; y < 300; y++) {
+            for (int x = 0; x < 400; x++) {
+                raster.setSample(x, y, 0, 100);
+                raster.setSample(x, y, 1, x < 200 ? 255 : 0);
+            }
+        }
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        assertThat(ImageIO.write(new BufferedImage(model, raster, false, null), "png", png)).isTrue();
+
+        BufferedImage result = ImageIO.read(new ByteArrayInputStream(
+                normalizer.normalize(png.toByteArray(), SMALL_MIN_POLICY).normalizedImageBytes()));
+
+        assertThat(channels(result.getRGB(100, 150))).allSatisfy(value -> assertThat(value).isBetween(97, 103));
+        assertThat(channels(result.getRGB(300, 150))).allSatisfy(value -> assertThat(value).isGreaterThanOrEqualTo(251));
+    }
+
+    @Test
+    void 잘린_JPEG는_거부한다() throws IOException {
+        BufferedImage image = new BufferedImage(600, 600, BufferedImage.TYPE_INT_RGB);
+        Random random = new Random(7);
+        for (int y = 0; y < 600; y++) {
+            for (int x = 0; x < 600; x++) {
+                image.setRGB(x, y, random.nextInt(0x1000000));
+            }
+        }
+        ByteArrayOutputStream jpeg = new ByteArrayOutputStream();
+        assertThat(ImageIO.write(image, "jpg", jpeg)).isTrue();
+        byte[] truncated = Arrays.copyOf(jpeg.toByteArray(), jpeg.size() / 2);
+
+        assertThatThrownBy(() -> normalizer.normalize(truncated, SMALL_MIN_POLICY))
+                .isInstanceOf(InvalidImageException.class);
+    }
+
+    private List<Integer> channels(int rgb) {
+        return List.of((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
     }
 
     private byte[] solidImage(String format, int width, int height) throws IOException {
