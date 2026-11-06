@@ -9,9 +9,10 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
 
 - Security 필터 체인은 모든 요청을 처리한다. Swagger UI와 OpenAPI JSON은 전용 SecurityFilterChain에서
   Basic Auth로 보호한다. 문서 계정 설정이 비어 있는 로컬·CI 환경에서는 Basic Auth를 적용하지 않는다.
-- `/readyz`(서비스 포트, readiness: DB·Redis 포함)는 ALB 헬스체크와 배포 스크립트가 쓴다.
-  ALB 헬스체크는 인증 정보를 보낼 수 없어 로그인 없이 응답한다. 인터넷에서 들어오는
-  `/readyz` 요청은 ALB 리스너에서 막는다.
+- `/livez`(서비스 포트, liveness: 앱 생존만)는 ALB 헬스체크가, `/readyz`(서비스 포트, readiness: DB·Redis 포함)는
+  배포 스크립트가 쓴다. ALB 헬스체크가 DB·Redis까지 보면 공유 의존성 장애에 모든 서버가 비정상이 되고 서버 그룹이
+  멀쩡한 서버를 교체한다. 둘 다 인증 정보를 보낼 수 없어 로그인 없이 응답한다. 인터넷에서 들어오는 두 경로 요청은
+  ALB 리스너에서 막는다.
 - actuator(`health`, `info`, `prometheus`)는 관리 포트(8081)에만 있고 호스트에 열지 않는다.
   같은 서버의 수집기만 닿을 수 있으며, 로그인 없이 응답한다.
 - Resource Server는 Bearer JWT의 서명·만료·Issuer·Claim을 검증한다. Creator Event 관리와 수동 마감,
