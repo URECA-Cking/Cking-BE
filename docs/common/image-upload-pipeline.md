@@ -27,7 +27,8 @@
 
 | 상황 | 결과 |
 | --- | --- |
-| JPEG·PNG가 아니거나 크기가 0 또는 5MB 초과 | `INVALID_UPLOAD_REQUEST`(400) |
+| 용도·형식이 비었거나 알 수 없는 용도, 크기가 0 이하 | `VALIDATION_FAILED`(400) |
+| JPEG·PNG가 아니거나 5MB 초과 | `INVALID_UPLOAD_REQUEST`(400) |
 | 용도별 권한 없음 | 기존 용도별 업로드 API와 같은 오류(예약 단계에서 확인) |
 | 본인 업로드가 아니거나 없음 | `UPLOAD_NOT_FOUND`(404) |
 | 정규화 실패 | 상태 `FAILED`, `failureReason`에 사유 |
