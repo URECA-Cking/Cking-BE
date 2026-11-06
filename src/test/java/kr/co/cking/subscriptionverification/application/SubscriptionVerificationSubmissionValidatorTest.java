@@ -37,6 +37,7 @@ class SubscriptionVerificationSubmissionValidatorTest {
     private static final Long MISSION_ID = 103L;
     private static final Instant NOW = Instant.parse("2026-09-29T03:00:00Z");
     private static final String REQUEST_ID = "11111111-1111-1111-1111-111111111111";
+    private static final String OTHER_REQUEST_ID = "22222222-2222-2222-2222-222222222222";
     private static final String FINGERPRINT = "a".repeat(64);
 
     private final MemberRepository memberRepository = mock(MemberRepository.class);
@@ -153,6 +154,29 @@ class SubscriptionVerificationSubmissionValidatorTest {
     }
 
     @Test
+    void requestId_조회_뒤_Commit된_같은_요청이_최신_행이면_기존_인증을_반환한다() {
+        SubscriptionVerification concurrent = verification(REQUEST_ID, FINGERPRINT, NOW.minusSeconds(1));
+        given(verificationRepository
+                .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
+                        MEMBER_ID, CREATOR_ID, MISSION_ID))
+                .willReturn(Optional.of(concurrent));
+
+        assertThat(validateRequest()).contains(concurrent);
+    }
+
+    @Test
+    void requestId_조회_뒤_Commit된_같은_요청이_다른_fingerprint면_충돌이다() {
+        given(verificationRepository
+                .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
+                        MEMBER_ID, CREATOR_ID, MISSION_ID))
+                .willReturn(Optional.of(verification(REQUEST_ID, "b".repeat(64), NOW.minusSeconds(1))));
+
+        assertError(
+                () -> validateRequest(),
+                SubscriptionVerificationErrorCode.IDEMPOTENCY_CONFLICT);
+    }
+
+    @Test
     void 승인과_진행중_인증은_신규_제출을_차단한다() {
         given(verificationRepository
                 .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
@@ -219,11 +243,15 @@ class SubscriptionVerificationSubmissionValidatorTest {
     }
 
     private SubscriptionVerification verification(String fingerprint, Instant createdAt) {
+        return verification(OTHER_REQUEST_ID, fingerprint, createdAt);
+    }
+
+    private SubscriptionVerification verification(String requestId, String fingerprint, Instant createdAt) {
         return SubscriptionVerification.pending(
                 MEMBER_ID,
                 CREATOR_ID,
                 MISSION_ID,
-                REQUEST_ID,
+                requestId,
                 fingerprint,
                 "예상치 못한 필름",
                 "@unexpectedfilm",
