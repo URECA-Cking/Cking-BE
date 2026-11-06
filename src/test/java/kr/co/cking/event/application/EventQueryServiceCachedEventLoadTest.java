@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -103,6 +104,29 @@ class EventQueryServiceCachedEventLoadTest {
             assertThatThrownBy(() -> result.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(BusinessException.class);
         }
         verify(eventRepository, times(1)).findById(1L);
+    }
+
+    @Test
+    void 읽기에서_Error가_나도_기다리던_요청이_풀린다() throws Exception {
+        CountDownLatch loading = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(eventCache.find(1L)).thenReturn(Optional.empty());
+        when(eventRepository.findById(1L)).thenAnswer(invocation -> {
+            loading.countDown();
+            release.await(5, TimeUnit.SECONDS);
+            throw new StackOverflowError("읽기 실패");
+        });
+
+        List<Future<CachedEvent>> results = callConcurrently();
+        assertThat(loading.await(5, TimeUnit.SECONDS)).isTrue();
+        awaitOthersWaiting();
+        release.countDown();
+
+        for (Future<CachedEvent> result : results) {
+            assertThatThrownBy(() -> result.get(5, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasRootCauseInstanceOf(StackOverflowError.class);
+        }
     }
 
     @Test

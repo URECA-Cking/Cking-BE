@@ -140,7 +140,7 @@ public class EventQueryService {
      * 공개 조회 진입점(entry 등 다른 도메인이 이벤트 조회 시 Repository를 직접 참조하지
      * 않도록 함). DRAFT/PENDING_APPROVAL/REJECTED는 대상에서 제외한다 — 그 상태의
      * Event가 필요하면 {@link #getEventForOperation}을 쓴다.
-     * 적중은 DB 연결 없이 끝나도록 트랜잭션을 새로 열지 않는다.
+     * 트랜잭션 밖에서 부르면 적중은 DB 연결 없이 끝나도록 트랜잭션을 새로 열지 않는다.
      */
     @Transactional(propagation = Propagation.SUPPORTS)
     public CachedEvent getCachedEvent(Long eventId) {
@@ -169,7 +169,7 @@ public class EventQueryService {
             CachedEvent loaded = eventCacheLoader.load(eventId);
             load.complete(loaded);
             return loaded;
-        } catch (RuntimeException exception) {
+        } catch (RuntimeException | Error exception) {
             load.completeExceptionally(exception);
             throw exception;
         } finally {
