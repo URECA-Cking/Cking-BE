@@ -106,9 +106,12 @@ class StreamPendingAgeRecorderIntegrationTest {
     }
 
     @Test
-    void 그룹이_없어_조회에_실패하면_NaN이다() {
-        add(COMMON_EARN_STREAM, NOW - 1_000);
+    void 조회에_실패하면_이전_값에_머물지_않고_NaN이다() {
+        createGroup(COMMON_EARN_STREAM);
+        recorder.record();
+        assertThat(age(COMMON_EARN_STREAM)).isZero();
 
+        redisTemplate.opsForStream().destroyGroup(COMMON_EARN_STREAM, GROUP);
         recorder.record();
 
         assertThat(age(COMMON_EARN_STREAM)).isNaN();

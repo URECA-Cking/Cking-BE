@@ -5,8 +5,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.stream.PendingMessagesSummary;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
  * 커서, 처리가 막혔는지는 건수가 아니라 가장 오래된 메시지의 나이로 판단한다. PEL이 비면 0, 조회에 실패하면 NaN이다.
  * 실행 풀은 {@code StreamPendingAgeSchedulingConfig}.
  */
+@Slf4j
 @Component
 public class StreamPendingAgeRecorder {
 
@@ -60,7 +61,8 @@ public class StreamPendingAgeRecorder {
         PendingMessagesSummary summary;
         try {
             summary = redisTemplate.opsForStream().pending(target.stream, target.group);
-        } catch (DataAccessException e) {
+        } catch (RuntimeException e) {
+            log.warn("Stream PEL 나이를 조회하지 못했습니다. stream={}, cause={}", target.stream, e.toString());
             return UNKNOWN;
         }
         if (summary == null || summary.getTotalPendingMessages() == 0) {
