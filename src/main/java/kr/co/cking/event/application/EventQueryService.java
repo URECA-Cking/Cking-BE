@@ -2,7 +2,6 @@ package kr.co.cking.event.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
-import kr.co.cking.creator.application.CreatorQueryService;
 import kr.co.cking.event.application.dto.CachedEvent;
 import kr.co.cking.event.application.dto.CachedEventPage;
 import kr.co.cking.event.application.dto.EventCounts;
@@ -22,13 +21,19 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -46,7 +51,8 @@ public class EventQueryService {
     private final EventListCache eventListCache;
     private final EventCountsCache eventCountsCache;
     private final MemberRepository memberRepository;
-    private final CreatorQueryService creatorQueryService;
+    private final EventCacheLoader eventCacheLoader;
+    private final ConcurrentMap<Long, CompletableFuture<CachedEvent>> cachedEventLoads = new ConcurrentHashMap<>();
 
     /**
      * API 명세 §1.7: page=0부터, size 기본 20·최대 100(범위 검증은 컨트롤러에서),
@@ -134,9 +140,52 @@ public class EventQueryService {
      * 공개 조회 진입점(entry 등 다른 도메인이 이벤트 조회 시 Repository를 직접 참조하지
      * 않도록 함). DRAFT/PENDING_APPROVAL/REJECTED는 대상에서 제외한다 — 그 상태의
      * Event가 필요하면 {@link #getEventForOperation}을 쓴다.
+     * 적중은 DB 연결 없이 끝나도록 트랜잭션을 새로 열지 않는다.
      */
+    @Transactional(propagation = Propagation.SUPPORTS)
     public CachedEvent getCachedEvent(Long eventId) {
-        return eventCache.find(eventId).orElseGet(() -> loadAndCache(eventId));
+        return eventCache.find(eventId).orElseGet(() -> load(eventId));
+    }
+
+    /**
+     * 트랜잭션 밖의 호출은 캐시가 빈 순간 이벤트마다 한 요청만 읽고 나머지는 연결 없이 그 결과를 기다린다.
+     * 트랜잭션 안의 호출은 이미 연결을 쥐고 있어, 기다리게 하면 읽는 요청이 연결을 받지 못해 함께 멈출 수 있다.
+     * 그래서 자기 트랜잭션에서 바로 읽는다.
+     */
+    private CachedEvent load(Long eventId) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            return eventCacheLoader.load(eventId);
+        }
+        return loadOnce(eventId);
+    }
+
+    private CachedEvent loadOnce(Long eventId) {
+        CompletableFuture<CachedEvent> load = new CompletableFuture<>();
+        CompletableFuture<CachedEvent> running = cachedEventLoads.putIfAbsent(eventId, load);
+        if (running != null) {
+            return awaitLoad(running);
+        }
+        try {
+            CachedEvent loaded = eventCacheLoader.load(eventId);
+            load.complete(loaded);
+            return loaded;
+        } catch (RuntimeException exception) {
+            load.completeExceptionally(exception);
+            throw exception;
+        } finally {
+            cachedEventLoads.remove(eventId, load);
+        }
+    }
+
+    private static CachedEvent awaitLoad(CompletableFuture<CachedEvent> running) {
+        try {
+            return running.join();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof RuntimeException cause) {
+                throw cause;
+            }
+            throw exception;
+        }
     }
 
     /**
@@ -154,17 +203,5 @@ public class EventQueryService {
     /** Event 상태 변경 후(EventCommandService 등) 호출해서 cache:event를 무효화한다. */
     public void invalidate(Long eventId) {
         eventCache.evict(eventId);
-    }
-
-    /** 공개 Event와 Creator 소유 회원을 조회해 검증 가능한 상세 캐시를 적재한다. */
-    private CachedEvent loadAndCache(Long eventId) {
-        Event event = eventRepository.findById(eventId)
-                .filter(e -> e.getDeletedAt() == null && !e.isArchived() && e.getStatus().isPubliclyVisible())
-                .orElseThrow(() -> new BusinessException(EventErrorCode.EVENT_NOT_FOUND));
-        Long ownerMemberId = creatorQueryService.findOwnerMemberId(event.getCreatorId())
-                .orElseThrow(() -> new IllegalStateException("Event Creator의 소유 회원을 찾을 수 없습니다."));
-        CachedEvent cached = CachedEvent.from(event, ownerMemberId);
-        eventCache.save(cached);
-        return cached;
     }
 }
