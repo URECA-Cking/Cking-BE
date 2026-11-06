@@ -67,6 +67,8 @@ management:
         # ALB 헬스체크는 앱 생존만 보는 /livez를 쓴다. DB·Redis가 끊겨도 모든 서버가 함께 비정상이 되지 않게 한다.
         readiness:
           include: readinessState,db,redis
+        liveness:
+          include: livenessState
   info:
     env:
       enabled: true

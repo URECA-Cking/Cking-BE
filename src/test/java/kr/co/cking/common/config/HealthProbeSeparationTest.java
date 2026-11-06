@@ -23,7 +23,7 @@ class HealthProbeSeparationTest {
     private MockMvc mockMvc;
 
     @Test
-    void Redis가_끊기면_readyz만_비정상이다() throws Exception {
+    void DB와_Redis가_끊기면_readyz만_비정상이다() throws Exception {
         mockMvc.perform(get("/readyz"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.status").value("DOWN"));
@@ -33,9 +33,14 @@ class HealthProbeSeparationTest {
     }
 
     @TestConfiguration
-    static class DownRedis {
+    static class DownDependencies {
         @Bean("redisHealthContributor")
         HealthIndicator redisHealthContributor() {
+            return () -> Health.down().withDetail("reason", "test").build();
+        }
+
+        @Bean("dbHealthContributor")
+        HealthIndicator dbHealthContributor() {
             return () -> Health.down().withDetail("reason", "test").build();
         }
     }
