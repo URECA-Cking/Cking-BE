@@ -1,0 +1,58 @@
+# 운영에서 비교 측정할 변형(고치기 전 코드, 설정만 다른 코드)을 develop에 넣지 않고 이미지로 만든다.
+# 배포는 하지 않는다. 운영 배포 워크플로는 main 커밋 이미지와 배포한 적 있는 태그만 받는다(실험 배포 절차는 docs/operations/deploy.md).
+name: Build experiment image
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 빌드할 브랜치 또는 커밋
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: 이미지 이름·태그 생성
+        id: meta
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "tag=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+
+      - name: 결과
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REF: ${{ inputs.ref }}
+        run: |
+          echo "실험 이미지 $IMAGE:$TAG ($REF)" >> "$GITHUB_STEP_SUMMARY"

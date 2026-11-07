@@ -188,6 +188,27 @@ DB 쪽은 `verify.sh`의 6번이 같은 요청 라운드 회원(앞쪽 절반)�
 
 - k6 서버는 운영 프라이빗 앱 서브넷에 있어 요청이 NAT IP로 나간다. 운영 WAF는 NAT IP를 허용 목록으로 두므로 k6 요청은 IP당 요청 제한과 관리형 규칙을 건너뛰고, 측정값에 WAF 판정 시간이 들어가지 않는다
 
+### 비교 이미지로 측정
+
+고치기 전 코드나 설정만 다른 코드를 운영 조건에서 비교할 때 쓴다. develop에는 넣지 않는다.
+
+1. 비교할 코드를 브랜치로 올린다(머지하지 않는다)
+2. Actions → `Build experiment image` → `ref`에 브랜치를 넣고 실행한다. 요약에 이미지 태그가 나온다
+3. 그 브랜치를 받아 배포 파일을 태그 경로에 올리고, 배포 태그를 바꾼 뒤 서버를 교체한다. 운영 배포 워크플로는 main 커밋 이미지와 운영에 배포한 적 있는 태그만 받으므로 손으로 한다
+
+   ```bash
+   # Mac (그 브랜치를 받은 Cking-BE, 운영 관리자 자격 증명)
+   T=<실험 이미지 태그>
+   B="prod-cking-deploy-$(aws sts get-caller-identity --query Account --output text)-ap-northeast-2-an"
+   aws s3 cp docker-compose.prod.yml "s3://$B/releases/$T/docker-compose.yml"
+   aws s3 cp deploy/deploy.sh "s3://$B/releases/$T/deploy.sh"
+   aws s3 cp k6/smoke.js "s3://$B/releases/$T/smoke.js"
+   aws ssm put-parameter --region ap-northeast-2 --name /cking/prod/RELEASE_TAG --type String --value "$T" --overwrite
+   bash scripts/prod-refresh.sh prod-cking-app
+   ```
+
+4. 측정이 끝나면 Actions → `Deploy to prod`(main) → `image_tag`에 원래 태그를 넣어 되돌린다
+
 ### 운영 데이터 되돌리기
 
 k6 실행이 끝난 뒤, 모든 앱 서버의 앱을 멈추고 Redis·DB를 비운 다음 각 서버에서 앱을 다시 띄운다. 앱이 도는 중에 비우면 일정 작업(`EventLifecycleScheduler`, 10초 간격)이 남은 DB로 Redis Gate·집계를 다시 채우고, 새로 뜬 앱은 이미 있는 값을 덮어쓰지 않아(`event-gate-load.lua`의 `NX`) 다음 측정에 남는다. 앱 서버 그룹은 ALB 상태 검사로 서버를 판정하므로, 앱을 멈추기 전에 그룹의 자동 교체를 멈춘다.
