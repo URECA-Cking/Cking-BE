@@ -151,7 +151,13 @@ class CreatorScheduleControllerTest {
 
     @ParameterizedTest
     @WithMockJwt(memberId = "7")
-    @ValueSource(strings = {"https://example.com/notice", "http://localhost:8080/notice", ""})
+    @ValueSource(strings = {
+            "https://example.com/notice",
+            "http://localhost:8080/notice",
+            "https://한글.kr",
+            "https://my_site.example.com/a",
+            ""
+    })
     void 생성은_HTTP_HTTPS_URL과_비어있는_externalUrl을_허용한다(String externalUrl) throws Exception {
         given(scheduleService.create(org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.any()))
                 .willReturn(schedule());

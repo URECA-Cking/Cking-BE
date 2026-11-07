@@ -23,9 +23,19 @@ public class HttpUrlValidator implements ConstraintValidator<HttpUrl, String> {
             URI uri = new URI(value);
             return uri.isAbsolute()
                     && ALLOWED_SCHEMES.contains(uri.getScheme().toLowerCase(java.util.Locale.ROOT))
-                    && uri.getHost() != null;
+                    && hasHost(uri);
         } catch (URISyntaxException exception) {
             return false;
         }
+    }
+
+    /** URI의 getHost()는 한글·밑줄 도메인을 null로 처리하므로, 파싱된 authority에서 호스트 부분을 확인한다. */
+    private boolean hasHost(URI uri) {
+        String authority = uri.getRawAuthority();
+        if (authority == null || authority.isBlank()) {
+            return false;
+        }
+        String hostAndPort = authority.substring(authority.lastIndexOf('@') + 1);
+        return !hostAndPort.isBlank() && !hostAndPort.startsWith(":");
     }
 }
