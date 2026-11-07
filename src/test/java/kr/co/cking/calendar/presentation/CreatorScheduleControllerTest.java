@@ -120,6 +120,49 @@ class CreatorScheduleControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
+    @ParameterizedTest
+    @WithMockJwt(memberId = "7")
+    @ValueSource(strings = {"not-a-url", "/notice", "javascript:alert(1)", "ftp://example.com", "https://"})
+    void 생성은_HTTP_HTTPS_절대_URL이_아닌_externalUrl을_400으로_거절한다(String externalUrl) throws Exception {
+        String invalid = REQUEST_BODY.replace("https://example.com", externalUrl);
+
+        mockMvc.perform(post("/api/creator/calendar/schedules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalid))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(scheduleService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @WithMockJwt(memberId = "7")
+    void 수정은_HTTP_HTTPS_절대_URL이_아닌_externalUrl을_400으로_거절한다() throws Exception {
+        String invalid = REQUEST_BODY.replace("https://example.com", "javascript:alert(1)");
+
+        mockMvc.perform(patch("/api/creator/calendar/schedules/{scheduleId}", 5L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalid))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        then(scheduleService).shouldHaveNoInteractions();
+    }
+
+    @ParameterizedTest
+    @WithMockJwt(memberId = "7")
+    @ValueSource(strings = {"https://example.com/notice", "http://localhost:8080/notice", ""})
+    void 생성은_HTTP_HTTPS_URL과_비어있는_externalUrl을_허용한다(String externalUrl) throws Exception {
+        given(scheduleService.create(org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.any()))
+                .willReturn(schedule());
+        String valid = REQUEST_BODY.replace("https://example.com", externalUrl);
+
+        mockMvc.perform(post("/api/creator/calendar/schedules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(valid))
+                .andExpect(status().isCreated());
+    }
+
     @Test
     @WithMockJwt(memberId = "7")
     void 수정은_소유권_검증을_거쳐_전체_필드를_교체한다() throws Exception {

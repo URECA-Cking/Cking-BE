@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import kr.co.cking.calendar.domain.ScheduleType;
+import kr.co.cking.common.validation.HttpUrl;
 
 import java.time.Instant;
 
@@ -23,7 +24,7 @@ public final class CreatorScheduleRequest {
             @NotBlank @Size(max = 50) String timeZone,
             @Size(max = 200) String location,
             @Size(max = 500) String imageUrl,
-            @Size(max = 500) String externalUrl
+            @Size(max = 500) @HttpUrl String externalUrl
     ) {
     }
 
@@ -38,7 +39,7 @@ public final class CreatorScheduleRequest {
             @NotBlank @Size(max = 50) String timeZone,
             @Size(max = 200) String location,
             @Size(max = 500) String imageUrl,
-            @Size(max = 500) String externalUrl
+            @Size(max = 500) @HttpUrl String externalUrl
     ) {
     }
 }
