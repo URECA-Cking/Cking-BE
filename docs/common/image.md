@@ -1,6 +1,7 @@
 # 이미지 검증·정규화 공통 규칙
 
 업로드 이미지는 도메인과 무관하게 `kr.co.cking.common.image.ImageNormalizer`로 검증·정규화한다. 저장·조회 경로는 공통 Object Storage port가 담당하며 이 문서의 범위가 아니다.
+이미지 업로드 파이프라인을 켠 환경에서는 업로드 5곳의 정규화를 앱 밖 Lambda가 같은 규칙으로 한다([이미지 업로드 파이프라인](image-upload-pipeline.md)).
 
 ## 공통 규칙
 

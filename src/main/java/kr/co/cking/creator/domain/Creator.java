@@ -2,6 +2,8 @@ package kr.co.cking.creator.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -54,6 +56,13 @@ public class Creator {
     @Column(name = "activity_name_configured", nullable = false)
     private boolean activityNameConfigured;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private CreatorStatus status = CreatorStatus.ACTIVE;
+
+    @Column(name = "status_notice", length = 500)
+    private String statusNotice;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -93,6 +102,29 @@ public class Creator {
         if (!activityNameConfigured) {
             throw new BusinessException(CreatorErrorCode.ACTIVITY_NAME_SETUP_REQUIRED);
         }
+    }
+
+    public boolean canOperate() {
+        return status == CreatorStatus.ACTIVE;
+    }
+
+    public void requireActive() {
+        if (!canOperate()) {
+            throw new BusinessException(CreatorErrorCode.CREATOR_NOT_ACTIVE);
+        }
+    }
+
+    public void changeStatus(CreatorStatus next, String publicNotice) {
+        boolean valid = switch (status) {
+            case ACTIVE -> next == CreatorStatus.SUSPENDED || next == CreatorStatus.REVOKED;
+            case SUSPENDED -> next == CreatorStatus.ACTIVE || next == CreatorStatus.REVOKED;
+            case REVOKED -> false;
+        };
+        if (!valid) {
+            throw new BusinessException(CreatorErrorCode.INVALID_CREATOR_STATUS_TRANSITION);
+        }
+        status = next;
+        statusNotice = next == CreatorStatus.ACTIVE ? null : publicNotice;
     }
 
     public boolean hasCurrentActivityName(CreatorActivityName requested) {

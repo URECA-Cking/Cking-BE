@@ -27,6 +27,8 @@ import kr.co.cking.subscriptionverification.application.vision.VisionAnalysisRes
 import kr.co.cking.subscriptionverification.application.vision.VisionPlatform;
 import kr.co.cking.subscriptionverification.application.vision.VisionProviderErrorDetails;
 import kr.co.cking.subscriptionverification.application.vision.VisionSubscriptionState;
+import kr.co.cking.common.exception.BusinessException;
+import kr.co.cking.subscriptionverification.domain.SubscriptionVerificationErrorCode;
 import kr.co.cking.subscriptionverification.infrastructure.async.SubscriptionVerificationProcessingExecutorProperties;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -45,6 +47,8 @@ class SubscriptionVerificationProcessingWorkerTest {
         ObjectStorage objectStorage = mock(ObjectStorage.class);
         VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
         SubscriptionVerificationAbuseObserver abuseObserver = mock(SubscriptionVerificationAbuseObserver.class);
+        SubscriptionVerificationChannelIdentityService channelIdentityService =
+                mock(SubscriptionVerificationChannelIdentityService.class);
         SubscriptionVerificationProcessingExecutorProperties properties =
                 new SubscriptionVerificationProcessingExecutorProperties();
         Clock clock = Clock.fixed(Instant.parse("2026-09-29T00:00:00Z"), ZoneOffset.UTC);
@@ -58,7 +62,8 @@ class SubscriptionVerificationProcessingWorkerTest {
                 visionAnalysisPort,
                 properties,
                 clock,
-                abuseObserver);
+                abuseObserver,
+                channelIdentityService);
 
         worker.process(123L);
 
@@ -98,6 +103,45 @@ class SubscriptionVerificationProcessingWorkerTest {
                 eq(null),
                 eq(fixture.clock.instant()));
         then(fixture.rewardService).should().reward(claim);
+    }
+
+    @Test
+    void 검증된_채널의_핸들이_다른_ID로_재할당되면_보상하지_않는다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        given(fixture.objectStorage.get(claim.imageObjectKey())).willReturn(new byte[] {1, 2, 3});
+        given(fixture.visionAnalysisPort.analyze(any())).willReturn(new VisionAnalysisResult(
+                VisionPlatform.YOUTUBE, "채널", "@channel", VisionSubscriptionState.SUBSCRIBED, true, 0.9));
+        given(fixture.channelIdentityService.matchesCurrentChannel(42L, "@channel")).willReturn(false);
+
+        fixture.worker.process(123L);
+
+        then(fixture.completionService).should().complete(
+                eq(claim.verificationId()), eq(claim.processingToken()),
+                eq(SubscriptionVerificationProcessingOutcome.REJECTED), eq("CHANNEL_MISMATCH"),
+                eq(fixture.clock.instant()));
+        then(fixture.objectStorage).shouldHaveNoInteractions();
+        then(fixture.visionAnalysisPort).shouldHaveNoInteractions();
+        then(fixture.rewardService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 채널_조회_장애는_유료_VLM_호출_전에_복구_대상으로_남긴다() {
+        TestFixture fixture = new TestFixture();
+        SubscriptionVerificationProcessingClaim claim = claim();
+        given(fixture.claimService.claim(123L, fixture.clock.instant(), fixture.properties.getProcessingLeaseDuration()))
+                .willReturn(Optional.of(claim));
+        willThrow(new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_UNAVAILABLE))
+                .given(fixture.channelIdentityService).matchesCurrentChannel(42L, "@channel");
+
+        fixture.worker.process(123L);
+
+        then(fixture.objectStorage).shouldHaveNoInteractions();
+        then(fixture.visionAnalysisPort).shouldHaveNoInteractions();
+        then(fixture.completionService).shouldHaveNoInteractions();
+        then(fixture.rewardService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -419,6 +463,8 @@ class SubscriptionVerificationProcessingWorkerTest {
         private final VisionAnalysisPort visionAnalysisPort = mock(VisionAnalysisPort.class);
         private final SubscriptionVerificationAbuseObserver abuseObserver =
                 mock(SubscriptionVerificationAbuseObserver.class);
+        private final SubscriptionVerificationChannelIdentityService channelIdentityService =
+                mock(SubscriptionVerificationChannelIdentityService.class);
         private final SubscriptionVerificationProcessingExecutorProperties properties =
                 new SubscriptionVerificationProcessingExecutorProperties();
         private final Clock clock = Clock.fixed(Instant.parse("2026-09-29T00:00:00Z"), ZoneOffset.UTC);
@@ -430,6 +476,11 @@ class SubscriptionVerificationProcessingWorkerTest {
                 visionAnalysisPort,
                 properties,
                 clock,
-                abuseObserver);
+                abuseObserver,
+                channelIdentityService);
+
+        private TestFixture() {
+            given(channelIdentityService.matchesCurrentChannel(42L, "@channel")).willReturn(true);
+        }
     }
 }

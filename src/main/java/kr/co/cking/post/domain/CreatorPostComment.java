@@ -171,6 +171,17 @@ public class CreatorPostComment {
                 && Arrays.stream(filterReasons.split(",")).anyMatch(reason -> reason.startsWith(PRIVACY_REASON_PREFIX));
     }
 
+    /**
+     * 가장 최근 BLOCK 판정의 사유를 내보낼 수 있는 값으로 정리해 돌려준다(이슈 #809). 차단되지 않은 댓글은 비어 있다.
+     * 저장된 값은 바꾸지 않는다.
+     */
+    public List<String> blockReasons() {
+        if (!isBlocked() || filterReasons == null) {
+            return List.of();
+        }
+        return Arrays.stream(filterReasons.split(",")).map(CommentFilterReasons::sanitize).toList();
+    }
+
     public boolean isWrittenBy(Long memberId) {
         return this.memberId.equals(memberId);
     }

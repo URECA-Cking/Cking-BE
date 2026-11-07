@@ -4,7 +4,9 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 ## 문서
 
-- [Creator 신청 API](api.md): 신청·심사 외부 API 계약
+- [Creator 신청 API](api.md): 신청·심사 기본 계약
+- [Creator 신청서·보완 API](application-review-api.md): 신청 본문, 보완·재제출, 제출 스냅샷과 응답 필드
+- [Creator 자격 상태 관리 API](status-api.md): 정지·해제·박탈, 감사 이력, 본인 상태와 활동 제한
 - [Creator Space API](space-api.md): 공개 Creator 목록, Space 공개 조회(creatorId·slug), Creator 본인 조회·수정·커스텀 slug 변경 외부 API 계약
 - [Creator Space slug 정책](space-slug-policy.md): 자동·커스텀 slug 형식, 예약어, 중복, 자동 slug 충돌 처리
 - [Creator 유사 추천 결과](similarity-recommendation.md): Cking-LLM 후보 묶음 검증, 세대 보존, 원자 교체와 공개 조회 계약
@@ -16,7 +18,7 @@ Creator 도메인은 Creator 권한 신청·심사(`creator_application`), 승�
 
 - 활동명은 Member 닉네임과 같은 완성형 한글·ASCII 영문·숫자·`_`·`-` 1~20자, NFC·소문자 정규화 규칙을 쓰지만
   Creator 안에서만 중복되지 않는 별도 namespace다.
-- 최초 Creator 승인 시 Member 닉네임을 후보로 쓴다. 충돌하면 20자 안에서 `-2`, `-3`을 붙여 승인은 실패하지 않는다.
+- 신청서가 있는 신규 Creator 승인 시 희망 활동명을 후보로 쓴다. 충돌하면 20자 안에서 `-2`, `-3`을 붙여 승인은 실패하지 않는다.
 - 기존 Creator는 V59에서 `creator-{creatorId}` 임시 활동명으로 이관되고 `activityNameConfigured=false`가 된다. 이
   상태에서는 공개 활동 주체를 확정할 수 없으므로 댓글 작성·수정, 게시글·Event 생성·수정, Event 승인 요청과 이벤트 응모를
   `ACTIVITY_NAME_SETUP_REQUIRED`로 막는다. 기존 콘텐츠와 내 Event 목록 조회, 기존 게시글·DRAFT·REJECTED Event 삭제는

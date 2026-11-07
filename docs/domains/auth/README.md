@@ -9,9 +9,10 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
 
 - Security 필터 체인은 모든 요청을 처리한다. Swagger UI와 OpenAPI JSON은 전용 SecurityFilterChain에서
   Basic Auth로 보호한다. 문서 계정 설정이 비어 있는 로컬·CI 환경에서는 Basic Auth를 적용하지 않는다.
-- `/readyz`(서비스 포트, readiness: DB·Redis 포함)는 ALB 헬스체크와 배포 스크립트가 쓴다.
-  ALB 헬스체크는 인증 정보를 보낼 수 없어 로그인 없이 응답한다. 인터넷에서 들어오는
-  `/readyz` 요청은 ALB 리스너에서 막는다.
+- `/livez`(서비스 포트, liveness: 앱 생존만)는 ALB 헬스체크가, `/readyz`(서비스 포트, readiness: DB·Redis 포함)는
+  배포 스크립트가 쓴다. ALB 헬스체크가 DB·Redis까지 보면 공유 의존성 장애에 모든 서버가 비정상이 되고 서버 그룹이
+  멀쩡한 서버를 교체한다. 둘 다 인증 정보를 보낼 수 없어 로그인 없이 응답한다. 인터넷에서 들어오는 두 경로 요청은
+  ALB 리스너에서 막는다.
 - actuator(`health`, `info`, `prometheus`)는 관리 포트(8081)에만 있고 호스트에 열지 않는다.
   같은 서버의 수집기만 닿을 수 있으며, 로그인 없이 응답한다.
 - Resource Server는 Bearer JWT의 서명·만료·Issuer·Claim을 검증한다. Creator Event 관리와 수동 마감,
@@ -34,6 +35,10 @@ Auth 도메인은 Cking Member의 외부 신원 확인과 Cking API 인증 수�
 - Google OAuth2와 Kakao OAuth2를 지원하며, 별도 `AdminAccount`가 연결된 ADMIN Member는 ID/PW 로그인을 지원한다.
   네이버 OAuth와 일반 사용자의 로컬 ID/PW 회원가입·로그인은 지원하지 않는다.
 - OAuth 최초 로그인 시 Cking `Member`를 자동 생성한다.
+- YouTube 채널 소유권 검증은 로그인과 별도 흐름이다. JWT 인증 Creator의 채널 연결은
+  `/api/creator/youtube-channel/connections`에서 시작하며 `/login/oauth2/code/youtube` 콜백은
+  전용 Security 체인과 Controller가 처리한다. Member·OAuthAccount를 만들거나 Login Code를 발급하지 않는다.
+  계약은 [구독 인증 API](../subscription-verification/api.md#post-apicreatoryoutube-channelconnections)를 따른다.
 - `Member.role`은 현재처럼 `USER`, `ADMIN`만 사용한다. Creator는 Member Role이 아니다.
   Creator 여부는 `creator.member_id` 존재로 판단하며, Creator 자격과 Event 소유권은 기존
   Application/Domain 정책이 판단한다.

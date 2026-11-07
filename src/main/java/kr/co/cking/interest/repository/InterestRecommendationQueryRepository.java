@@ -20,13 +20,16 @@ public interface InterestRecommendationQueryRepository extends Repository<Intere
                 g.generationId, g.method, g.modelVersion
             )
             from MemberInterest mi, InterestRecommendationState s,
-                 InterestRecommendationCandidate c, InterestRecommendationGeneration g, CreatorSpace space
+                 InterestRecommendationCandidate c, InterestRecommendationGeneration g, CreatorSpace space,
+                 Creator candidateCreator
             where mi.id.memberId = :memberId
               and s.id.taxonomyVersion = mi.id.taxonomyVersion
               and s.id.interestCode = mi.id.interestCode
               and c.generationId = s.currentGenerationId
               and g.generationId = c.generationId
               and space.creatorId = c.creatorId
+              and candidateCreator.creatorId = c.creatorId
+              and candidateCreator.status = kr.co.cking.creator.domain.CreatorStatus.ACTIVE
             order by mi.id.interestCode asc, c.rank asc, c.creatorId asc
             """)
     List<ActiveInterestRecommendationCandidate> findActiveCandidatesByMemberId(@Param("memberId") Long memberId);

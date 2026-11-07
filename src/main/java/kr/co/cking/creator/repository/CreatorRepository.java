@@ -2,6 +2,9 @@ package kr.co.cking.creator.repository;
 
 import jakarta.persistence.LockModeType;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -34,4 +37,8 @@ public interface CreatorRepository extends JpaRepository<Creator, Long> {
     List<Creator> findByCreatorIdIn(Collection<Long> creatorIds);
 
     List<Creator> findByMemberIdIn(Collection<Long> memberIds);
+
+    Page<Creator> findByStatusOrderByCreatorIdAsc(CreatorStatus status, Pageable pageable);
+
+    Page<Creator> findAllByOrderByCreatorIdAsc(Pageable pageable);
 }

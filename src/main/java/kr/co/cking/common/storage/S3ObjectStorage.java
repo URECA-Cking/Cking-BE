@@ -107,8 +107,9 @@ public class S3ObjectStorage implements ObjectStorage {
         ObjectStorageArguments.requirePresignedTtl(ttl, maxPresignedTtl);
         PutObjectPresignRequest request = PutObjectPresignRequest.builder()
                 .signatureDuration(ttl)
+                // put()과 같이 한 번만 쓴다. 같은 주소로 다시 올리면 S3가 412로 거절해 연결된 이미지가 바뀌지 않는다.
                 .putObjectRequest(builder -> builder.bucket(bucket).key(objectKey)
-                        .contentType(contentType).contentLength(contentLength).metadata(metadata))
+                        .contentType(contentType).contentLength(contentLength).metadata(metadata).ifNoneMatch("*"))
                 .build();
         try {
             PresignedPutObjectRequest presigned = presigner.presignPutObject(request);

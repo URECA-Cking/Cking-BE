@@ -3,6 +3,7 @@ package kr.co.cking.post.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.post.application.dto.CreatorPostFields;
 import kr.co.cking.post.application.dto.CreatorPostView;
 import kr.co.cking.post.application.dto.PostEngagement;
@@ -43,12 +44,14 @@ public class CreatorPostService {
     private final CreatorPostViewAssembler viewAssembler;
     private final PostEngagementReader engagementReader;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /**
      * @return 작성자 기준 게시글. Commit 뒤에 실패할 단계를 남기지 않도록 응답을 이 Transaction 안에서 만든다.
      */
     public CreatorPostView create(Long memberId, CreatorPostFields fields) {
         Creator creator = authorLookup.requireConfiguredCreator(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         List<String> imageKeys = validate(fields);
         Instant now = clock.instant();
 
@@ -64,6 +67,7 @@ public class CreatorPostService {
      */
     public CreatorPostView update(Long memberId, Long postId, CreatorPostFields fields) {
         Creator creator = authorLookup.requireConfiguredCreator(memberId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         CreatorPost post = requireOwnedPostForUpdate(postId, creator.getCreatorId());
         List<String> imageKeys = validate(fields);
         Instant now = clock.instant();

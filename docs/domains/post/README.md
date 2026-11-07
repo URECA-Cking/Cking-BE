@@ -1,6 +1,6 @@
 # Post
 
-Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계약은 [Post API](api.md)와 [Post Comment API](comment-api.md)를 따른다. 댓글은 저장한 뒤 별도 필터 서비스가 비동기로 판정한다(이슈 #460).
+Creator Space 게시물 탭의 게시글과 댓글을 다룬다. 외부 API 계약은 [Post API](api.md), [Post Comment API](comment-api.md), [관리자 필터 차단 댓글 API](admin-filtered-comment-api.md)를 따른다. 댓글은 저장한 뒤 별도 필터 서비스가 비동기로 판정한다(이슈 #460).
 
 ## 책임
 
@@ -16,7 +16,7 @@ Member·Creator는 읽기만 한다. 팔로우 여부는 Follow 도메인의 `Cr
 
 ## 소유 데이터
 
-V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. V46이 댓글에 필터 판정 컬럼(`filter_status`·`filter_action`·`filter_reasons`·`filter_rule_version`·`filter_model_version`·`filtered_at`)을 더했다. V69의 `creator_post_like`(게시글 좋아요, `(post_id, member_id)` PK, 게시글 삭제 시 `ON DELETE CASCADE`)도 소유한다. V49의 `creator_post_comment_report`(댓글 신고)도 소유한다. V60이 신고에 처리 상태(`status`·`handled_by`·`handled_at`)를, 댓글에 관리자 숨김(`admin_hidden_at`·`admin_hidden_by`)을 더했다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다. 신고는 댓글 FK의 `ON DELETE CASCADE`로 댓글과 함께 지워진다.
+V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37의 `creator_post_comment`(댓글)를 소유한다. V46이 댓글에 필터 판정 컬럼(`filter_status`·`filter_action`·`filter_reasons`·`filter_rule_version`·`filter_model_version`·`filtered_at`)을 더했고, V100이 관리자 차단 목록용 인덱스를 더했다. V69의 `creator_post_like`(게시글 좋아요, `(post_id, member_id)` PK, 게시글 삭제 시 `ON DELETE CASCADE`)도 소유한다. V49의 `creator_post_comment_report`(댓글 신고)도 소유한다. V60이 신고에 처리 상태(`status`·`handled_by`·`handled_at`)를, 댓글에 관리자 숨김(`admin_hidden_at`·`admin_hidden_by`)을 더했다. 게시글과 댓글은 하드 삭제하며, 게시글을 삭제하면 같은 Transaction에서 댓글을 먼저 삭제한다. 신고는 댓글 FK의 `ON DELETE CASCADE`로 댓글과 함께 지워진다.
 
 ## 댓글 권한
 
@@ -28,7 +28,7 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 | 작성·수정 제한 | 관리자가 직접 건 모든 스페이스 제한 중이면 `COMMENT_RESTRICTED`(403), 그 스페이스에서 차단(크리에이터·관리자의 차단 또는 댓글 숨김 경고)됐으면 `SPACE_COMMENT_BLOCKED`(403). 삭제는 제한과 무관하다. [Sanction](../sanction/README.md) |
 | 삭제 | 댓글 작성자 본인, 게시글 작성 Creator 본인. 공개 범위·팔로우를 보지 않으므로 팔로우를 끊은 작성자도 자기 댓글을 지울 수 있다 |
 
-필터링(BLOCK)된 댓글과 관리자가 숨긴 댓글은 원문과 작성자 이름·프로필 사진이 작성자 본인이 아닌 조회자에게 가려지고(이슈 #546), 필터링된 댓글이 있다는 사실(자리 표시, 댓글 수)은 모든 조회자에게 보이지만 원문 보기는 해당 스페이스의 주인 Creator와 관리자만 요청할 수 있다(이슈 #721, 그 외는 `FORBIDDEN` 403). 개인정보 규칙으로 막힌 댓글과 관리자가 숨긴 댓글은 주인에게는 원문을 보여주지 않고 관리자에게만 보여준다. 자세한 응답 규칙은 [Post Comment API](comment-api.md#필터링)를 따른다. 필터 판정 결과는 어떤 응답에도 사유를 담지 않으며, 게시글 작성 Creator의 댓글 삭제도 댓글 관리 수단으로 남는다.
+필터링(BLOCK)된 댓글과 관리자가 숨긴 댓글은 원문과 작성자 이름·프로필 사진이 작성자 본인이 아닌 조회자에게 가려지고(이슈 #546), 필터링된 댓글이 있다는 사실(자리 표시, 댓글 수)은 모든 조회자에게 보이지만 원문 보기는 해당 스페이스의 주인 Creator와 관리자만 요청할 수 있다(이슈 #721, 그 외는 `FORBIDDEN` 403). 개인정보 규칙으로 막힌 댓글과 관리자가 숨긴 댓글은 주인에게는 원문을 보여주지 않고 관리자에게만 보여준다. 자세한 응답 규칙은 [Post Comment API](comment-api.md#필터링)를 따른다. 판정 사유는 사용자용 응답에 담지 않고 관리자 API에서만 정리한 값으로 내려주며(이슈 #809), 게시글 작성 Creator의 댓글 삭제도 댓글 관리 수단으로 남는다.
 
 ### 필터 판정 흐름
 
@@ -36,7 +36,7 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 
 - 판정 상태: `PENDING`(미판정) → `DONE`(완료) 또는 `FAILED`(필터 장애). 본문을 수정하면 `PENDING`으로 돌아가지만 이전 판정(action·사유)은 새 판정이 덮어쓸 때까지 남긴다. 그래서 `BLOCK`이던 댓글은 재판정 중이거나 재판정이 실패해도 계속 가려진다(수정으로 판정 전에 다시 노출시키는 우회를 막는다). 필터가 꺼져 있거나(`cking.comment-filter.enabled=false`, 기본값) Executor 큐가 가득 차면 댓글은 `PENDING`으로 남는다.
 - 필터 응답은 `reasons`가 없거나 null이면 잘못된 응답이고, `BLOCK`은 사유가 1개 이상이어야 한다(`PASS`는 빈 사유 허용). 잘못된 응답은 장애처럼 `FAILED`로 기록하며 이전 판정(개인정보 사유 포함)은 유지한다. 사유를 빈 값으로 받아들이면 `privacy:*` 사유가 지워져 원문 보기가 열릴 수 있기 때문이다.
-- 판정을 저장하면 `info` 로그를 한 줄 남긴다(이슈 #488): `commentId`, `action`, `reasons`, `ruleVersion`, `modelVersion`, 필터 호출 소요 시간(`latencyMs`, 구독 인증의 Gemini 호출 로그와 같은 이름). 댓글 원문은 남기지 않으며 `commentId`로 DB의 댓글과 연결한다. 필터 응답은 외부 입력이라 그대로 기록하지 않는다. `reasons`는 유형(`classifier`, `model`, `profanity`, `privacy`, `spam`)이 허용 목록에 있을 때만 남기고 아니면 `invalid`로 바꾸며, `유형:이름`의 이름은 영문 소문자와 밑줄뿐일 때만 남기고 아니면 유형만 남긴다(숫자·한글·공백이 든 이름에는 전화번호나 댓글 문장이 들어올 수 있다. 예: `privacy:01012345678` → `privacy`). `ruleVersion`·`modelVersion`은 ASCII 영숫자와 `. _ -`뿐인 50자 이하일 때만 남기고 아니면 `invalid`다. 저장하는 값(`filter_reasons` 등)은 바꾸지 않으며 원래 사유는 `commentId`로 DB에서 확인한다. 장애는 `warn`, 4xx 거절은 `error`이며 둘 다 예외 객체를 넘기지 않고 `commentId`, `httpStatus`(응답을 받으면 그 상태, 타임아웃 408, 응답이 없으면 0. 구독 인증 Gemini 호출 로그와 같은 규약), `failureKind`(`TIMEOUT`·`NETWORK`·`SERVER_ERROR`·`REJECTED`·`RESPONSE_PARSE`, 분류하지 못한 예외는 `UNKNOWN`과 예외 클래스 이름), `latencyMs`만 남긴다(예외 cause 메시지에 필터가 되돌려 준 응답 본문, 곧 댓글 원문이 들어 있을 수 있어서다), 판정 중 수정·삭제로 결과를 버린 경우는 `debug`다. 수정·삭제로 버린 판정과 실패는 이 `info` 로그를 남기지 않는다.
+- 판정을 저장하면 `info` 로그를 한 줄 남긴다(이슈 #488): `commentId`, `action`, `reasons`, `ruleVersion`, `modelVersion`, 필터 호출 소요 시간(`latencyMs`, 구독 인증의 Gemini 호출 로그와 같은 이름). 댓글 원문은 남기지 않으며 `commentId`로 DB의 댓글과 연결한다. 필터 응답은 외부 입력이라 그대로 기록하지 않는다. `reasons`는 `CommentFilterReasons`로 정리하며(관리자 API 응답도 같은 규칙이다), 유형(`classifier`, `model`, `profanity`, `privacy`, `spam`)이 허용 목록에 있을 때만 남기고 아니면 `invalid`로 바꾸며, `유형:이름`의 이름은 영문 소문자와 밑줄뿐일 때만 남기고 아니면 유형만 남긴다(숫자·한글·공백이 든 이름에는 전화번호나 댓글 문장이 들어올 수 있다. 예: `privacy:01012345678` → `privacy`). `ruleVersion`·`modelVersion`은 ASCII 영숫자와 `. _ -`뿐인 50자 이하일 때만 남기고 아니면 `invalid`다. 저장하는 값(`filter_reasons` 등)은 바꾸지 않으며 원래 사유는 `commentId`로 DB에서 확인한다. 장애는 `warn`, 4xx 거절은 `error`이며 둘 다 예외 객체를 넘기지 않고 `commentId`, `httpStatus`(응답을 받으면 그 상태, 타임아웃 408, 응답이 없으면 0. 구독 인증 Gemini 호출 로그와 같은 규약), `failureKind`(`TIMEOUT`·`NETWORK`·`SERVER_ERROR`·`REJECTED`·`RESPONSE_PARSE`, 분류하지 못한 예외는 `UNKNOWN`과 예외 클래스 이름), `latencyMs`만 남긴다(예외 cause 메시지에 필터가 되돌려 준 응답 본문, 곧 댓글 원문이 들어 있을 수 있어서다), 판정 중 수정·삭제로 결과를 버린 경우는 `debug`다. 수정·삭제로 버린 판정과 실패는 이 `info` 로그를 남기지 않는다.
 - 필터 장애·타임아웃은 댓글을 막지 않는다. 판정하지 못한 댓글은 통과 상태로 보이며 재필터링 대상이다(아래 "재필터링").
 - V46 이전의 댓글은 필터를 거치지 않았으므로 `DONE`/`PASS`로 채웠다.
 
@@ -64,7 +64,7 @@ V35의 `creator_post`(게시글)와 `creator_post_image`(업로드 기록), V37�
 - **멱등**: `(comment_id, reporter_member_id)` 유니크 제약이 있다. 같은 사용자의 재신고는 기존 신고를 그대로 돌려준다. 신고자 잠금 다음에 댓글 작성·수정·삭제와 같은 순서(게시글 공유 잠금 → 댓글 쓰기 잠금)로 중복 신고를 직렬화하고, 먼저 삭제된 댓글은 404가 된다.
 - **제한**: 같은 신고자가 1시간 안에 새로 접수할 수 있는 신고는 20건이다(`COMMENT_REPORT_LIMIT_EXCEEDED` 429). 한도와 시간은 `CreatorPostCommentReportService`의 상수이며 조정이 필요하면 설정으로 옮긴다. 한도 확인(기존 신고 수 읽기)과 저장은 두 단계라 댓글별 잠금만으로는 같은 사용자가 서로 다른 댓글을 동시에 신고할 때 한도를 넘을 수 있다. 그래서 가장 먼저 신고자(회원) 행을 쓰기 잠금으로 읽어(`MemberRepository.findByIdForUpdate`, 관심 분야 저장과 같은 방식) 신고자 단위로 직렬화한다. 잠금 순서는 신고자 → 게시글(공유) → 댓글(쓰기)이다.
 - **비공개**: 신고자 정보는 어떤 응답에도 담지 않는다. 댓글 작성자와 Creator는 자기 댓글이 신고되었는지도 알 수 없다. 관리자 목록은 댓글별 신고 수와 사유별 수만 보여 주고 신고자를 식별하는 값은 내려주지 않는다.
-- **관리자 조회**: `GET /api/admin/comment-reports`. 댓글 원문, 필터 차단 여부(`blocked`), 관리자 숨김 여부(`hiddenByAdmin`), 처리 상태, 접수 신고 수를 함께 보여 주고 `status`(PENDING·RESOLVED·REJECTED)로 거를 수 있다.
+- **관리자 조회**: `GET /api/admin/comment-reports`. 댓글 원문, 필터 차단 여부(`blocked`)와 차단 사유(`filterReasons`), 관리자 숨김 여부(`hiddenByAdmin`), 처리 상태, 접수 신고 수, 작성자·Creator 이름, 기타 신고 설명, 가장 최근 처리 정보를 함께 보여 주고 `status`(PENDING·RESOLVED·REJECTED)로 거를 수 있다.
 - **처리(이슈 #499)**: 신고는 접수(`PENDING`)로 시작한다. 관리자가 댓글 단위로 `POST /api/admin/comment-reports/{commentId}/hide`(숨김, 접수 신고를 `RESOLVED`로)나 `.../reject`(반려, 접수 신고를 `REJECTED`로)를 호출하면 그 댓글의 접수 신고를 한 번에 처리한다(처리한 관리자·시각 저장). 같은 조치의 재요청은 성공(멱등, 처리 수 0), 서로 다른 조치(숨긴 댓글 반려, 접수 신고가 모두 반려된 댓글 숨김)는 `COMMENT_REPORT_ALREADY_HANDLED`(409)다. 숨김은 되돌리지 않는다.
 - **관리자 숨김**: 필터 판정(`filter_*`)과 별개 컬럼(`admin_hidden_at`·`admin_hidden_by`)에 저장해 필터 재판정이나 댓글 수정으로 덮어써지지 않는다. 숨긴 댓글은 작성자 본인이 아닌 조회자에게 가려지고 원문 보기(`/original`)는 스페이스 주인에게 `COMMENT_NOT_REVEALABLE`(403)이고 관리자에게만 열리며, 작성자 본인에게는 그대로 보인다.
 - **이미 가려진 댓글**: 필터가 차단했거나 관리자가 숨긴 댓글은 새 신고를 받지 않는다(`COMMENT_REPORT_ALREADY_FILTERED` 409). 이미 접수한 신고자의 재신고는 기존 신고를 돌려준다. 숨김 조치는 게시글 공유 잠금 → 댓글 쓰기 잠금 순서(신고 접수와 같음)로 같은 댓글의 신고 접수와 직렬화돼, 숨김 직후 접수 신고가 남는 일이 없다.

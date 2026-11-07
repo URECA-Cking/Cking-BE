@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
@@ -28,6 +29,7 @@ import kr.co.cking.upload.domain.ImageUploadStatus;
 import kr.co.cking.upload.domain.UploadErrorCode;
 import kr.co.cking.upload.repository.ImageUploadRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 class ImageUploadServiceTest {
 
@@ -75,6 +77,28 @@ class ImageUploadServiceTest {
 
         then(targets).should().markUploaded(ImageUploadPurpose.CREATOR_SPACE_BANNER, KEY);
         then(repository).should().markReady(KEY, NOW);
+    }
+
+    /** 반대 순서면 READY 반영 뒤 실패했을 때 재전달이 PENDING 확인에서 끝나 용도별 기록이 UPLOADING으로 남는다. */
+    @Test
+    void 완료_결과는_용도별_기록을_먼저_바꾸고_업로드를_나중에_READY로_바꾼다() {
+        given(repository.findByObjectKey(KEY)).willReturn(Optional.of(pending()));
+        given(targets.markUploaded(ImageUploadPurpose.CREATOR_SPACE_BANNER, KEY)).willReturn(true);
+
+        service.complete(KEY, ImageUploadStatus.READY, null);
+
+        InOrder order = inOrder(targets, repository);
+        order.verify(targets).markUploaded(ImageUploadPurpose.CREATOR_SPACE_BANNER, KEY);
+        order.verify(repository).markReady(KEY, NOW);
+    }
+
+    @Test
+    void 사유_없는_실패_결과는_unknown으로_남긴다() {
+        given(repository.findByObjectKey(KEY)).willReturn(Optional.of(pending()));
+
+        service.complete(KEY, ImageUploadStatus.FAILED, null);
+
+        then(repository).should().markFailed(KEY, "unknown", NOW);
     }
 
     @Test

@@ -3,6 +3,7 @@ package kr.co.cking.subscriptionverification.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.application.YoutubeSubscriptionMissionProvisioningService;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -35,13 +37,18 @@ public class CreatorYoutubeChannelService {
     private final SubscriptionVerificationRepository verificationRepository;
     private final YoutubeSubscriptionMissionProvisioningService missionProvisioningService;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     @Transactional(readOnly = true)
     public CreatorYoutubeChannel getPublic(Long creatorId) {
         if (!creatorRepository.existsById(creatorId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
-        return requireChannel(creatorId);
+        CreatorYoutubeChannel channel = requireChannel(creatorId);
+        if (!channel.isVerified()) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+        }
+        return channel;
     }
 
     @Transactional(readOnly = true)
@@ -50,39 +57,82 @@ public class CreatorYoutubeChannelService {
         return requireChannel(creator.getCreatorId());
     }
 
+    @Transactional(readOnly = true)
+    public CreatorYoutubeChannel getMineOrNull(Long memberId) {
+        Creator creator = requireCreator(memberId);
+        return channelRepository.findById(creator.getCreatorId()).orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public Long creatorIdForConnection(Long memberId) {
+        Creator creator = requireCreator(memberId);
+        creator.requireActive();
+        return creator.getCreatorId();
+    }
+
     /** Creator 행을 잠그고 채널 설정·미션 provisioning을 하나의 Transaction으로 처리한다. */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CreatorYoutubeChannelUpsertResult put(Long memberId, CreatorYoutubeChannelCommand command) {
         Creator creator = requireCreator(memberId);
         Long creatorId = creator.getCreatorId();
-        creatorRepository.findByIdForUpdate(creatorId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
 
         String channelName = normalizeName(command);
         String channelHandle = normalizeHandle(command);
-        CreatorYoutubeChannel existing = channelRepository.findByCreatorIdForUpdate(creatorId).orElse(null);
+        // Creator 행이 채널 변경과 인증 제출의 공통 잠금이다.
+        // 채널 행이 없을 때 SELECT FOR UPDATE의 gap lock은 Creator 간 삽입 교착을 일으킬 수 있다.
+        CreatorYoutubeChannel existing = channelRepository.findById(creatorId).orElse(null);
 
         if (existing != null && existing.hasSameConfiguration(channelName, channelHandle)) {
             return new CreatorYoutubeChannelUpsertResult(existing, false);
         }
+        if (existing != null && existing.isVerified()) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_REQUIRED);
+        }
         if (existing != null && verificationRepository.existsByCreatorIdAndStatusIn(creatorId, ACTIVE_STATUSES)) {
             throw new BusinessException(SubscriptionVerificationErrorCode.INVALID_STATE);
         }
-        if (channelRepository.existsByChannelHandleAndCreatorIdNot(channelHandle, creatorId)) {
-            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_HANDLE_CONFLICT);
-        }
-
         Instant now = Instant.now(clock);
         if (existing != null) {
             existing.update(channelName, channelHandle, now);
-            flushOrThrowHandleConflict(existing);
+            channelRepository.saveAndFlush(existing);
             return new CreatorYoutubeChannelUpsertResult(existing, false);
         }
 
         CreatorYoutubeChannel created = new CreatorYoutubeChannel(creatorId, channelName, channelHandle, now);
-        flushOrThrowHandleConflict(created);
+        channelRepository.saveAndFlush(created);
         missionProvisioningService.provision(creatorId);
         return new CreatorYoutubeChannelUpsertResult(created, true);
+    }
+
+    /** OAuth 확인은 트랜잭션 밖에서 하고 Creator 잠금으로 채널 변경과 제출을 직렬화한다. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public CreatorYoutubeChannel connectVerified(Long memberId, Long expectedCreatorId,
+            String channelId, String channelName,
+            String channelHandle) {
+        Creator creator = requireCreator(memberId);
+        Long creatorId = creator.getCreatorId();
+        if (!creatorId.equals(expectedCreatorId)) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_CONNECTION_INVALID);
+        }
+        creatorActivityPolicy.requireActiveByCreatorId(creatorId);
+        CreatorYoutubeChannel existing = channelRepository.findById(creatorId).orElse(null);
+        if (existing != null && verificationRepository.existsByCreatorIdAndStatusIn(creatorId, ACTIVE_STATUSES)
+                && (!channelId.equals(existing.getYoutubeChannelId())
+                        || !existing.hasSameConfiguration(channelName, channelHandle))) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.INVALID_STATE);
+        }
+        Instant now = Instant.now(clock);
+        CreatorYoutubeChannel channel = existing == null
+                ? new CreatorYoutubeChannel(creatorId, channelName, channelHandle, now) : existing;
+        channel.verify(channelId, channelName, channelHandle, now);
+        try {
+            channelRepository.saveAndFlush(channel);
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_ALREADY_CONNECTED);
+        }
+        missionProvisioningService.provision(creatorId);
+        return channel;
     }
 
     private Creator requireCreator(Long memberId) {
@@ -117,11 +167,4 @@ public class CreatorYoutubeChannelService {
         }
     }
 
-    private void flushOrThrowHandleConflict(CreatorYoutubeChannel channel) {
-        try {
-            channelRepository.saveAndFlush(channel);
-        } catch (DataIntegrityViolationException exception) {
-            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_HANDLE_CONFLICT);
-        }
-    }
 }

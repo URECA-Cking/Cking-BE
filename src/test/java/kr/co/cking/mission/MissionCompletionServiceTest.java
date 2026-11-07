@@ -50,7 +50,11 @@ class MissionCompletionServiceTest {
     private static final Long MISSION_ID = 100L;
 
     private MissionCompletionService serviceWith(Clock clock) {
-        return new MissionCompletionService(memberRepository, missionRepository, ticketEarnService, clock, abuseObserver);
+        var admission = mock(kr.co.cking.creator.application.CreatorRewardAdmissionService.class);
+        when(admission.earnDaily(any())).thenAnswer(invocation ->
+                ticketEarnService.earn(invocation.getArgument(0)));
+        return new MissionCompletionService(memberRepository, missionRepository, ticketEarnService, clock, abuseObserver,
+                admission);
     }
 
     private Mission attendanceMission() {

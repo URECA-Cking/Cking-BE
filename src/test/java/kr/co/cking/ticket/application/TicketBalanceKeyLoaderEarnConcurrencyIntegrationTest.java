@@ -87,7 +87,7 @@ class TicketBalanceKeyLoaderEarnConcurrencyIntegrationTest {
         when(creatorRepository.findByMemberIdAndCreatorId(MEMBER_ID, CREATOR_ID)).thenReturn(Optional.of(
                 UserTicketBalance.builder().memberId(MEMBER_ID).creatorId(CREATOR_ID)
                         .balance(STALE_DB_BALANCE).updatedAt(Instant.now()).build()));
-        loader = new TicketBalanceKeyLoader(lock, checker, creatorRepository, commonRepository);
+        loader = new TicketBalanceKeyLoader(lock, checker, creatorRepository, commonRepository, redisTemplate);
     }
 
     @AfterEach

@@ -105,6 +105,10 @@ class CreatorApprovalMissionInitializationIntegrationTest {
             );
             jdbcTemplate.update("DELETE FROM creator WHERE member_id = ?", memberId);
         });
+        applicationIds.forEach(applicationId -> {
+            jdbcTemplate.update("DELETE FROM creator_application_review_history WHERE application_id = ?", applicationId);
+            jdbcTemplate.update("DELETE FROM creator_application_submission WHERE application_id = ?", applicationId);
+        });
         applicationIds.forEach(applicationId -> jdbcTemplate.update(
                 "DELETE FROM creator_application WHERE id = ?", applicationId));
         memberIds.forEach(memberId -> jdbcTemplate.update("DELETE FROM member WHERE member_id = ?", memberId));
@@ -115,7 +119,8 @@ class CreatorApprovalMissionInitializationIntegrationTest {
         Member admin = memberRepository.saveAndFlush(new Member("미션초기화관리자", null, null, MemberRole.ADMIN));
         Member applicant = memberRepository.saveAndFlush(new Member("미션초기화신청자", null, null, MemberRole.USER));
         CreatorApplication application = creatorApplicationRepository.saveAndFlush(
-                new CreatorApplication(applicant.getMemberId())
+                new CreatorApplication(applicant.getMemberId(),
+                        kr.co.cking.creator.CreatorApplicationTestForm.form("미션초기화신청자"))
         );
         memberIds.add(admin.getMemberId());
         memberIds.add(applicant.getMemberId());

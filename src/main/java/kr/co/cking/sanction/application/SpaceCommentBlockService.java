@@ -3,6 +3,7 @@ package kr.co.cking.sanction.application;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
@@ -63,6 +64,7 @@ public class SpaceCommentBlockService {
     private final MemberRepository memberRepository;
     private final SanctionNotificationService notificationService;
     private final Clock clock;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /**
      * 호출한 크리에이터의 스페이스에서 {@code targetMemberId}의 댓글 작성·수정을 지금부터 {@code days}일 막는다. 이미 유효한
@@ -106,6 +108,9 @@ public class SpaceCommentBlockService {
             throw new BusinessException(SanctionErrorCode.CANNOT_BLOCK_SPACE_OWNER);
         }
         Member target = lockMembers(actorMemberId, lockActorRow, targetMemberId);
+        if (lockActorRow) {
+            creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
+        }
         if (target.getRole() == MemberRole.ADMIN) {
             throw new BusinessException(SanctionErrorCode.CANNOT_BLOCK_ADMIN);
         }

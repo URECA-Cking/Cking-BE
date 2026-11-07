@@ -40,7 +40,7 @@ class EventQueryServiceGetEventTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorQueryService creatorQueryService = mock(CreatorQueryService.class);
     private final EventQueryService service =
-            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), mock(EventCountsCache.class), memberRepository, creatorQueryService);
+            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), mock(EventCountsCache.class), memberRepository, new EventCacheLoader(eventRepository, creatorQueryService, eventCache));
 
     @BeforeEach
     void setUp() {

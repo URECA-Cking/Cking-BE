@@ -16,8 +16,8 @@ const RATE = positiveInt('RATE');
 const LARGE_RATIO = Number(__ENV.LARGE_RATIO || '0.2');
 const POLL_TIMEOUT_MS = 30000;
 
-// 원본은 k6 서버 파일에서 읽는다. fs 모듈은 파일을 한 번만 메모리에 올려 VU끼리 나눠 쓴다.
-// open()으로 VU마다 사본을 두면 원본 약 9MB × VU 수라 c7g.large(4GB)도 16건/초에서 메모리가 찬다.
+// 원본은 k6 서버 파일에서 읽는다. fs 모듈은 파일을 한 번만 메모리에 올려 VU끼리 나눠 쓴다. 요청 본문은 반복마다 readImage()가 만든 사본이다.
+// open()으로 VU마다 원본 사본을 두면 원본 약 9MB × VU 수라 c7g.large(4GB)도 16건/초에서 메모리가 찬다.
 const small = await open(__ENV.IMAGE_SMALL || '/opt/loadtest/images/img-12mp.jpg');
 const large = await open(__ENV.IMAGE_LARGE || '/opt/loadtest/images/img-20mp.jpg');
 
@@ -34,7 +34,7 @@ export const options = {
       timeUnit: '1s',
       duration: __ENV.DURATION || '2m',
       preAllocatedVUs: positiveInt('PRE_VUS', RATE * 6),
-      // 파이프라인은 처리가 밀리면 업로드 하나가 최대 30초 VU를 잡는다
+      // 업로드 하나가 VU를 잡는 시간: 기존은 요청 제한 120초, 파이프라인은 예약 + PUT(제한 60초) + 상태 확인(최대 30초)
       maxVUs: positiveInt('MAX_VUS', RATE * 40),
     },
     probe: {

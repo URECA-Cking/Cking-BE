@@ -32,7 +32,7 @@
 | 27 | 외부 | Drawing | ADMIN | POST | `/api/admin/drawings/{drawingId}/retry` | Retry | 상태 기반 |
 | 28 | 외부 | Drawing | ADMIN | GET | `/api/admin/drawings/{drawingId}/result` | 결과 조회 | - |
 | 29 | 외부 | Winner | PUBLIC | GET | `/api/events/{eventId}/winners` | PUBLIC Drawing의 Winner와 배정 상품 조회 | - |
-| 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | Creator 신청 | 기존 PENDING 재사용 |
+| 30 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications` | 신청서 포함 Creator 신청(본문 없는 레거시 PENDING에 사후 제출 가능) | 동일 PENDING 재사용 |
 | 31 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/me` | 내 신청 조회 | - |
 | 32 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications` | 상태 선택 신청 목록 | `status`, page, size |
 | 33 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/approve` | 승인 | 상태 기반 |
@@ -134,7 +134,7 @@
 | 133 | 외부 | Auth | PUBLIC | POST | `/api/admin/auth/logout` | 관리자 Refresh Token 폐기 및 관리자 Cookie 만료 | - |
 | 135 | 외부 | Redraw | ADMIN | GET | `/api/admin/redraw-requests` | RedrawRequest 운영 목록 조회(요청·실행 상태 선택 필터) | - |
 | 136 | 외부 | Post | USER | POST | `/api/creators/{creatorId}/posts/{postId}/comments/{commentId}/reports` | 게시글 댓글 신고(게시글을 볼 수 있는 사용자, 본인 댓글 제외) | 신고자+댓글당 1건(재신고는 기존 신고 반환) |
-| 137 | 외부 | Post | ADMIN | GET | `/api/admin/comment-reports` | 신고된 게시글 댓글 목록(댓글별 신고 수·접수 수·사유별 수·처리 상태, 최근 신고 순, `status` 필터) | - |
+| 137 | 외부 | Post | ADMIN | GET | `/api/admin/comment-reports` | 신고된 게시글 댓글 목록(댓글별 신고 수·접수 수·사유별 수·처리 상태, 필터 차단 사유, 최근 신고 순, `status` 필터) | - |
 | 138 | 외부 | Member | USER | PUT | `/api/me/onboarding/complete` | 온보딩 완료(또는 건너뛰기) 기록. 본문 없음, 이미 완료여도 성공(멱등). `GET /api/me`의 `onboardingCompleted`는 온보딩 여부이며 웰컴 퀘스트 신규 판정과 무관 | 상태 기반 |
 | 139 | 외부 | Drawing | ADMIN | GET | `/api/admin/events/{eventId}/drawings/initial` | Event의 INITIAL Drawing 조회 | - |
 | 140 | 외부 | Creator 추천 | USER | POST | `/api/me/creator-recommendation-events` | 실제 노출·클릭 최대 50건 원자 수집, JWT 소유권/후보/신규 이벤트 24시간 검증, 보존 중 승인 재전송은 만료 후 멱등 성공 | eventId 및 요청+Creator+타입 |
@@ -193,6 +193,24 @@
 | 195 | 외부 | Follow | USER | PUT | `/api/creators/{creatorId}/posts/read` | [팔로우한 Creator의 게시글 읽음 기록](domains/follow/api.md#put-apicreatorscreatoridpostsread) | 회원·Creator별 최대 시각 |
 | 196 | 외부 | Follow | USER | GET | `/api/me/follows/post-news` | [팔로우한 Creator의 읽지 않은 새 글 일괄 조회](domains/follow/api.md#get-apimefollowspost-news) | - |
 | 197 | 외부 | Creator 운영 | CREATOR | POST | `/api/creator/events/banner-images` | [Event 배너 이미지 업로드](domains/event/banner-api.md#post-apicreatoreventsbanner-images)(JPEG/PNG 5MB 이하, 최소 600×200px, 생성·수정의 `bannerImageKey`로 연결) | - |
+| 198 | 외부 | 구독 인증 | CREATOR | POST | `/api/creator/youtube-channel/connections` | [YouTube 소유권 검증 시작](domains/subscription-verification/api.md#post-apicreatoryoutube-channelconnections) | state·브라우저 바인딩 |
+| 199 | 외부 | 구독 인증 | PUBLIC | GET | `/login/oauth2/code/youtube` | [Google 채널 연결 콜백](domains/subscription-verification/api.md#get-loginoauth2codeyoutube) | 일회성 state |
+| 200 | 외부 | 구독 인증 | CREATOR | GET | `/api/creator/youtube-channel/connection` | [내 채널 검증 상태](domains/subscription-verification/api.md#get-apicreatoryoutube-channelconnection) | - |
+| 201 | 외부 | Image Upload | USER | POST | `/api/uploads` | 이미지 업로드 예약(201). 요청 `purpose`(`MEMBER_PROFILE`·`CREATOR_SPACE_PROFILE`·`CREATOR_SPACE_BANNER`·`EVENT_BANNER`·`POST_IMAGE`)·`contentType`(JPEG/PNG)·`size`(5MB 이하), 응답 `uploadId`·`uploadUrl`(5분 유효 사전 서명 PUT)·`headers`·`expiresAt`. 용도·형식 누락·크기 0 이하 `VALIDATION_FAILED`, JPEG·PNG 아님·5MB 초과 `INVALID_UPLOAD_REQUEST`, 용도별 권한 확인은 기존 업로드 API와 같다. 결과 큐가 없는 환경은 404 | - |
+| 202 | 외부 | Image Upload | USER | GET | `/api/uploads/{uploadId}` | 이미지 업로드 상태 조회(`PENDING`·`READY`(`imageKey`)·`FAILED`(`failureReason`)). 본인 업로드만, 없으면 `UPLOAD_NOT_FOUND`(404) | - |
+| 203 | 외부 | Creator 승인 | USER | GET | `/api/creator/applications/{id}` | [내 신청 상세·초안·제출 이력](domains/creator/application-review-api.md) | - |
+| 204 | 외부 | Creator 승인 | USER | PATCH | `/api/creator/applications/{id}` | [보완 초안 저장](domains/creator/application-review-api.md) | 상태 기반 |
+| 205 | 외부 | Creator 승인 | USER | POST | `/api/creator/applications/{id}/resubmit` | [보완 재제출](domains/creator/application-review-api.md) | 상태 기반 |
+| 206 | 외부 | Creator 승인 | ADMIN | GET | `/api/admin/creator-applications/{id}` | [신청·심사 상세](domains/creator/application-review-api.md) | - |
+| 207 | 외부 | Creator 승인 | ADMIN | POST | `/api/admin/creator-applications/{id}/request-revision` | [보완 요청](domains/creator/application-review-api.md) | 상태 기반 |
+| 208 | 외부 | Creator 자격 | ADMIN | GET | `/api/admin/creators` | [상태별 Creator 자격 목록](domains/creator/status-api.md) | - |
+| 209 | 외부 | Creator 자격 | ADMIN | GET | `/api/admin/creators/{creatorId}` | [Creator 자격 상세](domains/creator/status-api.md) | - |
+| 210 | 외부 | Creator 자격 | ADMIN | GET | `/api/admin/creators/{creatorId}/status-history` | [자격 변경 이력](domains/creator/status-api.md) | - |
+| 211 | 외부 | Creator 자격 | ADMIN | POST | `/api/admin/creators/{creatorId}/suspend` | [자격 정지](domains/creator/status-api.md) | `requestId` |
+| 212 | 외부 | Creator 자격 | ADMIN | POST | `/api/admin/creators/{creatorId}/reactivate` | [정지 해제](domains/creator/status-api.md) | `requestId` |
+| 213 | 외부 | Creator 자격 | ADMIN | POST | `/api/admin/creators/{creatorId}/revoke` | [자격 박탈](domains/creator/status-api.md) | `requestId` |
+| 214 | 외부 | Creator 자격 | CREATOR | GET | `/api/creator/me/status` | [내 자격 상태·공개 안내](domains/creator/status-api.md) | - |
+| 215 | 외부 | Post | ADMIN | GET | `/api/admin/filtered-comments` | [필터 차단 댓글 목록](domains/post/admin-filtered-comment-api.md)(신고 여부와 상관없이 차단 사유·판정 상태 포함, 최근 판정 순) | - |
 
 No. 9, No. 50~61, No. 89~91, No. 105는 외부 API가 아니라 내부 Service Method이므로 외부 API 수에 포함하지 않는다.
 

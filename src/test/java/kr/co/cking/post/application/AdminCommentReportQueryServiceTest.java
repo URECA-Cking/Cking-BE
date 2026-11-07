@@ -2,13 +2,19 @@ package kr.co.cking.post.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.application.CreatorPublicProfileQueryService;
+import kr.co.cking.creator.application.dto.CreatorPublicProfile;
+import kr.co.cking.member.application.MemberInfo;
 import kr.co.cking.member.application.MemberQueryService;
 import kr.co.cking.post.application.dto.AdminCommentReportView;
 import kr.co.cking.post.domain.CommentFilterAction;
+import kr.co.cking.post.domain.CommentFilterStatus;
 import kr.co.cking.post.domain.CommentReportReason;
 import kr.co.cking.post.domain.CommentReportStatus;
 import kr.co.cking.post.domain.CreatorPostComment;
 import kr.co.cking.post.domain.PostVisibility;
+import kr.co.cking.post.repository.CommentReportDetail;
+import kr.co.cking.post.repository.CommentReportHandling;
 import kr.co.cking.post.repository.CommentReportReasonCount;
 import kr.co.cking.post.repository.CommentReportSummary;
 import kr.co.cking.post.repository.CreatorPostCommentReportRepository;
@@ -23,6 +29,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static kr.co.cking.post.PostFixtures.NOW;
 import static kr.co.cking.post.PostFixtures.post;
@@ -43,8 +50,10 @@ class AdminCommentReportQueryServiceTest {
     private final CreatorPostCommentReportRepository reportRepository = mock(CreatorPostCommentReportRepository.class);
     private final CreatorPostCommentRepository commentRepository = mock(CreatorPostCommentRepository.class);
     private final CreatorPostRepository postRepository = mock(CreatorPostRepository.class);
+    private final CreatorPublicProfileQueryService creatorProfileService = mock(CreatorPublicProfileQueryService.class);
     private final AdminCommentReportQueryService service = new AdminCommentReportQueryService(
-            memberQueryService, reportRepository, commentRepository, postRepository);
+            memberQueryService, reportRepository, commentRepository,
+            new AdminCommentDisplayReader(memberQueryService, creatorProfileService, postRepository));
 
     @Test
     void 신고된_댓글을_원문_차단_여부_신고_수_사유별_수와_함께_돌려준다() {
@@ -71,6 +80,8 @@ class AdminCommentReportQueryServiceTest {
         assertThat(first.authorMemberId()).isEqualTo(20L);
         assertThat(first.content()).isEqualTo("차단된 댓글");
         assertThat(first.blocked()).isTrue();
+        assertThat(first.filterReasons()).containsExactly("profanity:test");
+        assertThat(first.filterStatus()).isEqualTo(CommentFilterStatus.DONE);
         assertThat(first.reportCount()).isEqualTo(3L);
         assertThat(first.pendingReportCount()).isEqualTo(2L);
         assertThat(first.status()).isEqualTo(CommentReportStatus.PENDING);
@@ -78,8 +89,58 @@ class AdminCommentReportQueryServiceTest {
         assertThat(first.reasonCounts()).isEqualTo(Map.of(CommentReportReason.ABUSE, 2L, CommentReportReason.SPAM, 1L));
         assertThat(first.latestReportedAt()).isEqualTo(latest);
         assertThat(views.get(1).blocked()).isFalse();
+        assertThat(views.get(1).filterReasons()).isEmpty();
         assertThat(views.get(1).creatorId()).isEqualTo(1L);
         assertThat(views.get(1).status()).isEqualTo(CommentReportStatus.REJECTED);
+    }
+
+    @Test
+    void 작성자_Creator_이름과_게시글_앞부분을_함께_돌려준다() {
+        givenOneReportedComment();
+        given(creatorProfileService.findByCreatorIds(Set.of(1L)))
+                .willReturn(Map.of(1L, new CreatorPublicProfile(1L, "활동명", null)));
+        given(memberQueryService.findMemberInfosByIds(Set.of(20L)))
+                .willReturn(Map.of(20L, new MemberInfo(20L, "닉네임", null, null)));
+
+        AdminCommentReportView view = service.findReportedComments(1L, null, PAGE).getContent().get(0);
+
+        assertThat(view.creatorName()).isEqualTo("활동명");
+        assertThat(view.authorName()).isEqualTo("닉네임");
+        assertThat(view.postPreview()).isEqualTo("본문 100");
+    }
+
+    @Test
+    void 기타_신고_설명을_DB에_개수를_제한해_요청하고_받은_순서대로_돌려준다() {
+        givenOneReportedComment();
+        given(reportRepository.findDetails(List.of(500L), AdminCommentReportQueryService.MAX_REPORT_DETAILS))
+                .willReturn(List.of(detail(500L, "최근 설명"), detail(500L, "이전 설명")));
+
+        assertThat(service.findReportedComments(1L, null, PAGE).getContent().get(0).reportDetails())
+                .containsExactly("최근 설명", "이전 설명");
+    }
+
+    @Test
+    void 여러_관리자가_처리했으면_가장_최근_처리를_돌려준다() {
+        givenOneReportedComment();
+        given(reportRepository.findHandlings(List.of(500L))).willReturn(List.of(
+                new CommentReportHandling(500L, 9L, NOW),
+                new CommentReportHandling(500L, 8L, NOW.plusSeconds(10))));
+
+        AdminCommentReportView view = service.findReportedComments(1L, null, PAGE).getContent().get(0);
+
+        assertThat(view.handledBy()).isEqualTo(8L);
+        assertThat(view.handledAt()).isEqualTo(NOW.plusSeconds(10));
+    }
+
+    @Test
+    void 처리한_적_없으면_처리_정보는_비어_있다() {
+        givenOneReportedComment();
+
+        AdminCommentReportView view = service.findReportedComments(1L, null, PAGE).getContent().get(0);
+
+        assertThat(view.handledBy()).isNull();
+        assertThat(view.handledAt()).isNull();
+        assertThat(view.reportDetails()).isEmpty();
     }
 
     @Test
@@ -153,6 +214,27 @@ class AdminCommentReportQueryServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.FORBIDDEN));
         verify(reportRepository, never()).findSummaries(any());
+    }
+
+    private CommentReportDetail detail(Long commentId, String detail) {
+        return new CommentReportDetail() {
+            @Override
+            public Long getCommentId() {
+                return commentId;
+            }
+
+            @Override
+            public String getDetail() {
+                return detail;
+            }
+        };
+    }
+
+    private void givenOneReportedComment() {
+        given(reportRepository.findSummaries(PAGE)).willReturn(new PageImpl<>(
+                List.of(new CommentReportSummary(500L, 1L, NOW, 1L)), PAGE, 1));
+        given(commentRepository.findAllById(List.of(500L))).willReturn(List.of(comment(500L, 100L, "일반 댓글")));
+        given(postRepository.findAllById(any())).willReturn(List.of(post(100L, 1L, PostVisibility.PUBLIC)));
     }
 
     private CreatorPostComment comment(Long commentId, Long postId, String content) {

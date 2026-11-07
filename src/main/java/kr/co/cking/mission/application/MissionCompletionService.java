@@ -4,6 +4,7 @@ import kr.co.cking.abuse.application.MissionAbuseObserver;
 import kr.co.cking.abuse.application.MissionObservationContext;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.application.CreatorRewardAdmissionService;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.Mission;
 import kr.co.cking.mission.MissionRepository;
@@ -56,6 +57,7 @@ public class MissionCompletionService {
     private final TicketEarnService ticketEarnService;
     private final Clock clock;
     private final MissionAbuseObserver abuseObserver;
+    private final CreatorRewardAdmissionService creatorRewardAdmissionService;
 
     /**
      * 일반 완료 API. LIKE는 게시글 좋아요를 서버가 확인한 경로({@link #completeByPostLike})로만 새로 완료할 수 있으므로
@@ -184,7 +186,7 @@ public class MissionCompletionService {
             throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
         }
 
-        EarnResult result = ticketEarnService.earn(earnCommand);
+        EarnResult result = creatorRewardAdmissionService.earnDaily(earnCommand);
         if (result.code() == EarnResultCode.EARN_ACCEPTED || result.code() == EarnResultCode.ALREADY_PROCESSED) {
             return outcomeOf(result.code(), missionId, mission, now);
         }

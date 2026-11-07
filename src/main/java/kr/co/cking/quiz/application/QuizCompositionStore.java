@@ -30,6 +30,7 @@ public class QuizCompositionStore {
     private record Selected(QuizQuestionContent content, QuizQuestionChangeType type, Long origin, Long previous) {}
 
     public Admission compose(Long memberId, Long quizId, QuizCompositionCommand command) {
+        creatorLookup.requireCreator(memberId).requireActive();
         var quiz = owned(memberId, quizId, true);
         var existing = replay(quiz, command);
         if (existing.isPresent()) return existing.get();

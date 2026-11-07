@@ -39,7 +39,8 @@ class CreatorSpaceBannerImageLinkServiceTest {
     private final CreatorSpaceProfileImageManager manager = new CreatorSpaceProfileImageManager(
             images, new CreatorSpaceProfileImageUrlResolver(new CreatorSpaceProfileImageProperties("https://cdn.example")),
             Clock.fixed(NOW, ZoneOffset.UTC));
-    private final CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(creators, spaces, manager);
+    private final CreatorSpaceProfileImageLinkService service = new CreatorSpaceProfileImageLinkService(
+            creators, mock(CreatorActivityPolicy.class), spaces, manager);
 
     private CreatorSpace space;
     private Creator creator;

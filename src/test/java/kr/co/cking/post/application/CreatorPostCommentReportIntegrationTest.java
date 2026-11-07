@@ -144,6 +144,51 @@ class CreatorPostCommentReportIntegrationTest {
     }
 
     @Test
+    void 관리자_목록에서_기타_신고_설명과_가장_최근_처리를_읽고_신고자는_담지_않는다() {
+        Long commentId = commentOnPublicPost();
+        Member admin = member(MemberRole.ADMIN);
+        Member firstReporter = member(MemberRole.USER);
+        Member secondReporter = member(MemberRole.USER);
+        reportService.report(firstReporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.OTHER, "첫 번째 설명");
+        reportService.report(secondReporter.getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+
+        AdminCommentReportView before = reportedComment(admin, commentId);
+        adminCommandService.reject(admin.getMemberId(), commentId);
+        AdminCommentReportView after = reportedComment(admin, commentId);
+
+        assertThat(before.reportDetails()).containsExactly("첫 번째 설명");
+        assertThat(before.handledBy()).isNull();
+        assertThat(before.handledAt()).isNull();
+        assertThat(after.handledBy()).isEqualTo(admin.getMemberId());
+        assertThat(after.handledAt()).isNotNull();
+    }
+
+    @Test
+    void 반려_뒤_새_신고가_접수돼도_이전_처리를_유지하고_숨기면_숨김이_가장_최근_처리다() {
+        Long commentId = commentOnPublicPost();
+        Member firstAdmin = member(MemberRole.ADMIN);
+        Member secondAdmin = member(MemberRole.ADMIN);
+        reportService.report(member(MemberRole.USER).getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.ABUSE, null);
+        adminCommandService.reject(firstAdmin.getMemberId(), commentId);
+        reportService.report(member(MemberRole.USER).getMemberId(), creator.getCreatorId(), postId, commentId,
+                CommentReportReason.OTHER, "두 번째 신고");
+
+        AdminCommentReportView pending = reportedComment(firstAdmin, commentId);
+
+        assertThat(pending.status()).isEqualTo(CommentReportStatus.PENDING);
+        assertThat(pending.handledBy()).isEqualTo(firstAdmin.getMemberId());
+
+        adminCommandService.hide(secondAdmin.getMemberId(), commentId);
+        AdminCommentReportView hidden = reportedComment(firstAdmin, commentId);
+
+        assertThat(hidden.handledBy()).isEqualTo(secondAdmin.getMemberId());
+        assertThat(hidden.handledAt()).isAfter(pending.handledAt());
+    }
+
+    @Test
     void 같은_신고자와_댓글_조합은_DB_유니크_제약으로도_막힌다() {
         Long commentId = commentOnPublicPost();
         Member reporter = member(MemberRole.USER);
@@ -687,6 +732,13 @@ class CreatorPostCommentReportIntegrationTest {
         assertThatThrownBy(() -> commentService.create(author.getMemberId(), creator.getCreatorId(), postId, "제한 중에 쓴 댓글"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(SanctionErrorCode.SPACE_COMMENT_BLOCKED));
+    }
+
+    private AdminCommentReportView reportedComment(Member admin, Long commentId) {
+        return adminQueryService.findReportedComments(admin.getMemberId(), null, PageRequest.of(0, 100)).stream()
+                .filter(view -> view.commentId().equals(commentId))
+                .findFirst()
+                .orElseThrow();
     }
 
     private List<Long> reportedIds(Member admin, CommentReportStatus status) {

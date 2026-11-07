@@ -74,6 +74,7 @@ public class CreatorSpaceProfileImageUploadService {
     private Creator requireCreatorWithSpace(Long memberId) {
         Creator creator = creatorRepository.findByMemberId(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN));
+        creator.requireActive();
         spaceRepository.findByCreatorId(creator.getCreatorId())
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return creator;

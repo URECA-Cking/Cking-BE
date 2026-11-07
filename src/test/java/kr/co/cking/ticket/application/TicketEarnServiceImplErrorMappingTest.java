@@ -69,7 +69,7 @@ class TicketEarnServiceImplErrorMappingTest {
         TicketEarnRequestClaimService claimService = mock(TicketEarnRequestClaimService.class);
         when(claimService.claim(any(EarnCommand.class))).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
         TicketEarnServiceImpl service = new TicketEarnServiceImpl(
-                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService);
+                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService, null);
 
         EarnResult result = service.earn(command());
 
@@ -91,7 +91,7 @@ class TicketEarnServiceImplErrorMappingTest {
                 .thenReturn("{\"fingerprint\":\"" + fingerprint + "\",\"status\":\"PROCESSING\"}");
         when(values.get(guardKey)).thenReturn(command.requestId() + ":" + fingerprint);
         TicketEarnServiceImpl service = new TicketEarnServiceImpl(
-                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService);
+                redisTemplate, new DefaultRedisScript<List>(), "stream:ticket-earned:test", new ObjectMapper(), claimService, null);
 
         var result = service.findExisting(command);
 

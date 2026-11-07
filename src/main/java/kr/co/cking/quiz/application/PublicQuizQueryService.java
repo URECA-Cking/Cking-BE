@@ -2,6 +2,7 @@ package kr.co.cking.quiz.application;
 
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.common.exception.CommonErrorCode;
+import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.quiz.application.dto.PublicQuizViews;
 import kr.co.cking.quiz.domain.Quiz;
@@ -36,9 +37,11 @@ public class PublicQuizQueryService {
     private final QuizRevisionRepository revisionRepository;
     private final QuizRevisionReader revisionReader;
 
-    /** 최근 게시 순(publishedAt 내림차순, quizId 내림차순). 없는 Creator는 {@code RESOURCE_NOT_FOUND}. */
+    /** 최근 게시 순(publishedAt 내림차순, quizId 내림차순). 활동 중이 아닌 Creator의 Quiz는 노출하지 않는다. */
     public Page<PublicQuizViews.Summary> findPublished(Long creatorId, Pageable pageable) {
-        requireCreator(creatorId);
+        if (!findCreator(creatorId).canOperate()) {
+            return Page.empty(pageable);
+        }
         Page<PublishedQuizSummary> quizzes = quizRepository.findPublishedByCreatorId(creatorId, pageable);
         Map<Long, QuizRevision> revisions = quizzes.isEmpty()
                 ? Map.of()
@@ -52,7 +55,7 @@ public class PublicQuizQueryService {
     }
 
     public PublicQuizViews.Detail findPublishedDetail(Long creatorId, Long quizId) {
-        requireCreator(creatorId);
+        findCreator(creatorId).requireActive();
         Quiz quiz = quizRepository.findById(quizId)
                 .filter(candidate -> candidate.isOwnedBy(creatorId) && candidate.isPublished())
                 .orElseThrow(() -> new BusinessException(QuizErrorCode.QUIZ_NOT_FOUND));
@@ -71,9 +74,8 @@ public class PublicQuizQueryService {
                         .toList());
     }
 
-    private void requireCreator(Long creatorId) {
-        if (!creatorRepository.existsById(creatorId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
-        }
+    private Creator findCreator(Long creatorId) {
+        return creatorRepository.findById(creatorId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 }

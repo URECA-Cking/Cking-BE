@@ -6,11 +6,12 @@
 - [공통 API 규약](common/api.md): 응답 형식, 사용자 식별, 멱등성, 오류 코드 배치 원칙과 공통 API를 확인한다.
 - [Swagger UI 문서화 기준](common/api.md#swagger-ui-문서화): Controller 어노테이션으로 Swagger UI 설명을 작성하는 기준을 확인한다.
 - [이미지 검증·정규화 공통 규칙](common/image.md): 업로드 이미지 형식·크기·정규화 공통 규칙과 도메인별 정책을 확인한다.
+- [이미지 업로드 파이프라인](common/image-upload-pipeline.md): 사전 서명 업로드·정규화 Lambda·결과 큐로 이어지는 업로드 흐름, 켜는 조건, 상태와 정리 기준을 확인한다.
 - [통합 작업단위 관리표](management/work-items.csv): 작업 배정·진척을 확인한다.
 - [통합 RTM](management/rtm.csv): 요구사항 추적·릴리스 점검에 사용한다.
 - [더미 데이터·운영 검증](operations/dummy-data-and-verification.md): 시딩 실행 조건과 Event·Ticket 운영 검증 범위를 확인한다.
 - [YouTube 구독 인증 운영 검증](operations/youtube-subscription-verification.md): 결정론적 E2E와 실제 Gemini·S3 smoke 및 기능 활성화 기준을 확인한다.
-- [부하 테스트 실행](operations/loadtest.md): 부하 테스트 환경에서 시딩·시나리오(예열·응모 한계·응모 지속·마감 직전 몰림·추첨)·정합성 검증 순서와 시작 잔액 계산을 확인한다.
+- [부하 테스트 실행](operations/loadtest.md): 부하 테스트 환경·운영에서 시딩·시나리오(예열·응모 한계·응모 지속·마감 직전 몰림·추첨·동시 요청·이미지 업로드)·정합성 검증 순서, 시작 잔액 계산, 운영 데이터 되돌리기를 확인한다.
 - [롤링 배포와 마이그레이션 호환](operations/rolling-deploy.md): 옛 버전과 새 버전이 함께 도는 동안 지켜야 할 마이그레이션 규칙, CI 호환 검사, Flyway 잠금과 종료 설정을 확인한다.
 
 ## 정본
@@ -51,6 +52,7 @@
 - [YouTube 구독 인증 API](domains/subscription-verification/api.md): 채널 설정·Verification 제출 및 상태 조회 계약
 - [YouTube 구독 인증 비동기 처리](domains/subscription-verification/processing.md): VLM 판정, Processing Claim과 Recovery 계약
 - [Creator](domains/creator/README.md): 신청·승인, 승인 시 기본값으로 Creator Space 자동 생성 책임 경계
+- [Creator 신청서·보완 심사 API](domains/creator/application-review-api.md): 신청 본문, 제출 버전, 보완 요청·재제출 계약
 - [Creator 유사 추천 결과](domains/creator/similarity-recommendation.md): LLM 후보 묶음 검증, 세대 이력·현재 포인터와 저장 결과 공개 조회 계약
 - [추천 행동 수집 API](domains/creator/recommendation-events.md): 추천 응답 스냅샷, 노출·클릭 수집, 신규 팔로우 귀속과 FE 지침
 - [추천 행동 운영](operations/creator-recommendation-events.md): 실패 격리, 지표 SQL, 보존과 삭제
@@ -70,6 +72,7 @@
 - [Post](domains/post/README.md): Creator Space 게시글 공개 범위, 이미지 업로드 기록 상태와 정리 규칙
 - [Post API](domains/post/api.md): 게시글 작성·수정·삭제, 이미지 업로드, 공개 조회 API 계약
 - [Post Comment API](domains/post/comment-api.md): 게시글 댓글 조회·작성·수정·삭제 API 계약
+- [관리자 필터 차단 댓글 API](domains/post/admin-filtered-comment-api.md): 필터가 차단한 댓글과 차단 사유 조회 API 계약
 - [AI Quiz](domains/quiz/README.md): 비동기 생성·GPT Judge 평가, 불변 revision·결과, Creator 승인·게시와 해시 검증
 - [AI Quiz API](domains/quiz/api.md): Creator Quiz 조회·승인·거절·게시·게시 취소와 공개 조회 API 계약
 - [Creator 문항 구성](domains/quiz/composition-api.md): 선택·수동 편집·책임 승인, 멱등성·계보 계약

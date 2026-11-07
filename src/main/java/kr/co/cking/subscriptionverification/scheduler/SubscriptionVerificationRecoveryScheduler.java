@@ -111,6 +111,9 @@ public class SubscriptionVerificationRecoveryScheduler {
                     rewardAcceptedCounter.increment();
                     continue;
                 }
+                if (result == SubscriptionVerificationRewardAttemptResult.WITHHELD) {
+                    continue;
+                }
                 scheduleRewardRetry(target, now);
             } catch (RuntimeException exception) {
                 log.warn("구독 인증 보상 복구 실행에 실패했습니다. verificationId={}",

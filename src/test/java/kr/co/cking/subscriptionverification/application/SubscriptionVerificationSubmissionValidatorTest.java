@@ -13,6 +13,9 @@ import java.util.Optional;
 import java.util.UUID;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.domain.CreatorStatus;
+import kr.co.cking.creator.domain.CreatorErrorCode;
+import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.mission.Mission;
 import kr.co.cking.mission.MissionRepository;
@@ -34,6 +37,7 @@ class SubscriptionVerificationSubmissionValidatorTest {
     private static final Long MISSION_ID = 103L;
     private static final Instant NOW = Instant.parse("2026-09-29T03:00:00Z");
     private static final String REQUEST_ID = "11111111-1111-1111-1111-111111111111";
+    private static final String OTHER_REQUEST_ID = "22222222-2222-2222-2222-222222222222";
     private static final String FINGERPRINT = "a".repeat(64);
 
     private final MemberRepository memberRepository = mock(MemberRepository.class);
@@ -57,8 +61,10 @@ class SubscriptionVerificationSubmissionValidatorTest {
         given(creatorRepository.existsById(CREATOR_ID)).willReturn(true);
         given(missionRepository.findById(MISSION_ID)).willReturn(Optional.of(
                 new Mission(CREATOR_ID, MissionType.YOUTUBE_SUBSCRIPTION, 1, null, null)));
-        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(
-                new CreatorYoutubeChannel(CREATOR_ID, "예상치 못한 필름", "@unexpectedfilm", NOW)));
+        CreatorYoutubeChannel channel = new CreatorYoutubeChannel(
+                CREATOR_ID, "예상치 못한 필름", "@unexpectedfilm", NOW);
+        channel.verify("UCabcdefghijklmnopqrstuv", "예상치 못한 필름", "@unexpectedfilm", NOW);
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(channel));
         given(verificationRepository.findByRequestId(REQUEST_ID)).willReturn(Optional.empty());
     }
 
@@ -69,6 +75,36 @@ class SubscriptionVerificationSubmissionValidatorTest {
 
         assertThat(source.mission().getType()).isEqualTo(MissionType.YOUTUBE_SUBSCRIPTION);
         assertThat(source.channel().getChannelHandle()).isEqualTo("@unexpectedfilm");
+    }
+
+    @Test
+    void 미검증_채널의_구독_인증_제출을_거부한다() {
+        given(channelRepository.findById(CREATOR_ID)).willReturn(Optional.of(
+                new CreatorYoutubeChannel(CREATOR_ID, "채널", "@channel", NOW)));
+
+        assertError(() -> validator.validateSource(MEMBER_ID, CREATOR_ID, MISSION_ID, NOW),
+                SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+    }
+
+    @Test
+    void 잠금_후_최종_검사에서도_현재_미검증_채널을_거부한다() {
+        given(creatorRepository.findByIdForUpdate(CREATOR_ID))
+                .willReturn(Optional.of(new Creator(MEMBER_ID, "Creator")));
+        given(channelRepository.findByCreatorIdForUpdate(CREATOR_ID)).willReturn(Optional.of(
+                new CreatorYoutubeChannel(CREATOR_ID, "채널", "@channel", NOW)));
+
+        assertError(() -> validator.validateSourceForUpdate(MEMBER_ID, CREATOR_ID, MISSION_ID, NOW),
+                SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+    }
+
+    @Test
+    void 정지된_Creator의_새_인증_제출은_잠금_후_거부한다() {
+        Creator creator = new Creator(MEMBER_ID, "Creator");
+        creator.changeStatus(CreatorStatus.SUSPENDED, "활동 제한");
+        given(creatorRepository.findByIdForUpdate(CREATOR_ID)).willReturn(Optional.of(creator));
+
+        assertError(() -> validator.validateSourceForUpdate(MEMBER_ID, CREATOR_ID, MISSION_ID, NOW),
+                CreatorErrorCode.CREATOR_NOT_ACTIVE);
     }
 
     @Test
@@ -114,6 +150,29 @@ class SubscriptionVerificationSubmissionValidatorTest {
         assertError(
                 () -> validator.validateRequest(
                         MEMBER_ID, CREATOR_ID, MISSION_ID, REQUEST_ID, FINGERPRINT, NOW),
+                SubscriptionVerificationErrorCode.IDEMPOTENCY_CONFLICT);
+    }
+
+    @Test
+    void requestId_조회_뒤_Commit된_같은_요청이_최신_행이면_기존_인증을_반환한다() {
+        SubscriptionVerification concurrent = verification(REQUEST_ID, FINGERPRINT, NOW.minusSeconds(1));
+        given(verificationRepository
+                .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
+                        MEMBER_ID, CREATOR_ID, MISSION_ID))
+                .willReturn(Optional.of(concurrent));
+
+        assertThat(validateRequest()).contains(concurrent);
+    }
+
+    @Test
+    void requestId_조회_뒤_Commit된_같은_요청이_다른_fingerprint면_충돌이다() {
+        given(verificationRepository
+                .findFirstByMemberIdAndCreatorIdAndMissionIdOrderByCreatedAtDescVerificationIdDesc(
+                        MEMBER_ID, CREATOR_ID, MISSION_ID))
+                .willReturn(Optional.of(verification(REQUEST_ID, "b".repeat(64), NOW.minusSeconds(1))));
+
+        assertError(
+                () -> validateRequest(),
                 SubscriptionVerificationErrorCode.IDEMPOTENCY_CONFLICT);
     }
 
@@ -184,11 +243,15 @@ class SubscriptionVerificationSubmissionValidatorTest {
     }
 
     private SubscriptionVerification verification(String fingerprint, Instant createdAt) {
+        return verification(OTHER_REQUEST_ID, fingerprint, createdAt);
+    }
+
+    private SubscriptionVerification verification(String requestId, String fingerprint, Instant createdAt) {
         return SubscriptionVerification.pending(
                 MEMBER_ID,
                 CREATOR_ID,
                 MISSION_ID,
-                REQUEST_ID,
+                requestId,
                 fingerprint,
                 "예상치 못한 필름",
                 "@unexpectedfilm",

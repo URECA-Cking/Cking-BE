@@ -16,7 +16,8 @@ class ContentTagServiceTest {
     final ContentTagRepository repo=mock(ContentTagRepository.class);
     final CreatorSpaceRepository spaces=mock(CreatorSpaceRepository.class);
     final CreatorRepository creators=mock(CreatorRepository.class);
-    final ContentTagService service=new ContentTagService(repo,spaces,creators,mock(org.springframework.transaction.PlatformTransactionManager.class));
+    final ContentTagService service=new ContentTagService(repo,spaces,creators,
+            mock(org.springframework.transaction.PlatformTransactionManager.class),mock(CreatorActivityPolicy.class));
     @Test void noApprovedTaxonomyRejectsInputs() {
         assertThatThrownBy(service::inputs).isInstanceOfSatisfying(BusinessException.class,
             e -> assertThat(e.getErrorCode()).isEqualTo(ContentTagErrorCode.CONTENT_TAXONOMY_UNAVAILABLE));

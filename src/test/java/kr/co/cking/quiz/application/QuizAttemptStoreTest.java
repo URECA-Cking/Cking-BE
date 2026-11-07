@@ -1,6 +1,8 @@
 package kr.co.cking.quiz.application;
 import kr.co.cking.common.exception.*;
 import kr.co.cking.creator.domain.Creator;
+import kr.co.cking.creator.domain.CreatorErrorCode;
+import kr.co.cking.creator.domain.CreatorStatus;
 import kr.co.cking.creator.repository.CreatorRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.quiz.QuizFixtures;
@@ -82,6 +84,16 @@ class QuizAttemptStoreTest {
         when(creators.findById(1L)).thenReturn(Optional.of(new Creator(7L,"self")));
         assertThatThrownBy(()->store.submit(command(0,1))).isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.getErrorCode()).isEqualTo(CommonErrorCode.FORBIDDEN));
         verify(attempts,never()).saveAndFlush(any());
+    }
+    @Test void 정지된_Creator의_Quiz에는_새_응시를_저장하지_않는다() {
+        Creator suspended = new Creator(8L, "creator");
+        suspended.changeStatus(CreatorStatus.SUSPENDED, "운영 제한");
+        when(creators.findById(1L)).thenReturn(Optional.of(suspended));
+
+        assertThatThrownBy(() -> store.submit(command(0, 1)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(CreatorErrorCode.CREATOR_NOT_ACTIVE));
+        verify(attempts, never()).saveAndFlush(any());
     }
     @Test void 문항_누락과_선택지_범위_초과를_거부한다() {
         assertThatThrownBy(()->store.submit(new QuizAttemptCommand(7L,1L,2L,UUID.randomUUID(),100L,List.of(new QuizAttemptCommand.Answer(0,0))))).isInstanceOf(BusinessException.class);

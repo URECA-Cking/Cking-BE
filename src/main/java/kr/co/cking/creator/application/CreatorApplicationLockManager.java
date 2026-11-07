@@ -18,7 +18,6 @@ class CreatorApplicationLockManager {
 
     private static final String ACTIVITY_NAME_ALLOCATION_LOCK = "creator-activity-name:allocation";
     private static final int ACTIVITY_NAME_ALLOCATION_WAIT_SECONDS = 15;
-
     private final JdbcTemplate jdbcTemplate;
 
     <T> T execute(String key, Supplier<T> command) {

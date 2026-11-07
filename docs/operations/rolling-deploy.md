@@ -39,6 +39,14 @@ PR이 마이그레이션을 바꾸면 `migration-compat` 작업이 `scripts/chec
 scripts/check-migration-compat.sh origin/develop HEAD
 ```
 
+## Creator 신청서·보완 심사 #799
+
+V98은 기존 INSERT와 호환되도록 신청서 컬럼을 nullable로, 제출 버전은 기본값 0으로 추가한다. 신규 테이블은 구 서버가 사용하지 않는다. 새 코드가 모든 서버에 반영되기 전에는 관리자 보완 요청 API를 호출하지 않는다. 구 서버의 `CreatorApplicationStatus`는 `NEEDS_REVISION`을 모르므로, 혼합 운영 중 이 상태를 기록하면 구 서버가 해당 신청을 읽을 때 실패할 수 있다. FE 신청서·보완·관리자 화면은 BE 전체 교체 후 노출한다. 본문 없는 구 FE 신청은 레거시 PENDING으로 접수되지만 신청서 없이 승인할 수 없다. 새 FE에서 같은 회원이 신청서를 제출하면 기존 PENDING에 연결하므로 별도 관리자 보완 요청은 필요하지 않다. 구 FE 호환 접수 중단은 별도 릴리스에서 수행한다. `NEEDS_REVISION` 데이터가 생긴 뒤 구 코드로 롤백하려면 먼저 이 상태를 해석할 수 있는 호환 버전을 배포해야 한다.
+
+## Creator 자격 정지·박탈 #800
+
+V99는 `creator.status NOT NULL DEFAULT ACTIVE`와 공개 안내, 신규 감사 이력 테이블만 추가한다. 구 서버의 Creator INSERT는 기본값으로 계속 동작한다. 구 서버는 정지·박탈을 해석하거나 Creator 쓰기를 차단하지 못하므로, 새 코드가 모든 서버에 반영되기 전에는 자격 변경을 켜지 않는다. 변경 명령은 `cking.creator.status-management.enabled`가 기본 `false`이며, 모든 서버가 새 버전이고 관련 쓰기 가드가 검증된 뒤 Parameter Store의 `CKING_CREATOR_STATUS_MANAGEMENT_ENABLED=true`를 설정하고 재배포해 활성화한다. 배포 스크립트와 dev/prod Compose는 이 선택 값을 컨테이너에 전달한다. 상태 변경 후에는 구 버전으로 단순 롤백하지 않는다. 본인·관리자 조회 계약은 [Creator 자격 API](../domains/creator/status-api.md)를 따른다.
+
 ## 여러 서버의 동시 기동
 
 Flyway는 마이그레이션 전에 MySQL 이름 잠금(`GET_LOCK`)을 잡는다(flyway-mysql 12.4.0 `MySQLNamedLockTemplate`). 서버 여러 대가 동시에 기동해도 마이그레이션은 한 서버만 적용하고, 나머지는 잠금이 풀린 뒤 적용할 것이 없음을 확인하고 기동한다.
@@ -50,9 +58,9 @@ Spring Boot 4.1.1은 `server.shutdown` 기본값이 `graceful`이다. 종료 신
 | 단계 | 단계 번호 | 기다리는 것 |
 | --- | --- | --- |
 | 웹 요청 마무리 (`WebServerGracefulShutdownLifecycle`) | 2147482623 | 처리 중인 HTTP 요청 |
-| 작업 큐 정리 (`ExecutorConfigurationSupport`) | 1073741823 | 구독 인증·퀴즈 생성·퀴즈 채점·댓글 필터 Executor의 남은 작업(`await-termination-seconds: 30`) |
+| 작업 큐 정리 (`ExecutorConfigurationSupport`) | 1073741823 | 구독 인증·퀴즈 생성·퀴즈 채점·댓글 필터 Executor의 남은 작업(`await-termination-seconds: 30`), 추천 기록 Executor(10초) |
 
 - 작업 자체는 종료 신호 뒤에도 각 스레드에서 계속 돌고, 기다리는 확인만 단계 순서를 따른다. 보통은 둘 중 오래 걸리는 쪽만큼 걸리고, 최악은 30초 + 30초 = 60초다
 - 같은 단계의 Executor는 동시에 기다린다. Spring Framework 7.0.9에서 Executor 2개에 5초 작업을 하나씩 넣고 종료하면 5,017ms 걸렸다
-- 컨테이너 강제 종료까지의 시간은 `docker-compose.dev.yml`의 `stop_grace_period: 90s`다. 최악 60초에 연결 종료 등 나머지 종료 단계의 여유 30초를 더했다. 여유는 측정한 값이 아니며, 종료가 잘리는 로그(`Graceful shutdown aborted with one or more requests still active`, `Timed out while waiting for executor … to terminate`)가 보이거나 컨테이너가 강제 종료(종료 코드 137)되면 늘린다
+- 컨테이너 강제 종료까지의 시간은 `docker-compose.dev.yml`·`docker-compose.prod.yml`의 `stop_grace_period: 90s`다. 최악 60초에 연결 종료 등 나머지 종료 단계의 여유 30초를 더했다. 여유는 측정한 값이 아니며, 종료가 잘리는 로그(`Graceful shutdown aborted with one or more requests still active`, `Timed out while waiting for executor … to terminate`)가 보이거나 컨테이너가 강제 종료(종료 코드 137)되면 늘린다
 - 값은 최대치라 앱이 일찍 끝나면 그때 종료된다. 늘려서 생기는 비용은 앱이 멈춰 끝나지 않을 때 배포가 그만큼 늦어지는 것이다

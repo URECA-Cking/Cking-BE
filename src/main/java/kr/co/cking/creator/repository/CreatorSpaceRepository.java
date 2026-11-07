@@ -38,12 +38,14 @@ public interface CreatorSpaceRepository extends JpaRepository<CreatorSpace, Long
      */
     @Query(value = """
             select s from CreatorSpace s, Creator c
-            where c.creatorId = s.creatorId and c.activityName like :namePattern escape '!'
+            where c.creatorId = s.creatorId and c.status = kr.co.cking.creator.domain.CreatorStatus.ACTIVE
+              and c.activityName like :namePattern escape '!'
             order by c.activityName asc, s.creatorId asc
             """,
             countQuery = """
                     select count(s) from CreatorSpace s, Creator c
-                    where c.creatorId = s.creatorId and c.activityName like :namePattern escape '!'
+                    where c.creatorId = s.creatorId and c.status = kr.co.cking.creator.domain.CreatorStatus.ACTIVE
+                      and c.activityName like :namePattern escape '!'
                     """)
     Page<CreatorSpace> findAllByCreatorNamePattern(@Param("namePattern") String namePattern, Pageable pageable);
 }

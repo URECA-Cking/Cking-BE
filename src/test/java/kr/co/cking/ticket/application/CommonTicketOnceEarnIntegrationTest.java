@@ -172,7 +172,11 @@ class CommonTicketOnceEarnIntegrationTest {
 
     /** 테스트마다 고유 회원을 저장한다. */
     private Member newMember() {
-        return members.save(new Member("회원", null, "once-" + UUID.randomUUID() + "@example.com", MemberRole.USER));
+        Member member = members.save(new Member("회원", null, "once-" + UUID.randomUUID() + "@example.com", MemberRole.USER));
+        // 다른 로컬 DB 실행에서 같은 자동 증가 ID로 남긴 Redis 값은 신규 회원 상태가 아니다.
+        redis.delete(List.of(CommonTicketRedisKeys.balance(member.getMemberId()),
+                CommonTicketRedisKeys.onceGuard(member.getMemberId(), "SIGNUP")));
+        return member;
     }
 
     /** 웰컴 판정과 독립적인 Ticket 입력을 만든다. */

@@ -5,6 +5,7 @@ import kr.co.cking.common.exception.CommonErrorCode;
 import kr.co.cking.common.validation.ServiceDateRange;
 import kr.co.cking.creator.domain.Creator;
 import kr.co.cking.creator.repository.CreatorRepository;
+import kr.co.cking.creator.application.CreatorActivityPolicy;
 import kr.co.cking.drawing.domain.prize.PrizeAllocationAlgorithmVersion;
 import kr.co.cking.event.application.dto.CreateEventCommand;
 import kr.co.cking.event.application.dto.UpdateEventCommand;
@@ -37,6 +38,7 @@ public class CreatorEventService {
     private final EventCommandService eventCommandService;
     private final EventCreationPersistenceService eventCreationPersistenceService;
     private final EventBannerImageManager bannerImageManager;
+    private final CreatorActivityPolicy creatorActivityPolicy;
 
     /** 요청 식별자 기준으로 Event를 멱등 생성하거나 동일 요청의 기존 Event를 반환한다. */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -84,6 +86,7 @@ public class CreatorEventService {
     /** Creator 소유 Event의 새 승인 요청 차수를 만들고 승인 대기 상태로 전이한다. */
     public EventApprovalRequest requestApproval(Long userId, Long eventId) {
         Creator creator = requireConfiguredCreator(userId);
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         return eventCommandService.requestApproval(
                 eventId,
                 event -> requireOwnership(creator, event),
@@ -110,6 +113,7 @@ public class CreatorEventService {
     public Event update(UpdateEventCommand command) {
         validateUpdate(command);
         Creator creator = requireConfiguredCreator(command.userId());
+        creatorActivityPolicy.requireActiveByCreatorId(creator.getCreatorId());
         return eventCommandService.update(
                 command.eventId(),
                 event -> requireOwnership(creator, event),

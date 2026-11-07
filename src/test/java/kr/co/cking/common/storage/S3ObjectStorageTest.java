@@ -59,7 +59,7 @@ class S3ObjectStorageTest extends ObjectStorageContractTest {
         return storage;
     }
 
-    /** #780: 브라우저가 다른 크기·형식·최소 크기로 바꿔 올리지 못하게 모두 서명에 넣는다. */
+    /** #780: 브라우저가 다른 크기·형식·최소 크기로 바꿔 올리지 못하게 모두 서명에 넣는다. #802: 같은 주소로 다시 올리지 못한다. */
     @Test
     void 사전_서명_PUT은_형식_크기_메타데이터를_서명하고_그대로_올리면_저장된다() throws Exception {
         byte[] content = {1, 2, 3, 4};
@@ -67,18 +67,24 @@ class S3ObjectStorageTest extends ObjectStorageContractTest {
                 java.util.Map.of("min-width", "200", "min-height", "200"), java.time.Duration.ofMinutes(5));
 
         assertThat(presigned.url().getQuery())
-                .contains("X-Amz-SignedHeaders=content-length;content-type;host;x-amz-meta-min-height;x-amz-meta-min-width");
-        assertThat(presigned.headers()).containsEntry("content-type", "image/jpeg")
+                .contains("X-Amz-SignedHeaders=content-length;content-type;host;if-none-match;x-amz-meta-min-height;x-amz-meta-min-width");
+        assertThat(presigned.headers()).containsEntry("content-type", "image/jpeg").containsEntry("if-none-match", "*")
                 .containsEntry("x-amz-meta-min-width", "200").containsEntry("x-amz-meta-min-height", "200")
                 .doesNotContainKeys("host", "content-length");
 
+        assertThat(putWith(presigned, content)).isEqualTo(200);
+        assertThat(storage.get("raw/post-images/1/a.jpg")).isEqualTo(content);
+
+        byte[] replaced = {5, 6, 7, 8};
+        assertThat(putWith(presigned, replaced)).isEqualTo(412);
+        assertThat(storage.get("raw/post-images/1/a.jpg")).isEqualTo(content);
+    }
+
+    private static int putWith(PresignedUpload presigned, byte[] content) throws Exception {
         java.net.http.HttpRequest.Builder request = java.net.http.HttpRequest.newBuilder(presigned.url())
                 .PUT(java.net.http.HttpRequest.BodyPublishers.ofByteArray(content));
         presigned.headers().forEach(request::header);
-        int status = java.net.http.HttpClient.newHttpClient()
+        return java.net.http.HttpClient.newHttpClient()
                 .send(request.build(), java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode();
-
-        assertThat(status).isEqualTo(200);
-        assertThat(storage.get("raw/post-images/1/a.jpg")).isEqualTo(content);
     }
 }

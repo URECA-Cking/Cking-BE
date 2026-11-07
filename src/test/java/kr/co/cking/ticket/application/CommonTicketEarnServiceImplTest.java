@@ -27,7 +27,8 @@ class CommonTicketEarnServiceImplTest {
         TicketEarnRequestClaimService claimService = mock(TicketEarnRequestClaimService.class);
         when(claimService.claim(any(CommonEarnCommand.class))).thenReturn(TicketEarnRequestClaim.REQUEST_ID_CONFLICT);
         CommonTicketEarnService service = new CommonTicketEarnServiceImpl(
-                redisTemplate, new DefaultRedisScript<List>(), "stream:common-ticket-earned:test", new ObjectMapper(), claimService);
+                redisTemplate, new DefaultRedisScript<List>(), "stream:common-ticket-earned:test", new ObjectMapper(), claimService,
+                mock(TicketBalanceKeyLoader.class));
 
         EarnResult result = service.earn(command());
 

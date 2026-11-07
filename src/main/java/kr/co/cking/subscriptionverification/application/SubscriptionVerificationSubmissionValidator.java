@@ -52,7 +52,7 @@ class SubscriptionVerificationSubmissionValidator {
         if (!creatorRepository.existsById(creatorId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
-        return validateMissionAndChannel(creatorId, missionId, now);
+        return validateMissionAndChannel(creatorId, missionId, now, false);
     }
 
     SubscriptionVerificationSubmissionSource validateSourceForUpdate(
@@ -63,8 +63,9 @@ class SubscriptionVerificationSubmissionValidator {
     ) {
         requireMember(memberId);
         creatorRepository.findByIdForUpdate(creatorId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return validateMissionAndChannel(creatorId, missionId, now);
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .requireActive();
+        return validateMissionAndChannel(creatorId, missionId, now, true);
     }
 
     Optional<SubscriptionVerification> validateRequest(
@@ -77,10 +78,7 @@ class SubscriptionVerificationSubmissionValidator {
     ) {
         Optional<SubscriptionVerification> existing = verificationRepository.findByRequestId(requestId);
         if (existing.isPresent()) {
-            if (!existing.get().getRequestFingerprint().equals(requestFingerprint)) {
-                throw new BusinessException(SubscriptionVerificationErrorCode.IDEMPOTENCY_CONFLICT);
-            }
-            return existing;
+            return Optional.of(replay(existing.get(), requestFingerprint));
         }
 
         Optional<SubscriptionVerification> latest = verificationRepository
@@ -89,6 +87,10 @@ class SubscriptionVerificationSubmissionValidator {
         // 트랜잭션 밖 사전 검증의 조회가 서로 다른 Commit을 읽지 않도록 같은 최신 행으로 판정한다.
         if (latest.isPresent()) {
             SubscriptionVerification current = latest.get();
+            // requestId 조회 뒤 같은 요청의 동시 제출이 Commit되면 최신 행이 그 요청이다.
+            if (requestId.equals(current.getRequestId())) {
+                return Optional.of(replay(current, requestFingerprint));
+            }
             if (current.getStatus() == SubscriptionVerificationStatus.APPROVED) {
                 throw new BusinessException(SubscriptionVerificationErrorCode.VERIFICATION_ALREADY_APPROVED);
             }
@@ -114,10 +116,18 @@ class SubscriptionVerificationSubmissionValidator {
         return Optional.empty();
     }
 
+    private SubscriptionVerification replay(SubscriptionVerification existing, String requestFingerprint) {
+        if (!existing.getRequestFingerprint().equals(requestFingerprint)) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.IDEMPOTENCY_CONFLICT);
+        }
+        return existing;
+    }
+
     private SubscriptionVerificationSubmissionSource validateMissionAndChannel(
             Long creatorId,
             Long missionId,
-            Instant now
+            Instant now,
+            boolean forUpdate
     ) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
@@ -127,9 +137,14 @@ class SubscriptionVerificationSubmissionValidator {
         if (!mission.isActiveAt(now)) {
             throw new BusinessException(MissionErrorCode.MISSION_INACTIVE);
         }
-        CreatorYoutubeChannel channel = channelRepository.findById(creatorId)
+        CreatorYoutubeChannel channel = (forUpdate
+                ? channelRepository.findByCreatorIdForUpdate(creatorId)
+                : channelRepository.findById(creatorId))
                 .orElseThrow(() -> new BusinessException(
                         SubscriptionVerificationErrorCode.CREATOR_CHANNEL_NOT_CONFIGURED));
+        if (!channel.isVerified()) {
+            throw new BusinessException(SubscriptionVerificationErrorCode.CHANNEL_NOT_VERIFIED);
+        }
         return new SubscriptionVerificationSubmissionSource(mission, channel);
     }
 

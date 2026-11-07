@@ -19,6 +19,9 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,7 +46,7 @@ class CreatorApplicationControllerTest {
 
         mockMvc.perform(post("/api/creator/applications")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":10}"))
+                        )
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.applicationId").value(1))
@@ -58,9 +61,58 @@ class CreatorApplicationControllerTest {
 
         mockMvc.perform(post("/api/creator/applications")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":10}"))
+                        )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.applicationId").value(1));
+    }
+
+    @Test
+    void detailedApplicationBodyIsAccepted() throws Exception {
+        CreatorApplication application = applicationWithId(1L);
+        given(creatorApplicationService.apply(eq(10L), any()))
+                .willReturn(new CreatorApplicationService.ApplyResult(application, true));
+
+        mockMvc.perform(post("/api/creator/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validFormJson()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.applicationId").value(1));
+    }
+
+    @Test
+    void invalidApplicationBodyIsRejected() throws Exception {
+        mockMvc.perform(post("/api/creator/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"preferredActivityName\":\"\",\"agreeToCreatorPolicy\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void revisionDraftAndResubmitRoutesUseAuthenticatedMember() throws Exception {
+        CreatorApplication application = applicationWithId(1L);
+        application.requestRevision("증빙 보완");
+        given(creatorApplicationService.updateDraft(eq(10L), eq(1L), any())).willReturn(application);
+        given(creatorApplicationService.resubmit(10L, 1L)).willReturn(application);
+
+        mockMvc.perform(patch("/api/creator/applications/{id}", 1L)
+                        .contentType(MediaType.APPLICATION_JSON).content(validFormJson()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/creator/applications/{id}/resubmit", 1L))
+                .andExpect(status().isOk());
+
+        then(creatorApplicationService).should().updateDraft(eq(10L), eq(1L), any());
+        then(creatorApplicationService).should().resubmit(10L, 1L);
+    }
+
+    private String validFormJson() {
+        return """
+                {"preferredActivityName":"신청자","categoryCodes":["FOOD"],
+                 "introduction":"신청자의 콘텐츠와 활동 분야를 소개하는 충분히 긴 설명입니다.",
+                 "evidenceUrls":["https://example.com/profile"],
+                 "activityPlan":"CKing에서 정기적으로 팬과 소통하고 콘텐츠를 발행하며 이벤트를 운영할 계획입니다. 꾸준히 활동하겠습니다.",
+                 "platforms":["YOUTUBE"],"agreeToCreatorPolicy":true}
+                """;
     }
 
     @Test
@@ -147,7 +199,7 @@ class CreatorApplicationControllerTest {
     }
 
     private CreatorApplication applicationWithId(Long id) {
-        CreatorApplication application = new CreatorApplication(10L);
+        CreatorApplication application = new CreatorApplication(10L, kr.co.cking.creator.CreatorApplicationTestForm.form("신청자"));
         ReflectionTestUtils.setField(application, "id", id);
         return application;
     }

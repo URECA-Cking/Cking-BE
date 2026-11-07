@@ -15,8 +15,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import io.lettuce.core.RedisCommandExecutionException;
+import kr.co.cking.ticket.application.TicketBalanceKeyLoader;
 import kr.co.cking.ticket.application.config.CommonTicketRedisKeys;
 import kr.co.cking.ticket.application.config.TicketRedisKeys;
+import kr.co.cking.ticket.domain.CouponType;
 import kr.co.cking.ticket.domain.UserCommonTicketBalance;
 import kr.co.cking.ticket.domain.UserTicketBalance;
 import kr.co.cking.ticket.repository.UserCommonTicketBalanceRepository;
@@ -26,9 +28,9 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Redis Balance와 DB Balance(Ledger 기반 Projection)를 5분 주기로 비교한다(취합v1.5.4 §13,
- * 요구사항 v4 FR-P2-021~022). 최종 복구 기준은 DB Ledger이며, 이 스케줄러는 감지·기록만 하고
+ * 요구사항 v4 FR-P2-021~022). 최종 복구 기준은 DB Ledger이며, 이 스케줄러는 불일치를 감지·기록만 하고
  * 실제 보정({@link kr.co.cking.ticket.application.TicketCompensationService})은 운영자가
- * 확인 후 별도로 호출한다.
+ * 확인 후 별도로 호출한다. 예외로 잔액 키가 아예 없으면 응모·적립 경로와 같은 안전 조건으로 DB 값을 적재한다(#793).
  *
  * <p>정상적인 Redis→Stream→DB 비동기 반영 지연을 즉시 오류로 판단하지 않기 위해, 같은
  * (memberId, creatorId) 조합(공용은 creatorId=null)이 연속된 주기에서도 계속 불일치할 때만 경고 로그를 남긴다
@@ -48,6 +50,7 @@ public class TicketBalanceReconciliationScheduler {
     private final UserTicketBalanceRepository userTicketBalanceRepository;
     private final UserCommonTicketBalanceRepository userCommonTicketBalanceRepository;
     private final StringRedisTemplate redisTemplate;
+    private final TicketBalanceKeyLoader balanceKeyLoader;
 
     private final Map<BalanceKey, Integer> mismatchStreaks = new ConcurrentHashMap<>();
 
@@ -145,10 +148,12 @@ public class TicketBalanceReconciliationScheduler {
             // Redis Key 미존재는 별개 이상 상태(BALANCE_NOT_LOADED)다 - 정합성 불일치로 다루지 않는다.
             mismatchStreaks.remove(key);
             // DB 행은 EARN이 Redis 적립에 성공한 뒤에야 생기므로, 잔액이 있는데 키가 없으면 유실이다.
-            // 이 유저는 SPEND에서 계속 BALANCE_NOT_LOADED(503)를 받는다.
-            if (dbBalance > 0) {
-                log.warn("Redis Balance 키가 없습니다(BALANCE_NOT_LOADED로 응모 불가). memberId={}, creatorId={}, "
-                                + "dbBalance={} - TicketCompensationService(공용은 CommonTicketCompensationService).resyncRedisToDb로 복구가 필요합니다.",
+            // 응모·적립 경로와 같은 안전 조건으로 미리 적재한다(#793). COMPENSATE 보정이 아니라 FR-P2-056의 키 적재이므로
+            // "감지·기록만" 원칙과 충돌하지 않는다. 적재하지 못하면(미반영 메시지·보정 락) 다음 주기에 다시 시도한다.
+            if (dbBalance > 0 && !balanceKeyLoader.load(couponTypeOf(key), key.creatorId(), key.memberId())) {
+                log.warn("Redis Balance 키가 없고 이번 주기에 적재하지 못했습니다(미반영 메시지 또는 보정 진행 중). "
+                                + "다음 주기에 다시 시도하며, 그 전에 응모·적립하면 그 경로에서 적재합니다. "
+                                + "memberId={}, creatorId={}, dbBalance={}",
                         key.memberId(), key.creatorId(), dbBalance);
             }
             return;
@@ -170,6 +175,10 @@ public class TicketBalanceReconciliationScheduler {
                             + "redisBalance={}, dbBalance={}",
                     key.memberId(), key.creatorId(), redisBalance, dbBalance);
         }
+    }
+
+    private static CouponType couponTypeOf(BalanceKey key) {
+        return key.creatorId() == null ? CouponType.COMMON : CouponType.CREATOR;
     }
 
     private record BalanceKey(Long memberId, Long creatorId) {
