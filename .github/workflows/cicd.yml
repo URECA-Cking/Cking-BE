@@ -25,7 +25,6 @@ env:
   AWS_REGION: ap-northeast-2
   AWS_ROLE_ARN: arn:aws:iam::551372961758:role/dev-cking-github-actions-role
   DEPLOY_BUCKET: dev-cking-deploy-551372961758
-  INSTANCE_ID: i-0735892ba2bb25a70
 
 jobs:
   test:
@@ -232,6 +231,19 @@ jobs:
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # 서버를 새로 만들면 인스턴스 ID가 바뀐다. 이름 태그로 찾고, 실행 중인 서버가 정확히 하나가 아니면 멈춘다.
+      - name: 개발 앱 서버 찾기
+        if: steps.order.outputs.deploy == 'true'
+        run: |
+          IDS=$(aws ec2 describe-instances \
+            --filters Name=tag:Name,Values=dev-cking-app Name=instance-state-name,Values=running \
+            --query 'Reservations[].Instances[].InstanceId' --output json)
+          if [ "$(jq length <<< "$IDS")" -ne 1 ]; then
+            echo "::error::실행 중인 dev-cking-app 서버가 하나가 아니다: $(jq -c . <<< "$IDS")"
+            exit 1
+          fi
+          echo "INSTANCE_ID=$(jq -r '.[0]' <<< "$IDS")" >> "$GITHUB_ENV"
 
       - name: 배포 파일 S3 업로드
         if: steps.order.outputs.deploy == 'true'
