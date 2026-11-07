@@ -190,24 +190,35 @@ DB 쪽은 `verify.sh`의 6번이 같은 요청 라운드 회원(앞쪽 절반)�
 
 ### 비교 이미지로 측정
 
-고치기 전 코드나 설정만 다른 코드를 운영 조건에서 비교할 때 쓴다. develop에는 넣지 않는다.
+고치기 전 코드나 설정만 다른 코드를 운영 조건에서 비교할 때 쓴다. develop에는 넣지 않는다. 측정하는 동안 main에 머지하지 않는다(손 배포는 운영 배포 워크플로의 동시 실행 묶음 밖에서 돌아 서로 덮어쓴다).
 
 1. 비교할 코드를 브랜치로 올린다(머지하지 않는다)
-2. Actions → `Build experiment image` → `ref`에 브랜치를 넣고 실행한다. 요약에 이미지 태그가 나온다
-3. 그 브랜치를 받아 배포 파일을 태그 경로에 올리고, 배포 태그를 바꾼 뒤 서버를 교체한다. 운영 배포 워크플로는 main 커밋 이미지와 운영에 배포한 적 있는 태그만 받으므로 손으로 한다
+2. Actions → `Build experiment image` → `ref`에 브랜치를 넣고 실행한다. 요약에 이미지 태그가 나온다(끝 7자리가 빌드한 커밋)
+3. 그 커밋을 받아 배포 파일을 태그 경로에 올리고, 원래 태그를 적어 둔 뒤 배포 태그를 바꾸고 서버를 교체한다. 운영 배포 워크플로는 main 커밋 이미지와 운영에 배포한 적 있는 태그만 받으므로 손으로 한다
 
    ```bash
-   # Mac (그 브랜치를 받은 Cking-BE, 운영 관리자 자격 증명)
+   # Mac (태그 끝 7자리 커밋을 받은 Cking-BE, 운영 관리자 자격 증명)
+   export AWS_REGION=ap-northeast-2
    T=<실험 이미지 태그>
    B="prod-cking-deploy-$(aws sts get-caller-identity --query Account --output text)-ap-northeast-2-an"
+   ORIG=$(aws ssm get-parameter --name /cking/prod/RELEASE_TAG --query Parameter.Value --output text); echo "$ORIG"
    aws s3 cp docker-compose.prod.yml "s3://$B/releases/$T/docker-compose.yml"
    aws s3 cp deploy/deploy.sh "s3://$B/releases/$T/deploy.sh"
    aws s3 cp k6/smoke.js "s3://$B/releases/$T/smoke.js"
-   aws ssm put-parameter --region ap-northeast-2 --name /cking/prod/RELEASE_TAG --type String --value "$T" --overwrite
+   aws ssm put-parameter --name /cking/prod/RELEASE_TAG --type String --value "$T" --overwrite
    bash scripts/prod-refresh.sh prod-cking-app
    ```
 
-4. 측정이 끝나면 Actions → `Deploy to prod`(main) → `image_tag`에 원래 태그를 넣어 되돌린다
+   교체가 끝나면 앱 서버마다(SSM 접속) `curl -sI localhost:8080/livez | grep -i x-image-tag`가 실험 태그인지 본다
+
+   교체가 실패하거나 시간이 넘으면 `aws autoscaling cancel-instance-refresh --auto-scaling-group-name prod-cking-app`로 취소하고, 취소가 끝날 때까지 기다린 뒤 4단계로 되돌린다. 진행 중인 교체가 있는 채로 되돌리면 운영 배포 워크플로의 복구 단계가 배포 태그를 실험 태그로 되돌린다
+
+4. 측정이 끝나면 Actions → `Deploy to prod`(main) → `image_tag`에 `$ORIG`를 넣어 되돌린다. 끝나면 배포 태그가 `$ORIG`인지 보고 실험 태그의 배포 파일을 지운다. 남겨 두면 태그 형식이 같아 장애 때 되돌릴 태그 목록 맨 위에 실험 이미지가 나온다. 비교 브랜치는 그 뒤에 지운다
+
+   ```bash
+   aws ssm get-parameter --name /cking/prod/RELEASE_TAG --query Parameter.Value --output text   # $ORIG
+   aws s3 rm --recursive "s3://$B/releases/$T/"
+   ```
 
 ### 운영 데이터 되돌리기
 

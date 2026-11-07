@@ -1,12 +1,12 @@
 # 운영에서 비교 측정할 변형(고치기 전 코드, 설정만 다른 코드)을 develop에 넣지 않고 이미지로 만든다.
-# 배포는 하지 않는다. 운영 배포 워크플로는 main 커밋 이미지와 배포한 적 있는 태그만 받는다(실험 배포 절차는 docs/operations/deploy.md).
+# 배포는 하지 않는다. 운영 배포 워크플로는 main 커밋 이미지와 배포한 적 있는 태그만 받는다(실험 배포 절차는 docs/operations/loadtest.md "비교 이미지로 측정").
 name: Build experiment image
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 빌드할 브랜치 또는 커밋
+        description: 빌드할 브랜치 또는 전체 커밋 SHA(40자리)
         type: string
         required: true
 
