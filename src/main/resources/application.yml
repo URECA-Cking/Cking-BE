@@ -16,6 +16,12 @@ spring:
           # 미설정이면 JVM 기본 타임존을 쓴다. 팀원 로컬은 KST, CI는 UTC라 환경마다 값이 달라진다.
           time_zone: UTC
 
+  datasource:
+    hikari:
+      # 연결 대기 상한(#835), 단위 ms. 기본값 30초면 DB 장애 조치 동안 요청 스레드가 30초씩 묶여 Tomcat 스레드 200개가 다 찬다.
+      # 운영 정각 부하에서 요청 전체 최악값이 3,994ms라 연결 대기는 그 안에서 끝났으므로 5초로 둔다.
+      connection-timeout: 5000
+
   flyway:
     enabled: true
     baseline-on-migrate: true
