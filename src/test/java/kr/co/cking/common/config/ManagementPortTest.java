@@ -35,6 +35,11 @@ class ManagementPortTest {
     }
 
     @Test
+    void 관리_포트의_liveness는_인증_없이_응답한다() throws Exception {
+        assertThat(get(managementPort, "/actuator/health/liveness").statusCode()).isEqualTo(200);
+    }
+
+    @Test
     void 관리_포트의_prometheus는_인증_없이_지표를_응답한다() throws Exception {
         HttpResponse<String> response = get(managementPort, "/actuator/prometheus");
 

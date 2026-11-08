@@ -38,8 +38,8 @@ import org.springframework.util.StringUtils;
 /**
  * API 인증 전환을 위한 Spring Security 진입점이다.
  * Resource Server는 Bearer JWT를 검증하고, 인증 전환한 업무 API는 경로별로 인증을 요구한다.
- * Swagger는 전용 Basic Auth 체인에서 보호한다. actuator는 호스트에 열지 않는 관리 포트에만 있어 인증 없이 허용하고,
- * 서비스 포트에는 ALB 헬스체크용 /livez와 배포 확인용 /readyz만 둔다.
+ * Swagger는 전용 Basic Auth 체인에서 보호한다. actuator는 보안 그룹이 ALB에서만 여는 관리 포트에만 있어 인증 없이
+ * 허용하고(ALB 헬스체크는 관리 포트의 liveness), 서비스 포트에는 /livez와 배포 확인용 /readyz만 둔다.
  */
 @Configuration
 @EnableWebSecurity
@@ -132,7 +132,7 @@ public class SecurityConfig {
                 // 인증은 JWT로 하고 OAuth 인가 요청은 Redis에 두므로 서버 세션을 만들지 않는다(#678).
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/livez", "/readyz", "/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/livez", "/readyz", "/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers(RecommendationApiKeyAuthenticationFilter.WRITE_ENDPOINTS)
                         .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()

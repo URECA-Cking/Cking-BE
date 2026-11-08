@@ -11,6 +11,8 @@ services:
     stop_grace_period: 90s
     ports:
       - "8080:8080"
+      # 관리 포트. ALB 헬스체크(/actuator/health/liveness)가 요청 스레드와 따로 도는 이 포트를 본다. 보안 그룹이 ALB에서만 연다.
+      - "8081:8081"
     environment:
       SPRING_PROFILES_ACTIVE: prod,oauth
       DB_HOST: ${DB_HOST:?DB_HOST가 지정되지 않았습니다}
