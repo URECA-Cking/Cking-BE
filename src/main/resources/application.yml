@@ -70,7 +70,7 @@ management:
         add-additional-paths: true
       group:
         # 배포 스크립트가 쓰는 /readyz. 앱 상태와 함께 DB·Redis 연결까지 확인한다.
-        # ALB 헬스체크는 앱 생존만 보는 /livez를 쓴다. DB·Redis가 끊겨도 모든 서버가 함께 비정상이 되지 않게 한다.
+        # ALB 헬스체크는 관리 포트의 liveness로 앱 생존만 본다. DB·Redis가 끊겨도 모든 서버가 함께 비정상이 되지 않게 한다.
         readiness:
           include: readinessState,db,redis
         liveness:
