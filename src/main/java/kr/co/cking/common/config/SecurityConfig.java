@@ -132,7 +132,7 @@ public class SecurityConfig {
                 // 인증은 JWT로 하고 OAuth 인가 요청은 Redis에 두므로 서버 세션을 만들지 않는다(#678).
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/livez", "/readyz", "/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/livez", "/readyz", "/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers(RecommendationApiKeyAuthenticationFilter.WRITE_ENDPOINTS)
                         .hasAnyAuthority("ROLE_ADMIN", "RECOMMENDATION_WRITE")
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/refresh", "/api/admin/auth/logout").permitAll()

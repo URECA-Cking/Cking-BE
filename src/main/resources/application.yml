@@ -51,7 +51,7 @@ server:
 
 management:
   server:
-    # 관리 포트는 호스트에 열지 않는다. 별도 웹 서버라 서비스 포트가 과부하여도 지표가 응답한다.
+    # 별도 웹 서버라 서비스 포트의 요청 스레드가 다 차도 지표와 ALB 헬스체크(liveness)가 응답한다.
     port: 8081
   endpoints:
     web:
