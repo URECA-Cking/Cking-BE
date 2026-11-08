@@ -1,7 +1,8 @@
 spring:
   datasource:
     # 암호에는 기본값을 두지 않는다. 주입되지 않으면 잘못된 값으로 기동하는 대신 실패해야 한다.
-    url: jdbc:mysql://${DB_HOST}:3306/cking?characterEncoding=UTF-8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    # socketTimeout(#841, ms): 장애 조치로 응답 없이 사라진 옛 주 DB를 끝없이 기다리지 않게 한다. 앱이 정한 최장 대기 GET_LOCK 15초보다 길게 둔다.
+    url: jdbc:mysql://${DB_HOST}:3306/cking?characterEncoding=UTF-8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&socketTimeout=20000
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
