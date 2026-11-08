@@ -16,6 +16,12 @@ spring:
           # 미설정이면 JVM 기본 타임존을 쓴다. 팀원 로컬은 KST, CI는 UTC라 환경마다 값이 달라진다.
           time_zone: UTC
 
+  datasource:
+    hikari:
+      # 연결 대기 상한(#835), 단위 ms. 기본값 30초면 DB 장애 조치 동안 요청 스레드가 30초씩 묶여 Tomcat 스레드 200개가 다 찬다.
+      # 운영 정각 부하에서 요청 전체 최악값이 3,994ms라 연결 대기는 그 안에서 끝났으므로 5초로 둔다.
+      connection-timeout: 5000
+
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -51,7 +57,7 @@ server:
 
 management:
   server:
-    # 관리 포트는 호스트에 열지 않는다. 별도 웹 서버라 서비스 포트가 과부하여도 지표가 응답한다.
+    # 별도 웹 서버라 서비스 포트의 요청 스레드가 다 차도 지표와 ALB 헬스체크(liveness)가 응답한다.
     port: 8081
   endpoints:
     web:
@@ -64,7 +70,7 @@ management:
         add-additional-paths: true
       group:
         # 배포 스크립트가 쓰는 /readyz. 앱 상태와 함께 DB·Redis 연결까지 확인한다.
-        # ALB 헬스체크는 앱 생존만 보는 /livez를 쓴다. DB·Redis가 끊겨도 모든 서버가 함께 비정상이 되지 않게 한다.
+        # ALB 헬스체크는 관리 포트의 liveness로 앱 생존만 본다. DB·Redis가 끊겨도 모든 서버가 함께 비정상이 되지 않게 한다.
         readiness:
           include: readinessState,db,redis
         liveness:

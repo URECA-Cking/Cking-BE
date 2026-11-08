@@ -14,7 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** 공유 의존성이 끊겨도 ALB 헬스체크(/livez)는 정상이고 배포 확인(/readyz)만 비정상인지 검증한다. */
+/** 공유 의존성이 끊겨도 liveness(/livez)는 정상이고 배포 확인(/readyz)만 비정상인지 검증한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
 class HealthProbeSeparationTest {
