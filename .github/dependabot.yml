@@ -1,6 +1,8 @@
+# 버전 업데이트는 끈다(open-pull-requests-limit: 0). 다시 켤 때 이 줄들을 지운다.
 version: 2
 updates:
   - package-ecosystem: github-actions
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
@@ -20,6 +22,7 @@ updates:
       - rmsckd1640
 
   - package-ecosystem: docker
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
@@ -38,6 +41,7 @@ updates:
       - rmsckd1640
 
   - package-ecosystem: docker-compose
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
