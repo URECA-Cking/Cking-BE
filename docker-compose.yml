@@ -18,7 +18,8 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      # localhost는 소켓으로 붙어 초기화용 임시 서버에도 통과한다. TCP로 붙어야 진짜 서버가 뜬 뒤에만 통과한다.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
       interval: 5s
       retries: 10
 
