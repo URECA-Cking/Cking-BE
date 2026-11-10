@@ -12,7 +12,7 @@
   <p><a href="https://github.com/URECA-Cking/Cking-FE"><img alt="프론트엔드 저장소" src="https://img.shields.io/badge/FRONTEND-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a></p>
   <p><a href="https://github.com/URECA-Cking/Cking-Infra"><img alt="인프라 저장소" src="https://img.shields.io/badge/INFRASTRUCTURE-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a></p>
   <p><a href="https://youtu.be/WEKKLaadHcM"><img alt="서비스 시연 영상" src="https://img.shields.io/badge/DEMO-YouTube-D62D52?style=for-the-badge&logo=youtube&logoColor=white" /></a></p>
-  <p><sub>서비스는 종료되었습니다. 시연은 DEMO 영상에서 볼 수 있습니다.</sub></p>
+  <p>서비스는 종료되었습니다. 시연은 DEMO 영상에서 볼 수 있습니다.</p>
 </div>
 
 ---
@@ -63,7 +63,7 @@
 
 - **관측:** 서버마다 Alloy가 지표·로그를 Prometheus·Loki로 보내고, Grafana·CloudWatch 경보는 Slack과 AI 진단 Lambda로 전달됩니다.
 
-<sub>인프라 코드와 설계: [Cking-Infra](https://github.com/URECA-Cking/Cking-Infra)</sub>
+인프라 코드와 설계: [Cking-Infra](https://github.com/URECA-Cking/Cking-Infra)
 
 <br />
 
@@ -80,7 +80,7 @@
 | **Development / Quality** | ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=flat-square&logo=gradle&logoColor=white) ![Node.js 22](https://img.shields.io/badge/Node.js_22-339933?style=flat-square&logo=nodedotjs&logoColor=white) ![JUnit 6](https://img.shields.io/badge/JUnit_6-25A162?style=flat-square&logo=junit5&logoColor=white) ![Testcontainers](https://img.shields.io/badge/Testcontainers-1783CC?style=flat-square&logo=testcontainers&logoColor=white) ![k6](https://img.shields.io/badge/k6-7D64EE?style=flat-square&logo=k6&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-258A56?style=flat-square&logo=playwright&logoColor=white) |
 | **CI / CD** | ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) ![GHCR](https://img.shields.io/badge/GHCR-262E3A?style=flat-square&logo=github&logoColor=white) ![Dependabot](https://img.shields.io/badge/Dependabot-1F6FEB?style=flat-square&logo=dependabot&logoColor=white) |
 
-<sub>운영 데이터는 RDS MySQL과 ElastiCache(Valkey), 배포는 EC2·ALB/WAF·CloudFront 등을 사용합니다. Swagger UI, S3Mock, Docker Compose 및 Spring Actuator/Micrometer를 개발·운영에 활용합니다.</sub>
+운영 데이터는 RDS MySQL과 ElastiCache(Valkey), 배포는 EC2·ALB/WAF·CloudFront 등을 사용합니다. Swagger UI, S3Mock, Docker Compose 및 Spring Actuator/Micrometer를 개발·운영에 활용합니다.
 
 <br />
 
@@ -110,7 +110,7 @@
 - **Redis Lua 원자성:** Guard 확인, Redis 잔액 증가, EARN Stream 발행을 하나의 Lua 실행에 묶습니다. XADD가 실패하면 변경한 잔액과 예약 상태를 되돌립니다.
 - **DB 확정 및 재처리:** Consumer가 완료 이력·Ledger·잔액을 하나의 트랜잭션으로 저장하고 커밋 후 XACK합니다. 실패 메시지는 PEL 회수·재처리 및 Dead Stream으로 추적합니다.
 
-<sub>관련 문서: [Ticket](docs/domains/ticket/README.md) · [Mission](docs/domains/mission/README.md) · [Stream](docs/domains/stream/README.md)</sub>
+관련 문서: [Ticket](docs/domains/ticket/README.md) · [Mission](docs/domains/mission/README.md) · [Stream](docs/domains/stream/README.md)
 
 <br />
 
@@ -120,7 +120,7 @@
 - **안전한 재시도:** 동일한 `requestId`와 동일한 요청은 기존 결과로 처리해 추가 차감을 방지하고, 요청 내용이 달라지면 충돌로 거절합니다.
 - **비동기 이력 반영:** Consumer가 응모 내역·차감 Ledger·DB 잔액을 함께 확정하고, 마감 시에는 cutoff 이전에 승인된 응모의 반영 완료를 기다립니다.
 
-<sub>관련 문서: [Event](docs/domains/event/README.md) · [Ticket](docs/domains/ticket/README.md)</sub>
+관련 문서: [Event](docs/domains/event/README.md) · [Ticket](docs/domains/ticket/README.md)
 
 <br />
 
@@ -130,7 +130,7 @@
 - **재현 가능한 추첨:** 후보·상품을 고정한 Snapshot과 Seed를 저장합니다. 응모권 비례 가중 추첨에는 Fenwick Tree를 사용하며, 당첨자는 비복원 방식으로 선정합니다.
 - **무결성 및 공개:** Snapshot·Input·Result Hash로 입력과 결과를 검증하고, 결과 공개와 당첨 알림을 같은 트랜잭션으로 처리합니다. 재추첨은 기존 Snapshot과 새로운 Seed를 사용합니다.
 
-<sub>관련 문서: [Snapshot](docs/domains/snapshot/README.md) · [Drawing](docs/domains/drawing/README.md) · [Redraw](docs/domains/redraw/README.md)</sub>
+관련 문서: [Snapshot](docs/domains/snapshot/README.md) · [Drawing](docs/domains/drawing/README.md) · [Redraw](docs/domains/redraw/README.md)
 
 <br />
 
@@ -144,7 +144,7 @@
 | 데이터 정합성 | 음수 잔액·중복 차감·마감 후 신규 응모·Redis/DB 잔액 불일치 0건 |
 | 가중 추첨 비교 | 후보 9,500명·당첨자 950명·1인 응모권 100장(p50): 티켓 배열 770.14ms → Fenwick Tree 5.62ms |
 
-<sub>관련 문서: [부하 테스트 결과](https://github.com/URECA-Cking/Cking-Infra/blob/main/docs/loadtest.md) · [부하 테스트 가이드](docs/operations/loadtest.md) · [추첨 벤치마크](docs/domains/drawing/weighted-random-results.md)</sub>
+관련 문서: [부하 테스트 결과](https://github.com/URECA-Cking/Cking-Infra/blob/main/docs/loadtest.md) · [부하 테스트 가이드](docs/operations/loadtest.md) · [추첨 벤치마크](docs/domains/drawing/weighted-random-results.md)
 
 <br />
 
@@ -163,7 +163,7 @@
 | **Creator Space** | 프로필·도킹·게시물·댓글·일정·미션·이벤트를 크리에이터별 공간에서 통합 운영합니다. |
 | **비정상 행동 탐지** | Redis Lua 기반 최근 행동 집계로 반복 요청·잔액 부족·빠른 적립 후 사용 등 패턴을 탐지하고, MySQL Evidence와 관리자 검토 이력을 관리합니다. |
 
-<sub>관련 문서: [추천](docs/domains/creator/similarity-recommendation.md) · [댓글](docs/domains/post/README.md) · [구독 인증](docs/domains/subscription-verification/README.md) · [AI Quiz](docs/domains/quiz/README.md) · [이상 탐지](docs/domains/abuse-detection/README.md)</sub>
+관련 문서: [추천](docs/domains/creator/similarity-recommendation.md) · [댓글](docs/domains/post/README.md) · [구독 인증](docs/domains/subscription-verification/README.md) · [AI Quiz](docs/domains/quiz/README.md) · [이상 탐지](docs/domains/abuse-detection/README.md)
 
 <br />
 
