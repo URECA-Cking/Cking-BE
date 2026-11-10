@@ -8,10 +8,11 @@
 
   <br />
 
-  <p><a href="https://cking.co.kr"><img alt="서비스 바로가기" src="https://img.shields.io/badge/LIVE_SERVICE-cking.co.kr-E84383?style=for-the-badge&logo=googlechrome&logoColor=white" /></a></p>
+  <p><a href="https://cking.co.kr"><img alt="서비스 종료" src="https://img.shields.io/badge/SERVICE_ENDED-cking.co.kr-6B7280?style=for-the-badge&logo=googlechrome&logoColor=white" /></a></p>
   <p><a href="https://github.com/URECA-Cking/Cking-FE"><img alt="프론트엔드 저장소" src="https://img.shields.io/badge/FRONTEND-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a></p>
   <p><a href="https://github.com/URECA-Cking/Cking-Infra"><img alt="인프라 저장소" src="https://img.shields.io/badge/INFRASTRUCTURE-Repository-282C3B?style=for-the-badge&logo=github&logoColor=white" /></a></p>
   <p><a href="https://youtu.be/WEKKLaadHcM"><img alt="서비스 시연 영상" src="https://img.shields.io/badge/DEMO-YouTube-D62D52?style=for-the-badge&logo=youtube&logoColor=white" /></a></p>
+  <p><sub>서비스는 종료되었습니다. 시연은 DEMO 영상에서 볼 수 있습니다.</sub></p>
 </div>
 
 ---
@@ -57,10 +58,12 @@
   <img src="./docs/assets/readme/infrastructure-architecture.png" alt="CKing AWS 인프라 아키텍처" width="1000" />
 </p>
 
-- **서비스 운영:** AWS ALB/WAF 및 다중 애플리케이션 인스턴스, RDS MySQL, ElastiCache(Valkey)를 활용합니다.
-- **배포:** GitHub Actions 기반 CI/CD와 컨테이너 이미지 관리, S3·CloudFront 기반 프론트엔드 배포를 구성했습니다.
+- **서비스 운영:** ALB·WAF 뒤에 두 가용 영역의 앱 서버(Auto Scaling 2\~4대)를 두고, RDS MySQL은 다른 가용 영역에 대기 DB(다중 AZ)를, ElastiCache(Valkey)는 복제 노드를 둡니다.
+- **배포:** GitHub Actions가 앱 이미지를 GHCR에 올리고 앱 서버를 교체하며, 프론트엔드는 S3·CloudFront로 배포합니다.
 
-- **관측:** Prometheus·Grafana·Loki·CloudWatch 기반 지표·로그 수집과 알림을 연계했습니다.
+- **관측:** 서버마다 Alloy가 지표·로그를 Prometheus·Loki로 보내고, Grafana·CloudWatch 경보는 Slack과 AI 진단 Lambda로 전달됩니다.
+
+<sub>인프라 코드와 설계: [Cking-Infra](https://github.com/URECA-Cking/Cking-Infra)</sub>
 
 <br />
 
@@ -72,9 +75,9 @@
 | **Backend** | ![Java 21](https://img.shields.io/badge/Java_21-27354A?style=flat-square&logo=openjdk&logoColor=white) ![Spring Boot 4.1.1](https://img.shields.io/badge/Spring_Boot_4.1.1-6DB33F?style=flat-square&logo=springboot&logoColor=white) ![Spring Security](https://img.shields.io/badge/Spring_Security-438A28?style=flat-square&logo=springsecurity&logoColor=white) ![Spring Data JPA](https://img.shields.io/badge/Spring_Data_JPA-315D32?style=flat-square&logo=spring&logoColor=white) ![OAuth2](https://img.shields.io/badge/OAuth2-49576C?style=flat-square&logoColor=white) ![JWT](https://img.shields.io/badge/JWT-405A79?style=flat-square&logo=jsonwebtokens&logoColor=white) |
 | **Data / Messaging** | ![MySQL 8.4](https://img.shields.io/badge/MySQL_8.4-4479A1?style=flat-square&logo=mysql&logoColor=white) ![Redis 7.2](https://img.shields.io/badge/Redis_7.2-DC382D?style=flat-square&logo=redis&logoColor=white) ![Redis Lua](https://img.shields.io/badge/Redis_Lua-B91C46?style=flat-square&logo=redis&logoColor=white) ![Redis Streams](https://img.shields.io/badge/Redis_Streams-BA3040?style=flat-square&logo=redis&logoColor=white) ![Flyway](https://img.shields.io/badge/Flyway-CC0200?style=flat-square&logo=flyway&logoColor=white) |
 | **AI / Recommendation** | ![Google Gemini](https://img.shields.io/badge/Google_Gemini-7061AD?style=flat-square&logo=googlegemini&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-232F36?style=flat-square&logo=openai&logoColor=white) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![BGE-M3](https://img.shields.io/badge/BGE-M3-A2519C?style=flat-square&logoColor=white) |
-| **Infrastructure** | ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonaws&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat-square&logo=terraform&logoColor=white) ![S3](https://img.shields.io/badge/S3-B8523E?style=flat-square&logo=amazons3&logoColor=white) ![CloudFront](https://img.shields.io/badge/CloudFront-D87723?style=flat-square&logo=amazonaws&logoColor=white) |
-| **Monitoring** | ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white) ![Loki](https://img.shields.io/badge/Loki-49576C?style=flat-square&logo=grafana&logoColor=white) ![CloudWatch](https://img.shields.io/badge/CloudWatch-BF3F6E?style=flat-square&logo=amazoncloudwatch&logoColor=white) |
-| **Development / Quality** | ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=flat-square&logo=gradle&logoColor=white) ![Node.js 22](https://img.shields.io/badge/Node.js_22-339933?style=flat-square&logo=nodedotjs&logoColor=white) ![JUnit 5](https://img.shields.io/badge/JUnit_5-25A162?style=flat-square&logo=junit5&logoColor=white) ![Testcontainers](https://img.shields.io/badge/Testcontainers-1783CC?style=flat-square&logo=testcontainers&logoColor=white) ![k6](https://img.shields.io/badge/k6-7D64EE?style=flat-square&logo=k6&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-258A56?style=flat-square&logo=playwright&logoColor=white) |
+| **Infrastructure** | ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonaws&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat-square&logo=terraform&logoColor=white) ![Amazon SQS](https://img.shields.io/badge/Amazon_SQS-FF4F8B?style=flat-square&logo=amazonsqs&logoColor=white) ![AWS Lambda](https://img.shields.io/badge/AWS_Lambda-FF9900?style=flat-square&logo=awslambda&logoColor=white) ![S3](https://img.shields.io/badge/S3-B8523E?style=flat-square&logo=amazons3&logoColor=white) ![CloudFront](https://img.shields.io/badge/CloudFront-D87723?style=flat-square&logo=amazonaws&logoColor=white) |
+| **Monitoring** | ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white) ![Loki](https://img.shields.io/badge/Loki-49576C?style=flat-square&logo=grafana&logoColor=white) ![Grafana Alloy](https://img.shields.io/badge/Grafana_Alloy-F46800?style=flat-square&logo=grafana&logoColor=white) ![CloudWatch](https://img.shields.io/badge/CloudWatch-BF3F6E?style=flat-square&logo=amazoncloudwatch&logoColor=white) |
+| **Development / Quality** | ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=flat-square&logo=gradle&logoColor=white) ![Node.js 22](https://img.shields.io/badge/Node.js_22-339933?style=flat-square&logo=nodedotjs&logoColor=white) ![JUnit 6](https://img.shields.io/badge/JUnit_6-25A162?style=flat-square&logo=junit5&logoColor=white) ![Testcontainers](https://img.shields.io/badge/Testcontainers-1783CC?style=flat-square&logo=testcontainers&logoColor=white) ![k6](https://img.shields.io/badge/k6-7D64EE?style=flat-square&logo=k6&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-258A56?style=flat-square&logo=playwright&logoColor=white) |
 | **CI / CD** | ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) ![GHCR](https://img.shields.io/badge/GHCR-262E3A?style=flat-square&logo=github&logoColor=white) ![Dependabot](https://img.shields.io/badge/Dependabot-1F6FEB?style=flat-square&logo=dependabot&logoColor=white) |
 
 <sub>운영 데이터는 RDS MySQL과 ElastiCache(Valkey), 배포는 EC2·ALB/WAF·CloudFront 등을 사용합니다. Swagger UI, S3Mock, Docker Compose 및 Spring Actuator/Micrometer를 개발·운영에 활용합니다.</sub>
@@ -129,18 +132,19 @@
 
 <sub>관련 문서: [Snapshot](docs/domains/snapshot/README.md) · [Drawing](docs/domains/drawing/README.md) · [Redraw](docs/domains/redraw/README.md)</sub>
 
+<br />
+
 ### 핵심 기능 검증 결과
 
-| 항목 | 발표 당시 측정 결과 |
-|:---:|:---:|
-| 응모 부하 조건 | 동시 요청자 50명 |
-| 처리량 | 최대 578 TPS |
-| 응답 지연 | p95 23ms |
-| 오류율 | 0.0% |
+| 항목 | 측정 결과 |
+|:---:|:---|
+| 부하 테스트 환경 | 운영 환경, 크리에이터 5명·회원 10,000명 |
+| 응모 API 접수 | 앱 서버 t4g.small 2대에서 초당 578건까지 p95 44ms 이하, 실패 0(DB 반영 한계 초당 약 300\~325건) |
+| 목표 부하(초당 80건) 지속 | p95 23.03ms(c6g.large 2대, 복제 확인 포함) |
 | 데이터 정합성 | 음수 잔액·중복 차감·마감 후 신규 응모·Redis/DB 잔액 불일치 0건 |
-| 가중 추첨 비교 | 후보 10,000명·당첨자 950명 조건: 티켓 배열 770.14ms → Fenwick Tree 5.62ms |
+| 가중 추첨 비교 | 후보 9,500명·당첨자 950명·1인 응모권 100장(p50): 티켓 배열 770.14ms → Fenwick Tree 5.62ms |
 
-<sub>관련 문서: [부하 테스트 가이드](docs/operations/loadtest.md) · [추첨 벤치마크](docs/domains/drawing/weighted-random-benchmark.md)</sub>
+<sub>관련 문서: [부하 테스트 결과](https://github.com/URECA-Cking/Cking-Infra/blob/main/docs/loadtest.md) · [부하 테스트 가이드](docs/operations/loadtest.md) · [추첨 벤치마크](docs/domains/drawing/weighted-random-results.md)</sub>
 
 <br />
 
@@ -182,7 +186,7 @@ CKing-BE/
 │   ├── notification/           # 알림
 │   ├── post/                   # 게시물 · 댓글
 │   ├── quiz/                   # AI Quiz 생성 · 평가 · 응시
-│   ├── recommendation/         # 추천 조회 로직
+│   ├── recommendation/         # 추천 후보 공개 자격 검사
 │   ├── redraw/                 # 재추첨 요청 · 실행
 │   ├── sanction/               # 댓글 제재
 │   ├── snapshot/               # 공식 추첨 후보 확정
@@ -205,170 +209,9 @@ CKing-BE/
 
 <br />
 
-## 도메인별 API 명세
+## API 명세
 
-도메인별 대표 엔드포인트를 확인할 수 있습니다. 전체 목록과 요청·응답·오류 코드는 [API 인덱스](docs/api-index.md) 및 각 상세 문서를 참고하세요.
-
-<details>
-<summary><strong>Auth</strong> — 로그인 · 토큰</summary>
-<p><code>POST /api/auth/token</code> · Login Code → Access JWT<br /><code>POST /api/auth/refresh</code> · Refresh Token 갱신<br /><code>POST /api/auth/logout</code> · 로그아웃</p>
-<p><a href="docs/domains/auth/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Member</strong> — 회원 · 프로필</summary>
-<p><code>GET /api/me</code> · 내 회원 정보<br /><code>PUT /api/me/profile</code> · 프로필 변경</p>
-<p><a href="docs/domains/member/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Creator 신청</strong> — 신청 · 심사 · 보완</summary>
-<p><code>POST /api/creator/applications</code> · 전환 신청<br /><code>POST /api/creator/applications/{id}/resubmit</code> · 보완 재제출<br /><code>POST /api/admin/creator-applications/{id}/request-revision</code> · 관리자 보완 요청</p>
-<p><a href="docs/domains/creator/application-review-api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Creator 자격</strong> — 정지 · 해제 · 박탈</summary>
-<p><code>GET /api/creator/me/status</code> · 현재 자격 조회<br /><code>POST /api/admin/creators/{creatorId}/suspend</code> · 자격 정지<br /><code>POST /api/admin/creators/{creatorId}/reactivate</code> · 정지 해제<br /><code>POST /api/admin/creators/{creatorId}/revoke</code> · 자격 박탈</p>
-<p><a href="docs/domains/creator/status-api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Creator Space</strong> — 공개 공간 · 관리</summary>
-<p><code>GET /api/creators/{creatorId}/space</code> · Space 조회<br /><code>PATCH /api/creator/space</code> · 내 Space 수정</p>
-<p><a href="docs/domains/creator/space-api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Follow</strong> — 도킹 · 팔로우</summary>
-<p><code>PUT /api/creators/{creatorId}/follow</code> · 도킹<br /><code>GET /api/me/follows</code> · 내 도킹 목록</p>
-<p><a href="docs/domains/follow/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Interest · Recommendation</strong> — 관심 분야 · 개인화 추천</summary>
-<p><code>GET /api/interests</code> · 관심 분야 목록<br /><code>GET /api/me/creator-recommendations</code> · 개인화 Creator 추천<br /><code>GET /api/creators/{creatorId}/similar</code> · 유사 Creator 추천</p>
-<p><a href="docs/domains/creator/similarity-recommendation.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Post · Comment</strong> — 콘텐츠 · 댓글 · 필터</summary>
-<p><code>POST /api/creator/posts</code> · 게시물 작성<br /><code>POST /api/creators/{creatorId}/posts/{postId}/comments</code> · 댓글 작성<br /><code>GET /api/admin/filtered-comments</code> · 필터 차단 댓글 조회</p>
-<p><a href="docs/domains/post/comment-api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Calendar</strong> — Creator · 개인 일정</summary>
-<p><code>POST /api/creator/calendar/schedules</code> · Creator 일정 등록<br /><code>GET /api/me/calendar/schedules</code> · 내 캘린더 조회</p>
-<p><a href="docs/domains/calendar/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Mission</strong> — 미션 · 웰컴 퀘스트</summary>
-<p><code>GET /api/missions</code> · 공용 미션 목록<br /><code>POST /api/missions/{missionId}/complete</code> · 공용 미션 완료<br /><code>POST /api/creators/{creatorId}/missions/{missionId}/complete</code> · Creator 미션 완료</p>
-<p><a href="docs/domains/mission/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Ticket</strong> — 응모권 · 이력 · 보정</summary>
-<p><code>GET /api/me/tickets</code> · 내 응모권 요약<br /><code>GET /api/creators/{creatorId}/tickets/history</code> · 전용 원장 조회<br /><code>POST /api/admin/tickets/resync</code> · 관리자 잔액 보정</p>
-<p><a href="docs/domains/ticket/README.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Event · Entry</strong> — 이벤트 · 응모</summary>
-<p><code>GET /api/events</code> · 이벤트 목록<br /><code>POST /api/creator/events</code> · 이벤트 개설<br /><code>POST /api/events/{eventId}/entries</code> · 이벤트 응모<br /><code>GET /api/events/{eventId}/entries/me</code> · 내 응모 내역</p>
-<p><a href="docs/domains/event/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Event 승인</strong> — 관리자 이벤트 심사</summary>
-<p><code>GET /api/admin/events/pending</code> · 승인 대기 목록<br /><code>POST /api/admin/events/{eventId}/approve</code> · 이벤트 승인</p>
-<p><a href="docs/domains/event/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Close · Snapshot</strong> — 마감 · 공식 입력 확정</summary>
-<p><code>POST /api/events/{eventId}/close</code> · 마감 요청<br /><code>GET /api/admin/events/{eventId}/closing-status</code> · 마감 상태 조회<br /><code>GET /api/admin/events/{eventId}/snapshot</code> · Snapshot 조회</p>
-<p><a href="docs/domains/snapshot/README.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Drawing · Redraw</strong> — 추첨 · 결과 검증 · 재추첨</summary>
-<p><code>POST /api/admin/events/{eventId}/drawings</code> · 최초 추첨<br /><code>POST /api/admin/drawings/{drawingId}/verify</code> · 추첨 재현 검증<br /><code>POST /api/admin/events/{eventId}/redraw-requests</code> · 재추첨 요청</p>
-<p><a href="docs/domains/drawing/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Winner</strong> — 당첨 · 수령 관리</summary>
-<p><code>GET /api/events/{eventId}/winners</code> · 이벤트 당첨 결과<br /><code>GET /api/me/winners</code> · 내 당첨 결과<br /><code>POST /api/me/winners/{winnerId}/decline</code> · 당첨 포기</p>
-<p><a href="docs/domains/winner/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>YouTube Subscription Verification</strong> — 채널 소유권 · 구독 인증</summary>
-<p><code>POST /api/creator/youtube-channel/connections</code> · 채널 인증 시작<br /><code>POST /api/creators/{creatorId}/missions/{missionId}/subscription-verifications</code> · 구독 인증 제출<br /><code>GET /api/subscription-verifications/{verificationId}</code> · 검증 결과 조회</p>
-<p><a href="docs/domains/subscription-verification/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>AI Quiz</strong> — 생성 · 승인 · 공개</summary>
-<p><code>POST /api/creator/quizzes/generations</code> · AI Quiz 생성<br /><code>POST /api/creator/quizzes/{quizId}/publish</code> · Quiz 게시<br /><code>GET /api/creators/{creatorId}/quizzes/{quizId}</code> · 공개 Quiz 조회</p>
-<p><a href="docs/domains/quiz/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Notification</strong> — 알림 조회 · 읽음</summary>
-<p><code>GET /api/me/notifications</code> · 내 알림 목록<br /><code>PATCH /api/me/notifications/{notificationId}/read</code> · 알림 읽음</p>
-<p><a href="docs/domains/notification/README.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Sanction</strong> — 댓글 제재 · 차단 관리</summary>
-<p><code>POST /api/admin/sanctions</code> · 댓글 제재<br /><code>GET /api/admin/comment-blocks</code> · 스페이스 차단 목록</p>
-<p><a href="docs/domains/sanction/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Abuse Detection</strong> — 비정상 행동 · 관리자 검토</summary>
-<p><code>GET /api/admin/abuse-detections</code> · 탐지 목록<br /><code>PATCH /api/admin/abuse-detections/{detectionId}/review</code> · 관리자 검토</p>
-<p><a href="docs/domains/abuse-detection/api.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Image Upload</strong> — 사전 서명 · 업로드 결과</summary>
-<p><code>POST /api/uploads</code> · 업로드 예약<br /><code>GET /api/uploads/{uploadId}</code> · 업로드 상태</p>
-<p><a href="docs/common/image-upload-pipeline.md">상세 API 문서</a></p>
-</details>
-<details>
-<summary><strong>Stream</strong> — Dead Stream 관리</summary>
-<p><code>GET /api/admin/dead-streams</code> · Dead Stream 목록<br /><code>POST /api/admin/dead-streams/{id}/replay</code> · 수동 재처리</p>
-<p><a href="docs/domains/stream/api.md">상세 API 문서</a></p>
-</details>
-
-<br />
-
-## 베타 테스트 및 트러블슈팅
-
-<details>
-<summary><strong>베타 테스트 결과 및 피드백</strong></summary>
-
-2026년 베타 테스트 발표 자료 기준 주요 지표입니다.
-
-| 항목 | 결과 |
-|---|---:|
-| 고유 사용자 | 116명 |
-| 세션 | 205회 |
-| 모바일 세션 비율 | 85% |
-| 세션당 페이지 수 | 11.82 |
-| LCP | 1.32초 |
-| INP | 192ms |
-| CLS | 0.05 |
-| JavaScript 오류 | 201세션 중 1세션 |
-
-- **로그인 보안 피드백:** 로그인 코드 발급 브라우저와 교환 브라우저를 바인딩하지 않았던 문제를 전용 쿠키와 Lua 검증으로 개선했습니다.
-- **캘린더 UX 피드백:** 날짜만 있는 일정을 표현할 수 있도록 종일 일정 입력·표시를 추가했습니다.
-
-</details>
-<details>
-<summary><strong>트러블슈팅 01 — 조기 마감 이벤트가 다시 응모를 받던 문제</strong></summary>
-
-- **문제:** 조기 마감 직후 Redis 접수 상태 키가 유실되면, 복원 작업이 DB의 이전 `OPEN` 상태를 읽어 이벤트 접수를 다시 열 수 있었습니다.
-- **원인:** Redis Gate 차단과 DB의 `CLOSING` 반영 사이의 시간차 및 키 복원의 비원자적 확인·적재가 경합했습니다.
-
-- **해결:** 복원 검증·적재를 Lua 원자 처리로 변경하고 cutoff 존재 여부로 마감 중인 이벤트의 재개방을 방지했습니다. cutoff 유실 시에도 마감 상태를 재확인해 차단합니다.
-- **검증:** 마감·복원 경합을 통합 테스트 4건으로 재현하고, cutoff가 유지된 상황에서 재개방되지 않음을 확인했습니다.
-
-</details>
-<details>
-<summary><strong>트러블슈팅 02 — 매 정각 응모 응답이 지연되던 문제</strong></summary>
-
-- **문제:** 정각마다 응모 응답이 최대 1.5~3초 지연되고, 1초 내 DB 반영률은 91.9%에 머물렀습니다.
-- **원인:** 버스터블 애플리케이션 인스턴스에서 정각 CPU steal(빼앗긴 CPU 시간)이 최대 79%로 관찰되었습니다.
-
-- **해결:** 서버를 `c6g.large`로 변경하고 1초 단위 지표로 재측정하여 서버 종류의 영향을 분리했습니다.
-- **결과:** CPU steal 79% → 0%, 정각 응답 지연 1.5~3초 → 0.25~1초, 1초 내 DB 반영률 91.9% → 99.78%로 개선되었습니다.
-
-</details>
+전체 API 목록은 [API 인덱스](docs/api-index.md), 공통 응답·오류 규약은 [공통 API 규약](docs/common/api.md)에서 확인할 수 있습니다.
 
 <br />
 
@@ -413,16 +256,15 @@ $env:JWT_SECRET='...'
 | 기능 | 주요 환경변수 |
 |---|---|
 | Google·Kakao 로그인 | `SPRING_PROFILES_ACTIVE=local,oauth`, `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET`, `OAUTH_KAKAO_CLIENT_ID`, `OAUTH_KAKAO_CLIENT_SECRET` |
-| YouTube 채널 연결 | `OAUTH_YOUTUBE_CLIENT_ID`, `OAUTH_YOUTUBE_CLIENT_SECRET`, `OAUTH_YOUTUBE_API_KEY` |
-| AI 퀴즈 생성 | `GEMINI_API_KEY` |
+| YouTube 채널 연결 | Google·Kakao 로그인 설정(`oauth` 프로필)에 더해 `OAUTH_YOUTUBE_CLIENT_ID`, `OAUTH_YOUTUBE_CLIENT_SECRET`, `OAUTH_YOUTUBE_API_KEY` |
+| AI 퀴즈 생성 | `QUIZ_GENERATION_ENABLED=true`, `GEMINI_API_KEY` |
 | 구독 인증 제출 | `SUBSCRIPTION_VERIFICATION_SUBMISSION_ENABLED=true`, `SUBSCRIPTION_GEMINI_API_KEY` |
 
-`GEMINI_API_KEY` 없이도 서버는 시작할 수 있지만, AI 퀴즈 생성 호출은 Provider 오류가 발생합니다. 모델·타임아웃·재시도 설정은 [AI Quiz](docs/domains/quiz/README.md)와 [구독 인증](docs/domains/subscription-verification/README.md) 문서를 참고하세요.
+`QUIZ_GENERATION_ENABLED`가 꺼져 있으면(기본값) 퀴즈 생성 요청은 503으로 거절되고, 켠 상태에서 `GEMINI_API_KEY`가 없으면 Provider 오류가 발생합니다. 모델·타임아웃·재시도 설정은 [AI Quiz](docs/domains/quiz/README.md)와 [구독 인증](docs/domains/subscription-verification/README.md) 문서를 참고하세요.
 
 ### 4. API 확인 및 테스트
 
 - 로컬 Swagger UI: <http://localhost:8080/swagger-ui/index.html>
-- 개발 Swagger UI: <https://dev-api.cking.co.kr/swagger-ui/index.html>
 
 ```bash
 ./gradlew test          # macOS / Linux
@@ -452,11 +294,11 @@ docker compose down -v    # 로컬 DB·S3Mock 볼륨까지 삭제
 
 | 이름 | 담당 영역 | 핵심 기여 |
 |:---:|---|---|
-| 권혁준 (팀장) | | |
-| 김태연 | | |
-| 이성집 | | |
-| 장근창 | | |
-| 정문구 | | |
-| 정윤희 | | |
-| 정자비 | | |
-| 조성원 | | |
+| 권혁준 (팀장) | 인증·인가, 운영 백오피스, 이상 행동 탐지, AI 구독 인증 미션 | OAuth2/JWT 인증과 Creator·Event 심사·운영 기능, Redis Lua 기반 이상 행동 탐지와 구독 인증 VLM 벤치마크 |
+| 김태연 | 미션 도메인, AI 퀴즈 미션, 리워드 시스템 | Gemini Grounding·GPT Judge 기반 퀴즈 생성·품질 평가 파이프라인, 퀴즈 수정·게시·응시·채점과 Redis 응모권 보상 연동 |
+| 이성집 | 이벤트 응모 프로세스, 데이터 정합성, AI 맞춤형 추천 | Redis Streams 기반 응모권 영속화와 Gate·Cutoff·Drain 마감 처리, 잔액 정합성 복구와 임베딩 기반 크리에이터 추천 API |
+| 장근창 | 인프라·배포, 관측·장애 대응, 이미지 업로드 파이프라인, 응모 경로 안정화 | AWS 인프라 구축(Terraform)과 배포 자동화, 관측·경보·장애 대응 체계와 부하·장애 주입 검증, S3·SQS·Lambda 이미지 처리 파이프라인, 응모 Redis·Stream 결함 수정과 처리량 개선 |
+| 정문구 | 미션 도메인, 공용 리워드, 크리에이터 스페이스 | 출석·좋아요 미션 검증과 Redis Lua·Stream 기반 공용 응모권 발급, Creator 일정·개인 캘린더 API와 소유권·시간대 검증 |
+| 정윤희 | 이벤트 마감·추첨·당첨 운영 시스템, 인증·인가, 이상 행동 탐지, AI 구독 인증 미션 | OAuth2/JWT 인증과 Snapshot·재현 검증·재추첨·당첨 결과 공개 흐름, Redis Lua 기반 이상 행동 탐지와 Gemini VLM 구독 인증·보상 |
+| 정자비 | 응모권 적립 시스템, AI 댓글 필터링, 콘텐츠 모더레이션 | Redis Lua 기반 응모권 적립·차감 원자 처리와 멱등성·중복 방지, Creator Space·커뮤니티·신고·제재 기능과 AI 댓글 필터링·비동기 판정 연동 |
+| 조성원 | 추첨 알고리즘, AI 맞춤형 추천, 데이터 파이프라인 | Seed 기반 가중 추첨 엔진과 재현성·성능 검증·실패 복구, AI 크리에이터 추천·콘텐츠 태깅과 배치 자동화·API 연동 |
