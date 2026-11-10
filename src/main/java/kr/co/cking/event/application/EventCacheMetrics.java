@@ -14,6 +14,7 @@ public class EventCacheMetrics {
     private final Counter misses;
     private final Timer singleFlightLoads;
     private final Timer inTransactionLoads;
+    private final Timer refreshLoads;
     private final Timer loadWaits;
 
     public EventCacheMetrics(MeterRegistry registry) {
@@ -21,6 +22,7 @@ public class EventCacheMetrics {
         this.misses = lookup(registry, "miss");
         this.singleFlightLoads = load(registry, "single_flight");
         this.inTransactionLoads = load(registry, "in_transaction");
+        this.refreshLoads = load(registry, "refresh");
         this.loadWaits = Timer.builder("cking.event.cache.load.wait")
                 .description("다른 요청이 진행 중인 이벤트 캐시 적재를 기다린 시간")
                 .register(registry);
@@ -46,6 +48,10 @@ public class EventCacheMetrics {
         return inTransactionLoads.record(load);
     }
 
+    <T> T refreshLoad(Supplier<T> load) {
+        return refreshLoads.record(load);
+    }
+
     <T> T loadWait(Supplier<T> wait) {
         return loadWaits.record(wait);
     }
@@ -59,7 +65,7 @@ public class EventCacheMetrics {
 
     private static Timer load(MeterRegistry registry, String mode) {
         return Timer.builder("cking.event.cache.load")
-                .description("이벤트 상세 캐시가 비어 DB를 읽은 시간")
+                .description("이벤트 상세 캐시를 DB에서 읽어 채운 시간")
                 .tag("mode", mode)
                 .register(registry);
     }

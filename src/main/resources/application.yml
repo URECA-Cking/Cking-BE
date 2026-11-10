@@ -100,6 +100,17 @@ cking:
       replicas: 1
       timeout-ms: ${ENTRY_REPLICATION_WAIT_TIMEOUT_MS:0}
   event:
+    cache:
+      refresh-ahead:
+        # 이벤트 상세 캐시(수명 최대 5초)를 만료 전에 요청 밖에서 다시 읽는다. 적중이 있는 동안 서버마다 이벤트당
+        # 이전 적재가 끝나고 after 뒤 한 번(SQL 7개)이라, DB 적재는 서버·이벤트마다 초당 최대 약 2회다.
+        # 적재가 after를 빼고 남는 4.5초 안에 끝나면 만료되지 않는다. 운영 정각 요청 최악값 3,994ms보다 길다.
+        enabled: true
+        after: 500ms
+        # 미리 갱신이 쥘 수 있는 DB 연결을 Hikari 풀 10개 중 2개로 묶는다. 대기열은 평상시 적재 중앙값 약 4ms에서
+        # 두 스레드가 약 0.15초 안에 비우는 길이다. 넘치면 버리고(cking.event.cache.refresh.rejected) after 뒤 다시 맡는다.
+        pool-size: 2
+        queue-capacity: 64
     approval-request:
       # 운영 정책. 개발 환경은 application-dev.yml에서만 명시적으로 완화한다.
       minimum-lead-time: PT48H

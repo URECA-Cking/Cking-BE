@@ -54,6 +54,7 @@ public class EventQueryService {
     private final MemberRepository memberRepository;
     private final EventCacheLoader eventCacheLoader;
     private final EventCacheMetrics eventCacheMetrics;
+    private final EventCacheRefresher eventCacheRefresher;
     private final ConcurrentMap<Long, CompletableFuture<CachedEvent>> cachedEventLoads = new ConcurrentHashMap<>();
 
     /**
@@ -149,6 +150,7 @@ public class EventQueryService {
         Optional<CachedEvent> cached = eventCache.find(eventId);
         if (cached.isPresent()) {
             eventCacheMetrics.hit();
+            refreshIfDue(cached.get());
             return cached.get();
         }
         eventCacheMetrics.miss();
@@ -162,7 +164,9 @@ public class EventQueryService {
      */
     private CachedEvent load(Long eventId) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            return eventCacheMetrics.inTransactionLoad(() -> eventCacheLoader.load(eventId));
+            CachedEvent loaded = eventCacheMetrics.inTransactionLoad(() -> eventCacheLoader.load(eventId));
+            eventCacheRefresher.loaded(eventId);
+            return loaded;
         }
         return loadOnce(eventId);
     }
@@ -175,11 +179,44 @@ public class EventQueryService {
         }
         try {
             CachedEvent loaded = eventCacheMetrics.singleFlightLoad(() -> eventCacheLoader.load(eventId));
+            eventCacheRefresher.loaded(eventId);
             load.complete(loaded);
             return loaded;
         } catch (RuntimeException | Error exception) {
             load.completeExceptionally(exception);
             throw exception;
+        } finally {
+            cachedEventLoads.remove(eventId, load);
+        }
+    }
+
+    private void refreshIfDue(CachedEvent cached) {
+        Long eventId = cached.eventId();
+        if (!clock.instant().isBefore(cached.endAt()) || !eventCacheRefresher.claim(eventId)) {
+            return;
+        }
+        eventCacheRefresher.submit(() -> refresh(eventId));
+    }
+
+    private void refresh(Long eventId) {
+        CompletableFuture<CachedEvent> load = new CompletableFuture<>();
+        if (cachedEventLoads.putIfAbsent(eventId, load) != null) {
+            return;
+        }
+        try {
+            load.complete(eventCacheMetrics.refreshLoad(() -> eventCacheLoader.load(eventId)));
+            eventCacheRefresher.loaded(eventId);
+        } catch (RuntimeException exception) {
+            eventCacheRefresher.failed();
+            if (exception instanceof BusinessException business
+                    && business.getErrorCode() == EventErrorCode.EVENT_NOT_FOUND) {
+                eventCache.evict(eventId);
+            }
+            load.completeExceptionally(exception);
+        } catch (Error error) {
+            eventCacheRefresher.failed();
+            load.completeExceptionally(error);
+            throw error;
         } finally {
             cachedEventLoads.remove(eventId, load);
         }

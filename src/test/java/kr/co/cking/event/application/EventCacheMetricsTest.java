@@ -39,7 +39,7 @@ class EventCacheMetricsTest {
             eventRepository, Clock.fixed(Instant.parse("2026-09-15T00:00:00Z"), ZoneOffset.UTC),
             mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class), eventCache,
             mock(EventListCache.class), mock(EventCountsCache.class), mock(MemberRepository.class),
-            new EventCacheLoader(eventRepository, creatorQueryService, eventCache), new EventCacheMetrics(registry));
+            new EventCacheLoader(eventRepository, creatorQueryService, eventCache), new EventCacheMetrics(registry), EventCacheRefresher.disabled());
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
 
     private final Event event = Event.builder()
