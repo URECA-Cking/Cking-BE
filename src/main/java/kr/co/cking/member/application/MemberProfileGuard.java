@@ -15,6 +15,9 @@ import kr.co.cking.member.repository.MemberRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 공개 활동을 생성하는 도메인이 재사용하는 닉네임 설정 선행 검증이다. */
 @Component
@@ -26,15 +29,18 @@ public class MemberProfileGuard {
     // 상한을 넘어 밀려난 회원만 다음 요청에서 DB로 다시 검사한다.
     private final Cache<Long, Boolean> configuredMembers;
     private final Timer databaseChecks;
+    private final TransactionOperations readOnlyTransaction;
 
     @Autowired
     public MemberProfileGuard(
             MemberRepository memberRepository,
             CreatorQueryService creatorQueryService,
             MeterRegistry meterRegistry,
+            PlatformTransactionManager transactionManager,
             @Value("${cking.member.profile-guard.max-size:100000}") long maxSize
     ) {
-        this(memberRepository, creatorQueryService, meterRegistry, maxSize, ForkJoinPool.commonPool());
+        this(memberRepository, creatorQueryService, meterRegistry, maxSize, ForkJoinPool.commonPool(),
+                readOnly(transactionManager));
     }
 
     MemberProfileGuard(
@@ -42,10 +48,12 @@ public class MemberProfileGuard {
             CreatorQueryService creatorQueryService,
             MeterRegistry meterRegistry,
             long maxSize,
-            Executor maintenanceExecutor
+            Executor maintenanceExecutor,
+            TransactionOperations readOnlyTransaction
     ) {
         this.memberRepository = memberRepository;
         this.creatorQueryService = creatorQueryService;
+        this.readOnlyTransaction = readOnlyTransaction;
         this.configuredMembers = Caffeine.newBuilder()
                 .maximumSize(maxSize)
                 .executor(maintenanceExecutor)
@@ -61,7 +69,7 @@ public class MemberProfileGuard {
         if (configuredMembers.getIfPresent(memberId) != null) {
             return;
         }
-        databaseChecks.record(() -> checkConfigured(memberId));
+        databaseChecks.record(() -> readOnlyTransaction.executeWithoutResult(status -> checkConfigured(memberId)));
         configuredMembers.put(memberId, Boolean.TRUE);
     }
 
@@ -71,5 +79,11 @@ public class MemberProfileGuard {
         if (!creatorQueryService.requireActivityNameConfiguredForCreator(memberId)) {
             member.requireProfileConfigured();
         }
+    }
+
+    private static TransactionOperations readOnly(PlatformTransactionManager transactionManager) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setReadOnly(true);
+        return template;
     }
 }
