@@ -40,6 +40,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class EventCacheRefreshTest {
@@ -304,7 +305,7 @@ class EventCacheRefreshTest {
                 mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class), eventCache,
                 mock(EventListCache.class), mock(EventCountsCache.class), mock(MemberRepository.class),
                 new EventCacheLoader(eventRepository, creatorQueryService, eventCache), new EventCacheMetrics(registry),
-                refresher);
+                refresher, TransactionOperations.withoutTransaction());
     }
 
     private CachedEvent cached() {

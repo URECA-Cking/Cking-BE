@@ -14,6 +14,7 @@ import kr.co.cking.ticket.application.TicketBalanceQueryService;
 import kr.co.cking.ticket.application.dto.CommonTicketBalanceResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -40,7 +41,7 @@ class EventQueryServiceGetEventTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final CreatorQueryService creatorQueryService = mock(CreatorQueryService.class);
     private final EventQueryService service =
-            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), mock(EventCountsCache.class), memberRepository, new EventCacheLoader(eventRepository, creatorQueryService, eventCache), EventCacheMetrics.detached(), EventCacheRefresher.disabled());
+            new EventQueryService(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache, mock(EventListCache.class), mock(EventCountsCache.class), memberRepository, new EventCacheLoader(eventRepository, creatorQueryService, eventCache), EventCacheMetrics.detached(), EventCacheRefresher.disabled(), TransactionOperations.withoutTransaction());
 
     @BeforeEach
     void setUp() {
