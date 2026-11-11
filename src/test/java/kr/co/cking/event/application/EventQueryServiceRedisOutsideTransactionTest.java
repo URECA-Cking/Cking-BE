@@ -86,6 +86,20 @@ class EventQueryServiceRedisOutsideTransactionTest {
     }
 
     @Test
+    void 로그인_목록은_회원_확인과_공통_잔액을_캐시_확인_전에_트랜잭션_하나에서_읽는다() {
+        when(memberRepository.existsById(100L)).thenAnswer(invocation -> record("db:member", true));
+        when(commonTicketBalanceQueryService.getBalanceDetail(100L))
+                .thenAnswer(invocation -> record("db:common", new CommonTicketBalanceResponse(100L, 9L, null)));
+        when(eventListCache.find(any(), any(), anyInt(), anyInt()))
+                .thenAnswer(invocation -> record("redis:find", Optional.of(new CachedEventPage(List.of(CachedEvent.from(event)), 1))));
+
+        service.getEvents(7L, DisplayStatus.IN_PROGRESS, 100L, 0, 20);
+
+        assertThat(calls).containsExactly("db:member@in", "db:common@in", "redis:find@out");
+        assertThat(transaction.executions).isEqualTo(1);
+    }
+
+    @Test
     void 목록이_캐시에_없으면_DB에서_읽은_뒤_Redis_저장은_트랜잭션_밖에서_한다() {
         when(eventListCache.find(any(), any(), anyInt(), anyInt())).thenAnswer(invocation -> record("redis:find", Optional.empty()));
         when(memberRepository.existsById(100L)).thenAnswer(invocation -> record("db:member", true));
@@ -97,8 +111,8 @@ class EventQueryServiceRedisOutsideTransactionTest {
 
         service.getEvents(7L, DisplayStatus.IN_PROGRESS, 100L, 0, 20);
 
-        assertThat(calls).containsExactly("db:member@out", "redis:find@out", "db:search@in", "db:common@in", "redis:save@out");
-        assertThat(transaction.executions).isEqualTo(1);
+        assertThat(calls).containsExactly("db:member@in", "db:common@in", "redis:find@out", "db:search@in", "redis:save@out");
+        assertThat(transaction.executions).isEqualTo(2);
     }
 
     @Test

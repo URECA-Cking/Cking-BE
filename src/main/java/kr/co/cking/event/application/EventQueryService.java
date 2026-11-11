@@ -107,26 +107,22 @@ public class EventQueryService {
      */
     @Transactional(propagation = Propagation.SUPPORTS)
     public Page<EventSummary> getEvents(Long creatorId, DisplayStatus displayStatus, Long userId, int page, int size) {
-        requireMember(userId);
-        Instant now = clock.instant();
-        Optional<CachedEventPage> cached = eventListCache.find(creatorId, displayStatus, page, size);
-        if (cached.isPresent() && userId == null) {
-            return toSummaryPage(cached.get(), page, size, now);
-        }
-        ListRead read = readOnlyTransaction.execute(status -> {
-            CachedEventPage events = cached.orElseGet(() -> loadList(creatorId, displayStatus, page, size, now));
-            Long commonBalance = userId == null ? null : commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
-            return new ListRead(events, commonBalance);
+        Long commonBalance = userId == null ? null : readOnlyTransaction.execute(status -> {
+            requireMember(userId);
+            return commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
         });
-        if (cached.isEmpty()) {
-            eventListCache.save(creatorId, displayStatus, page, size, read.events());
+        Instant now = clock.instant();
+        CachedEventPage events = eventListCache.find(creatorId, displayStatus, page, size).orElseGet(() -> {
+            CachedEventPage loaded = readOnlyTransaction.execute(status -> loadList(creatorId, displayStatus, page, size, now));
+            eventListCache.save(creatorId, displayStatus, page, size, loaded);
+            return loaded;
+        });
+        Page<EventSummary> summaries = toSummaryPage(events, page, size, now);
+        if (commonBalance == null) {
+            return summaries;
         }
-        Page<EventSummary> events = toSummaryPage(read.events(), page, size, now);
-        if (read.commonBalance() == null) {
-            return events;
-        }
-        long commonBalance = read.commonBalance();
-        return events.map(e -> e.withMyCommonTicketBalance(commonBalance));
+        long balance = commonBalance;
+        return summaries.map(e -> e.withMyCommonTicketBalance(balance));
     }
 
     private CachedEventPage loadList(Long creatorId, DisplayStatus displayStatus, int page, int size, Instant now) {
@@ -141,9 +137,6 @@ public class EventQueryService {
         if (userId != null && !memberRepository.existsById(userId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
         }
-    }
-
-    private record ListRead(CachedEventPage events, Long commonBalance) {
     }
 
     private Page<EventSummary> toSummaryPage(CachedEventPage cached, int page, int size, Instant now) {
