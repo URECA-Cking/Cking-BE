@@ -3,7 +3,7 @@
 # 사용법: prod-refresh.sh <오토스케일링 그룹 이름>
 # 새 서버를 먼저 띄우고 정상이 된 뒤 옛 서버를 뺀다(Infra 앱 서버 그룹 설정과 같은 값).
 # 새 서버는 ALB에 붙기 전에 스스로 스모크 테스트를 통과해야 하며, 실패하면 버려진다. 그룹은 버려진 자리에 새 서버를 다시 띄우므로
-# 교체 상태만 보면 상한까지 실패를 알 수 없다. 이번 교체에서 띄운 서버가 그룹 크기의 두 배만큼 버려지면 실패로 판정한다.
+# 교체 상태만 보면 상한까지 실패를 알 수 없다. 이번 교체에서 띄운 서버가 그룹 크기의 두 배만큼 버려지면(종료되면) 실패로 판정한다.
 set -euo pipefail
 
 ASG="${1:?사용법: prod-refresh.sh <오토스케일링 그룹 이름>}"
@@ -30,9 +30,9 @@ for _ in $(seq 1 60); do
       echo "교체 완료"
       exit 0 ;;
     Pending | InProgress)
-      abandoned=$(aws autoscaling describe-scaling-activities --auto-scaling-group-name "$ASG" --max-items 100 --output json \
-        | jq --arg since "$started" '[.Activities[] | select(.StartTime >= $since and .StatusCode == "Cancelled"
-            and (.Description | startswith("Launching")))] | length')
+      abandoned=$(aws ec2 describe-instances \
+        --filters "Name=tag:aws:autoscaling:groupName,Values=$ASG" "Name=instance-state-name,Values=shutting-down,terminated" \
+        --output json | jq --arg since "$started" '[.Reservations[].Instances[] | select(.LaunchTime >= $since)] | length')
       if [ "$abandoned" -ge $((desired * 2)) ]; then
         echo "이번 교체에서 띄운 서버 ${abandoned}대가 시작 대기에서 버려졌다(그룹 ${desired}대의 두 배). 실패로 판정한다"
         exit 1
