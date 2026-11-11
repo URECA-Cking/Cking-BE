@@ -3,6 +3,7 @@ package kr.co.cking.member.application;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.cache.CaffeineCacheMetrics;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
@@ -24,6 +25,7 @@ public class MemberProfileGuard {
     // 닉네임·활동명은 설정 뒤 미설정으로 돌아가지 않으므로, 통과한 회원은 DB를 다시 읽지 않는다(#706).
     // 상한을 넘어 밀려난 회원만 다음 요청에서 DB로 다시 검사한다.
     private final Cache<Long, Boolean> configuredMembers;
+    private final Timer databaseChecks;
 
     @Autowired
     public MemberProfileGuard(
@@ -50,17 +52,24 @@ public class MemberProfileGuard {
                 .recordStats()
                 .build();
         CaffeineCacheMetrics.monitor(meterRegistry, configuredMembers, "member-profile-guard");
+        this.databaseChecks = Timer.builder("cking.member.profile.check.db")
+                .description("기억하지 않은 회원의 프로필 설정을 DB에서 확인한 시간")
+                .register(meterRegistry);
     }
 
     public void requireConfigured(Long memberId) {
         if (configuredMembers.getIfPresent(memberId) != null) {
             return;
         }
+        databaseChecks.record(() -> checkConfigured(memberId));
+        configuredMembers.put(memberId, Boolean.TRUE);
+    }
+
+    private void checkConfigured(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         if (!creatorQueryService.requireActivityNameConfiguredForCreator(memberId)) {
             member.requireProfileConfigured();
         }
-        configuredMembers.put(memberId, Boolean.TRUE);
     }
 }

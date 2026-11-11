@@ -50,6 +50,19 @@ class MemberProfileGuardTest {
     }
 
     @Test
+    void 기억하지_않은_회원만_DB_확인_시간을_남긴다() {
+        Member member = new Member("OAuth", null, null, MemberRole.USER);
+        member.setInitialNickname(MemberNickname.of("fan"));
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(creatorQueryService.requireActivityNameConfiguredForCreator(1L)).willReturn(false);
+
+        guard.requireConfigured(1L);
+        guard.requireConfigured(1L);
+
+        assertThat(meterRegistry.get("cking.member.profile.check.db").timer().count()).isEqualTo(1);
+    }
+
+    @Test
     void 닉네임이_있는_회원은_공개_활동을_할_수_있다() {
         Member member = new Member("OAuth", null, null, MemberRole.USER);
         member.setInitialNickname(MemberNickname.of("fan"));

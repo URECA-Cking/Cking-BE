@@ -43,7 +43,7 @@ class EventQueryServiceCachedEventLoadTest {
     private final EventQueryService service = new EventQueryService(
             eventRepository, Clock.fixed(Instant.parse("2026-09-15T00:00:00Z"), ZoneOffset.UTC),
             mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class), eventCache,
-            mock(EventListCache.class), mock(EventCountsCache.class), mock(MemberRepository.class), new EventCacheLoader(eventRepository, creatorQueryService, eventCache));
+            mock(EventListCache.class), mock(EventCountsCache.class), mock(MemberRepository.class), new EventCacheLoader(eventRepository, creatorQueryService, eventCache), EventCacheMetrics.detached());
     private final ExecutorService executor = Executors.newFixedThreadPool(CALLERS);
 
     private final Event event = Event.builder()

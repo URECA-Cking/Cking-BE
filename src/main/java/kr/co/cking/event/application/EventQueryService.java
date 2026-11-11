@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,6 +53,7 @@ public class EventQueryService {
     private final EventCountsCache eventCountsCache;
     private final MemberRepository memberRepository;
     private final EventCacheLoader eventCacheLoader;
+    private final EventCacheMetrics eventCacheMetrics;
     private final ConcurrentMap<Long, CompletableFuture<CachedEvent>> cachedEventLoads = new ConcurrentHashMap<>();
 
     /**
@@ -144,7 +146,13 @@ public class EventQueryService {
      */
     @Transactional(propagation = Propagation.SUPPORTS)
     public CachedEvent getCachedEvent(Long eventId) {
-        return eventCache.find(eventId).orElseGet(() -> load(eventId));
+        Optional<CachedEvent> cached = eventCache.find(eventId);
+        if (cached.isPresent()) {
+            eventCacheMetrics.hit();
+            return cached.get();
+        }
+        eventCacheMetrics.miss();
+        return load(eventId);
     }
 
     /**
@@ -154,7 +162,7 @@ public class EventQueryService {
      */
     private CachedEvent load(Long eventId) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            return eventCacheLoader.load(eventId);
+            return eventCacheMetrics.inTransactionLoad(() -> eventCacheLoader.load(eventId));
         }
         return loadOnce(eventId);
     }
@@ -163,10 +171,10 @@ public class EventQueryService {
         CompletableFuture<CachedEvent> load = new CompletableFuture<>();
         CompletableFuture<CachedEvent> running = cachedEventLoads.putIfAbsent(eventId, load);
         if (running != null) {
-            return awaitLoad(running);
+            return eventCacheMetrics.loadWait(() -> awaitLoad(running));
         }
         try {
-            CachedEvent loaded = eventCacheLoader.load(eventId);
+            CachedEvent loaded = eventCacheMetrics.singleFlightLoad(() -> eventCacheLoader.load(eventId));
             load.complete(loaded);
             return loaded;
         } catch (RuntimeException | Error exception) {
