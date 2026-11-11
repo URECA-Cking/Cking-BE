@@ -20,6 +20,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import kr.co.cking.common.exception.BusinessException;
 import kr.co.cking.creator.domain.CreatorErrorCode;
 import kr.co.cking.member.domain.Member;
@@ -29,6 +31,9 @@ import kr.co.cking.member.domain.MemberRole;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.creator.application.CreatorQueryService;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 class MemberProfileGuardTest {
 
@@ -36,7 +41,8 @@ class MemberProfileGuardTest {
     private final CreatorQueryService creatorQueryService = mock(CreatorQueryService.class);
     private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final MemberProfileGuard guard =
-            new MemberProfileGuard(memberRepository, creatorQueryService, meterRegistry, 100, Runnable::run);
+            new MemberProfileGuard(memberRepository, creatorQueryService, meterRegistry, 100, Runnable::run,
+                    TransactionOperations.withoutTransaction());
 
     @Test
     void 닉네임이_없는_회원의_공개_활동을_막는다() {
@@ -47,6 +53,19 @@ class MemberProfileGuardTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(MemberErrorCode.PROFILE_SETUP_REQUIRED);
+    }
+
+    @Test
+    void 기억하지_않은_회원만_DB_확인_시간을_남긴다() {
+        Member member = new Member("OAuth", null, null, MemberRole.USER);
+        member.setInitialNickname(MemberNickname.of("fan"));
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(creatorQueryService.requireActivityNameConfiguredForCreator(1L)).willReturn(false);
+
+        guard.requireConfigured(1L);
+        guard.requireConfigured(1L);
+
+        assertThat(meterRegistry.get("cking.member.profile.check.db").timer().count()).isEqualTo(1);
     }
 
     @Test
@@ -154,7 +173,8 @@ class MemberProfileGuardTest {
     void 상한을_넘으면_밀려난_회원만_DB로_다시_검사한다() {
         MeterRegistry boundedRegistry = new SimpleMeterRegistry();
         MemberProfileGuard bounded =
-                new MemberProfileGuard(memberRepository, creatorQueryService, boundedRegistry, 2, Runnable::run);
+                new MemberProfileGuard(memberRepository, creatorQueryService, boundedRegistry, 2, Runnable::run,
+                    TransactionOperations.withoutTransaction());
         given(memberRepository.findById(anyLong())).willReturn(Optional.of(memberWithNickname()));
         given(creatorQueryService.requireActivityNameConfiguredForCreator(anyLong())).willReturn(false);
 
@@ -169,6 +189,40 @@ class MemberProfileGuardTest {
         verify(memberRepository, atLeast(8)).findById(anyLong());
         assertThat(boundedRegistry.get("cache.size").tag("cache", "member-profile-guard").gauge().value())
                 .isLessThanOrEqualTo(2);
+    }
+
+    @Test
+    void 회원과_크리에이터를_트랜잭션_하나에서_확인하고_기억한_회원은_트랜잭션을_열지_않는다() {
+        AtomicInteger transactions = new AtomicInteger();
+        AtomicBoolean inTransaction = new AtomicBoolean();
+        TransactionOperations counting = new TransactionOperations() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                transactions.incrementAndGet();
+                inTransaction.set(true);
+                try {
+                    return action.doInTransaction(new SimpleTransactionStatus());
+                } finally {
+                    inTransaction.set(false);
+                }
+            }
+        };
+        MemberProfileGuard transactional = new MemberProfileGuard(
+                memberRepository, creatorQueryService, new SimpleMeterRegistry(), 100, Runnable::run, counting);
+        given(memberRepository.findById(1L)).willAnswer(invocation -> {
+            assertThat(inTransaction).isTrue();
+            return Optional.of(memberWithNickname());
+        });
+        given(creatorQueryService.requireActivityNameConfiguredForCreator(1L)).willAnswer(invocation -> {
+            assertThat(inTransaction).isTrue();
+            return false;
+        });
+
+        transactional.requireConfigured(1L);
+        transactional.requireConfigured(1L);
+
+        assertThat(transactions).hasValue(1);
+        verify(creatorQueryService).requireActivityNameConfiguredForCreator(1L);
     }
 
     private Member memberWithNickname() {
