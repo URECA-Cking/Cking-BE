@@ -27,6 +27,7 @@ import kr.co.cking.ticket.application.CommonTicketBalanceQueryService;
 import kr.co.cking.ticket.application.TicketBalanceQueryService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class EventCacheMetricsTest {
@@ -39,7 +40,7 @@ class EventCacheMetricsTest {
             eventRepository, Clock.fixed(Instant.parse("2026-09-15T00:00:00Z"), ZoneOffset.UTC),
             mock(TicketBalanceQueryService.class), mock(CommonTicketBalanceQueryService.class), eventCache,
             mock(EventListCache.class), mock(EventCountsCache.class), mock(MemberRepository.class),
-            new EventCacheLoader(eventRepository, creatorQueryService, eventCache), new EventCacheMetrics(registry), EventCacheRefresher.disabled());
+            new EventCacheLoader(eventRepository, creatorQueryService, eventCache), new EventCacheMetrics(registry), EventCacheRefresher.disabled(), TransactionOperations.withoutTransaction());
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
 
     private final Event event = Event.builder()

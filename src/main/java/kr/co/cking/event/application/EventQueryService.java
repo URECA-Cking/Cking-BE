@@ -14,16 +14,19 @@ import kr.co.cking.event.repository.EventRepository;
 import kr.co.cking.member.repository.MemberRepository;
 import kr.co.cking.ticket.application.CommonTicketBalanceQueryService;
 import kr.co.cking.ticket.application.TicketBalanceQueryService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -38,7 +41,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class EventQueryService {
 
@@ -55,7 +57,42 @@ public class EventQueryService {
     private final EventCacheLoader eventCacheLoader;
     private final EventCacheMetrics eventCacheMetrics;
     private final EventCacheRefresher eventCacheRefresher;
+    private final TransactionOperations readOnlyTransaction;
     private final ConcurrentMap<Long, CompletableFuture<CachedEvent>> cachedEventLoads = new ConcurrentHashMap<>();
+
+    @Autowired
+    public EventQueryService(EventRepository eventRepository, Clock clock,
+                             TicketBalanceQueryService ticketBalanceQueryService,
+                             CommonTicketBalanceQueryService commonTicketBalanceQueryService,
+                             EventCache eventCache, EventListCache eventListCache, EventCountsCache eventCountsCache,
+                             MemberRepository memberRepository, EventCacheLoader eventCacheLoader,
+                             EventCacheMetrics eventCacheMetrics, EventCacheRefresher eventCacheRefresher,
+                             PlatformTransactionManager transactionManager) {
+        this(eventRepository, clock, ticketBalanceQueryService, commonTicketBalanceQueryService, eventCache,
+                eventListCache, eventCountsCache, memberRepository, eventCacheLoader, eventCacheMetrics,
+                eventCacheRefresher, readOnly(transactionManager));
+    }
+
+    EventQueryService(EventRepository eventRepository, Clock clock,
+                      TicketBalanceQueryService ticketBalanceQueryService,
+                      CommonTicketBalanceQueryService commonTicketBalanceQueryService,
+                      EventCache eventCache, EventListCache eventListCache, EventCountsCache eventCountsCache,
+                      MemberRepository memberRepository, EventCacheLoader eventCacheLoader,
+                      EventCacheMetrics eventCacheMetrics, EventCacheRefresher eventCacheRefresher,
+                      TransactionOperations readOnlyTransaction) {
+        this.eventRepository = eventRepository;
+        this.clock = clock;
+        this.ticketBalanceQueryService = ticketBalanceQueryService;
+        this.commonTicketBalanceQueryService = commonTicketBalanceQueryService;
+        this.eventCache = eventCache;
+        this.eventListCache = eventListCache;
+        this.eventCountsCache = eventCountsCache;
+        this.memberRepository = memberRepository;
+        this.eventCacheLoader = eventCacheLoader;
+        this.eventCacheMetrics = eventCacheMetrics;
+        this.eventCacheRefresher = eventCacheRefresher;
+        this.readOnlyTransaction = readOnlyTransaction;
+    }
 
     /**
      * API 명세 §1.7: page=0부터, size 기본 20·최대 100(범위 검증은 컨트롤러에서),
@@ -68,30 +105,45 @@ public class EventQueryService {
      *
      * <p>userId를 주면 각 항목에 공통 응모권 잔액(myCommonTicketBalance)을 캐시 밖에서 붙인다.
      */
+    @Transactional(propagation = Propagation.SUPPORTS)
     public Page<EventSummary> getEvents(Long creatorId, DisplayStatus displayStatus, Long userId, int page, int size) {
-        if (userId != null && !memberRepository.existsById(userId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
-        }
+        requireMember(userId);
         Instant now = clock.instant();
-        Page<EventSummary> events = eventListCache.find(creatorId, displayStatus, page, size)
-                .map(cached -> toSummaryPage(cached, page, size, now))
-                .orElseGet(() -> loadAndCacheList(creatorId, displayStatus, page, size, now));
-        if (userId == null) {
+        Optional<CachedEventPage> cached = eventListCache.find(creatorId, displayStatus, page, size);
+        if (cached.isPresent() && userId == null) {
+            return toSummaryPage(cached.get(), page, size, now);
+        }
+        ListRead read = readOnlyTransaction.execute(status -> {
+            CachedEventPage events = cached.orElseGet(() -> loadList(creatorId, displayStatus, page, size, now));
+            Long commonBalance = userId == null ? null : commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
+            return new ListRead(events, commonBalance);
+        });
+        if (cached.isEmpty()) {
+            eventListCache.save(creatorId, displayStatus, page, size, read.events());
+        }
+        Page<EventSummary> events = toSummaryPage(read.events(), page, size, now);
+        if (read.commonBalance() == null) {
             return events;
         }
-        long commonBalance = commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
+        long commonBalance = read.commonBalance();
         return events.map(e -> e.withMyCommonTicketBalance(commonBalance));
     }
 
-    private Page<EventSummary> loadAndCacheList(Long creatorId, DisplayStatus displayStatus, int page, int size,
-                                                 Instant now) {
+    private CachedEventPage loadList(Long creatorId, DisplayStatus displayStatus, int page, int size, Instant now) {
         Pageable pageable = PageRequest.of(page, size, EVENT_LIST_SORT);
         Page<Event> result = eventRepository.search(creatorId, displayStatus, now, pageable);
-        CachedEventPage cached = new CachedEventPage(
+        return new CachedEventPage(
                 result.getContent().stream().map(CachedEvent::from).toList(),
                 result.getTotalElements());
-        eventListCache.save(creatorId, displayStatus, page, size, cached);
-        return result.map(event -> EventSummary.from(event, now));
+    }
+
+    private void requireMember(Long userId) {
+        if (userId != null && !memberRepository.existsById(userId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+        }
+    }
+
+    private record ListRead(CachedEventPage events, Long commonBalance) {
     }
 
     private Page<EventSummary> toSummaryPage(CachedEventPage cached, int page, int size, Instant now) {
@@ -102,17 +154,24 @@ public class EventQueryService {
     }
 
     /** 공개 이벤트 수를 표시 상태별로 한 번에 센다. total은 세 값의 합이고, 목록과 같은 5초 캐시 정책을 따른다. */
+    @Transactional(propagation = Propagation.SUPPORTS)
     public EventCounts getEventCounts() {
-        return eventCountsCache.find().orElseGet(this::loadAndCacheCounts);
+        Optional<EventCounts> cached = eventCountsCache.find();
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        Instant now = clock.instant();
+        CountsRead read = readOnlyTransaction.execute(status -> {
+            var counts = eventRepository.countByDisplayStatus(now);
+            EventCounts result = new EventCounts(counts.getUpcoming() + counts.getInProgress() + counts.getClosed(),
+                    counts.getUpcoming(), counts.getInProgress(), counts.getClosed());
+            return new CountsRead(result, eventRepository.findEarliestOpenEndAt(now).orElse(null));
+        });
+        eventCountsCache.save(read.counts(), read.earliestOpenEndAt());
+        return read.counts();
     }
 
-    private EventCounts loadAndCacheCounts() {
-        Instant now = clock.instant();
-        var counts = eventRepository.countByDisplayStatus(now);
-        EventCounts result = new EventCounts(counts.getUpcoming() + counts.getInProgress() + counts.getClosed(),
-                counts.getUpcoming(), counts.getInProgress(), counts.getClosed());
-        eventCountsCache.save(result, eventRepository.findEarliestOpenEndAt(now).orElse(null));
-        return result;
+    private record CountsRead(EventCounts counts, Instant earliestOpenEndAt) {
     }
 
     /** 크리에이터별 진행 중 이벤트 수를 한 번에 센다. 진행 중이 없는 크리에이터는 키가 없다. */
@@ -126,17 +185,20 @@ public class EventQueryService {
     }
 
     /** 공개 Event를 조회하고, 로그인한 호출자에게만 개인 응모권 잔액을 붙인다. */
+    @Transactional(propagation = Propagation.SUPPORTS)
     public EventDetail getEvent(Long eventId, Long userId) {
-        if (userId != null && !memberRepository.existsById(userId)) {
-            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
-        }
+        requireMember(userId);
         CachedEvent event = getCachedEvent(eventId);
         if (userId == null) {
             return EventDetail.of(event, clock.instant(), 0L, 0L);
         }
-        long myTicketBalance = ticketBalanceQueryService.getBalance(event.creatorId(), userId);
-        long myCommonTicketBalance = commonTicketBalanceQueryService.getBalanceDetail(userId).balance();
-        return EventDetail.of(event, clock.instant(), myTicketBalance, myCommonTicketBalance);
+        Balances balances = readOnlyTransaction.execute(status -> new Balances(
+                ticketBalanceQueryService.getBalance(event.creatorId(), userId),
+                commonTicketBalanceQueryService.getBalanceDetail(userId).balance()));
+        return EventDetail.of(event, clock.instant(), balances.ticket(), balances.common());
+    }
+
+    private record Balances(long ticket, long common) {
     }
 
     /**
@@ -248,5 +310,11 @@ public class EventQueryService {
     /** Event 상태 변경 후(EventCommandService 등) 호출해서 cache:event를 무효화한다. */
     public void invalidate(Long eventId) {
         eventCache.evict(eventId);
+    }
+
+    private static TransactionOperations readOnly(PlatformTransactionManager transactionManager) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setReadOnly(true);
+        return template;
     }
 }
