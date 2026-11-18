@@ -47,7 +47,7 @@
 
 ## 순서
 
-환경 생성·앱 배포·수집기는 Cking-Infra README의 "부하 테스트 환경"을 따른다. 아래 명령의 `<커밋>`은 측정에 쓰는 이 저장소의 커밋이며 기록에 남긴다.
+환경 생성·앱 배포·수집기는 Cking-Infra [부하 테스트 실행 자동화의 "수동 실행"](https://github.com/URECA-Cking/Cking-Infra/blob/main/loadtest/README.md#수동-실행)을 따른다. 아래 명령의 `<커밋>`은 측정에 쓰는 이 저장소의 커밋이며 기록에 남긴다.
 
 ### 1. 스크립트 받기 (테스트 앱 서버, k6 서버)
 
@@ -170,7 +170,7 @@ DB 쪽은 `verify.sh`의 6번이 같은 요청 라운드 회원(앞쪽 절반)�
 
 - 같은 시나리오를 3번 돌려 중앙값을 쓴다. 추첨은 실행마다 1번이라 백분위수를 낼 수 없으므로 3회 측정값과 최대를 그대로 적는다. 실행 사이에는 데이터를 처음 상태로 되돌린다: 앱 정지 → Redis `FLUSHALL` → DB `DROP DATABASE cking; CREATE DATABASE cking;` → 앱 배포(Flyway) → 2번 시딩. 운영은 [운영 데이터 되돌리기](#운영-데이터-되돌리기)
 - 기록: 이 저장소 커밋, Infra 커밋, 시딩·시나리오 변수, k6 요약, 해당 시간대 대시보드, `verify.sh` 출력, 인스턴스 사용 시간
-- 끝나면 Cking-Infra `envs/loadtest`에서 `terraform destroy`, Parameter Store 비밀값 삭제. 운영은 `envs/prod`에서 `k6_enabled = false`로 k6 서버만 지운다
+- 끝나면 Cking-Infra `loadtest/lt.sh down`(손으로 띄웠으면 `envs/loadtest`에서 `terraform destroy`)으로 지운다. Parameter Store 비밀값과 `envs/loadtest-base`는 다음 측정에 다시 쓰므로 남긴다. 운영은 `envs/prod`를 `k6_enabled` 없이 다시 적용해 k6 서버만 지운다
 
 ## 운영에서 실행
 
