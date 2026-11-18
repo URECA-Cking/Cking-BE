@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./docs/assets/readme/cking-logo.png" alt="CKing 로고" width="430" />
+  <img src="./docs/assets/readme/cking-logo.png" alt="Cking 로고" width="430" />
 
   <br />
 
@@ -20,13 +20,13 @@
 <h2 align="center">프로젝트 소개</h2>
 
 <div align="center">
-  <p>CKing은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한곳에서 탐색하고,<br />팬의 참여를 미션·응모권·추첨으로 연결하는 플랫폼입니다.</p>
+  <p>Cking은 SNS 곳곳에 흩어진 크리에이터 콘텐츠와 이벤트를 한곳에서 탐색하고,<br />팬의 참여를 미션·응모권·추첨으로 연결하는 플랫폼입니다.</p>
 
   <p>크리에이터는 전용 Space에서 콘텐츠와 일정을 운영하고 이벤트를 개최하며,<br />팬은 관심 있는 크리에이터를 도킹하고 미션을 수행해 이벤트에 참여합니다.</p>
 
   <br />
 
-  <img src="./docs/assets/readme/cking-name-meaning.png" alt="Creator + King, Creator + Docking을 표현한 CKing 캐릭터" width="650" />
+  <img src="./docs/assets/readme/cking-name-meaning.png" alt="Creator + King, Creator + Docking을 표현한 Cking 캐릭터" width="650" />
 </div>
 
 <br />
@@ -34,7 +34,7 @@
 ## 서비스 한눈에 보기
 
 <p>
-  <img src="./docs/assets/readme/service-overview.png" alt="CKing 서비스 소개 및 AI 확장 기능 개요" width="980" />
+  <img src="./docs/assets/readme/service-overview.png" alt="Cking 서비스 소개 및 AI 확장 기능 개요" width="980" />
 </p>
 
 <br />
@@ -42,7 +42,7 @@
 ## 시스템 아키텍처
 
 <p>
-  <img src="./docs/assets/readme/system-architecture.png" alt="CKing 시스템 아키텍처" width="1000" />
+  <img src="./docs/assets/readme/system-architecture.png" alt="Cking 시스템 아키텍처" width="1000" />
 </p>
 
 - **실시간 처리:** Spring Boot API와 Redis Lua로 응모권 적립·차감, 중복 요청 검증, 이벤트 Gate 검사를 원자적으로 처리합니다.
@@ -55,7 +55,7 @@
 ## 인프라 아키텍처
 
 <p>
-  <img src="./docs/assets/readme/infrastructure-architecture.png" alt="CKing AWS 인프라 아키텍처" width="1000" />
+  <img src="./docs/assets/readme/infrastructure-architecture.png" alt="Cking AWS 인프라 아키텍처" width="1000" />
 </p>
 
 - **서비스 운영:** ALB·WAF 뒤에 두 가용 영역의 앱 서버(Auto Scaling 2\~4대)를 두고, RDS MySQL은 다른 가용 영역에 대기 DB(다중 AZ)를, ElastiCache(Valkey)는 복제 노드를 둡니다.
@@ -170,7 +170,7 @@
 ## 프로젝트 구조
 
 ```text
-CKing-BE/
+Cking-BE/
 ├── src/main/java/kr/co/cking/
 │   ├── abuse/                  # 비정상 행동 탐지
 │   ├── auth/                   # 인증 · OAuth2 · JWT
